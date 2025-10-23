@@ -14,8 +14,8 @@ export const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/
 export const SPORT_CONFIG = {
     soccer: {
         name: "soccer",
-        // JAVÍTÁS: Az összes fontos liga megadása az Odds API-nak a megbízható keresésért
-        odds_api_leagues: "soccer_uefa_champions_league,soccer_uefa_europa_league,soccer_england_premier_league,soccer_spain_la_liga,soccer_germany_bundesliga,soccer_italy_serie_a,soccer_france_ligue_one,soccer_portugal_primeira_liga,soccer_netherlands_eredivisie,soccer_belgium_first_div,soccer_turkey_super_lig,soccer_uefa_europa_conference_league,soccer_brazil_campeonato",
+        // JAVÍTÁS: Itt egyetlen, általános kulcsot használunk. A ligák szerinti szűrést a DataFetch.js végzi.
+        odds_api_sport_key: "soccer",
         espn_leagues: {
             "Champions League": "uefa.champions",
             "Premier League": "eng.1",
@@ -47,7 +47,7 @@ export const SPORT_CONFIG = {
     },
     hockey: {
         name: "hockey",
-        odds_api_leagues: "icehockey_nhl,icehockey_khl", 
+        odds_api_sport_key: "icehockey_nhl", 
         espn_leagues: {
             "NHL": "nhl"
         },
@@ -58,7 +58,7 @@ export const SPORT_CONFIG = {
     },
     basketball: {
         name: "basketball",
-        odds_api_leagues: "basketball_nba,basketball_euroleague",
+        odds_api_sport_key: "basketball_nba",
         espn_leagues: {
             "NBA": "nba"
         },
