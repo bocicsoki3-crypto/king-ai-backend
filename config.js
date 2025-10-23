@@ -11,9 +11,9 @@ export const PLAYER_API_KEY = process.env.PLAYER_API_KEY; // Még ha nincs is, d
 export const SHEET_URL = process.env.SHEET_URL;
 export const PORT = process.env.PORT || 3000; // Alapértelmezett port 3000, ha nincs megadva
 
-// === JAVÍTÁS: Azt a modellt használjuk, amihez a kulcsod hozzáfér ===
+// === JAVÍTÁS: Visszaállás arra a modellre, amihez a kulcsod bizonyítottan hozzáfér ===
 export const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_API_KEY}`;
-// ====================================================================
+// =================================================================================
 
 // Sportág specifikus konfigurációk
 export const SPORT_CONFIG = {
