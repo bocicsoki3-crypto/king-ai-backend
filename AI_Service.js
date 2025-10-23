@@ -1,96 +1,72 @@
 /**
  * AI_Service.js (Node.js Verzió)
  * Felelős az AI modellel való kommunikációért (a DataFetch.js-en keresztül),
- * a promptok összeállításáért és a válaszok feldogozásáért az elemzési folyamatban.
- * JAVÍTÁS: Hozzáadva a _getContradictionAnalysis placeholder export.
+ * a promptok összeállításáért és a válaszok feldolgozásáért az elemzési folyamatban.
+ * JAVÍTÁS: Hozzáadva a getAiKeyQuestions függvény és exportálása.
  */
 
 // Importáljuk a szükséges függvényeket és konfigurációt
-import { getRichContextualData, getOptimizedOddsData, _callGeminiWithSearch, _getFixturesFromEspn } from './DataFetch.js'; // Itt importáljuk a szükséges AI hívó függvényt is!
+import { getRichContextualData, getOptimizedOddsData, _callGeminiWithSearch, _getFixturesFromEspn } from './DataFetch.js';
 import { calculateProbabilities, generateProTip } from './Model.js'; // Placeholder lehet a calculateProbabilities
 import { saveToSheet } from './SheetService.js';
 import { SPORT_CONFIG } from './config.js';
 
 // --- PROMPT SABLONOK ---
 const MASTER_AI_PROMPT_TEMPLATE = `
-CRITICAL TASK: You are the Master AI Sports Analyst. Analyze the provided structured data for the match: {homeTeam} vs {awayTeam}.
-Focus on predicting the final score and generating a single, concise betting tip based ONLY on the data provided. Use Google Search results included in the context.
-
-Structured Data:
----
-Match: {homeTeam} (Home) vs {awayTeam} (Away)
-League: {leagueName}
-Date: {matchDate}
-
-Contextual Data (from Google Search and internal knowledge):
-{richContext}
-
-Odds Data (Pinnacle):
-{oddsString}
-
-AI Committee Analysis:
-{committeeAnalysis}
----
-
-Your Tasks:
-1.  **Final Score Prediction:** Predict the most likely final score (e.g., 2-1).
-2.  **Betting Tip Generation:** Generate ONE concise, actionable betting tip (e.g., "Over 2.5 Goals", "Home Team to Win", "Both Teams To Score: Yes"). Base your tip *strictly* on the analysis and probabilities, considering potential value against the provided odds and information gathered from search. Do NOT invent information.
-3.  **Confidence Level:** Assign a confidence level to your tip (Low, Medium, High).
-4.  **Reasoning:** Briefly explain your reasoning for the tip in 2-3 sentences max, referencing specific data points (e.g., recent news from search, H2H trends, form, key absentees, odds value).
-
-Output Format (JSON ONLY, no extra text):
-{{
-  "prediction": {{
-    "final_score": "H-A",
-    "tip": "<Your Betting Tip>",
-    "confidence": "<Low|Medium|High>",
-    "reasoning": "<Brief explanation>"
-  }}
-}}
+CRITICAL TASK: You are the Master AI Sports Analyst. Analyze the provided structured data for the match: {homeTeam} vs {awayTeam}. Focus on predicting the final score and generating a single, concise betting tip based ONLY on the data provided. Use Google Search results included in the context. Structured Data: --- Match: {homeTeam} (Home) vs {awayTeam} (Away) League: {leagueName} Date: {matchDate} Contextual Data (from Google Search and internal knowledge): {richContext} Odds Data (Pinnacle): {oddsString} AI Committee Analysis: {committeeAnalysis} --- Your Tasks: 1. Final Score Prediction: Predict the most likely final score (e.g., 2-1). 2. Betting Tip Generation: Generate ONE concise, actionable betting tip (e.g., "Over 2.5 Goals", "Home Team to Win", "Both Teams To Score: Yes"). Base your tip *strictly* on the analysis and probabilities, considering potential value against the provided odds and information gathered from search. Do NOT invent information. 3. Confidence Level: Assign a confidence level to your tip (Low, Medium, High). 4. Reasoning: Briefly explain your reasoning for the tip in 2-3 sentences max, referencing specific data points (e.g., recent news from search, H2H trends, form, key absentees, odds value). Output Format (JSON ONLY, no extra text): {{"prediction": {{"final_score": "H-A", "tip": "<Your Betting Tip>", "confidence": "<Low|Medium|High>", "reasoning": "<Brief explanation>"}}}}
 `;
 
-// Bizottsági Tag Prompt (referenciaként, de a hívása kikommentelve)
 const COMMITTEE_MEMBER_PROMPT_TEMPLATE = `
-You are an AI Sports Analyst specializing in {specialization}. Analyze the provided data for the match: {homeTeam} vs {awayTeam}. Provide a concise analysis (max 3 sentences) focusing on your area of expertise and predict the most likely outcome from your perspective (Home Win, Draw, Away Win, Over/Under X.5).
-
-Data:
----
-Match: {homeTeam} (Home) vs {awayTeam} (Away)
-League: {leagueName}
-Date: {matchDate}
-Contextual Data (from Google Search and internal knowledge): {richContext}
-Odds Data (Pinnacle): {oddsString}
----
-
-Your Output (Plain Text, Max 3 sentences + prediction): <Your concise analysis focused on {specialization}>. Prediction: <Outcome>
+You are an AI Sports Analyst specializing in {specialization}. Analyze the provided data for the match: {homeTeam} vs {awayTeam}. Provide a concise analysis (max 3 sentences) focusing on your area of expertise and predict the most likely outcome from your perspective (Home Win, Draw, Away Win, Over/Under X.5). Data: --- Match: {homeTeam} (Home) vs {awayTeam} (Away) League: {leagueName} Date: {matchDate} Contextual Data (from Google Search and internal knowledge): {richContext} Odds Data (Pinnacle): {oddsString} --- Your Output (Plain Text, Max 3 sentences + prediction): <Your concise analysis focused on {specialization}>. Prediction: <Outcome>
 `;
 
-
-// === JAVÍTÁS: Placeholder függvény hozzáadása és exportálása ===
-/**
- * Placeholder az ellentmondás-analízishez. Jelenleg nem csinál semmit.
- * @returns {string} Üres string vagy alapértelmezett üzenet.
- */
+// === Placeholder az ellentmondás-analízishez ===
 export async function _getContradictionAnalysis(context, probabilities, odds) {
     console.warn("_getContradictionAnalysis placeholder hívva - ez a funkció jelenleg nincs implementálva.");
-    return "Ellentmondás-analízis kihagyva."; // Vagy return "";
+    return "Ellentmondás-analízis kihagyva.";
+}
+
+// === JAVÍTÁS: getAiKeyQuestions függvény hozzáadása és exportálása ===
+/**
+ * Generálja a meccs kulcskérdéseit a kontextus alapján.
+ * @param {string} richContext Az elemzéshez gyűjtött szöveges kontextus.
+ * @returns {Promise<string>} Az AI által generált kulcskérdések stringként, vagy hibaüzenet.
+ */
+export async function getAiKeyQuestions(richContext) {
+  if (!richContext || typeof richContext !== 'string') { // Bemenet ellenőrzése
+      console.error("getAiKeyQuestions: Hiányzó vagy érvénytelen kontextus.");
+      return "- Hiba: A kulcskérdések generálásához szükséges kontextus hiányzik."; // Hiba visszaadása
+  }
+  // Prompt összeállítása (az Apps Script verzióból)
+  const prompt = `You are a strategic analyst preparing for a pre-match briefing.
+STRICT RULE: Your response must be ONLY in Hungarian.
+Based SOLELY on the provided context below, formulate the two (2) most critical strategic questions that will likely decide the outcome of the match.
+These questions should highlight the core uncertainties or key battlegrounds.
+Present them ONLY as a bulleted list, starting each question with a hyphen (-).
+Do not add any introduction, explanation, or conclusion.
+
+    CONTEXT:
+    ${richContext}`;
+
+  try {
+      // AI hívása (Vertex AI + Search)
+      const responseText = await _callGeminiWithSearch(prompt); // Hívás a DataFetch.js függvényével
+      if (responseText) {
+          // Egyszerűsített válasz: feltételezzük, hogy a válasz a kért formátumban van
+          return responseText.trim(); // Visszaadjuk a trimmelt választ
+      } else {
+          console.error("getAiKeyQuestions: Nem érkezett válasz a Geminitől.");
+          return "- Hiba: Az AI nem tudott kulcskérdéseket generálni."; // Hiba, ha nincs válasz
+      }
+  } catch (e) {
+      console.error(`getAiKeyQuestions hiba: ${e.message}`); // Hiba logolása
+      return `- Hiba a kulcskérdések generálásakor: ${e.message}`; // Hiba visszaadása
+  }
 }
 // =============================================================
 
-// --- FŐ ELEMZÉSI FOLYAMAT ---
 
-/**
- * A fő AI elemzési folyamatot vezérli. Meghívja az adatgyűjtést,
- * számításokat végez, majd meghívja a Mester AI-t a végső tippért.
- * @param {string} sport A sportág.
- * @param {string} homeTeam Hazai csapat neve.
- * @param {string} awayTeam Vendég csapat neve.
- * @param {string} leagueName Liga neve.
- * @param {string} matchDate Meccs dátuma (ISO string).
- * @param {object} openingOdds Nyitó szorzók (opcionális).
- * @returns {Promise<object>} A végső elemzés és tipp.
- * @throws {Error} Ha kritikus hiba történik az elemzés során.
- */
+// --- FŐ ELEMZÉSI FOLYAMAT ---
 export async function runAnalysisFlow(sport, homeTeam, awayTeam, leagueName, matchDate, openingOdds = null) {
     console.log(`Elemzés indítása: ${homeTeam} vs ${awayTeam} (${leagueName})`);
 
@@ -114,11 +90,7 @@ export async function runAnalysisFlow(sport, homeTeam, awayTeam, leagueName, mat
 
         // 2. Valószínűségek Számítása (Placeholder hívása)
         console.log("Valószínűségek számítása (Placeholder)...");
-        // Figyelem: Ez a calculateProbabilities jelenleg csak null értékeket ad vissza a Model.js-ben!
-        // Az igazi valószínűségek a Model.js simulateMatchProgress függvényében vannak.
-        // Ezt később finomítani kellene az AI_Service vagy Model.js-ben.
         probabilities = calculateProbabilities(contextualData.rawStats, SPORT_CONFIG[sport]?.home_advantage, SPORT_CONFIG[sport]?.avg_goals);
-        // Itt kellene a probabilities objektumot feltölteni a simulateMatchProgress eredményével, ha az AI_Service használja ezeket
         console.log("Placeholder valószínűségek:", probabilities); // Ez null értékeket fog mutatni
 
         // 3. AI Bizottság (Kihagyva)
@@ -159,8 +131,7 @@ export async function runAnalysisFlow(sport, homeTeam, awayTeam, leagueName, mat
             match: `${homeTeam} vs ${awayTeam}`,
             league: leagueName,
             date: matchDate,
-            // A probabilities itt a placeholder null értékeit tartalmazza!
-            probabilities: probabilities,
+            probabilities: probabilities, // Placeholder null értékekkel!
             context: contextualData.richContext,
             odds: oddsData?.current || [],
             prediction: {
@@ -225,10 +196,12 @@ Your Task: Answer concisely and accurately in Hungarian based ONLY on the Analys
     }
 }
 
+
 // --- EXPORT ---
 export default {
     runAnalysisFlow,
     getChatResponse,
-    _getContradictionAnalysis, // Exportáljuk a placeholdert
+    _getContradictionAnalysis, // Placeholder
+    getAiKeyQuestions,          // Hozzáadva az exporthoz
     getFixtures: _getFixturesFromEspn
 };
