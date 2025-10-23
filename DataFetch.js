@@ -7,27 +7,15 @@ const sportmonksIdCache = new NodeCache({ stdTTL: 0 });
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* JAVÍTÁS: A SportMonks ID keresés kiegészítve egy manuális
-* név-hozzárendelővel, a Player API hívás pedig a valós
-* API-SPORTS URL-re cserélve.
+* JAVÍTÁS: A SportMonks ID keresés lecserélve egy robusztus,
+* dinamikus kereső és név-összevető logikára.
+* A Player API és a Gemini beállítások változatlanok.
 **************************************************************/
 
 // --- BELSŐ SEGÉDFÜGGVÉNYEK AZ API-KHOZ ---
 
 async function findSportMonksTeamId(teamName) {
-    // JAVÍTÁS: Manuális név-hozzárendelési térkép a problémás csapatokhoz
-    const TEAM_NAME_MAP = {
-        'genk': 'KRC Genk',
-        'betis': 'Real Betis',
-        'red star': 'Red Star Belgrade',
-        'sparta': 'Sparta Prague',
-        // Ide jöhetnek a jövőben további problémás nevek, pl. 'psv': 'PSV Eindhoven'
-    };
-
-    const lowerTeamName = teamName.toLowerCase();
-    const searchName = TEAM_NAME_MAP[lowerTeamName] || teamName; // Ha van a térképben, azt használjuk, ha nincs, az eredetit
-
-    const cacheKey = `sportmonks_id_${searchName.toLowerCase().replace(/\s+/g, '')}`;
+    const cacheKey = `sportmonks_id_${teamName.toLowerCase().replace(/\s+/g, '')}`;
     const cachedId = sportmonksIdCache.get(cacheKey);
     if (cachedId) {
         return cachedId === 'not_found' ? null : cachedId;
@@ -38,21 +26,33 @@ async function findSportMonksTeamId(teamName) {
     }
 
     try {
-        const url = `https://api.sportmonks.com/v3/core/teams/search/${encodeURIComponent(searchName)}?api_token=${SPORTMONKS_API_KEY}`;
+        const url = `https://api.sportmonks.com/v3/core/teams/search/${encodeURIComponent(teamName)}?api_token=${SPORTMONKS_API_KEY}`;
         const response = await axios.get(url);
 
         if (response.data && response.data.data && response.data.data.length > 0) {
-            const teamId = response.data.data[0].id;
-            console.log(`SportMonks ID találat: "${teamName}" -> "${searchName}" -> ${teamId}`);
+            // JAVÍTÁS: Intelligens keresés a találati listában a legjobb egyezésért
+            const lowerTeamName = teamName.toLowerCase();
+            let bestMatch = response.data.data[0]; // Alapból az elsőt vesszük
+            
+            // Ha több találat van, keressük a legpontosabbat
+            if (response.data.data.length > 1) {
+                const perfectMatch = response.data.data.find(team => team.name.toLowerCase() === lowerTeamName);
+                if (perfectMatch) {
+                    bestMatch = perfectMatch;
+                }
+            }
+
+            const teamId = bestMatch.id;
+            console.log(`SportMonks ID találat: "${teamName}" -> "${bestMatch.name}" -> ${teamId}`);
             sportmonksIdCache.set(cacheKey, teamId);
             return teamId;
         } else {
-            console.warn(`SportMonks: Nem található ID a következő névvel: "${searchName}" (eredeti: "${teamName}")`);
+            console.warn(`SportMonks: Nem található ID a következő névvel: "${teamName}"`);
             sportmonksIdCache.set(cacheKey, 'not_found');
             return null;
         }
     } catch (error) {
-        console.error(`Hiba a SportMonks csapat ID lekérésekor (${searchName}): ${error.message}`);
+        console.error(`Hiba a SportMonks csapat ID lekérésekor (${teamName}): ${error.message}`);
         return null;
     }
 }
@@ -94,7 +94,7 @@ async function _fetchSportMonksData(sport, homeTeamName, awayTeamName) {
             const response = await axios.get(url, { validateStatus: () => true });
 
             if (response.status !== 200) {
-                 console.error(`SportMonks API hiba (${response.status}) Dátum: ${dateString}, Válasz: ${JSON.stringify(response.data)?.substring(0, 500)}`);
+                console.error(`SportMonks API hiba (${response.status}) Dátum: ${dateString}, Válasz: ${JSON.stringify(response.data)?.substring(0, 500)}`);
             } else if (response.data && Array.isArray(response.data.data)) {
                 const allFixtures = response.data.data;
                 const targetFixture = allFixtures.find(f =>
