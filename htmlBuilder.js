@@ -2,10 +2,6 @@
 * htmlBuilder.js - HTML Generátor Modul (Node.js Verzió)
 * Feladata: Az elemzési adatokból a frontend számára
 * fogyasztható HTML kód generálása.
-* Változások a .gs verzióhoz képest:
-* - `export` használata a `buildAnalysisHtml` funkcióhoz.
-* - `Logger.log` helyett `console.log`/`warn`/`error`.
-* - Biztonságosabb adatkezelés (null/undefined ellenőrzések).
 **************************************************************/
 
 // Segédfüggvény a HTML "escape"-eléshez (opcionális, de biztonságosabb)
@@ -17,34 +13,42 @@ function escapeHTML(str) {
             '<': '&lt;',
             '>': '&gt;',
             '"': '&quot;',
-            "'": '&#39;'
+           "'": '&#39;'
         }[match];
     });
 }
 
-// Segédfüggvény a radiális diagramhoz (változatlan)
+// === JAVÍTÁS (1. KÉP): A radiális diagram logikájának javítása a helyes szegmensek megjelenítéséhez ===
 function getRadialChartHtml(pHome, pDraw, pAway) {
     const r = 40;
     const circumference = 2 * Math.PI * r;
+    const pHomeSafe = pHome || 0;
+    const pDrawSafe = pDraw || 0;
+    const pAwaySafe = pAway || 0;
+
+    const homeSegment = (pHomeSafe / 100) * circumference;
+    const drawSegment = (pDrawSafe / 100) * circumference;
+    const awaySegment = (pAwaySafe / 100) * circumference;
+
     const homeOffset = 0;
-    const drawOffset = (pHome / 100) * circumference;
-    const awayOffset = ((pHome + pDraw) / 100) * circumference;
+    const drawOffset = -homeSegment;
+    const awayOffset = -(homeSegment + drawSegment);
 
     return `
-    <div classl="radial-chart-container" style="position: relative; width: 100%; max-width: 130px; margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; flex-grow: 1;">
+    <div class="radial-chart-container" style="position: relative; width: 100%; max-width: 130px; margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; flex-grow: 1;">
         <svg class="radial-chart" width="100%" height="100%" viewBox="0 0 100 100" style="transform: rotate(-90deg);">
             <circle class="track" cx="50" cy="50" r="${r}" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="10"></circle>
             <circle class="progress home" cx="50" cy="50" r="${r}" fill="none" stroke="var(--primary)" stroke-width="10"
-                    stroke-dasharray="${circumference}"
-                    style="--value: ${pHome}; --circumference: ${circumference}; stroke-dashoffset: calc(var(--circumference) * (1 - var(--value, 0) / 100) - ${homeOffset});">
+                    stroke-dasharray="${homeSegment} ${circumference}"
+                    style="stroke-dashoffset: ${homeOffset};">
             </circle>
             <circle class="progress draw" cx="50" cy="50" r="${r}" fill="none" stroke="var(--text-secondary)" stroke-width="10"
-                    stroke-dasharray="${circumference}"
-                    style="--value: ${pDraw}; --circumference: ${circumference}; stroke-dashoffset: calc(var(--circumference) * (1 - var(--value, 0) / 100) - ${drawOffset});">
+                    stroke-dasharray="${drawSegment} ${circumference}"
+                    style="stroke-dashoffset: ${drawOffset};">
             </circle>
             <circle class="progress away" cx="50" cy="50" r="${r}" fill="none" stroke="var(--accent)" stroke-width="10"
-                    stroke-dasharray="${circumference}"
-                    style="--value: ${pAway}; --circumference: ${circumference}; stroke-dashoffset: calc(var(--circumference) * (1 - var(--value, 0) / 100) - ${awayOffset});">
+                    stroke-dasharray="${awaySegment} ${circumference}"
+                    style="stroke-dashoffset: ${awayOffset};">
             </circle>
         </svg>
     </div>
@@ -54,7 +58,7 @@ function getRadialChartHtml(pHome, pDraw, pAway) {
             <span>Hazai (${pHome}%)</span>
         </div>
         <div class="legend-item" style="display: flex; align-items: center; gap: 0.5rem;">
-            <span class="legend-color-box" style="width: 12px; height: 12px; border-radius: 3px; background-color: var(--text-secondary);"></span>
+             <span class="legend-color-box" style="width: 12px; height: 12px; border-radius: 3px; background-color: var(--text-secondary);"></span>
             <span>Döntetlen (${pDraw}%)</span>
         </div>
         <div class="legend-item" style="display: flex; align-items: center; gap: 0.5rem;">
@@ -63,6 +67,7 @@ function getRadialChartHtml(pHome, pDraw, pAway) {
         </div>
     </div>`;
 }
+
 
 // Segédfüggvény a bizalmi szint mérőhöz (változatlan)
 function getGaugeHtml(confidence, label = "Modell Bizalom") {
@@ -74,14 +79,14 @@ function getGaugeHtml(confidence, label = "Modell Bizalom") {
     return `
     <div class="gauge-container" style="width: 100%; max-width: 120px; margin: 0 auto; position: relative; height: 110px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
         <svg class="gauge-svg" viewBox="0 0 100 85" style="width: 100%; height: auto; transform: rotate(-90deg); overflow: visible; position: absolute; top: 0; left: 0;">
-            <path class="gauge-track" d="M 12.5 50 A 37.5 37.5 0 1 1 87.5 50" fill="none" stroke="rgba(255, 255, 255, 0.05)" stroke-width="12"></path>
+             <path class="gauge-track" d="M 12.5 50 A 37.5 37.5 0 1 1 87.5 50" fill="none" stroke="rgba(255, 255, 255, 0.05)" stroke-width="12"></path>
             <path class="gauge-value" d="M 12.5 50 A 37.5 37.5 0 1 1 87.5 50" fill="none" stroke="var(--primary)" stroke-width="12" stroke-linecap="round"
                   style="stroke-dasharray: ${circumference}; stroke-dashoffset: ${circumference}; --value: ${percentage}; animation: fillGauge 1s ease-out forwards 0.5s;">
             </path>
         </svg>
         <div class="gauge-text" style="position: relative; font-size: 1.6rem; font-weight: 700; color: var(--text-primary); text-shadow: 0 0 8px var(--text-primary); z-index: 1; margin-top: 15px; line-height: 1;">
             ${safeConf.toFixed(1)}<span class="gauge-label-inline" style="font-size: 0.6em; font-weight: 700; color: inherit; text-shadow: inherit; margin-left: 1px; opacity: 0.9; vertical-align: middle;">/10</span>
-        </div>
+     </div>
         <div class="gauge-label" style="position: relative; font-size: 0.75rem; color: var(--text-secondary); z-index: 1; margin-top: 2px;">${escapeHTML(label)}</div>
     </div>
     <style>
@@ -93,7 +98,7 @@ function getGaugeHtml(confidence, label = "Modell Bizalom") {
 // Segédfüggvény az idővonalhoz (változatlan)
 function getTimelineHtml(timeline) {
     if (!timeline || timeline.length === 0) {
-        return '<p class="muted" style="text-align: center;">A prófétai idővonal nem generált eseményeket.</p>';
+      return '<p class="muted" style="text-align: center;">A prófétai idővonal nem generált eseményeket.</p>';
     }
     let eventsHtml = '';
     timeline.forEach(event => {
@@ -108,7 +113,7 @@ function getTimelineHtml(timeline) {
     return `
     <div class="timeline-visualization-container" style="padding: 1rem 0; margin-bottom: 1rem;">
         <div class="prophetic-timeline-bar" style="width: 100%; height: 8px; background: rgba(255, 255, 255, 0.1); border-radius: 4px; position: relative; border: 1px solid var(--border-color); margin: 0;">
-            ${eventsHtml}
+           ${eventsHtml}
         </div>
     </div>`;
 }
@@ -126,7 +131,7 @@ function getConfidenceInterpretationHtml(confidenceScore) {
         text = "<strong>Magas Bizalom:</strong> Több kulcstényező (statisztika, hiányzók, forma) egyértelműen alátámasztja az ajánlást. Kisebb kérdőjelek lehetnek, de az irány egyértelműnek tűnik.";
         className = "high";
     } else if (score >= 5.0) {
-        text = "<strong>Közepes Bizalom:</strong> Az elemzés a jelzett kimenetel felé hajlik, de vannak ellentmondó tényezők (pl. piaci mozgás, szoros H2H, kulcs hiányzó) vagy a modell bizonytalansága magasabb.";
+    text = "<strong>Közepes Bizalom:</strong> Az elemzés a jelzett kimenetel felé hajlik, de vannak ellentmondó tényezők (pl. piaci mozgás, szoros H2H, kulcs hiányzó) vagy a modell bizonytalansága magasabb.";
         className = "medium";
     } else if (score >= 3.0) {
         text = "<strong>Alacsony Bizalom:</strong> Jelentős ellentmondások vannak az adatok között (pl. statisztika vs. kontextus), vagy a meccs kimenetele rendkívül bizonytalan (pl. 50-50% esélyek). Ez inkább egy spekulatív tipp.";
@@ -143,7 +148,6 @@ function getConfidenceInterpretationHtml(confidenceScore) {
         </p>
     </div>`;
 }
-
 
 /**
  * A fő HTML építő funkció. Összeállítja a teljes HTML stringet.
@@ -162,7 +166,7 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
     const pHome = sim?.pHome?.toFixed(1) || '0.0';
     const pDraw = sim?.pDraw?.toFixed(1) || '0.0';
     const pAway = sim?.pAway?.toFixed(1) || '0.0';
-    const mu_h = sim?.mu_h_sim?.toFixed(2) || 'N/A';
+  const mu_h = sim?.mu_h_sim?.toFixed(2) || 'N/A';
     const mu_a = sim?.mu_a_sim?.toFixed(2) || 'N/A';
     const pOver = sim?.pOver?.toFixed(1) || 'N/A';
     const pUnder = sim?.pUnder?.toFixed(1) || 'N/A';
@@ -175,7 +179,7 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
     try {
         const match = expertConfHtml.match(/\*\*(\d+(\.\d+)?)\/10\*\*/);
         if (match && match[1]) {
-            expertConfScore = parseFloat(match[1]);
+      expertConfScore = parseFloat(match[1]);
         }
     } catch(e) { console.warn("Nem sikerült kinyerni az expert confidence pontszámot."); }
 
@@ -190,8 +194,8 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
             ${escapeHTML(finalRec.recommended_bet)}
         </div>
         <div class="master-confidence" style="font-size: 1.1rem; color: var(--text-secondary); margin-bottom: 1.5rem;">
-            Végső Bizalom: <strong class="glowing-text" style="color: var(--text-primary) !important; text-shadow: 0 0 8px currentColor, 0 0 16px rgba(255, 255, 255, 0.5); animation: pulse-glow-white 3s infinite alternate;">${finalRec.final_confidence.toFixed(1)}/10</strong>
-        </div>
+            Végső Bizalom: <strong class="glowing-text-white" style="color: var(--text-primary) !important; text-shadow: 0 0 8px currentColor, 0 0 16px rgba(255, 255, 255, 0.5); animation: pulse-glow-white 3s infinite alternate;">${finalRec.final_confidence.toFixed(1)}/10</strong>
+  </div>
         <div class="master-reasoning" style="font-size: 0.95rem; color: var(--text-secondary); font-style: italic; max-width: 600px; margin: 0 auto; line-height: 1.6;">
             ${escapeHTML(finalRec.brief_reasoning).replace(/\n/g, '<br>')}
         </div>
@@ -200,6 +204,7 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
 
 
     // --- Áttekintő Rács (At a Glance) ---
+    // === JAVÍTÁS (1. KÉP): .glowing-text-white osztály hozzáadva a számokhoz ===
     const atAGlanceHtml = `
     <div class="at-a-glance-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
         <div class="summary-card" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem; text-align: center; display: flex; flex-direction: column; justify-content: space-between; min-height: 200px;">
@@ -210,13 +215,13 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
             <h5>Várható Eredmény (xG/Pont)</h5>
             <div class="xg-value-container" style="display: flex; align-items: center; justify-content: space-around; width: 100%; flex-grow: 1; gap: 1rem; padding: 1rem 0;">
                 <div class="xg-team" style="display: flex; flex-direction: column; align-items: center;">
-                    <div class="value" style="font-size: 1.6rem; font-weight: 700; margin-bottom: 0.5rem; line-height: 1.3;">${mu_h}</div>
+                    <div class="value glowing-text-white" style="font-size: 1.6rem; font-weight: 700; margin-bottom: 0.5rem; line-height: 1.3;">${mu_h}</div>
                     <div class="details" style="font-size: 0.8rem; margin-top: auto; color: var(--text-secondary);">${escapeHTML(matchData.home)}</div>
                 </div>
-                <div class="xg-separator" style="font-size: 1.5rem; color: var(--text-secondary); font-weight: 700;">-</div>
+                 <div class="xg-separator" style="font-size: 1.5rem; color: var(--text-secondary); font-weight: 700;">-</div>
                 <div class="xg-team" style="display: flex; flex-direction: column; align-items: center;">
-                    <div class="value" style="font-size: 1.6rem; font-weight: 700; margin-bottom: 0.5rem; line-height: 1.3;">${mu_a}</div>
-                    <div class="details" style="font-size: 0.8rem; margin-top: auto; color: var(--text-secondary);">${escapeHTML(matchData.away)}</div>
+                    <div class="value glowing-text-white" style="font-size: 1.6rem; font-weight: 700; margin-bottom: 0.5rem; line-height: 1.3;">${mu_a}</div>
+                <div class="details" style="font-size: 0.8rem; margin-top: auto; color: var(--text-secondary);">${escapeHTML(matchData.away)}</div>
                 </div>
             </div>
             <div class="details" style="font-size: 0.8rem; margin-top: auto; color: var(--text-secondary);">Legvalószínűbb eredmény: <strong>${topScore}</strong></div>
@@ -226,22 +231,22 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
             <div class="totals-breakdown" style="display: flex; flex-direction: column; justify-content: center; align-items: stretch; height: 100%; gap: 0.75rem; font-size: 1.2rem; flex-grow: 1; padding: 1rem 0;">
                 <div class="total-line" style="display: flex; justify-content: space-between; align-items: center; width: 95%; margin: 0 auto; font-size: 1.1rem;">
                     <span class="total-label" style="color: var(--text-secondary); margin-right: 10px;">Over ${mainTotalsLine}</span>
-                    <strong style="color: var(--primary);">${pOver}%</strong>
+                    <strong class="glowing-text-white">${pOver}%</strong>
                 </div>
-                <div class="total-line" style="display: flex; justify-content: space-between; align-items: center; width: 95%; margin: 0 auto; font-size: 1.1rem;">
+           <div class="total-line" style="display: flex; justify-content: space-between; align-items: center; width: 95%; margin: 0 auto; font-size: 1.1rem;">
                     <span class="total-label" style="color: var(--text-secondary); margin-right: 10px;">Under ${mainTotalsLine}</span>
-                    <strong style="color: var(--primary);">${pUnder}%</strong>
+                    <strong class="glowing-text-white">${pUnder}%</strong>
                 </div>
             </div>
-            ${matchData.sport === 'soccer' ? `<div class="details" style="font-size: 0.8rem; margin-top: auto; color: var(--text-secondary);">BTTS Igen: <strong>${sim?.pBTTS?.toFixed(1) ?? 'N/A'}%</strong></div>` : ''}
+            ${matchData.sport === 'soccer' ? `<div class="details" style="font-size: 0.8rem; margin-top: auto; color: var(--text-secondary);">BTTS Igen: <strong class="glowing-text-white">${sim?.pBTTS?.toFixed(1) ?? 'N/A'}%</strong></div>` : ''}
         </div>
         <div class="summary-card" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem; text-align: center; display: flex; flex-direction: column; justify-content: space-between; min-height: 200px;">
-            <h5>Statisztikai Modell</h5>
+             <h5>Statisztikai Modell</h5>
             ${getGaugeHtml(modelConf, "Modell Bizalom")}
         </div>
         <div class="summary-card" style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem; text-align: center; display: flex; flex-direction: column; justify-content: space-between; min-height: 200px;">
             <h5>Szakértői Bizalom</h5>
-            ${getGaugeHtml(expertConfScore, "Szakértői Bizalom")}
+             ${getGaugeHtml(expertConfScore, "Szakértői Bizalom")}
         </div>
     </div>`;
 
@@ -262,7 +267,7 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
             <div class="market-card-title" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500; margin-bottom: 0.5rem; min-height: 30px; display: flex; align-items: center; justify-content: center;">${escapeHTML(bet.market)}</div>
             <div class="market-card-value" style="font-size: 1.2rem;">${bet.odds}</div>
             <div class="details" style="font-size: 0.8rem; margin-top: auto; color: var(--text-secondary);">Becsült: ${bet.probability} (<strong>${bet.value}</strong>)</div>
-        </div>`;
+       </div>`;
     });
     if (!marketCardsHtml) {
         marketCardsHtml = '<p class="muted" style="text-align: center; grid-column: 1 / -1;">Jelenleg nincsenek kiemelt értékű fogadások a piacon (min. 5% value).</p>';
@@ -271,7 +276,7 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
     const marketSectionHtml = `
     <div class="market-data-section" style="margin-bottom: 2rem;">
         <h4 style="font-size: 1.1rem; color: var(--secondary); border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1rem;">Érték Elemzés (Value Betting)</h4>
-        <div class="market-card-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem;">
+         <div class="market-card-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem;">
             ${marketCardsHtml}
         </div>
     </div>`;
@@ -281,7 +286,7 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
     let microAnalysesHtml = '';
     if (committeeResults?.microAnalyses) {
         Object.entries(committeeResults.microAnalyses).forEach(([key, text]) => {
-            const title = key.toUpperCase().replace(/_/g, ' '); // Pl. "BTTS", "GOALSOU"
+         const title = key.toUpperCase().replace(/_/g, ' '); // Pl. "BTTS", "GOALSOU"
             // Szétválasztjuk a bizalmi szintet a szövegtől
             const parts = (text || "Hiba.").split('Bizalom:');
             const analysisText = parts[0] || "Elemzés nem elérhető.";
@@ -290,11 +295,23 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
             microAnalysesHtml += `
             <div class="micromodel-card" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem;">
                 <h5 style="color: var(--primary); margin-bottom: 0.8rem; font-size: 1rem;">${escapeHTML(title)} Specialista</h5>
-                <p style="margin: 0; color: var(--text-secondary); line-height: 1.6;">${analysisText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</p>
+      <p style="margin: 0; color: var(--text-secondary); line-height: 1.6;">${analysisText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</p>
                 <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); line-height: 1.6; font-size: 0.9rem; opacity: 0.8;"><em>${confidenceText}</em></p>
             </div>`;
         });
     }
+    
+    // === JAVÍTÁS (5. KÉP): A kulcskérdések szebb listába rendezése ===
+    let keyQuestionsHtml = '<p>- Hiba.</p>';
+    if (committeeResults?.keyQuestions && !committeeResults.keyQuestions.includes("Hiba")) {
+        const questions = committeeResults.keyQuestions.split('- ').filter(q => q.trim() !== '');
+        keyQuestionsHtml = '<ul class="key-questions">';
+        questions.forEach(q => {
+            keyQuestionsHtml += `<li>${escapeHTML(q.trim())}</li>`;
+        });
+        keyQuestionsHtml += '</ul>';
+    }
+
 
     const accordionHtml = `
     <div class="analysis-accordion" style="margin-top: 2rem;">
@@ -306,28 +323,31 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
                 </span>
             </summary>
             <div class="accordion-content">
-                <p>${(committeeResults?.generalAnalysis || "Hiba.").replace(/\n/g, '</p><p>')}</p>
+     
+             <p>${(committeeResults?.generalAnalysis || "Hiba.").replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '</p><p>')}</p>
             </div>
         </details>
 
         <details class="analysis-accordion-item">
             <summary class="analysis-accordion-header">
                 <span class="section-title">
-                    <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v10a4 4 0 0 0 4 4h7"></path><path d="M19 17V7a4 4 0 0 0-4-4H5"></path></svg>
+          
+           <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v10a4 4 0 0 0 4 4h7"></path><path d="M19 17V7a4 4 0 0 0-4-4H5"></path></svg>
                     Prófétai Forgatókönyv
                 </span>
-            </summary>
+         </summary>
             <div class="accordion-content">
-                ${getTimelineHtml(matchData.propheticTimeline)}
+                ${'' /* === JAVÍTÁS (3. KÉP): Vizuális sáv eltávolítva === */}
                 <p>${(committeeResults?.propheticScenario || "Hiba.").replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</p>
             </div>
         </details>
 
         <details class="analysis-accordion-item">
-            <summary class="analysis-accordion-header">
+   <summary class="analysis-accordion-header">
                 <span class="section-title">
                     <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M3 9h18"></path><path d="M3 15h18"></path><path d="M9 3v18"></path><path d="M15 3v18"></path></svg>
-                    Taktikai Elemzés
+          
+           Taktikai Elemzés
                 </span>
             </summary>
             <div class="accordion-content">
@@ -343,31 +363,31 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
                 </span>
             </summary>
             <div class="accordion-content">
-                ${microAnalysesHtml || "<p>Nem futottak speciális modellek ehhez a sporthoz.</p>"}
+   
+              ${microAnalysesHtml || "<p>Nem futottak speciális modellek ehhez a sporthoz.</p>"}
             </div>
         </details>
 
         <details class="analysis-accordion-item">
             <summary class="analysis-accordion-header">
                 <span class="section-title">
-                    <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" x2="12" y1="9" y2="13"></line><line x1="12" x2="12.01" y1="17" y2="17"></line></svg>
+   
+                  <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" x2="12" y1="9" y2="13"></line><line x1="12" x2="12.01" y1="17" y2="17"></line></svg>
                     Kockázat & További Kontextus
-                </span>
+   
+              </span>
             </summary>
             <div class="accordion-content">
+                <h4>Stratégiai Kulcskérdések</h4>
+                ${keyQuestionsHtml}
+                <br>
                 <h4>Kockázatkezelői Jelentés</h4>
                 <p>${(committeeResults?.riskAssessment || "Hiba.").replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</p>
-                <br>
-                <h4>Ellentmondás Elemzés</h4>
-                <p>${(committeeResults?.contradictionAnalysis || "N/A.").replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</p>
-                <br>
-                <h4>Stratégiai Kulcskérdések</h4>
-                <p>${(committeeResults?.keyQuestions || "- Hiba.").replace(/-/g, '<br>-').substring(4)}</p>
-                <br>
+                 <br>
                 <h4>Játékospiaci Meglátások</h4>
                 <p>${(committeeResults?.playerMarkets || "Hiba.").replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</p>
             </div>
-        </details>
+      </details>
     </div>`;
 
     // --- Végső HTML összeállítása ---
