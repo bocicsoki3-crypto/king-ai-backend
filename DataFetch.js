@@ -7,19 +7,29 @@ const sportmonksIdCache = new NodeCache({ stdTTL: 0 });
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* JAVÍTÁS: A Gemini keresés KIKAPCSOLVA és a SportMonks hívás javítva.
+* JAVÍTÁS: A SportMonks integráció élesítve, a Player API
+* hívás intelligensen kikapcsolva a felesleges hibák elkerülése érdekében.
 **************************************************************/
 
+// --- BELSŐ SEGÉDFÜGGVÉNYEK AZ API-KHOZ ---
+
+// === JAVÍTÁS: SPORTMONKS INTEGRÁCIÓ ÉLESÍTÉSE ===
+
 async function findSportMonksTeamId(teamName) {
-    const cacheKey = `sportmonks_id_${teamName.toLowerCase()}`;
+    const cacheKey = `sportmonks_id_${teamName.toLowerCase().replace(/\s+/g, '')}`;
     const cachedId = sportmonksIdCache.get(cacheKey);
     if (cachedId) {
-        return cachedId;
+        return cachedId === 'not_found' ? null : cachedId;
     }
-    if (!SPORTMONKS_API_KEY) return null;
+
+    if (!SPORTMONKS_API_KEY || SPORTMONKS_API_KEY === '<IDE_MASOLD_A_SPORTMONKS_KULCSOD_HA_VAN>') {
+        return null;
+    }
+
     try {
         const url = `https://api.sportmonks.com/v3/core/teams/search/${encodeURIComponent(teamName)}?api_token=${SPORTMONKS_API_KEY}`;
         const response = await axios.get(url);
+
         if (response.data && response.data.data && response.data.data.length > 0) {
             const teamId = response.data.data[0].id;
             console.log(`SportMonks ID találat: ${teamName} -> ${teamId}`);
@@ -37,24 +47,29 @@ async function findSportMonksTeamId(teamName) {
 }
 
 async function _fetchSportMonksData(sport, homeTeamName, awayTeamName) {
-    if (!SPORTMONKS_API_KEY) {
+    if (!SPORTMONKS_API_KEY || SPORTMONKS_API_KEY === '<IDE_MASOLD_A_SPORTMONKS_KULCSOD_HA_VAN>') {
         return { advanced_stats: { home: {}, away: {} }, referee: { name: 'N/A', stats: 'N/A' } };
     }
+
     const homeTeamId = await findSportMonksTeamId(homeTeamName);
     const awayTeamId = await findSportMonksTeamId(awayTeamName);
+
     if (!homeTeamId || !awayTeamId) {
         console.log(`_fetchSportMonksData: Hiányzó SportMonks ID a meccshez (${homeTeamName} vs ${awayTeamName}), a lekérdezés kihagyva.`);
         return { advanced_stats: { home: {}, away: {} }, referee: { name: 'N/A', stats: 'N/A' } };
     }
+
     let fixtureDate = new Date();
     let fixtureData = null;
     let attempts = 0;
+
     while (!fixtureData && attempts < 2) {
         const dateString = fixtureDate.toISOString().split('T')[0];
         let url;
         let sportmonksSportKey;
-        // JAVÍTÁS: A 'referee' include eltávolítva a SportMonks hibajavításához.
         let include = "statistics";
+        if (sport === 'soccer') include = "statistics;referee";
+        
         try {
             switch (sport) {
                 case 'soccer': sportmonksSportKey = 'football'; break;
@@ -62,12 +77,29 @@ async function _fetchSportMonksData(sport, homeTeamName, awayTeamName) {
                     console.log(`_fetchSportMonksData: A SportMonks jelenleg nem támogatja ezt a sportágat: ${sport}`);
                     return { advanced_stats: { home: {}, away: {} }, referee: { name: 'N/A', stats: 'N/A' } };
             }
+
             url = `https://api.sportmonks.com/v3/${sportmonksSportKey}/fixtures/date/${dateString}?api_token=${SPORTMONKS_API_KEY}&include=${include}`;
             console.log(`SportMonks API kérés (${attempts + 1}. próbálkozás): ${homeTeamName} vs ${awayTeamName}`);
+
             const response = await axios.get(url, { validateStatus: () => true });
+
             if (response.status !== 200) {
-                console.error(`SportMonks API hiba (${response.status}) Dátum: ${dateString}, Válasz: ${JSON.stringify(response.data)?.substring(0, 500)}`);
-            } else if (response.data && Array.isArray(response.data.data)) {
+                // A 'referee' include hiba kezelése
+                if (JSON.stringify(response.data).includes("referee' does not exist")) {
+                    console.warn("SportMonks: A 'referee' include nem támogatott, nélküle próbálkozunk.");
+                    include = "statistics"; // Próbáljuk újra referee nélkül
+                    const fallbackResponse = await axios.get(url.replace(';referee', ''), { validateStatus: () => true });
+                    if (fallbackResponse.status === 200) {
+                        response.data = fallbackResponse.data;
+                    } else {
+                         console.error(`SportMonks API hiba (fallback): ${fallbackResponse.status}`);
+                    }
+                } else {
+                    console.error(`SportMonks API hiba (${response.status}) Dátum: ${dateString}, Válasz: ${JSON.stringify(response.data)?.substring(0, 500)}`);
+                }
+            } 
+            
+            if (response.data && Array.isArray(response.data.data)) {
                 const allFixtures = response.data.data;
                 const targetFixture = allFixtures.find(f =>
                     (String(f.participant_home_id) === String(homeTeamId) && String(f.participant_away_id) === String(awayTeamId))
@@ -80,20 +112,28 @@ async function _fetchSportMonksData(sport, homeTeamName, awayTeamName) {
         } catch (e) {
             console.error(`Általános hiba SportMonks API hívásakor (${dateString}): ${e.message}`);
         }
+
         if (!fixtureData) {
             fixtureDate.setDate(fixtureDate.getDate() - 1);
         }
         attempts++;
     }
+
     if (!fixtureData) {
         console.log(`SportMonks: Nem található meccs ${homeTeamName} vs ${awayTeamName} az elmúlt 2 napban.`);
         return { advanced_stats: { home: {}, away: {} }, referee: { name: 'N/A', stats: 'N/A' } };
     }
+
     try {
         const extractedData = { advanced_stats: { home: {}, away: {} }, referee: { name: 'N/A', stats: 'N/A' } };
         const fixtureStats = fixtureData.statistics || [];
         const homeStatsSM = fixtureStats.find(s => String(s.participant_id) === String(homeTeamId));
         const awayStatsSM = fixtureStats.find(s => String(s.participant_id) === String(awayTeamId));
+
+        if (sport === 'soccer' && fixtureData.referee) {
+             extractedData.referee = { name: fixtureData.referee.common_name || fixtureData.referee.fullname || 'N/A', stats: 'N/A' };
+        }
+
         if (sport === 'soccer' && homeStatsSM) {
             extractedData.advanced_stats.home = {
                 xg: homeStatsSM.xg ?? null,
@@ -114,17 +154,27 @@ async function _fetchSportMonksData(sport, homeTeamName, awayTeamName) {
                 avg_corners_for_per_game: awayStatsSM.corners ?? null,
             };
         }
+
         console.log(`SportMonks adatok feldolgozva: ${homeTeamName} vs ${awayTeamName}`);
         return extractedData;
+
     } catch (e) {
         console.error(`Hiba SportMonks adatok feldolgozásakor (${homeTeamName} vs ${awayTeamName}): ${e.message}`);
         return { advanced_stats: { home: {}, away: {} }, referee: { name: 'N/A', stats: 'N/A' } };
     }
 }
 
+// === JAVÍTÁS: A PLAYER API HÍVÁS INTELLIGENS KIKAPCSOLÁSA ===
 async function _fetchPlayerData(playerNames) {
-    if (!PLAYER_API_KEY) { return {}; }
-    if (!playerNames || !Array.isArray(playerNames) || playerNames.length === 0) { return {}; }
+    // Ha a kulcs hiányzik vagy még a placeholder szöveg van benne, nem futtatjuk le a hívást.
+    if (!PLAYER_API_KEY || PLAYER_API_KEY === '<IDE_MASOLD_A_PLAYER_API_KULCSOD_HA_VAN>') {
+        console.log("Player API hívás kihagyva: Nincs valós API kulcs beállítva.");
+        return {};
+    }
+    if (!playerNames || !Array.isArray(playerNames) || playerNames.length === 0) { 
+        return {};
+    }
+
     const playerData = {};
     const BATCH_SIZE = 5;
     const promises = [];
@@ -132,6 +182,7 @@ async function _fetchPlayerData(playerNames) {
         const batchNames = playerNames.slice(i, i + BATCH_SIZE).map(name => String(name || '').trim()).filter(name => name);
         if (batchNames.length === 0) continue;
         const encodedNames = batchNames.map(name => encodeURIComponent(name));
+        // A placeholder URL marad, de a kód már nem fogja hívni, ha a kulcs nem valós.
         const apiUrl = `https://api.playerprovider.com/v1/stats?players=${encodedNames.join(',')}&apiKey=${PLAYER_API_KEY}`;
         console.log(`Player API kérés (batch): ${batchNames.join(', ')}`);
         promises.push(
@@ -168,8 +219,9 @@ async function _fetchPlayerData(playerNames) {
     console.log(`Player API adatok lekérve ${Object.keys(playerData).filter(k => Object.keys(playerData[k]).length > 0).length} játékosra.`);
     return playerData;
 }
+// === PLAYER API JAVÍTÁS VÉGE ===
 
-// === JAVÍTOTT FUNKCIÓ: Google Search Tool KIKAPCSOLVA ===
+// A fájl többi része változatlan...
 async function _callGeminiWithSearch(prompt) {
     if (!GEMINI_API_KEY) {
         throw new Error("Hiányzó GEMINI_API_KEY.");
@@ -180,7 +232,7 @@ async function _callGeminiWithSearch(prompt) {
             temperature: 0.4,
             maxOutputTokens: 8192
         },
-        // === JAVÍTÁS: A Kereső Eszköz KIKAPCSOLVA, hogy a gemini-2.5-pro ne dobjon hibát ===
+        // A keresés itt szándékosan KI van kapcsolva, hogy a gemini-2.5-pro modell működjön
         // tools: [{ "googleSearchRetrieval": {} }] 
     };
 
@@ -193,12 +245,10 @@ async function _callGeminiWithSearch(prompt) {
             console.error(`Gemini API HTTP hiba (${response.status}): ${JSON.stringify(response.data)?.substring(0, 500)}`);
             throw new Error(`Gemini API hiba (${response.status}).`);
         }
-
         const result = response.data;
         const candidate = result?.candidates?.[0];
         const responseText = candidate?.content?.parts?.[0]?.text;
         const finishReason = candidate?.finishReason;
-
         if (!responseText) {
             console.error(`Gemini API válasz hiba: Nincs 'text'. FinishReason: ${finishReason}. Válasz: ${JSON.stringify(result)?.substring(0, 500)}`);
             if (finishReason === 'SAFETY') throw new Error("Az AI válaszát biztonsági szűrők blokkolták.");
@@ -208,7 +258,7 @@ async function _callGeminiWithSearch(prompt) {
         }
         return responseText;
     } catch (e) {
-        console.error(`Hiba a Gemini API hívás (Search) során: ${e.message}`);
+        console.error(`Hiba a Gemini API hívás során: ${e.message}`);
         if (e.response?.data) {
             console.error("Axios hiba részletei:", JSON.stringify(e.response.data).substring(0, 500));
         }
@@ -219,7 +269,6 @@ async function _callGeminiWithSearch(prompt) {
 export async function getRichContextualData(sport, homeTeamName, awayTeamName) {
     const teamNames = [homeTeamName, awayTeamName].sort();
     const ck = `rich_context_v21_advanced_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
-
     const cached = scriptCache.get(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
@@ -239,7 +288,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName) {
                   Focus ONLY on H2H (structured last 5 + tactical pattern analysis), team news (structured key absentees with IMPORTANCE + overall impact analysis), recent form (overall AND home/away separately), expected tactics/style, key players (2-3 per team: name & role), contextual factors (motivation, fatigue, weather, tension), and basic league averages.
                   Provide ONLY a single, valid JSON object as the ENTIRE response. NO other text, markdown (###), or formatting (\`\`\`).
                   DO NOT include xG, PP%, Pace, referee, corner/card stats.
-
                   JSON STRUCTURE:
                   {
                     "stats": { "home": { "gp": <number>, "gf": <number>, "ga": <number> }, "away": { "gp": <number>, "gf": <number>, "ga": <number> } },
@@ -376,6 +424,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName) {
     }
 }
 
+// A fájl többi része változatlan...
 export async function getOptimizedOddsData(homeTeam, awayTeam, sport, sportConfig, openingOdds) {
     if (!ODDS_API_KEY) {
         console.log("Nincs ODDS_API_KEY beállítva.");
