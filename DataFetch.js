@@ -7,13 +7,12 @@ const sportmonksIdCache = new NodeCache({ stdTTL: 0 });
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* JAVÍTÁS: A SportMonks integráció élesítve, a Player API
-* hívás intelligensen kikapcsolva a felesleges hibák elkerülése érdekében.
+* JAVÍTÁS: A Player API hívás intelligensen kikapcsolva, ha
+* a kulcs hiányzik vagy placeholder, így nem generál hibát a naplóban.
+* A SportMonks integráció továbbra is aktív.
 **************************************************************/
 
 // --- BELSŐ SEGÉDFÜGGVÉNYEK AZ API-KHOZ ---
-
-// === JAVÍTÁS: SPORTMONKS INTEGRÁCIÓ ÉLESÍTÉSE ===
 
 async function findSportMonksTeamId(teamName) {
     const cacheKey = `sportmonks_id_${teamName.toLowerCase().replace(/\s+/g, '')}`;
@@ -84,15 +83,15 @@ async function _fetchSportMonksData(sport, homeTeamName, awayTeamName) {
             const response = await axios.get(url, { validateStatus: () => true });
 
             if (response.status !== 200) {
-                // A 'referee' include hiba kezelése
                 if (JSON.stringify(response.data).includes("referee' does not exist")) {
                     console.warn("SportMonks: A 'referee' include nem támogatott, nélküle próbálkozunk.");
-                    include = "statistics"; // Próbáljuk újra referee nélkül
-                    const fallbackResponse = await axios.get(url.replace(';referee', ''), { validateStatus: () => true });
+                    const fallbackUrl = url.replace(';referee', '');
+                    const fallbackResponse = await axios.get(fallbackUrl, { validateStatus: () => true });
                     if (fallbackResponse.status === 200) {
-                        response.data = fallbackResponse.data;
+                        response.data = fallbackResponse.data; // Felülírjuk a sikeres válasszal
                     } else {
                          console.error(`SportMonks API hiba (fallback): ${fallbackResponse.status}`);
+                         continue; // Folytatjuk a ciklust a következő nappal
                     }
                 } else {
                     console.error(`SportMonks API hiba (${response.status}) Dátum: ${dateString}, Válasz: ${JSON.stringify(response.data)?.substring(0, 500)}`);
@@ -167,8 +166,8 @@ async function _fetchSportMonksData(sport, homeTeamName, awayTeamName) {
 // === JAVÍTÁS: A PLAYER API HÍVÁS INTELLIGENS KIKAPCSOLÁSA ===
 async function _fetchPlayerData(playerNames) {
     // Ha a kulcs hiányzik vagy még a placeholder szöveg van benne, nem futtatjuk le a hívást.
-    if (!PLAYER_API_KEY || PLAYER_API_KEY === '<IDE_MASOLD_A_PLAYER_API_KULCSOD_HA_VAN>') {
-        console.log("Player API hívás kihagyva: Nincs valós API kulcs beállítva.");
+    if (!PLAYER_API_KEY || PLAYER_API_KEY === '<Ide másold a 0689... kezdetű kulcsot>') {
+        console.log("Player API hívás kihagyva: Nincs valós API kulcs vagy URL beállítva.");
         return {};
     }
     if (!playerNames || !Array.isArray(playerNames) || playerNames.length === 0) { 
@@ -221,7 +220,6 @@ async function _fetchPlayerData(playerNames) {
 }
 // === PLAYER API JAVÍTÁS VÉGE ===
 
-// A fájl többi része változatlan...
 async function _callGeminiWithSearch(prompt) {
     if (!GEMINI_API_KEY) {
         throw new Error("Hiányzó GEMINI_API_KEY.");
@@ -424,7 +422,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName) {
     }
 }
 
-// A fájl többi része változatlan...
 export async function getOptimizedOddsData(homeTeam, awayTeam, sport, sportConfig, openingOdds) {
     if (!ODDS_API_KEY) {
         console.log("Nincs ODDS_API_KEY beállítva.");
