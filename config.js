@@ -11,15 +11,14 @@ export const PLAYER_API_KEY = process.env.PLAYER_API_KEY; // Még ha nincs is, d
 export const SHEET_URL = process.env.SHEET_URL;
 export const PORT = process.env.PORT || 3000; // Alapértelmezett port 3000, ha nincs megadva
 
-// === MÓDOSÍTVA: Azt a modellt használjuk, amihez a kulcsod hozzáfér ===
-export const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_API_KEY}`;
-// ====================================================================
+// === JAVÍTÁS: Visszaállás a gemini-1.5-pro-latest modellre, ami már támogatja a keresést ===
+export const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=${GEMINI_API_KEY}`;
+// ==============================================================================================
 
 // Sportág specifikus konfigurációk
 export const SPORT_CONFIG = {
     soccer: {
         name: "soccer", // ESPN API-hoz
-        // Brazil liga kulcsa, ahogy beállítottuk
         odds_api_sport_key: "soccer_brazil_campeonato", 
         espn_leagues: { // ESPN ligák a meccsek lekéréséhez
             "Champions League": "uefa.champions",
@@ -39,7 +38,7 @@ export const SPORT_CONFIG = {
             "Premiership": "sco.1",
             "MLS": "usa.1",
             "Conference League": "uefa.europa.conf",
-            "Brazil Serie A": "bra.1", // Ez a Bahia vs Internacional ligája
+            "Brazil Serie A": "bra.1",
             "Argentinian Liga Profesional": "arg.1",
             "Greek Super League": "gre.1",
             "Nemzetek Ligája": "uefa.nations.league.a",
@@ -74,7 +73,6 @@ export const SPORT_CONFIG = {
     }
 };
 
-// Ez biztosítja a kompatibilitást, ha valahol SCRIPT_PROPERTIES-t használtunk
 export const SCRIPT_PROPERTIES = {
     getProperty: function(key) {
         return process.env[key];
