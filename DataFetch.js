@@ -3,20 +3,175 @@ import NodeCache from 'node-cache';
 import { SPORT_CONFIG, GEMINI_API_URL, GEMINI_API_KEY, ODDS_API_KEY, SPORTMONKS_API_KEY, PLAYER_API_KEY, SHEET_URL } from './config.js';
 
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
+// JAVÍTÁS: Külön cache a SportMonks csapat ID-knak, ami sosem jár le.
+const sportmonksIdCache = new NodeCache({ stdTTL: 0 });
+
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* JAVÍTÁS: A 'tools' (Google Search) KIKAPCSOLVA, hogy a gemini-2.5-pro
-* modell ne adjon "Search grounding is not supported" hibát.
+* JAVÍTÁS: A SportMonks integráció élesítve. A _fetchSportMonksData
+* már dinamikusan keresi a csapat ID-kat és lekéri a valós adatokat.
 **************************************************************/
 
+// --- BELSŐ SEGÉDFÜGGVÉNYEK AZ API-KHOZ ---
+
+// === JAVÍTÁS: SPORTMONKS INTEGRÁCIÓ ÉLESÍTÉSE ===
+
+/**
+ * Megkeresi egy csapat SportMonks ID-ját név alapján az API-n keresztül,
+ * és gyorsítótárazza az eredményt.
+ * @param {string} teamName A csapat neve.
+ * @returns {Promise<string|null>} A csapat ID-ja vagy null, ha nem található.
+ */
+async function findSportMonksTeamId(teamName) {
+    const cacheKey = `sportmonks_id_${teamName.toLowerCase()}`;
+    const cachedId = sportmonksIdCache.get(cacheKey);
+    if (cachedId) {
+        return cachedId;
+    }
+
+    if (!SPORTMONKS_API_KEY) return null;
+
+    try {
+        const url = `https://api.sportmonks.com/v3/core/teams/search/${encodeURIComponent(teamName)}?api_token=${SPORTMONKS_API_KEY}`;
+        const response = await axios.get(url);
+
+        if (response.data && response.data.data && response.data.data.length > 0) {
+            // A legrelevánsabb találatot választjuk (az elsőt)
+            const teamId = response.data.data[0].id;
+            console.log(`SportMonks ID találat: ${teamName} -> ${teamId}`);
+            sportmonksIdCache.set(cacheKey, teamId); // Mentés a cache-be
+            return teamId;
+        } else {
+            console.warn(`SportMonks: Nem található ID a következő csapathoz: ${teamName}`);
+            sportmonksIdCache.set(cacheKey, 'not_found'); // A jövőbeli felesleges keresések elkerülése
+            return null;
+        }
+    } catch (error) {
+        console.error(`Hiba a SportMonks csapat ID lekérésekor (${teamName}): ${error.message}`);
+        return null;
+    }
+}
+
+
+/**
+ * Lekéri a haladó statisztikákat (xG, stb.) a SportMonks API-ból.
+ * @param {string} sport A sportág neve.
+ * @param {string} homeTeamName A hazai csapat neve.
+ * @param {string} awayTeamName A vendég csapat neve.
+ * @returns {Promise<object>} A feldolgozott SportMonks adatok.
+ */
 async function _fetchSportMonksData(sport, homeTeamName, awayTeamName) {
     if (!SPORTMONKS_API_KEY) {
         return { advanced_stats: { home: {}, away: {} }, referee: { name: 'N/A', stats: 'N/A' } };
     }
-    console.warn("_fetchSportMonksData: Jelenleg kihagyva a SportMonks API hívás az ID keresés hiánya miatt.");
-    return { advanced_stats: { home: {}, away: {} }, referee: { name: 'N/A', stats: 'N/A' } };
+
+    // ID-k keresése név alapján
+    const homeTeamId = await findSportMonksTeamId(homeTeamName);
+    const awayTeamId = await findSportMonksTeamId(awayTeamName);
+
+    if (!homeTeamId || !awayTeamId) {
+        console.log(`_fetchSportMonksData: Hiányzó SportMonks ID a meccshez (${homeTeamName} vs ${awayTeamName}), a lekérdezés kihagyva.`);
+        return { advanced_stats: { home: {}, away: {} }, referee: { name: 'N/A', stats: 'N/A' } };
+    }
+
+    // Itt a további logika, ami a meccsek keresését végzi ID alapján
+    // Ezt a részt a korábbi kódodból vesszük át és élesítjük.
+    let fixtureDate = new Date();
+    let fixtureData = null;
+    let attempts = 0;
+
+    // Két napra visszamenőleg keresünk meccset
+    while (!fixtureData && attempts < 2) {
+        const dateString = fixtureDate.toISOString().split('T')[0];
+        let url;
+        let sportmonksSportKey;
+        // JAVÍTÁS: Az `include` paramétereket a sportágnak megfelelően állítjuk be
+        let include = "statistics";
+        if (sport === 'soccer') include = "statistics;referee";
+        
+        try {
+            switch (sport) {
+                case 'soccer': sportmonksSportKey = 'football'; break;
+                // Itt lehetne más sportágakat is hozzáadni a jövőben
+                default: 
+                    console.log(`_fetchSportMonksData: A SportMonks jelenleg nem támogatja ezt a sportágat: ${sport}`);
+                    return { advanced_stats: { home: {}, away: {} }, referee: { name: 'N/A', stats: 'N/A' } };
+            }
+
+            url = `https://api.sportmonks.com/v3/${sportmonksSportKey}/fixtures/date/${dateString}?api_token=${SPORTMONKS_API_KEY}&include=${include}`;
+            console.log(`SportMonks API kérés (${attempts + 1}. próbálkozás): ${homeTeamName} vs ${awayTeamName}`);
+
+            const response = await axios.get(url, { validateStatus: () => true });
+
+            if (response.status !== 200) {
+                console.error(`SportMonks API hiba (${response.status}) Dátum: ${dateString}, Válasz: ${JSON.stringify(response.data)?.substring(0, 500)}`);
+            } else if (response.data && Array.isArray(response.data.data)) {
+                const allFixtures = response.data.data;
+                const targetFixture = allFixtures.find(f =>
+                    (String(f.participant_home_id) === String(homeTeamId) && String(f.participant_away_id) === String(awayTeamId))
+                );
+                if (targetFixture) {
+                    fixtureData = targetFixture;
+                    console.log(`SportMonks meccs találat (${dateString}): ${homeTeamName} vs ${awayTeamName}`);
+                }
+            }
+        } catch (e) {
+            console.error(`Általános hiba SportMonks API hívásakor (${dateString}): ${e.message}`);
+        }
+
+        if (!fixtureData) {
+            fixtureDate.setDate(fixtureDate.getDate() - 1); // Lépünk egy napot vissza
+        }
+        attempts++;
+    }
+
+    if (!fixtureData) {
+        console.log(`SportMonks: Nem található meccs ${homeTeamName} vs ${awayTeamName} az elmúlt 2 napban.`);
+        return { advanced_stats: { home: {}, away: {} }, referee: { name: 'N/A', stats: 'N/A' } };
+    }
+
+    // Adatok kinyerése és feldolgozása
+    try {
+        const extractedData = { advanced_stats: { home: {}, away: {} }, referee: { name: 'N/A', stats: 'N/A' } };
+        const fixtureStats = fixtureData.statistics || [];
+        const homeStatsSM = fixtureStats.find(s => String(s.participant_id) === String(homeTeamId));
+        const awayStatsSM = fixtureStats.find(s => String(s.participant_id) === String(awayTeamId));
+
+        if (sport === 'soccer' && fixtureData.referee) {
+             extractedData.referee = { name: fixtureData.referee.common_name || fixtureData.referee.fullname || 'N/A', stats: 'N/A' }; // A referee statisztikákat külön kellene lekérni, most egyszerűsítjük
+        }
+
+        if (sport === 'soccer' && homeStatsSM) {
+            extractedData.advanced_stats.home = {
+                xg: homeStatsSM.xg ?? null,
+                shots: homeStatsSM.shots_total ?? null,
+                shots_on_target: homeStatsSM.shots_on_goal ?? null,
+                possession_pct: homeStatsSM.possessiontime ?? null,
+                fouls: homeStatsSM.fouls ?? null,
+                avg_corners_for_per_game: homeStatsSM.corners ?? null,
+            };
+        }
+        if (sport === 'soccer' && awayStatsSM) {
+            extractedData.advanced_stats.away = {
+                xg: awayStatsSM.xg ?? null,
+                shots: awayStatsSM.shots_total ?? null,
+                shots_on_target: awayStatsSM.shots_on_goal ?? null,
+                possession_pct: awayStatsSM.possessiontime ?? null,
+                fouls: awayStatsSM.fouls ?? null,
+                avg_corners_for_per_game: awayStatsSM.corners ?? null,
+            };
+        }
+
+        console.log(`SportMonks adatok feldolgozva: ${homeTeamName} vs ${awayTeamName}`);
+        return extractedData;
+
+    } catch (e) {
+        console.error(`Hiba SportMonks adatok feldolgozásakor (${homeTeamName} vs ${awayTeamName}): ${e.message}`);
+        return { advanced_stats: { home: {}, away: {} }, referee: { name: 'N/A', stats: 'N/A' } };
+    }
 }
+// === SPORTMONKS INTEGRÁCIÓ VÉGE ===
 
 async function _fetchPlayerData(playerNames) {
     if (!PLAYER_API_KEY) { return {}; }
@@ -65,7 +220,6 @@ async function _fetchPlayerData(playerNames) {
     return playerData;
 }
 
-// === JAVÍTOTT FUNKCIÓ: Google Search Tool KIKAPCSOLVA ===
 async function _callGeminiWithSearch(prompt) {
     if (!GEMINI_API_KEY) {
         throw new Error("Hiányzó GEMINI_API_KEY.");
@@ -76,8 +230,7 @@ async function _callGeminiWithSearch(prompt) {
             temperature: 0.4,
             maxOutputTokens: 8192
         },
-        // === JAVÍTÁS: A Kereső Eszköz KIKAPCSOLVA ===
-        // tools: [{ "googleSearchRetrieval": {} }] 
+        tools: [{ "googleSearchRetrieval": {} }] 
     };
 
     try {
@@ -123,61 +276,69 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName) {
     } else {
         console.log(`Nincs cache (${ck}), friss adatok lekérése...`);
     }
+    
+    // JAVÍTÁS: A SportMonks hívást párhuzamosítjuk a Gemini hívással a gyorsabb futásért
+    const [geminiResult, sportMonksData] = await Promise.all([
+        (async () => {
+            let jsonString = "";
+            try {
+                let contextualFactorsPrompt = `"motivation_home": "<Motivation>", "motivation_away": "<Motivation>", "fatigue_factors": "<Fatigue notes>", "weather": "<Expected weather if relevant>"`;
+                if (sport === 'soccer') contextualFactorsPrompt += `, "match_tension_index": "<A 'Low', 'Medium', 'High', or 'Extreme' rating>"`;
+                const geminiPrompt = `
+                  CRITICAL TASK: Use Google Search to gather DETAILED NARRATIVE and STRUCTURED data for the ${sport} match: "${homeTeamName}" vs "${awayTeamName}".
+                  Focus ONLY on H2H (structured last 5 + tactical pattern analysis), team news (structured key absentees with IMPORTANCE + overall impact analysis), recent form (overall AND home/away separately), expected tactics/style, key players (2-3 per team: name & role), contextual factors (motivation, fatigue, weather, tension), and basic league averages.
+                  Provide ONLY a single, valid JSON object as the ENTIRE response. NO other text, markdown (###), or formatting (\`\`\`).
+                  DO NOT include xG, PP%, Pace, referee, corner/card stats.
 
-    let geminiData = {};
-    let sportMonksData = {};
-    let detailedPlayerData = {};
-    let finalData = {};
-    let jsonString = "";
+                  JSON STRUCTURE:
+                  {
+                    "stats": { "home": { "gp": <number>, "gf": <number>, "ga": <number> }, "away": { "gp": <number>, "gf": <number>, "ga": <number> } },
+                    "h2h_summary": "<Overall H2H textual summary>",
+                    "h2h_structured": [ { "date": "YYYY-MM-DD", "venue": "${homeTeamName} or ${awayTeamName}", "score": "H-A" }, ... ],
+                    "h2h_tactical_analysis": "<Brief analysis of tactical patterns observed... N/A if no clear pattern.>",
+                    "team_news": { "home": "<General news/morale string>", "away": "<General news/morale string>" },
+                    "absentees": { "home": [ { "name": "<Player Name>", "position": "<Position>", "importance": "<'key', 'important', 'squad'>" } ], "away": [ ... ] },
+                    "absentee_impact_analysis": "<Brief analysis of the OVERALL impact of absentees... E.g., 'Home team significantly weakened...'>",
+                    "form": { "home_overall": "<Last 5 W-D-L>", "away_overall": "<Last 5 W-D-L>", "home_home": "<Last 5 HOME W-D-L>", "away_away": "<Last 5 AWAY W-D-L>" },
+                    "tactics": { "home": { "style": "<Style>" }, "away": { "style": "<Style>" } },
+                    "key_players": { "home": [ { "name": "<Name>", "role": "<Role>" } ], "away": [ ... ] },
+                    "contextual_factors": { ${contextualFactorsPrompt} },
+                    "league_averages": { "avg_goals_per_game": <num|null>, "avg_corners": <num|null>, "avg_cards": <num|null>, "avg_offensive_rating": <num|null>, "avg_pace": <num|null>, "home_win_pct": <num|null> }
+                  }`;
+                const geminiResponseText = await _callGeminiWithSearch(geminiPrompt);
+                jsonString = geminiResponseText;
+                let geminiData;
+                try {
+                    geminiData = JSON.parse(jsonString);
+                } catch (e1) {
+                    const codeBlockMatch = jsonString.match(/```json\n([\s\S]*?)\n```/);
+                    if (codeBlockMatch && codeBlockMatch[1]) {
+                        jsonString = codeBlockMatch[1];
+                    } else {
+                        const firstBrace = jsonString.indexOf('{');
+                        const lastBrace = jsonString.lastIndexOf('}');
+                        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                            jsonString = jsonString.substring(firstBrace, lastBrace + 1);
+                        } else {
+                            throw new Error(`Nem sikerült érvényes JSON-t kinyerni a Gemini válaszból.`);
+                        }
+                    }
+                    geminiData = JSON.parse(jsonString);
+                }
+                return geminiData;
+            } catch (e) {
+                console.error(`Súlyos hiba a Gemini adatgyűjtés során: ${e.message}`);
+                if (jsonString) console.error("Gemini nyers válasz (hiba esetén):", jsonString.substring(0, 500));
+                throw e; // Dobjuk tovább a hibát, hogy a fő try-catch elkapja
+            }
+        })(),
+        _fetchSportMonksData(sport, homeTeamName, awayTeamName)
+    ]);
 
     try {
-        let contextualFactorsPrompt = `"motivation_home": "<Motivation>", "motivation_away": "<Motivation>", "fatigue_factors": "<Fatigue notes>", "weather": "<Expected weather if relevant>"`;
-        if (sport === 'soccer') contextualFactorsPrompt += `, "match_tension_index": "<A 'Low', 'Medium', 'High', or 'Extreme' rating>"`;
+        let geminiData = geminiResult; // Az eredmény a párhuzamos hívásból
+        let detailedPlayerData = {};
         
-        const geminiPrompt = `
-          CRITICAL TASK: Based on your internal knowledge, gather DETAILED NARRATIVE and STRUCTURED data for the ${sport} match: "${homeTeamName}" vs "${awayTeamName}".
-          Focus ONLY on H2H (structured last 5 + tactical pattern analysis), team news (structured key absentees with IMPORTANCE + overall impact analysis), recent form (overall AND home/away separately), expected tactics/style, key players (2-3 per team: name & role), contextual factors (motivation, fatigue, weather, tension), and basic league averages.
-          Provide ONLY a single, valid JSON object as the ENTIRE response. NO other text, markdown (###), or formatting (\`\`\`).
-          DO NOT include xG, PP%, Pace, referee, corner/card stats.
-
-          JSON STRUCTURE:
-          {
-            "stats": { "home": { "gp": <number>, "gf": <number>, "ga": <number> }, "away": { "gp": <number>, "gf": <number>, "ga": <number> } },
-            "h2h_summary": "<Overall H2H textual summary>",
-            "h2h_structured": [ { "date": "YYYY-MM-DD", "venue": "${homeTeamName} or ${awayTeamName}", "score": "H-A" }, ... ],
-            "h2h_tactical_analysis": "<Brief analysis of tactical patterns observed... N/A if no clear pattern.>",
-            "team_news": { "home": "<General news/morale string>", "away": "<General news/morale string>" },
-            "absentees": { "home": [ { "name": "<Player Name>", "position": "<Position>", "importance": "<'key', 'important', 'squad'>" } ], "away": [ ... ] },
-            "absentee_impact_analysis": "<Brief analysis of the OVERALL impact of absentees... E.g., 'Home team significantly weakened...'>",
-            "form": { "home_overall": "<Last 5 W-D-L>", "away_overall": "<Last 5 W-D-L>", "home_home": "<Last 5 HOME W-D-L>", "away_away": "<Last 5 AWAY W-D-L>" },
-            "tactics": { "home": { "style": "<Style>" }, "away": { "style": "<Style>" } },
-            "key_players": { "home": [ { "name": "<Name>", "role": "<Role>" } ], "away": [ ... ] },
-            "contextual_factors": { ${contextualFactorsPrompt} },
-            "league_averages": { "avg_goals_per_game": <num|null>, "avg_corners": <num|null>, "avg_cards": <num|null>, "avg_offensive_rating": <num|null>, "avg_pace": <num|null>, "home_win_pct": <num|null> }
-          }`;
-
-        const geminiResponseText = await _callGeminiWithSearch(geminiPrompt);
-        jsonString = geminiResponseText;
-
-        try {
-            geminiData = JSON.parse(jsonString);
-        } catch (e1) {
-            const codeBlockMatch = jsonString.match(/```json\n([\s\S]*?)\n```/);
-            if (codeBlockMatch && codeBlockMatch[1]) {
-                jsonString = codeBlockMatch[1];
-            } else {
-                const firstBrace = jsonString.indexOf('{');
-                const lastBrace = jsonString.lastIndexOf('}');
-                if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-                    jsonString = jsonString.substring(firstBrace, lastBrace + 1);
-                } else {
-                    console.error(`getRichContextualData: Nem sikerült JSON-t kinyerni Gemini válaszból. Nyers: ${geminiResponseText.substring(0, 500)}`);
-                    throw new Error(`Nem sikerült érvényes JSON-t kinyerni a Gemini válaszból (getRichContextualData).`);
-                }
-            }
-            geminiData = JSON.parse(jsonString);
-        }
-
         geminiData.stats = geminiData.stats || {};
         geminiData.stats.home = geminiData.stats.home || {};
         geminiData.stats.away = geminiData.stats.away || {};
@@ -195,7 +356,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName) {
             detailedPlayerData = await _fetchPlayerData(playerNames);
         }
         
-        finalData = { ...geminiData };
+        let finalData = { ...geminiData };
         finalData.h2h_tactical_analysis = finalData.h2h_tactical_analysis || "N/A";
         finalData.absentee_impact_analysis = finalData.absentee_impact_analysis || "Nincs jelentős hatás.";
         finalData.h2h_summary = finalData.h2h_summary || "Nincs adat";
@@ -208,21 +369,13 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName) {
         finalData.form.away_overall = finalData.form.away_overall || "N/A";
         finalData.form.home_home = finalData.form.home_home || "N/A";
         finalData.form.away_away = finalData.form.away_away || "N/A";
-        finalData.advanced_stats = { ...(finalData.advanced_stats || {}), ...(sportMonksData.advanced_stats || {}) };
-        finalData.advanced_stats.home = finalData.advanced_stats.home || {};
-        finalData.advanced_stats.away = finalData.advanced_stats.away || {};
-        finalData.referee = sportMonksData?.referee?.name && sportMonksData.referee.name !== 'N/A' ? { ...(finalData.referee || {}), ...sportMonksData.referee } : (finalData.referee || { name: 'N/A', stats: 'N/A' });
+        finalData.advanced_stats = { ...(sportMonksData.advanced_stats || {}), ...(finalData.advanced_stats || {}) };
+        finalData.advanced_stats.home = { ...(sportMonksData.advanced_stats?.home || {}), ...(finalData.advanced_stats?.home || {}) };
+        finalData.advanced_stats.away = { ...(sportMonksData.advanced_stats?.away || {}), ...(finalData.advanced_stats?.away || {}) };
+        finalData.referee = sportMonksData?.referee?.name && sportMonksData.referee.name !== 'N/A' ? { ...sportMonksData.referee } : (finalData.referee || { name: 'N/A', stats: 'N/A' });
         finalData.tactics = finalData.tactics || { home: { style: "Ismeretlen" }, away: { style: "Ismeretlen" } };
-        finalData.tactics.home = finalData.tactics.home || { style: "Ismeretlen" };
-        finalData.tactics.away = finalData.tactics.away || { style: "Ismeretlen" };
         finalData.team_news = finalData.team_news || { home: "Nincs adat", away: "Nincs adat" };
-        finalData.team_news.home = finalData.team_news.home || "Nincs adat";
-        finalData.team_news.away = finalData.team_news.away || "Nincs adat";
         finalData.key_players = finalData.key_players || { home: [], away: [] };
-        finalData.key_players.home = Array.isArray(finalData.key_players.home) ? finalData.key_players.home : [];
-        finalData.key_players.away = Array.isArray(finalData.key_players.away) ? finalData.key_players.away : [];
-        finalData.contextual_factors = finalData.contextual_factors || {};
-        finalData.league_averages = finalData.league_averages || {};
         (finalData.key_players.home || []).forEach(p => { if (p && detailedPlayerData[p.name]) p.stats = detailedPlayerData[p.name]; else if (p) p.stats = {}; });
         (finalData.key_players.away || []).forEach(p => { if (p && detailedPlayerData[p.name]) p.stats = detailedPlayerData[p.name]; else if (p) p.stats = {}; });
 
@@ -269,10 +422,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName) {
 
     } catch (e) {
         console.error(`Súlyos hiba a getRichContextualData során (${homeTeamName} vs ${awayTeamName}): ${e.message}`);
-        if (jsonString) {
-            console.error("Gemini nyers válasz (hiba esetén):", jsonString.substring(0, 500));
-        }
-        throw new Error(`Bővített adatgyűjtési hiba (${homeTeamName} vs ${awayTeamName}): ${e.message}`);
+        throw new Error(`Bővített adatgyűjtési hiba: ${e.message}`);
     }
 }
 
