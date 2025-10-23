@@ -1,19 +1,17 @@
 /**
  * AI_Service.js (Node.js Verzió)
  * Felelős az AI modellel való kommunikációért (a DataFetch.js-en keresztül),
- * a promptok összeállításáért és a válaszok feldolgozásáért az elemzési folyamatban.
+ * a promptok összeállításáért és a válaszok feldogozásáért az elemzési folyamatban.
+ * JAVÍTÁS: Hozzáadva a _getContradictionAnalysis placeholder export.
  */
 
 // Importáljuk a szükséges függvényeket és konfigurációt
-import { getRichContextualData, getOptimizedOddsData, _callGeminiWithSearch, _getFixturesFromEspn } from './DataFetch.js';
-import { calculateProbabilities, generateProTip } from './Model.js';
+import { getRichContextualData, getOptimizedOddsData, _callGeminiWithSearch, _getFixturesFromEspn } from './DataFetch.js'; // Itt importáljuk a szükséges AI hívó függvényt is!
+import { calculateProbabilities, generateProTip } from './Model.js'; // Placeholder lehet a calculateProbabilities
 import { saveToSheet } from './SheetService.js';
-import { SPORT_CONFIG } from './config.js'; // SPORT_CONFIG importálása
+import { SPORT_CONFIG } from './config.js';
 
 // --- PROMPT SABLONOK ---
-// (Ezeket érdemes lehet külön fájlba szervezni később)
-
-// Mester AI Prompt (a legutóbbi, Vertex AI + Search verzióhoz igazítva)
 const MASTER_AI_PROMPT_TEMPLATE = `
 CRITICAL TASK: You are the Master AI Sports Analyst. Analyze the provided structured data for the match: {homeTeam} vs {awayTeam}.
 Focus on predicting the final score and generating a single, concise betting tip based ONLY on the data provided. Use Google Search results included in the context.
@@ -53,26 +51,31 @@ Output Format (JSON ONLY, no extra text):
 
 // Bizottsági Tag Prompt (referenciaként, de a hívása kikommentelve)
 const COMMITTEE_MEMBER_PROMPT_TEMPLATE = `
-You are an AI Sports Analyst specializing in {specialization}.
-Analyze the provided data for the match: {homeTeam} vs {awayTeam}.
-Provide a concise analysis (max 3 sentences) focusing on your area of expertise and predict the most likely outcome from your perspective (Home Win, Draw, Away Win, Over/Under X.5).
+You are an AI Sports Analyst specializing in {specialization}. Analyze the provided data for the match: {homeTeam} vs {awayTeam}. Provide a concise analysis (max 3 sentences) focusing on your area of expertise and predict the most likely outcome from your perspective (Home Win, Draw, Away Win, Over/Under X.5).
 
 Data:
 ---
 Match: {homeTeam} (Home) vs {awayTeam} (Away)
 League: {leagueName}
 Date: {matchDate}
-
-Contextual Data (from Google Search and internal knowledge):
-{richContext}
-
-Odds Data (Pinnacle):
-{oddsString}
+Contextual Data (from Google Search and internal knowledge): {richContext}
+Odds Data (Pinnacle): {oddsString}
 ---
 
-Your Output (Plain Text, Max 3 sentences + prediction):
-<Your concise analysis focused on {specialization}>. Prediction: <Outcome>
+Your Output (Plain Text, Max 3 sentences + prediction): <Your concise analysis focused on {specialization}>. Prediction: <Outcome>
 `;
+
+
+// === JAVÍTÁS: Placeholder függvény hozzáadása és exportálása ===
+/**
+ * Placeholder az ellentmondás-analízishez. Jelenleg nem csinál semmit.
+ * @returns {string} Üres string vagy alapértelmezett üzenet.
+ */
+export async function _getContradictionAnalysis(context, probabilities, odds) {
+    console.warn("_getContradictionAnalysis placeholder hívva - ez a funkció jelenleg nincs implementálva.");
+    return "Ellentmondás-analízis kihagyva."; // Vagy return "";
+}
+// =============================================================
 
 // --- FŐ ELEMZÉSI FOLYAMAT ---
 
@@ -80,7 +83,7 @@ Your Output (Plain Text, Max 3 sentences + prediction):
  * A fő AI elemzési folyamatot vezérli. Meghívja az adatgyűjtést,
  * számításokat végez, majd meghívja a Mester AI-t a végső tippért.
  * @param {string} sport A sportág.
- * Pparam {string} homeTeam Hazai csapat neve.
+ * @param {string} homeTeam Hazai csapat neve.
  * @param {string} awayTeam Vendég csapat neve.
  * @param {string} leagueName Liga neve.
  * @param {string} matchDate Meccs dátuma (ISO string).
@@ -89,67 +92,66 @@ Your Output (Plain Text, Max 3 sentences + prediction):
  * @throws {Error} Ha kritikus hiba történik az elemzés során.
  */
 export async function runAnalysisFlow(sport, homeTeam, awayTeam, leagueName, matchDate, openingOdds = null) {
-    console.log(`Elemzés indítása: ${homeTeam} vs ${awayTeam} (${leagueName})`); // Elemzés kezdete log
+    console.log(`Elemzés indítása: ${homeTeam} vs ${awayTeam} (${leagueName})`);
 
     let contextualData;
     let oddsData;
     let probabilities;
-    let committeeAnalysis = "N/A"; // Alapértelmezett
+    let committeeAnalysis = "N/A";
 
     try {
         // 1. Adatgyűjtés (Vertex AI + Search + Odds)
-        console.log("Adatgyűjtés (Vertex AI + Search)..."); // Logolás
-        // Itt hívjuk meg a DataFetch.js fő függvényét
+        console.log("Adatgyűjtés (Vertex AI + Search)...");
         contextualData = await getRichContextualData(sport, homeTeam, awayTeam, leagueName);
-        oddsData = contextualData.oddsData; // Odds adatok kinyerése
+        oddsData = contextualData.oddsData;
 
-        // Odds string formázása a promptokhoz
-        const oddsString = oddsData?.current?.map(o => `${o.name}: ${o.price}`).join(', ') || "N/A"; // Oddsok formázása
+        const oddsString = oddsData?.current?.map(o => `${o.name}: ${o.price}`).join(', ') || "N/A";
 
-        // Kritikus statisztikák ellenőrzése (getRichContextualData már hibát dob, ha gp <= 0)
         if (!contextualData || !contextualData.rawStats) {
-             throw new Error("Kritikus hiba: Az adatgyűjtés nem adott vissza érvényes struktúrát."); // Extra ellenőrzés
+             throw new Error("Kritikus hiba: Az adatgyűjtés nem adott vissza érvényes struktúrát.");
         }
-        console.log("Adatgyűjtés kész."); // Sikeres adatgyűjtés log
+        console.log("Adatgyűjtés kész.");
 
-        // 2. Valószínűségek Számítása
-        console.log("Valószínűségek számítása..."); // Logolás
-        probabilities = calculateProbabilities(contextualData.rawStats, SPORT_CONFIG[sport]?.home_advantage, SPORT_CONFIG[sport]?.avg_goals); // Valószínűség számítás
-        console.log("Becsült valószínűségek:", probabilities); // Eredmény logolása
+        // 2. Valószínűségek Számítása (Placeholder hívása)
+        console.log("Valószínűségek számítása (Placeholder)...");
+        // Figyelem: Ez a calculateProbabilities jelenleg csak null értékeket ad vissza a Model.js-ben!
+        // Az igazi valószínűségek a Model.js simulateMatchProgress függvényében vannak.
+        // Ezt később finomítani kellene az AI_Service vagy Model.js-ben.
+        probabilities = calculateProbabilities(contextualData.rawStats, SPORT_CONFIG[sport]?.home_advantage, SPORT_CONFIG[sport]?.avg_goals);
+        // Itt kellene a probabilities objektumot feltölteni a simulateMatchProgress eredményével, ha az AI_Service használja ezeket
+        console.log("Placeholder valószínűségek:", probabilities); // Ez null értékeket fog mutatni
 
         // 3. AI Bizottság (Kihagyva)
-        console.log("AI Bizottság futtatása kihagyva."); // Logolás
+        console.log("AI Bizottság futtatása kihagyva.");
 
         // 4. Mester AI Hívása
-        console.log("Mester AI hívása (Vertex AI + Search)..."); // Logolás
-        const masterPrompt = MASTER_AI_PROMPT_TEMPLATE // Prompt összeállítása
+        console.log("Mester AI hívása (Vertex AI + Search)...");
+        const masterPrompt = MASTER_AI_PROMPT_TEMPLATE
             .replace('{homeTeam}', homeTeam)
             .replace('{awayTeam}', awayTeam)
             .replace('{leagueName}', leagueName)
-            .replace('{matchDate}', new Date(matchDate).toLocaleDateString('hu-HU')) // Magyar dátumformátum
+            .replace('{matchDate}', new Date(matchDate).toLocaleDateString('hu-HU'))
             .replace('{richContext}', contextualData.richContext || "N/A")
             .replace('{oddsString}', oddsString)
             .replace('{committeeAnalysis}', committeeAnalysis);
 
-        // Itt a DataFetch.js-ből importált _callGeminiWithSearch-t használjuk!
-        const masterResponseJsonString = await _callGeminiWithSearch(masterPrompt); // Gemini hívás Vertex AI-on keresztül
+        const masterResponseJsonString = await _callGeminiWithSearch(masterPrompt);
 
-        if (!masterResponseJsonString) { // Ha a Gemini hívás sikertelen volt
-            throw new Error("Mester AI nem adott választ, vagy hiba történt a hívás során."); // Hiba dobása
+        if (!masterResponseJsonString) {
+            throw new Error("Mester AI nem adott választ, vagy hiba történt a hívás során.");
         }
 
         let masterPrediction;
         try {
-            // Próbáljuk meg tisztítani a JSON stringet, mielőtt parse-olnánk
             let cleanedJson = masterResponseJsonString.trim();
             const jsonMatch = cleanedJson.match(/```json\n([\s\S]*?)\n```/);
             if (jsonMatch?.[1]) cleanedJson = jsonMatch[1];
             if (!cleanedJson.startsWith('{') && cleanedJson.includes('{')) cleanedJson = cleanedJson.substring(cleanedJson.indexOf('{'));
             if (!cleanedJson.endsWith('}') && cleanedJson.includes('}')) cleanedJson = cleanedJson.substring(0, cleanedJson.lastIndexOf('}') + 1);
-            masterPrediction = JSON.parse(cleanedJson); // JSON feldolgozás
+            masterPrediction = JSON.parse(cleanedJson);
         } catch (e) {
-            console.error("Mester AI válasza nem volt érvényes JSON:", masterResponseJsonString.substring(0, 500)); // Hiba logolása
-            throw new Error(`Mester AI válasza feldolgozhatatlan volt (JSON parse error): ${e.message}`); // Hiba dobása
+            console.error("Mester AI válasza nem volt érvényes JSON:", masterResponseJsonString.substring(0, 500));
+            throw new Error(`Mester AI válasza feldolgozhatatlan volt (JSON parse error): ${e.message}`);
         }
 
         // 5. Eredmény Összeállítása és Mentése
@@ -157,59 +159,47 @@ export async function runAnalysisFlow(sport, homeTeam, awayTeam, leagueName, mat
             match: `${homeTeam} vs ${awayTeam}`,
             league: leagueName,
             date: matchDate,
-            probabilities: probabilities, // Számított valószínűségek
-            context: contextualData.richContext, // Gemini által adott kontextus
-            odds: oddsData?.current || [], // Aktuális oddsok (ha vannak)
-            // Biztosítjuk, hogy a prediction objektum létezzen és meglegyenek a mezői
+            // A probabilities itt a placeholder null értékeit tartalmazza!
+            probabilities: probabilities,
+            context: contextualData.richContext,
+            odds: oddsData?.current || [],
             prediction: {
                 final_score: masterPrediction?.prediction?.final_score || "N/A",
                 tip: masterPrediction?.prediction?.tip || "Hiba",
                 confidence: masterPrediction?.prediction?.confidence || "Low",
                 reasoning: masterPrediction?.prediction?.reasoning || "Nem sikerült tippet generálni."
             },
-            fullRawData: contextualData.rawData // Nyers adatok debuggoláshoz
+            fullRawData: contextualData.rawData
         };
 
-        console.log("Végleges Tipp:", finalResult.prediction); // Tipp logolása
+        console.log("Végleges Tipp:", finalResult.prediction);
 
-        // Mentés Google Sheet-be (aszinkron módon a háttérben, hibakezeléssel)
-        saveToSheet(finalResult).catch(err => console.error("Hiba a Google Sheet mentés során:", err.message)); // Mentés és hibakezelés
+        saveToSheet(finalResult).catch(err => console.error("Hiba a Google Sheet mentés során:", err.message));
 
-        return finalResult; // Visszatérés az eredménnyel
+        return finalResult;
 
-    } catch (error) { // Átfogó hibakezelés az egész folyamatra
-        console.error(`Súlyos hiba az elemzési folyamban (${homeTeam} vs ${awayTeam}): ${error.message}`); // Hiba logolása
-        console.error("Hiba részletei:", error.stack); // Stack trace a részletesebb hibakereséshez
-        // Dobjuk tovább a hibát, hogy a hívó API végpont (index.js) kezelhesse
+    } catch (error) {
+        console.error(`Súlyos hiba az elemzési folyamban (${homeTeam} vs ${awayTeam}): ${error.message}`);
+        console.error("Hiba részletei:", error.stack);
         throw new Error(`Elemzési hiba (${homeTeam} vs ${awayTeam}): ${error.message}`);
     }
 }
 
-// --- CHAT FUNKCIÓ (ÁTALAKÍTVA NODE.JS-RE) ---
-/**
- * Kezeli a chat kéréseket, kontextust és előzményeket használva.
- * @param {string} context Az elemzés kontextusa.
- * @param {Array} history A chat előzmények [{role: 'user'/'model', parts: [{text: ''}]}] formátumban.
- * @param {string} question A felhasználó aktuális kérdése.
- * @returns {Promise<object>} Válasz objektum { answer: "..." } vagy { error: "..." } formában.
- */
+// --- CHAT FUNKCIÓ ---
 export async function getChatResponse(context, history, question) {
-    if (!context || !question) { // Bemenet ellenőrzése
+    if (!context || !question) {
         console.error("Chat hiba: Hiányzó kontextus vagy kérdés.");
         return { error: "Hiányzó kontextus vagy kérdés." };
     }
-
-    const validHistory = Array.isArray(history) ? history : []; // Előzmények validálása
+    const validHistory = Array.isArray(history) ? history : [];
 
     try {
-        // Prompt összeállítása a kontextus, előzmények és kérdés alapján
         let historyString = validHistory.map(msg => {
             const role = msg.role === 'user' ? 'Felh' : 'AI';
-            const text = msg.parts?.[0]?.text || msg.text || ''; // Kompatibilitás a régebbi formátummal
+            const text = msg.parts?.[0]?.text || msg.text || '';
             return `${role}: ${text}`;
         }).join('\n');
 
-        // A prompt lényegében ugyanaz maradhat, mint a GS verzióban
         const prompt = `You are an elite sports analyst AI assistant. Continue the conversation based on the context and history.
 Analysis Context (DO NOT repeat, just use): --- ANALYSIS START --- ${context} --- ANALYSIS END ---
 Chat History:
@@ -217,37 +207,28 @@ ${historyString}
 Current User Question: ${question}
 Your Task: Answer concisely and accurately in Hungarian based ONLY on the Analysis Context/History. If the answer isn't there, say so politely. Stay professional. Keep answers brief.`;
 
-        // Itt is a DataFetch.js-ben lévő AI hívót használjuk
-        // FIGYELEM: A chathez valószínűleg NEM kell a Google Search, ezért egy külön AI hívó kellhetne,
-        // ami nem kapcsolja be a 'tools'-t, vagy a _callGeminiWithSearch-t módosítani kell,
-        // hogy opcionálisan ki lehessen kapcsolni a keresést.
-        // MOST AZ EGYSZERŰSÉG KEDVÉÉRT MARAD A KERESŐS HÍVÁS, DE EZ TOKENPAZARLÓ LEHET A CHATHEZ.
-        const answer = await _callGeminiWithSearch(prompt); // Hívás kereséssel
+        // Itt is a keresős hívás marad (tokenpazarló lehet)
+        const answer = await _callGeminiWithSearch(prompt);
 
         if (answer) {
-            // Egyszerűsített válasz: csak a szöveget adjuk vissza
             let cleanedAnswer = answer.trim();
-            // Esetleges ```json ... ``` blokk eltávolítása, ha mégis azt adna vissza
             const jsonMatch = cleanedAnswer.match(/```json\n([\s\S]*?)\n```/);
             if (jsonMatch?.[1]) cleanedAnswer = jsonMatch[1];
-
-            return { answer: cleanedAnswer }; // Sikeres válasz
+            return { answer: cleanedAnswer };
         } else {
             console.error("Chat AI hiba: Nem érkezett válasz a Geminitől.");
-            return { error: "Az AI nem tudott válaszolni." }; // Hiba, ha nincs válasz
+            return { error: "Az AI nem tudott válaszolni." };
         }
     } catch (e) {
-        console.error(`Chat hiba: ${e.message}`); // Hiba logolása
-        return { error: `Chat AI hiba: ${e.message}` }; // Hiba visszaadása
+        console.error(`Chat hiba: ${e.message}`);
+        return { error: `Chat AI hiba: ${e.message}` };
     }
 }
 
-
 // --- EXPORT ---
-// Exportáljuk a fő funkciókat, hogy az index.js (vagy más modulok) használhassák.
 export default {
     runAnalysisFlow,
     getChatResponse,
-    // Ha az ESPN lekérdezést is innen akarjuk indítani (pl. egy külön API végponttal):
-    getFixtures: _getFixturesFromEspn // Átnevezzük az exportot, hogy érthetőbb legyen
+    _getContradictionAnalysis, // Exportáljuk a placeholdert
+    getFixtures: _getFixturesFromEspn
 };
