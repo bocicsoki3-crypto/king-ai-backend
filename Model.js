@@ -56,7 +56,7 @@ function sampleGoals(mu_h, mu_a) {
 }
 
 // --- Idővonal Generálás --- (Logika változatlan)
-function calculateEventProbabilities(gameState, mu_h, mu_a, rawData, sport, homeTeam, awayTeam) {
+export function calculateEventProbabilities(gameState, mu_h, mu_a, rawData, sport, homeTeam, awayTeam) {
     const narrativeRatings = getNarrativeRatings();
     const homeTeamLower = homeTeam.toLowerCase();
     const awayTeamLower = awayTeam.toLowerCase();
