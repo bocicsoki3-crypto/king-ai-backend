@@ -6,11 +6,9 @@ const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* JAVÍTÁS: A 'tools' (Google Search) VISSZAKAPCSOLVA,
-* és a prompt ismét az élő keresésre utasítja az AI-t.
+* JAVÍTÁS: A 'tools' (Google Search) KIKAPCSOLVA, hogy a gemini-2.5-pro
+* modell ne adjon "Search grounding is not supported" hibát.
 **************************************************************/
-
-// --- BELSŐ SEGÉDFÜGGVÉNYEK AZ API-KHOZ ---
 
 async function _fetchSportMonksData(sport, homeTeamName, awayTeamName) {
     if (!SPORTMONKS_API_KEY) {
@@ -67,7 +65,7 @@ async function _fetchPlayerData(playerNames) {
     return playerData;
 }
 
-// === JAVÍTOTT FUNKCIÓ: Google Search Tool VISSZAKAPCSOLVA ===
+// === JAVÍTOTT FUNKCIÓ: Google Search Tool KIKAPCSOLVA ===
 async function _callGeminiWithSearch(prompt) {
     if (!GEMINI_API_KEY) {
         throw new Error("Hiányzó GEMINI_API_KEY.");
@@ -78,8 +76,8 @@ async function _callGeminiWithSearch(prompt) {
             temperature: 0.4,
             maxOutputTokens: 8192
         },
-        // === JAVÍTÁS: A Kereső Eszköz VISSZAKAPCSOLVA ===
-        tools: [{ "googleSearchRetrieval": {} }] 
+        // === JAVÍTÁS: A Kereső Eszköz KIKAPCSOLVA ===
+        // tools: [{ "googleSearchRetrieval": {} }] 
     };
 
     try {
@@ -135,10 +133,9 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName) {
     try {
         let contextualFactorsPrompt = `"motivation_home": "<Motivation>", "motivation_away": "<Motivation>", "fatigue_factors": "<Fatigue notes>", "weather": "<Expected weather if relevant>"`;
         if (sport === 'soccer') contextualFactorsPrompt += `, "match_tension_index": "<A 'Low', 'Medium', 'High', or 'Extreme' rating>"`;
-
-        // === JAVÍTÁS: A PROMPT VISSZAÁLLÍTVA AZ ÉLŐ KERESÉSRE ===
+        
         const geminiPrompt = `
-          CRITICAL TASK: Use Google Search to gather DETAILED NARRATIVE and STRUCTURED data for the ${sport} match: "${homeTeamName}" vs "${awayTeamName}".
+          CRITICAL TASK: Based on your internal knowledge, gather DETAILED NARRATIVE and STRUCTURED data for the ${sport} match: "${homeTeamName}" vs "${awayTeamName}".
           Focus ONLY on H2H (structured last 5 + tactical pattern analysis), team news (structured key absentees with IMPORTANCE + overall impact analysis), recent form (overall AND home/away separately), expected tactics/style, key players (2-3 per team: name & role), contextual factors (motivation, fatigue, weather, tension), and basic league averages.
           Provide ONLY a single, valid JSON object as the ENTIRE response. NO other text, markdown (###), or formatting (\`\`\`).
           DO NOT include xG, PP%, Pace, referee, corner/card stats.
@@ -197,7 +194,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName) {
         if (playerNames.length > 0) {
             detailedPlayerData = await _fetchPlayerData(playerNames);
         }
-
+        
         finalData = { ...geminiData };
         finalData.h2h_tactical_analysis = finalData.h2h_tactical_analysis || "N/A";
         finalData.absentee_impact_analysis = finalData.absentee_impact_analysis || "Nincs jelentős hatás.";
@@ -279,10 +276,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName) {
     }
 }
 
-// ... a fájl többi része változatlan ...
-// A getOptimizedOddsData, getOddsData, findMainTotalsLine, 
-// fetchOpeningOddsForAllSports, _getFixturesFromEspn függvények maradnak.
-
 export async function getOptimizedOddsData(homeTeam, awayTeam, sport, sportConfig, openingOdds) {
     if (!ODDS_API_KEY) {
         console.log("Nincs ODDS_API_KEY beállítva.");
@@ -348,7 +341,6 @@ export async function getOptimizedOddsData(homeTeam, awayTeam, sport, sportConfi
 
     return liveOddsData;
 }
-
 
 async function getOddsData(homeTeam, awayTeam, sport, sportConfig) {
     if (!ODDS_API_KEY) { console.error("getOddsData: Nincs ODDS_API_KEY."); return null; }
