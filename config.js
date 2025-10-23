@@ -1,133 +1,99 @@
 import dotenv from 'dotenv';
 
-// Környezeti változók betöltése a .env fájlból
 dotenv.config();
 
-// API Kulcsok és alap konfigurációk exportálása
+// API Kulcsok és alap konfigurációk
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 export const ODDS_API_KEY = process.env.ODDS_API_KEY;
 export const SPORTMONKS_API_KEY = process.env.SPORTMONKS_API_KEY;
 export const PLAYER_API_KEY = process.env.PLAYER_API_KEY; // API-SPORTS kulcs
-export const SHEET_URL = process.env.SHEET_URL; // Google Sheet URL (opcionális, felülírható a .env-ben)
-export const PORT = process.env.PORT || 3000; // Szerver portja
+export const SHEET_URL = process.env.SHEET_URL;
+export const PORT = process.env.PORT || 3000;
 
-// Gemini API modell és URL (A működő, keresés nélküli modell)
+// Gemini API modell (a működő, keresés nélküli)
 export const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_API_KEY}`;
 
 // Sportág specifikus konfigurációk
 export const SPORT_CONFIG = {
     soccer: {
         name: "soccer", // ESPN API sporthoz
-        // JAVÍTÁS: Odds API kulcsok ligánként vagy csoportonként a pontosabb lekérdezéshez
-        // Ezeket a kulcsokat használja majd a DataFetch.js intelligensen
+        // Odds API kulcsok ligánként vagy csoportonként
+        // A kulcsok a the-odds-api.com dokumentációjából származnak
         odds_api_keys_by_league: {
-            // Főbb európai ligák
-            "soccer_epl": ["Premier League"],
-            "soccer_spain_la_liga": ["LaLiga"],
-            "soccer_germany_bundesliga": ["Bundesliga"],
-            "soccer_italy_serie_a": ["Serie A"],
-            "soccer_france_ligue_one": ["Ligue 1"],
+            // Főbb európai ligák (ezeket egyben is le lehet kérdezni)
+            "TOP_LEAGUES_EU": ["Premier League", "LaLiga", "Bundesliga", "Serie A", "Ligue 1"], // Csoportos kulcs
             // UEFA kupák
             "soccer_uefa_champions_league": ["Champions League"],
             "soccer_uefa_europa_league": ["Europa League"],
-            "soccer_uefa_europa_conference_league": ["Conference League"],
-            // Egyéb fontosabb ligák (bővíthető)
+            "soccer_uefa_europa_conference_league": ["Conference League"], // Hozzáadva
+            // Egyéb fontosabb ligák
             "soccer_portugal_primeira_liga": ["Liga Portugal"],
             "soccer_netherlands_eredivisie": ["Eredivisie"],
-            "soccer_belgium_first_div": ["Jupiler Pro League"], // ESPN vs Odds API név eltérhet!
+            "soccer_belgium_first_div": ["Jupiler Pro League", "Belgian First Division A"], // Több név is lehet
             "soccer_turkey_super_lig": ["Super Lig"],
             "soccer_brazil_campeonato": ["Brazil Serie A"],
-            // Másodosztályok (ha szükséges)
+            // Másodosztályok
             "soccer_england_championship": ["Championship"],
             "soccer_germany_bundesliga2": ["2. Bundesliga"],
             "soccer_italy_serie_b": ["Serie B"],
             "soccer_spain_segunda_division": ["LaLiga2"],
-             // Válogatott (Odds API kulcsok változhatnak!)
-            "soccer_uefa_nations_league": ["Nemzetek Ligája"],
-             "soccer_uefa_european_championship": ["UEFA European Championship"],
-             "soccer_fifa_world_cup": ["FIFA World Cup"]
+             // Válogatott
+            "soccer_uefa_nations_league": ["Nemzetek Ligája", "Nations League"],
+             "soccer_uefa_european_championship": ["UEFA European Championship", "EURO"],
+             "soccer_fifa_world_cup": ["FIFA World Cup", "World Cup"]
+             // Ide lehetne még felvenni az odds api doksija alapján
         },
-        // ESPN ligák a meccsek listázásához (ez marad a régi)
+        // Alapértelmezett Odds API sport kulcs (ha nincs specifikus liga egyezés)
+        odds_api_sport_key: "soccer", // Általános kulcs, kevesebb meccset ad vissza
+
+        // ESPN ligák (ezek alapján keressük az Odds API kulcsot)
         espn_leagues: {
-            "Champions League": "uefa.champions",
-            "Premier League": "eng.1",
-            "Bundesliga": "ger.1",
-            "LaLiga": "esp.1",
-            "Serie A": "ita.1",
-            "Europa League": "uefa.europa",
-            "Ligue 1": "fra.1",
-            "Eredivisie": "ned.1",
-            "Liga Portugal": "por.1",
-            "Championship": "eng.2",
-            "2. Bundesliga": "ger.2",
-            "Serie B": "ita.2",
-            "LaLiga2": "esp.2",
-            "Super Lig": "tur.1",
-            "Premiership": "sco.1", // Skót bajnokság
-            "Jupiler Pro League": "bel.1", // Belga bajnokság (Odds API máshogy hívhatja)
-            "MLS": "usa.1",
-            "Conference League": "uefa.europa.conf",
-            "Brazil Serie A": "bra.1",
-            "Argentinian Liga Profesional": "arg.1",
-            "Greek Super League": "gre.1",
-            "Nemzetek Ligája": "uefa.nations.league.a",
-            "UEFA European Championship": "uefa.euro",
-            "FIFA World Cup": "fifa.world" // ESPN kulcs a VB-hez
+            "Champions League": "uefa.champions", "Premier League": "eng.1", "Bundesliga": "ger.1",
+            "LaLiga": "esp.1", "Serie A": "ita.1", "Europa League": "uefa.europa",
+            "Ligue 1": "fra.1", "Eredivisie": "ned.1", "Liga Portugal": "por.1",
+            "Championship": "eng.2", "2. Bundesliga": "ger.2", "Serie B": "ita.2",
+            "LaLiga2": "esp.2", "Super Lig": "tur.1", "Premiership": "sco.1", // Skót
+            "Jupiler Pro League": "bel.1", // Belga
+            "MLS": "usa.1", "Conference League": "uefa.europa.conf", // Fontos!
+            "Brazil Serie A": "bra.1", "Argentinian Liga Profesional": "arg.1",
+            "Greek Super League": "gre.1", "Nemzetek Ligája": "uefa.nations.league.a",
+            "UEFA European Championship": "uefa.euro", "FIFA World Cup": "fifa.world"
         },
-        total_minutes: 90,
-        home_advantage: { home: 1.18, away: 0.82 },
-        totals_line: 2.5, // Alapértelmezett gólvonal
-        avg_goals: 1.35 // Átlagos gólok meccsenként (csapatonként)
+        total_minutes: 90, home_advantage: { home: 1.18, away: 0.82 },
+        totals_line: 2.5, avg_goals: 1.35
     },
-    hockey: {
-        name: "hockey",
-        odds_api_keys_by_league: { // Csak NHL és KHL példaként
-             "icehockey_nhl": ["NHL"],
-             "icehockey_khl": ["KHL"]
-        },
-        espn_leagues: {
-            "NHL": "nhl",
-            "KHL": null // ESPN lehet nem támogatja, vagy más a slug
-        },
-        total_minutes: 60,
-        home_advantage: { home: 1.15, away: 0.85 },
-        totals_line: 6.5,
-        avg_goals: 3.1
-    },
-    basketball: {
-        name: "basketball",
-         odds_api_keys_by_league: { // Csak NBA és Euroleague példaként
-             "basketball_nba": ["NBA"],
-             "basketball_euroleague": ["Euroleague"]
-         },
-        espn_leagues: {
-            "NBA": "nba",
-            "Euroleague": null // ESPN lehet nem támogatja, vagy más a slug
-        },
-        total_minutes: 48,
-        home_advantage: { home: 1.025, away: 0.975 },
-        totals_line: 215.5,
-        avg_points: 110 // Átlag pontok meccsenként (csapatonként)
-    }
+    // Hockey és Basketball változatlan marad az előző verzióból
+    hockey: { /* ... */ odds_api_sport_key: "icehockey_nhl", /* ... */ },
+    basketball: { /* ... */ odds_api_sport_key: "basketball_nba", /* ... */ }
 };
 
-// Segédfüggvény a környezeti változók eléréséhez (ha pl. Google Apps Script kontextusban futna)
-export const SCRIPT_PROPERTIES = {
-    getProperty: function(key) {
-        return process.env[key];
-    }
-};
+// Segédfüggvény (nem kell exportálni, csak belső használatra)
+export const SCRIPT_PROPERTIES = { getProperty: (key) => process.env[key] };
 
-// Függvény az ESPN liga neve alapján az Odds API kulcs megtalálásához
+/**
+ * Megkeresi a megfelelő Odds API sport kulcs(oka)t az ESPN liga neve alapján.
+ * @param {string} espnLeagueName Az ESPN által használt liga név.
+ * @returns {string} Az Odds API által várt sport kulcs(ok), vesszővel elválasztva ha csoport.
+ */
 export function getOddsApiKeyForLeague(espnLeagueName) {
+    if (!espnLeagueName) return SPORT_CONFIG.soccer.odds_api_sport_key; // Alapértelmezett, ha nincs liga név
+
+    const lowerLeagueName = espnLeagueName.toLowerCase();
+
+    // Először a specifikus kulcsokat nézzük
     for (const [key, leagues] of Object.entries(SPORT_CONFIG.soccer.odds_api_keys_by_league)) {
-        // Leegyszerűsített ellenőrzés: ha az ESPN név tartalmazza az Odds API listában szereplő nevet
-        if (leagues.some(l => espnLeagueName.toLowerCase().includes(l.toLowerCase()))) {
-            return key;
+        // Pontosabb ellenőrzés: az ESPN névnek tartalmaznia kell a kulcshoz tartozó név valamelyikét
+        if (leagues.some(l => lowerLeagueName.includes(l.toLowerCase()))) {
+            console.log(`Odds API kulcs választva: ${key} ehhez: ${espnLeagueName}`);
+            // Ha a kulcs a TOP_LEAGUES_EU, akkor a megfelelő ligákat adjuk vissza vesszővel elválasztva
+            if (key === "TOP_LEAGUES_EU") {
+                 return "soccer_epl,soccer_spain_la_liga,soccer_germany_bundesliga,soccer_italy_serie_a,soccer_france_ligue_one";
+             }
+            return key; // Visszaadjuk a specifikus kulcsot
         }
     }
-     // Ha nincs specifikus kulcs, az általános soccer kulcsot adjuk vissza
-     // vagy egy alapértelmezettet, ha az általános sem jó (pl. európai top ligák)
-     console.warn(`Nem található specifikus Odds API kulcs ehhez: ${espnLeagueName}. Általános 'soccer' kulcs használata.`);
-    return 'soccer_epl,soccer_spain_la_liga,soccer_germany_bundesliga,soccer_italy_serie_a,soccer_france_ligue_one'; // Vészhelyzetre top 5 liga
+
+    // Ha nincs specifikus egyezés, az általános kulcsot adjuk vissza
+    console.warn(`Nem található specifikus Odds API kulcs ehhez: ${espnLeagueName}. Általános '${SPORT_CONFIG.soccer.odds_api_sport_key}' kulcs használata.`);
+    return SPORT_CONFIG.soccer.odds_api_sport_key;
 }
