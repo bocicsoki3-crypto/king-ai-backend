@@ -133,7 +133,7 @@ async function _fetchPlayerData(playerNames) {
  * @param {string} prompt A Gemini-nak szánt prompt.
  * @returns {Promise<string|null>} A Gemini válasza JSON stringként vagy null hiba esetén. [cite: 1617]
  */
-async function _callGeminiWithSearch(prompt) {
+export async function _callGeminiWithSearch(prompt) {
     let authToken;
     try {
         // Hitelesítés a szolgáltatási fiókkal (google-credentials.json) [cite: 1617]
