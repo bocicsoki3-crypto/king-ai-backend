@@ -12,7 +12,7 @@ export const SHEET_URL = process.env.SHEET_URL; // Google Sheet URL (opcionális
 export const PORT = process.env.PORT || 3000; // Szerver portja
 
 // JAVÍTÁS: Átállás a keresést támogató gemini-1.5-flash-latest modellre
-export const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=' + GEMINI_API_KEY;
+export const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
 
 // Sportág specifikus konfigurációk
 export const SPORT_CONFIG = {
