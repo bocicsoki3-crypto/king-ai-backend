@@ -1,26 +1,22 @@
 import dotenv from 'dotenv';
 
-// Beolvassa a .env fájl tartalmát a process.env objektumba
 dotenv.config();
 
-// API Kulcsok és egyéb konfigurációk exportálása
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 export const ODDS_API_KEY = process.env.ODDS_API_KEY;
 export const SPORTMONKS_API_KEY = process.env.SPORTMONKS_API_KEY;
-export const PLAYER_API_KEY = process.env.PLAYER_API_KEY; // Még ha nincs is, definiáljuk
+export const PLAYER_API_KEY = process.env.PLAYER_API_KEY;
 export const SHEET_URL = process.env.SHEET_URL;
-export const PORT = process.env.PORT || 3000; // Alapértelmezett port 3000, ha nincs megadva
+export const PORT = process.env.PORT || 3000;
 
-// === JAVÍTÁS: Visszaállás arra a modellre, amihez a kulcsod bizonyítottan hozzáfér ===
 export const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_API_KEY}`;
-// =================================================================================
 
-// Sportág specifikus konfigurációk
 export const SPORT_CONFIG = {
     soccer: {
-        name: "soccer", // ESPN API-hoz
-        odds_api_sport_key: "soccer_brazil_campeonato", 
-        espn_leagues: { // ESPN ligák a meccsek lekéréséhez
+        name: "soccer",
+        // JAVÍTÁS: Az összes fontos liga megadása az Odds API-nak a megbízható keresésért
+        odds_api_leagues: "soccer_uefa_champions_league,soccer_uefa_europa_league,soccer_england_premier_league,soccer_spain_la_liga,soccer_germany_bundesliga,soccer_italy_serie_a,soccer_france_ligue_one,soccer_portugal_primeira_liga,soccer_netherlands_eredivisie,soccer_belgium_first_div,soccer_turkey_super_lig,soccer_uefa_europa_conference_league,soccer_brazil_campeonato",
+        espn_leagues: {
             "Champions League": "uefa.champions",
             "Premier League": "eng.1",
             "Bundesliga": "ger.1",
@@ -51,7 +47,7 @@ export const SPORT_CONFIG = {
     },
     hockey: {
         name: "hockey",
-        odds_api_sport_key: "icehockey_nhl", 
+        odds_api_leagues: "icehockey_nhl,icehockey_khl", 
         espn_leagues: {
             "NHL": "nhl"
         },
@@ -62,7 +58,7 @@ export const SPORT_CONFIG = {
     },
     basketball: {
         name: "basketball",
-        odds_api_sport_key: "basketball_nba",
+        odds_api_leagues: "basketball_nba,basketball_euroleague",
         espn_leagues: {
             "NBA": "nba"
         },

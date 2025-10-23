@@ -9,13 +9,25 @@ const sportmonksIdCache = new NodeCache({ stdTTL: 0 });
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
 * JAVÍTÁS: A SportMonks ID keresés lecserélve egy robusztus,
 * dinamikus kereső és név-összevető logikára.
-* A Player API és a Gemini beállítások változatlanok.
+* A Player API hívás pedig a valós API-SPORTS URL-re cserélve.
 **************************************************************/
 
 // --- BELSŐ SEGÉDFÜGGVÉNYEK AZ API-KHOZ ---
 
 async function findSportMonksTeamId(teamName) {
-    const cacheKey = `sportmonks_id_${teamName.toLowerCase().replace(/\s+/g, '')}`;
+    // JAVÍTÁS: Manuális név-hozzárendelési térkép a leggyakoribb problémás csapatokhoz
+    const TEAM_NAME_MAP = {
+        'genk': 'KRC Genk',
+        'betis': 'Real Betis',
+        'red star': 'Red Star Belgrade',
+        'sparta': 'Sparta Prague',
+        // Ide jöhetnek a jövőben további problémás nevek
+    };
+
+    const lowerTeamName = teamName.toLowerCase();
+    const searchName = TEAM_NAME_MAP[lowerTeamName] || teamName; // Ha van a térképben, azt használjuk, ha nincs, az eredetit
+
+    const cacheKey = `sportmonks_id_${searchName.toLowerCase().replace(/\s+/g, '')}`;
     const cachedId = sportmonksIdCache.get(cacheKey);
     if (cachedId) {
         return cachedId === 'not_found' ? null : cachedId;
@@ -26,33 +38,29 @@ async function findSportMonksTeamId(teamName) {
     }
 
     try {
-        const url = `https://api.sportmonks.com/v3/core/teams/search/${encodeURIComponent(teamName)}?api_token=${SPORTMONKS_API_KEY}`;
+        const url = `https://api.sportmonks.com/v3/core/teams/search/${encodeURIComponent(searchName)}?api_token=${SPORTMONKS_API_KEY}`;
         const response = await axios.get(url);
 
         if (response.data && response.data.data && response.data.data.length > 0) {
             // JAVÍTÁS: Intelligens keresés a találati listában a legjobb egyezésért
-            const lowerTeamName = teamName.toLowerCase();
-            let bestMatch = response.data.data[0]; // Alapból az elsőt vesszük
-            
-            // Ha több találat van, keressük a legpontosabbat
+            let bestMatch = response.data.data[0];
             if (response.data.data.length > 1) {
                 const perfectMatch = response.data.data.find(team => team.name.toLowerCase() === lowerTeamName);
                 if (perfectMatch) {
                     bestMatch = perfectMatch;
                 }
             }
-
             const teamId = bestMatch.id;
             console.log(`SportMonks ID találat: "${teamName}" -> "${bestMatch.name}" -> ${teamId}`);
             sportmonksIdCache.set(cacheKey, teamId);
             return teamId;
         } else {
-            console.warn(`SportMonks: Nem található ID a következő névvel: "${teamName}"`);
+            console.warn(`SportMonks: Nem található ID a következő névvel: "${searchName}" (eredeti: "${teamName}")`);
             sportmonksIdCache.set(cacheKey, 'not_found');
             return null;
         }
     } catch (error) {
-        console.error(`Hiba a SportMonks csapat ID lekérésekor (${teamName}): ${error.message}`);
+        console.error(`Hiba a SportMonks csapat ID lekérésekor (${searchName}): ${error.message}`);
         return null;
     }
 }
@@ -476,14 +484,14 @@ export async function getOptimizedOddsData(homeTeam, awayTeam, sport, sportConfi
 
 async function getOddsData(homeTeam, awayTeam, sport, sportConfig) {
     if (!ODDS_API_KEY) { console.error("getOddsData: Nincs ODDS_API_KEY."); return null; }
-    if (!sportConfig || (!sportConfig.odds_api_sport_key && !sportConfig.odds_api_key)) { console.error(`getOddsData: Hiányzó konfig/kulcs ${sport}-hoz.`); return null; }
-    const oddsApiKey = sportConfig.odds_api_sport_key || sportConfig.odds_api_key;
-    const url = `https://api.the-odds-api.com/v4/sports/${oddsApiKey}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals&bookmakers=pinnacle`;
+    if (!sportConfig || !sportConfig.odds_api_leagues) { console.error(`getOddsData: Hiányzó 'odds_api_leagues' konfig ${sport}-hoz.`); return null; }
+    const oddsLeagues = sportConfig.odds_api_leagues;
+    const url = `https://api.the-odds-api.com/v4/sports/${oddsLeagues}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals&bookmakers=pinnacle`;
 
     try {
         const response = await axios.get(url, { validateStatus: () => true });
         if (response.status !== 200) {
-            console.error(`Odds API hiba (GetOne - ${sport} - ${oddsApiKey}): ${response.status} ${JSON.stringify(response.data)?.substring(0, 500)}`);
+            console.error(`Odds API hiba (GetOne - ${sport} - ${oddsLeagues}): ${response.status} ${JSON.stringify(response.data)?.substring(0, 500)}`);
             return null;
         }
         const data = response.data;
@@ -503,7 +511,7 @@ async function getOddsData(homeTeam, awayTeam, sport, sportConfig) {
              return false;
         });
 
-        if (!match) { console.warn(`Odds API: Nem található meccs: ${homeTeam} vs ${awayTeam} (Kulcs: ${oddsApiKey})`); return null; }
+        if (!match) { console.warn(`Odds API: Nem található meccs: ${homeTeam} vs ${awayTeam} (Ligák: ${oddsLeagues})`); return null; }
         const bookmaker = match.bookmakers?.find(b => b?.key?.toLowerCase() === 'pinnacle');
         if (!bookmaker) { console.warn(`Odds API: Nincs 'pinnacle' odds: ${homeTeam} vs ${awayTeam}`); return null; }
 
@@ -564,12 +572,11 @@ export async function fetchOpeningOddsForAllSports() {
     for (const sport of Object.keys(SPORT_CONFIG)) {
         console.log(`Nyitó szorzók lekérése: ${sport}...`);
         const sportConfig = SPORT_CONFIG[sport];
-        const oddsApiKey = sportConfig?.odds_api_sport_key;
-        if (!ODDS_API_KEY || !oddsApiKey) {
-            console.warn(`ODDS_API_KEY vagy odds_api_sport_key hiányzik ${sport}-hoz.`);
+        if (!ODDS_API_KEY || !sportConfig.odds_api_leagues) {
+            console.warn(`ODDS_API_KEY vagy odds_api_leagues hiányzik ${sport}-hoz.`);
             continue;
         }
-        const url = `https://api.the-odds-api.com/v4/sports/${oddsApiKey}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals&bookmakers=pinnacle`;
+        const url = `https://api.the-odds-api.com/v4/sports/${sportConfig.odds_api_leagues}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals&bookmakers=pinnacle`;
 
         try {
             const response = await axios.get(url, { timeout: 15000, validateStatus: () => true });
