@@ -14,7 +14,7 @@ export const PORT = process.env.PORT || 3000;
 // Ezeket az értékeket a .env fájlban kell megadnod!
 export const PROJECT_ID = process.env.PROJECT_ID || 'sportelemzoai'; // A Google Cloud Projekt Azonosítód
 export const LOCATION = process.env.LOCATION || 'us-central1'; // Alapértelmezett régió
-export const GEMINI_MODEL_ID = 'gemini-1.0-pro-001'; // Keresős modell
+export const GEMINI_MODEL_ID = 'gemini-1.5-pro-preview-0514'; // Keresős modell
 
 // A régi GEMINI_API_URL sort töröltük, mivel a DataFetch.js mostantól a google-auth-library-t használja
 
