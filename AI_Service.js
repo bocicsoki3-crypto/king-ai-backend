@@ -1,4 +1,4 @@
-import { _callGemini } from './DataFetch.js';
+import { _callGemini, _getFixturesFromEspn } from './DataFetch.js';
 
 // --- PROMPT SABLONOK (STRUKTÚRA-KÉNYSZERÍTŐVEL ÉS JAVÍTOTT LOGIKÁVAL) ---
 
@@ -106,11 +106,9 @@ async function getAndParse(prompt, data, key) {
     }
 }
 
-// === EZ A HIÁNYZÓ FÜGGVÉNY VISSZAKERÜLT ==================================
 export async function _getContradictionAnalysis(context, probabilities, odds) { 
     return "Ellentmondás-analízis kihagyva.";
 }
-// =======================================================================
 
 export async function getAiKeyQuestions(richContext) { return await getAndParse(AI_KEY_QUESTIONS_PROMPT, { richContext }, "key_questions"); }
 
@@ -219,8 +217,31 @@ export async function getMasterRecommendation(valueBets, sim, modelConfidence, e
     }
 }
 
-// --- FŐ EXPORT (VISSZAÁLLÍTVA) ---
+export async function getChatResponse(context, history, question) {
+    if (!context || !question) return { error: "Hiányzó 'context' vagy 'question'." };
+    try {
+        const historyString = (history || []).map(msg => `${msg.role === 'user' ? 'Felh' : 'AI'}: ${msg.parts?.[0]?.text || ''}`).join('\n');
+        const prompt = `You are an elite sports analyst AI assistant. Context: ${context}. History: ${historyString}. Current User Question: ${question}. Answer concisely and accurately in Hungarian based ONLY on the Analysis Context/History. If the answer isn't there, say so politely.`;
+        const jsonAnswer = await _callGemini(prompt);
+        let answerText = jsonAnswer;
+        try {
+            const parsed = JSON.parse(jsonAnswer);
+            answerText = parsed.answer || parsed.response || Object.values(parsed).find(v => typeof v === 'string') || jsonAnswer;
+        } catch (e) {
+            answerText = jsonAnswer.replace(/```json\n?/, '').replace(/```\n?/, '').trim();
+        }
+         return answerText ? { answer: answerText.trim() } : { error: "Az AI nem tudott válaszolni." };
+    } catch (e) {
+        console.error(`Chat hiba: ${e.message}`);
+        return { error: `Chat AI hiba: ${e.message}` };
+    }
+}
+
+
+// --- FŐ EXPORT (VÉGLEGESEN JAVÍTVA ÉS VISSZAÁLLÍTVA) ---
 export default {
+    getChatResponse,
+    _getContradictionAnalysis,
     getAiKeyQuestions,
     getTacticalBriefing,
     getPropheticScenario,
@@ -237,5 +258,5 @@ export default {
     getHockeyGoalsOUAnalysis,
     getHockeyWinnerAnalysis,
     getBasketballPointsOUAnalysis,
-    _getContradictionAnalysis // Visszatéve a kompatibilitás miatt
+    getFixtures: _getFixturesFromEspn
 };
