@@ -2,7 +2,7 @@
  * AI_Service.js (Node.js Verzió)
  * Felelős az AI modellel való kommunikációért (a DataFetch.js-en keresztül),
  * a promptok összeállításáért és a válaszok feldolgozásáért az elemzési folyamatban.
- * VÉGLEGES JAVÍTÁS: STRATEGIC_CLOSING_PROMPT hozzáadva.
+ * VÉGLEGES JAVÍTÁS: getChatResponse exportálása javítva.
  */
 
 // Importáljuk a szükséges függvényeket és konfigurációt
@@ -16,7 +16,6 @@ import { saveToSheet } from './SheetService.js';
 import { SPORT_CONFIG } from './config.js';
 
 // --- PROMPT SABLONOK ---
-
 const MASTER_AI_PROMPT_TEMPLATE = `
 CRITICAL TASK: You are the Head Analyst, the final decision-maker. Your task is to deeply analyze ALL provided reports and determine the SINGLE most compelling betting recommendation based on the holistic synthesis of the narrative and data. **You MUST provide a concrete betting recommendation unless there are EXTREME contradictions AND very low confidence across the board.** Avoid "Nincs fogadás" if possible, instead select the relatively best option and reflect uncertainty in the confidence score. CRITICAL INPUTS (Synthesize these): 1. Value Bets Found: {valueBetsJson} (Consider top value, weigh against risks). 2. Simulation Probabilities: H:{sim_pHome}%, D:{sim_pDraw}%, A:{sim_pAway}%. O/U {sim_mainTotalsLine}: O:{sim_pOver}%. (Baseline). 3. Model Confidence (Stats): {modelConfidence}/10 (Data consistency). 4. Expert Confidence (Context): "{expertConfidence}" (Crucial context check - score & reasoning). 5. Risk Assessment: "{riskAssessment}" (MAJOR FOCUS - warnings, contradictions?). 6. Specialist Conclusions: "{microSummary}" (Alignment or disagreement?). 7. General Analysis Narrative: "{generalAnalysis}" (The overall story). 8. Strategic Closing Thoughts: "{strategicClosingThoughts}" (Highlights key angles & risks). YOUR DECISION PROCESS (Narrative Synthesis - PRIORITIZE A TIP): - READ and UNDERSTAND all reports. What is the dominant narrative? - Identify the betting angle most strongly supported by the *convergence* of different analytical perspectives (stats + narrative + risk + specialists). - **If a Value Bet exists:** Is it reasonably supported by the narrative (Expert Confidence > 4.5, Risk Assessment doesn't have critical red flags directly against it)? If yes, lean towards this Value Bet. - **If no compelling Value Bet (or it's too risky):** Identify the outcome most strongly supported by the *combined narrative and statistical evidence* (General Analysis, Strategic Thoughts, high Expert/Model Confidence). This might be the highest probability outcome if confidence is high and risks low, OR it might be an angle highlighted by specialists IF their confidence is high and it aligns with the general narrative. - **Select the Relatively Best Option:** Even if confidence isn't perfect, choose the single market that emerges as the most logical conclusion from the synthesis. - **"Nincs fogadás" is the LAST RESORT:** Only recommend this if there are *multiple, strong, direct contradictions* between key reports (e.g., market moves strongly against ALL indicators), if confidence levels (Model AND Expert) are very low (< 4.5), OR if the reports paint an extremely confusing/contradictory picture. - **Final Confidence (1.0-10.0):** This MUST reflect your synthesized confidence in the chosen bet. If you selected a tip despite some moderate risks or lower confidence scores, the final score should reflect that (e.g., 4.5-6.0). High alignment and low risk warrant higher scores (7.0+). - **Reasoning:** Explain *why this specific bet* is the most compelling choice based on the *synthesis* and what the confidence score implies about its likelihood/risk. If recommending "No Bet", clearly state the extreme contradictions/risks that force this decision. OUTPUT FORMAT: Return ONLY a single, valid JSON object. NO other text or markdown. {"recommended_bet": "<The SINGLE most compelling market (e.g., 'Hazai győzelem', 'Over 2.5', 'Monaco -1.5 AH') OR (rarely) 'Nincs fogadás'>", "final_confidence": <Number between 1.0-10.0 (one decimal) based on synthesis>, "brief_reasoning": "<SINGLE concise Hungarian sentence explaining the CORE reason for the choice based on SYNTHESIS, reflecting the confidence level. e.g., 'A narratíva és a statisztika egyaránt az Over 2.5 felé mutat, a 6.5/10 bizalom mérsékelt kockázatot jelez.' OR 'Extrém ellentmondások és általánosan alacsony bizalom mellett a 'Nincs fogadás' javasolt.'>"}
 `;
@@ -53,21 +52,14 @@ const HOCKEY_WINNER_PROMPT = `You are an Ice Hockey Match Winner (including OT/S
 
 const BASKETBALL_POINTS_OU_PROMPT = `You are a Basketball Over/Under Total Points specialist analyst. Analyze the potential for total points scored, focusing on pace, offensive/defensive efficiency, and key player availability, based ONLY on the data provided. DATA: - Main Market Line: {line} points - Simulation Probability (Over {line}): {sim_pOver}% - Expected Points (Simulation): Home {sim_mu_h} - Away {sim_mu_a} (Total: {sim_mu_sum}) - Pace: Home: {pace_home}, Away: {pace_away}. (Consider if the pace is likely high or low). - Offensive/Defensive Ratings (if available): Home Off: {off_rtg_home}, Def: {def_rtg_home}. Away Off: {off_rtg_away}, Def: {def_rtg_away} - Key Four Factors Mismatches (Focus on eFG%, TOV%, OREB%, FTR): Where are the biggest mismatches favoring offense or potentially hindering it? - Home FF: {ff_home_json} - Away FF: {ff_away_json} - Key Offensive Player News: Home: {news_home_score}, Away: {news_away_score} STRICT RULES: - Provide a concise, one-paragraph analysis in Hungarian focusing ONLY on the Over/Under {line} points market. - You MUST highlight your final conclusion (e.g., "**Over {line} pont várható**" or "**Under {line} pont a valószínűbb**") with **asterisks**. - You MUST also highlight the 1-2 most important supporting data points or reasons (e.g., "**magas várható tempó**", "**mindkét csapat hatékony támadójátéka**", "**kulcsfontosságú pontszerző hiánya**", "**erős védekezések dominanciája várható**") with **asterisks**. Use asterisks sparingly otherwise. - Conclude the entire response with your confidence level on a new line: "Bizalom: [Alacsony/Közepes/Magas]". Synthesize the data. Pace, offensive ratings vs defensive ratings, and the potential impact of missing key scorers are crucial factors.`;
 
-// === JAVÍTÁS: HIÁNYZÓ PROMPT HOZZÁADVA ===
 const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst crafting the "Stratégiai Zárógondolatok". Provide actionable insights by synthesizing all data (specialists included). Focus on promising opportunities AND significant risks. CRITICAL RULE: MUST highlight key arguments, potential markets, team/player names, major risks with **asterisks** (judiciously). STRICT RULES: Hungarian only. Start EXACTLY with "### Stratégiai Zárógondolatok". Write 2-3 paragraphs (no bullets). DO NOT give a single "best bet"; discuss angles & risks. DATA: Scenario: "{propheticScenario}". Stats: H:{sim_pHome}%, D:{sim_pDraw}%, A:{sim_pAway}%. O/U {sim_mainTotalsLine}: O:{sim_pOver}%. Market: "{marketIntel}". Micromodels: {microSummaryJson}. Context: {richContext}. Risk Assessment: "{riskAssessment}". TASK: 1. Summarize likely match flow/narrative based on Scenario and Tactical Briefing. 2. Discuss key findings from **micromodels** (confirmation/contradiction/confidence levels). 3. Identify 1-2 promising betting angles suggested by the synthesis (consider Value Bets, specialist confidence, alignment). 4. Point out the **biggest risks or uncertainties** identified in the Risk Assessment or context. Provide balanced insights for strategic decision-making.`;
-// ===========================================
+
 
 // --- HELPER a promptok kitöltéséhez ---
-/**
- * Helper to replace placeholders in a prompt template.
- * Handles missing data gracefully by replacing with "N/A".
- * @param {string} template The prompt template string.
- * @param {object} data The data object containing values for placeholders.
- * @returns {string} The filled prompt string.
- */
 function fillPromptTemplate(template, data) {
     if (!template || typeof template !== 'string') return ''; // Védelmi ellenőrzés
-    // Regex a placeholderek megtalálására: {kulcs}
+    // Regex a placeholderek megtalálására: {kulcs} vagy {obj.kulcs} -> {\w+(\.\w+)?}
+    // Módosítva, hogy csak _ notation-t kezeljen: {\w+(_\w+)*}
     return template.replace(/\{([\w_]+)\}/g, (match, key) => {
         let value = data;
         try {
@@ -91,8 +83,12 @@ function fillPromptTemplate(template, data) {
                      // Ha így sem találtuk, megnézzük, json stringgé kell-e alakítani
                     if (key.endsWith('Json')) {
                         const baseKey = key.replace('Json', '');
-                        if (data && data[baseKey] !== undefined) {
+                        // Módosítás: Ellenőrizzük, hogy data[baseKey] létezik-e, mielőtt stringify-olnánk
+                        if (data && data.hasOwnProperty(baseKey) && data[baseKey] !== undefined) {
                             try { return JSON.stringify(data[baseKey]); } catch (e) { return '{}'; }
+                        } else {
+                            // Ha a baseKey nem létezik, akkor is adjunk vissza üres objektumot stringként
+                            return '{}';
                         }
                     }
                     value = null; // Ha sehol nem található, null lesz
@@ -101,10 +97,15 @@ function fillPromptTemplate(template, data) {
 
             // Érték formázása (ha szám)
             if (typeof value === 'number' && !isNaN(value)) {
-                 if (key.startsWith('sim_p') || key.startsWith('modelConfidence') ) return value.toFixed(1); // Valószínűségek 1 tizedesre
-                 if (key.startsWith('mu_') || key.startsWith('sim_mu_')) return value.toFixed(2); // xG 2 tizedesre
-                 // Egyéb számok változatlanul
-                 return value;
+                 // Egyszerűsített formázás
+                 if (key.startsWith('sim_p') || key.startsWith('modelConfidence') || key.endsWith('_svp') || key.endsWith('_pct')) return value.toFixed(1); // Valószínűségek, konfidencia, save%, pp/pk%
+                 if (key.startsWith('mu_') || key.startsWith('sim_mu_')) return value.toFixed(2); // xG, várható gólok/pontok
+                 if (key.startsWith('pace_') || key.startsWith('off_rtg_') || key.startsWith('def_rtg_')) return value.toFixed(1); // Kosár statok
+                 if (key.includes('_cor_') || key.includes('_cards') || key.endsWith('_advantage')) return value.toFixed(1); // Szöglet, lap, előny
+                 // Fő vonal (lehet .5-ös is)
+                 if (key === 'line' || key === 'likelyLine' || key === 'sim_mainTotalsLine') return value.toString(); // Stringgé alakítás, hogy a .5 megmaradjon
+
+                 return value; // Egyéb számok változatlanul
             }
 
             // Ha nem szám, akkor stringgé alakítjuk, vagy "N/A", ha null/undefined
@@ -143,7 +144,7 @@ export async function getAiKeyQuestions(richContext) {
 
 // === getTacticalBriefing ===
 export async function getTacticalBriefing(rawData, sport, home, away, duelAnalysis) {
-    console.warn("getTacticalBriefing hívva");
+    // console.warn("getTacticalBriefing hívva"); // Csökkentett log
     if (!rawData?.tactics?.home || !rawData?.tactics?.away) {
         return "A taktikai elemzéshez szükséges adatok hiányosak.";
     }
@@ -162,14 +163,14 @@ export async function getTacticalBriefing(rawData, sport, home, away, duelAnalys
 
 // === getPropheticScenario ===
 export async function getPropheticScenario(propheticTimeline, rawData, home, away, sport) {
-    console.warn("getPropheticScenario hívva");
-     if (!propheticTimeline || !Array.isArray(propheticTimeline)) { // Csak azt nézzük, hogy tömb-e
+    // console.warn("getPropheticScenario hívva"); // Csökkentett log
+     if (!propheticTimeline || !Array.isArray(propheticTimeline)) {
         console.warn("getPropheticScenario: Nincs érvényes idővonal (nem tömb), alapértelmezett forgatókönyv.");
-        return `A mérkőzés várhatóan kiegyenlített küzdelmet hoz. Óvatos kezdés után a második félidő hozhatja meg a döntést, de a **kevés gólos döntetlen** reális kimenetel.`; // Alap
+        return `A mérkőzés várhatóan kiegyenlített küzdelmet hoz. Óvatos kezdés után a második félidő hozhatja meg a döntést, de a **kevés gólos döntetlen** reális kimenetel.`;
     }
      const data = {
         sport: sport, home: home, away: away,
-        timelineJson: JSON.stringify(propheticTimeline), // Üres tömböt is átadhatunk
+        timelineJson: JSON.stringify(propheticTimeline),
         home_style: rawData?.tactics?.home?.style || 'N/A',
         away_style: rawData?.tactics?.away?.style || 'N/A',
         tension: rawData?.contextual_factors?.match_tension_index || 'N/A'
@@ -181,19 +182,18 @@ export async function getPropheticScenario(propheticTimeline, rawData, home, awa
 
 // === getExpertConfidence ===
 export async function getExpertConfidence(modelConfidence, richContext) {
-    console.warn("getExpertConfidence hívva");
+    // console.warn("getExpertConfidence hívva"); // Csökkentett log
     if (typeof modelConfidence !== 'number' || !richContext || typeof richContext !== 'string') {
         console.error("getExpertConfidence: Érvénytelen bemeneti adatok.");
         return "**1.0/10** - Hiba: Érvénytelen adatok a kontextuális bizalomhoz.";
     }
-    const data = { modelConfidence: modelConfidence, richContext: richContext }; // A fillPromptTemplate formázza
+    const data = { modelConfidence: modelConfidence, richContext: richContext };
     const prompt = fillPromptTemplate(EXPERT_CONFIDENCE_PROMPT, data);
     const response = await _callGeminiWithSearch(prompt);
     if (response && response.match(/\*\*\d+(\.\d+)?\/10\*\* - .+./)) {
         return response;
     } else {
         console.error("getExpertConfidence: Az AI válasza érvénytelen formátumú:", response);
-        // Csökkentett fallback bizalom, ha az AI nem tudja értékelni a kontextust
         const fallbackConfidence = Math.max(1.0, Math.min(10.0, modelConfidence * 0.8)).toFixed(1);
         return `**${fallbackConfidence}/10** - Figyelmeztetés: Az AI kontextus értékelése sikertelen, a modell bizalma csökkentve.`;
     }
@@ -201,14 +201,13 @@ export async function getExpertConfidence(modelConfidence, richContext) {
 
 // === getRiskAssessment ===
 export async function getRiskAssessment(sim, rawData, sport, marketIntel) {
-    console.warn("getRiskAssessment hívva");
-    // Az mu_h, mu_a nem kell a prompt kitöltéshez
+    // console.warn("getRiskAssessment hívva"); // Csökkentett log
     if (!sim || typeof sim.pHome !== 'number' || !rawData || marketIntel === undefined) {
         console.warn("getRiskAssessment: Hiányos bemeneti adatok.");
         return "A kockázatelemzéshez szükséges adatok hiányosak.";
     }
      const data = {
-        sport: sport, sim: sim, marketIntel: marketIntel || "N/A", // Biztosítjuk, hogy ne legyen undefined
+        sport: sport, sim: sim, marketIntel: marketIntel || "N/A",
         news_home: rawData?.team_news?.home || 'N/A', news_away: rawData?.team_news?.away || 'N/A',
         form_home: rawData?.form?.home_overall || 'N/A', form_away: rawData?.form?.away_overall || 'N/A',
         motiv_home: rawData?.contextual_factors?.motivation_home || 'N/A',
@@ -221,8 +220,7 @@ export async function getRiskAssessment(sim, rawData, sport, marketIntel) {
 
 // === getFinalGeneralAnalysis ===
 export async function getFinalGeneralAnalysis(sim, tacticalBriefing, propheticScenario) {
-     console.warn("getFinalGeneralAnalysis hívva");
-     // mu_h, mu_a a sim objektumból jön
+     // console.warn("getFinalGeneralAnalysis hívva"); // Csökkentett log
      if (!sim || typeof sim.pHome !== 'number' || typeof sim.mu_h_sim !== 'number' || !tacticalBriefing || !propheticScenario) {
          console.warn("getFinalGeneralAnalysis: Hiányos bemeneti adatok.");
          return "Az általános elemzéshez szükséges adatok hiányosak.";
@@ -235,14 +233,14 @@ export async function getFinalGeneralAnalysis(sim, tacticalBriefing, propheticSc
 
 // === getPlayerMarkets ===
 export async function getPlayerMarkets(keyPlayers, richContext) {
-   console.warn("getPlayerMarkets hívva");
+   // console.warn("getPlayerMarkets hívva"); // Csökkentett log
    if (!keyPlayers || (!keyPlayers.home?.length && !keyPlayers.away?.length)) {
        return "Nincsenek kiemelt kulcsjátékosok.";
    }
    if (!richContext || typeof richContext !== 'string') {
        return "A játékospiacok elemzéséhez kontextus hiányzik.";
    }
-   const data = { keyPlayers: keyPlayers, richContext: richContext }; // A fillPromptTemplate kezeli a Json-t
+   const data = { keyPlayers: keyPlayers, richContext: richContext };
    const prompt = fillPromptTemplate(PLAYER_MARKETS_PROMPT, data);
    const response = await _callGeminiWithSearch(prompt);
    return response || "Hiba történt a játékospiacok elemzése során.";
@@ -251,7 +249,7 @@ export async function getPlayerMarkets(keyPlayers, richContext) {
 // === PIAC-SPECIFIKUS AI HÍVÁSOK ===
 
 export async function getBTTSAnalysis(sim, rawData) {
-    console.warn("getBTTSAnalysis hívva");
+    // console.warn("getBTTSAnalysis hívva"); // Csökkentett log
     if (typeof sim?.pBTTS !== 'number' || typeof sim?.mu_h_sim !== 'number' || !rawData) {
         return "A BTTS elemzéshez adatok hiányosak. Bizalom: Alacsony";
     }
@@ -262,7 +260,7 @@ export async function getBTTSAnalysis(sim, rawData) {
 }
 
 export async function getSoccerGoalsOUAnalysis(sim, rawData, mainTotalsLine) {
-    console.warn("getSoccerGoalsOUAnalysis hívva");
+    // console.warn("getSoccerGoalsOUAnalysis hívva"); // Csökkentett log
     if (typeof sim?.pOver !== 'number' || typeof sim?.mu_h_sim !== 'number' || !rawData || typeof mainTotalsLine !== 'number') {
        return `A Gólok O/U ${mainTotalsLine ?? '?'} elemzéshez adatok hiányosak. Bizalom: Alacsony`;
     }
@@ -274,78 +272,98 @@ export async function getSoccerGoalsOUAnalysis(sim, rawData, mainTotalsLine) {
 }
 
 export async function getCornerAnalysis(sim, rawData) {
-    console.warn("getCornerAnalysis hívva");
+    // console.warn("getCornerAnalysis hívva"); // Csökkentett log
     if (!sim?.corners || !rawData?.advanced_stats) {
        return "A Szöglet elemzéshez adatok hiányosak. Bizalom: Alacsony";
     }
     const cornerProbs = sim.corners; const cornerKeys = Object.keys(cornerProbs).filter(k => k.startsWith('o')); const likelyLine = cornerKeys.length > 0 ? parseFloat(cornerKeys.sort((a,b)=>parseFloat(a.substring(1))-parseFloat(b.substring(1)))[Math.floor(cornerKeys.length / 2)].substring(1)) : 9.5; const overProbKey = `o${likelyLine}`; const overProb = sim.corners[overProbKey];
-    const data = { likelyLine: likelyLine.toFixed(1), sim_oProb: overProb != null ? overProb.toFixed(1) : 'N/A', adv_home_cor_for: rawData.advanced_stats?.home?.avg_corners_for_per_game?.toFixed(1) || 'N/A', adv_home_cor_ag: rawData.advanced_stats?.home?.avg_corners_against_per_game?.toFixed(1) || 'N/A', adv_away_cor_for: rawData.advanced_stats?.away?.avg_corners_for_per_game?.toFixed(1) || 'N/A', adv_away_cor_ag: rawData.advanced_stats?.away?.avg_corners_against_per_game?.toFixed(1) || 'N/A', style_home: rawData.tactics?.home?.style || 'N/A', style_away: rawData.tactics?.away?.style || 'N/A', adv_shots_sum: ((rawData.advanced_stats?.home?.shots_per_game || 0) + (rawData.advanced_stats?.away?.shots_per_game || 0)).toFixed(1) || 'N/A' };
+    const data = { likelyLine: likelyLine.toFixed(1), sim: sim, sim_oProb: overProb, // Nem kell toFixed(1) a prompt kitöltőhöz
+                   adv_home_cor_for: rawData.advanced_stats?.home?.avg_corners_for_per_game, adv_home_cor_ag: rawData.advanced_stats?.home?.avg_corners_against_per_game,
+                   adv_away_cor_for: rawData.advanced_stats?.away?.avg_corners_for_per_game, adv_away_cor_ag: rawData.advanced_stats?.away?.avg_corners_against_per_game,
+                   style_home: rawData.tactics?.home?.style, style_away: rawData.tactics?.away?.style,
+                   adv_shots_sum: ((rawData.advanced_stats?.home?.shots_per_game || 0) + (rawData.advanced_stats?.away?.shots_per_game || 0)) };
     const prompt = fillPromptTemplate(CORNER_ANALYSIS_PROMPT, data);
     const response = await _callGeminiWithSearch(prompt);
     return response || "Hiba történt a Szöglet elemzés generálása során. Bizalom: Alacsony";
 }
 
 export async function getCardAnalysis(sim, rawData) {
-    console.warn("getCardAnalysis hívva");
+    // console.warn("getCardAnalysis hívva"); // Csökkentett log
     if (!sim?.cards || !rawData?.advanced_stats || !rawData.referee) {
        return "A Lapok elemzéshez adatok hiányosak. Bizalom: Alacsony";
     }
     const cardProbs = sim.cards; const cardKeys = Object.keys(cardProbs).filter(k => k.startsWith('o')); const likelyLine = cardKeys.length > 0 ? parseFloat(cardKeys.sort((a,b)=>parseFloat(a.substring(1))-parseFloat(b.substring(1)))[Math.floor(cardKeys.length / 2)].substring(1)) : 4.5; const overProbKey = `o${likelyLine}`; const overProb = sim.cards[overProbKey];
-    const data = { likelyLine: likelyLine.toFixed(1), sim_oProb: overProb != null ? overProb.toFixed(1) : 'N/A', adv_home_cards: rawData.advanced_stats?.home?.avg_cards_per_game?.toFixed(1) || 'N/A', adv_away_cards: rawData.advanced_stats?.away?.avg_cards_per_game?.toFixed(1) || 'N/A', ref_name: rawData.referee?.name || 'N/A', ref_stats: rawData.referee?.stats || 'N/A', tension: rawData.contextual_factors?.match_tension_index || 'Alacsony', style_home: rawData.tactics?.home?.style || 'N/A', style_away: rawData.tactics?.away?.style || 'N/A' };
+    const data = { likelyLine: likelyLine.toFixed(1), sim: sim, sim_oProb: overProb,
+                   adv_home_cards: rawData.advanced_stats?.home?.avg_cards_per_game, adv_away_cards: rawData.advanced_stats?.away?.avg_cards_per_game,
+                   ref_name: rawData.referee?.name, ref_stats: rawData.referee?.stats,
+                   tension: rawData.contextual_factors?.match_tension_index,
+                   style_home: rawData.tactics?.home?.style, style_away: rawData.tactics?.away?.style };
     const prompt = fillPromptTemplate(CARD_ANALYSIS_PROMPT, data);
     const response = await _callGeminiWithSearch(prompt);
     return response || "Hiba történt a Lapok elemzés generálása során. Bizalom: Alacsony";
 }
 
 export async function getHockeyGoalsOUAnalysis(sim, rawData, mainTotalsLine) {
-    console.warn("getHockeyGoalsOUAnalysis hívva");
+    // console.warn("getHockeyGoalsOUAnalysis hívva"); // Csökkentett log
     if (typeof sim?.pOver !== 'number' || !rawData || typeof mainTotalsLine !== 'number' || !rawData.advanced_stats) {
        return `A Jégkorong Gólok O/U ${mainTotalsLine ?? '?'} elemzéshez adatok hiányosak. Bizalom: Alacsony`;
     }
     const line = mainTotalsLine;
-    const data = { line: line, sim: sim, goalie_home_name: rawData.advanced_stats?.home?.starting_goalie_name || 'N/A', goalie_home_svp: rawData.advanced_stats?.home?.starting_goalie_save_pct_last5 || rawData.advanced_stats?.home?.goalie_save_pct_season || 'N/A', goalie_away_name: rawData.advanced_stats?.away?.starting_goalie_name || 'N/A', goalie_away_svp: rawData.advanced_stats?.away?.starting_goalie_save_pct_last5 || rawData.advanced_stats?.away?.goalie_save_pct_season || 'N/A', pp_home: rawData.advanced_stats?.home?.pp_pct?.toFixed(1) || 'N/A', pk_away: rawData.advanced_stats?.away?.pk_pct?.toFixed(1) || 'N/A', pp_away: rawData.advanced_stats?.away?.pp_pct?.toFixed(1) || 'N/A', pk_home: rawData.advanced_stats?.home?.pk_pct?.toFixed(1) || 'N/A' };
+    const data = { line: line, sim: sim,
+                   goalie_home_name: rawData.advanced_stats?.home?.starting_goalie_name, goalie_home_svp: rawData.advanced_stats?.home?.starting_goalie_save_pct_last5 || rawData.advanced_stats?.home?.goalie_save_pct_season,
+                   goalie_away_name: rawData.advanced_stats?.away?.starting_goalie_name, goalie_away_svp: rawData.advanced_stats?.away?.starting_goalie_save_pct_last5 || rawData.advanced_stats?.away?.goalie_save_pct_season,
+                   pp_home: rawData.advanced_stats?.home?.pp_pct, pk_away: rawData.advanced_stats?.away?.pk_pct,
+                   pp_away: rawData.advanced_stats?.away?.pp_pct, pk_home: rawData.advanced_stats?.home?.pk_pct };
     const prompt = fillPromptTemplate(HOCKEY_GOALS_OU_PROMPT, data);
     const response = await _callGeminiWithSearch(prompt);
     return response || `Hiba történt a Jégkorong Gólok O/U ${line} elemzés generálása során. Bizalom: Alacsony`;
 }
 
 export async function getHockeyWinnerAnalysis(sim, rawData) {
-    console.warn("getHockeyWinnerAnalysis hívva");
+    // console.warn("getHockeyWinnerAnalysis hívva"); // Csökkentett log
     if (typeof sim?.pHome !== 'number' || !rawData?.advanced_stats || !rawData.form) {
        return "A Jégkorong Győztes elemzéshez adatok hiányosak. Bizalom: Alacsony";
     }
-    const data = { sim: sim, goalie_home_name: rawData.advanced_stats?.home?.starting_goalie_name || 'N/A', goalie_home_svp: rawData.advanced_stats?.home?.starting_goalie_save_pct_last5 || rawData.advanced_stats?.home?.goalie_save_pct_season || 'N/A', goalie_away_name: rawData.advanced_stats?.away?.starting_goalie_name || 'N/A', goalie_away_svp: rawData.advanced_stats?.away?.starting_goalie_save_pct_last5 || rawData.advanced_stats?.away?.goalie_save_pct_season || 'N/A', pp_home: rawData.advanced_stats?.home?.pp_pct?.toFixed(1) || 'N/A', pk_away: rawData.advanced_stats?.away?.pk_pct?.toFixed(1) || 'N/A', pp_away: rawData.advanced_stats?.away?.pp_pct?.toFixed(1) || 'N/A', pk_home: rawData.advanced_stats?.home?.pk_pct?.toFixed(1) || 'N/A', form_home: rawData.form?.home_overall || 'N/A', form_away: rawData.form?.away_overall || 'N/A' };
+    const data = { sim: sim,
+                   goalie_home_name: rawData.advanced_stats?.home?.starting_goalie_name, goalie_home_svp: rawData.advanced_stats?.home?.starting_goalie_save_pct_last5 || rawData.advanced_stats?.home?.goalie_save_pct_season,
+                   goalie_away_name: rawData.advanced_stats?.away?.starting_goalie_name, goalie_away_svp: rawData.advanced_stats?.away?.starting_goalie_save_pct_last5 || rawData.advanced_stats?.away?.goalie_save_pct_season,
+                   pp_home: rawData.advanced_stats?.home?.pp_pct, pk_away: rawData.advanced_stats?.away?.pk_pct,
+                   pp_away: rawData.advanced_stats?.away?.pp_pct, pk_home: rawData.advanced_stats?.home?.pk_pct,
+                   form_home: rawData.form?.home_overall, form_away: rawData.form?.away_overall };
     const prompt = fillPromptTemplate(HOCKEY_WINNER_PROMPT, data);
     const response = await _callGeminiWithSearch(prompt);
     return response || "Hiba történt a Jégkorong Győztes elemzés generálása során. Bizalom: Alacsony";
 }
 
 export async function getBasketballPointsOUAnalysis(sim, rawData, mainTotalsLine) {
-    console.warn("getBasketballPointsOUAnalysis hívva");
+    // console.warn("getBasketballPointsOUAnalysis hívva"); // Csökkentett log
     if (typeof sim?.pOver !== 'number' || !rawData || typeof mainTotalsLine !== 'number' || !rawData.advanced_stats) {
        return `A Kosár Pont O/U ${mainTotalsLine ?? '?'} elemzéshez adatok hiányosak. Bizalom: Alacsony`;
     }
     const line = mainTotalsLine;
-    const data = { line: line, sim: sim, pace_home: rawData.advanced_stats?.home?.pace?.toFixed(1) || 'N/A', pace_away: rawData.advanced_stats?.away?.pace?.toFixed(1) || 'N/A', off_rtg_home: rawData.advanced_stats?.home?.offensive_rating?.toFixed(1) || 'N/A', def_rtg_home: rawData.advanced_stats?.home?.defensive_rating?.toFixed(1) || 'N/A', off_rtg_away: rawData.advanced_stats?.away?.offensive_rating?.toFixed(1) || 'N/A', def_rtg_away: rawData.advanced_stats?.away?.defensive_rating?.toFixed(1) || 'N/A', ff_home: rawData.advanced_stats?.home?.four_factors || {}, ff_away: rawData.advanced_stats?.away?.four_factors || {}, news_home_score: rawData.team_news?.home_scorers_missing || 'Nincs hír', news_away_score: rawData.team_news?.away_scorers_missing || 'Nincs hír' };
-    // A fillPromptTemplate kezeli a ff_home_json és ff_away_json kulcsokat
+    const data = { line: line, sim: sim,
+                   pace_home: rawData.advanced_stats?.home?.pace, pace_away: rawData.advanced_stats?.away?.pace,
+                   off_rtg_home: rawData.advanced_stats?.home?.offensive_rating, def_rtg_home: rawData.advanced_stats?.home?.defensive_rating,
+                   off_rtg_away: rawData.advanced_stats?.away?.offensive_rating, def_rtg_away: rawData.advanced_stats?.away?.defensive_rating,
+                   ff_home: rawData.advanced_stats?.home?.four_factors || {}, ff_away: rawData.advanced_stats?.away?.four_factors || {},
+                   news_home_score: rawData.team_news?.home_scorers_missing || 'Nincs hír', news_away_score: rawData.team_news?.away_scorers_missing || 'Nincs hír' };
     const prompt = fillPromptTemplate(BASKETBALL_POINTS_OU_PROMPT, data);
     const response = await _callGeminiWithSearch(prompt);
     return response || `Hiba történt a Kosár Pont O/U ${line} elemzés generálása során. Bizalom: Alacsony`;
 }
 
 export async function getStrategicClosingThoughts(sim, rawData, richContext, marketIntel, microAnalyses, riskAssessment) {
-    console.warn("getStrategicClosingThoughts hívva");
+    // console.warn("getStrategicClosingThoughts hívva"); // Csökkentett log
     if (!sim || !rawData || !richContext || marketIntel === undefined || !microAnalyses || !riskAssessment) {
         return "### Stratégiai Zárógondolatok\nA stratégiai összefoglalóhoz adatok hiányosak.";
     }
     let microSummary = Object.entries(microAnalyses || {}).map(([key, analysis]) => {
         if (!analysis || typeof analysis !== 'string') return null;
-        const conclusionMatch = analysis.match(/\*\*(.*?)\*\*/);
-        const confidenceMatch = analysis.match(/Bizalom:\s*(.*)/i);
+        const conclusionMatch = analysis.match(/\*\*(.*?)\*\*/); const confidenceMatch = analysis.match(/Bizalom:\s*(.*)/i);
         return `${key.toUpperCase()}: ${conclusionMatch ? conclusionMatch[1] : 'N/A'} (Bizalom: ${confidenceMatch ? confidenceMatch[1] : 'N/A'})`;
     }).filter(Boolean).join('; ');
     const data = {
-        propheticScenario: rawData?.propheticScenario || 'N/A', // Ez lehet, hogy a committeeResults-ban van? Most rawData-ból próbáljuk.
+        propheticScenario: rawData?.propheticScenario || 'N/A', // Ez lehet, hogy hiányzik a rawData-ból?
         sim: sim, marketIntel: marketIntel || "N/A", microSummary: microSummary || 'Nincsenek', // JSON helyett string
         richContext: richContext, riskAssessment: riskAssessment
      };
@@ -355,20 +373,18 @@ export async function getStrategicClosingThoughts(sim, rawData, richContext, mar
 }
 
 export async function getMasterRecommendation(valueBets, sim, modelConfidence, expertConfidence, riskAssessment, microAnalyses, generalAnalysis, strategicClosingThoughts) {
-    console.warn("getMasterRecommendation hívva");
+    // console.warn("getMasterRecommendation hívva"); // Csökkentett log
     if (!sim || typeof modelConfidence !== 'number' || !expertConfidence || !riskAssessment || !generalAnalysis || !strategicClosingThoughts) {
          console.error("getMasterRecommendation: Hiányos kritikus bemeneti adatok.");
          return { "recommended_bet": "Nincs fogadás", "final_confidence": 1.0, "brief_reasoning": "Hiba: Hiányos adatok." };
     }
     let microSummary = Object.entries(microAnalyses || {}).map(([key, analysis]) => {
         if (!analysis || typeof analysis !== 'string') return null;
-        const conclusionMatch = analysis.match(/\*\*(.*?)\*\*/);
-        const confidenceMatch = analysis.match(/Bizalom:\s*(.*)/i);
+        const conclusionMatch = analysis.match(/\*\*(.*?)\*\*/); const confidenceMatch = analysis.match(/Bizalom:\s*(.*)/i);
         return `${key.toUpperCase()}: ${conclusionMatch ? conclusionMatch[1] : 'N/A'} (Bizalom: ${confidenceMatch ? confidenceMatch[1] : 'N/A'})`;
     }).filter(Boolean).join('; ');
     const data = {
-        valueBets: valueBets || [], // A fillPromptTemplate kezeli a Json-t
-        sim: sim, modelConfidence: modelConfidence, expertConfidence: expertConfidence,
+        valueBets: valueBets || [], sim: sim, modelConfidence: modelConfidence, expertConfidence: expertConfidence,
         riskAssessment: riskAssessment, microSummary: microSummary || 'Nincsenek',
         generalAnalysis: generalAnalysis, strategicClosingThoughts: strategicClosingThoughts
     };
@@ -394,6 +410,7 @@ export async function getMasterRecommendation(valueBets, sim, modelConfidence, e
 }
 
 // --- FŐ EXPORT ---
+// Exportáljuk az összes szükséges funkciót.
 export default {
     runAnalysisFlow,
     getChatResponse,
