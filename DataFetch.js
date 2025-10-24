@@ -12,7 +12,7 @@ const sportmonksIdCache = new NodeCache({ stdTTL: 0, useClones: false });
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VÉGLEGES JAVÍTÁS: AI Studio API + Helyes ESPN URL használata
+* VÉGLEGES JAVÍTÁS: AI Studio API + Helyes ESPN URL + Robusztus JSON tisztító
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY ---
@@ -96,7 +96,7 @@ async function findSportMonksTeamId(teamName) {
     return teamId;
 }
 
-// --- GEMINI API FUNKCIÓ (AI Studio API) ---
+// --- GEMINI API FUNKCIÓ (GOLYÓÁLLÓ JSON TISZTÍTÓVAL) ---
 export async function _callGemini(prompt) {
     if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<')) { throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY."); }
     if (!GEMINI_MODEL_ID) { throw new Error("Hiányzó GEMINI_MODEL_ID."); }
@@ -105,6 +105,7 @@ export async function _callGemini(prompt) {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.5, maxOutputTokens: 8192 },
     };
+
     console.log(`Gemini API (AI Studio) hívás indul a '${GEMINI_MODEL_ID}' modellel...`);
     try {
         const response = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 120000, validateStatus: () => true });
@@ -117,15 +118,26 @@ export async function _callGemini(prompt) {
             const finishReason = response.data?.candidates?.[0]?.finishReason || 'Ismeretlen';
             throw new Error(`Gemini nem adott vissza szöveges tartalmat. Ok: ${finishReason}`);
         }
-        let cleanedJsonString = responseText.trim().match(/```json\n([\s\S]*?)\n```/)?.[1] || responseText.trim();
-        if (!cleanedJsonString.startsWith('{') && cleanedJsonString.includes('{')) cleanedJsonString = cleanedJsonString.substring(cleanedJsonString.indexOf('{'));
-        if (!cleanedJsonString.endsWith('}') && cleanedJsonString.includes('}')) cleanedJsonString = cleanedJsonString.substring(0, cleanedJsonString.lastIndexOf('}') + 1);
+
+        let jsonString = responseText;
+        const codeBlockMatch = jsonString.match(/```json\n([\s\S]*?)\n```/);
+        if (codeBlockMatch && codeBlockMatch[1]) {
+            jsonString = codeBlockMatch[1];
+        } else {
+            const firstBrace = jsonString.indexOf('{');
+            const lastBrace = jsonString.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                jsonString = jsonString.substring(firstBrace, lastBrace + 1);
+            }
+        }
+
         try {
-            JSON.parse(cleanedJsonString);
-            console.log("Gemini API (AI Studio) sikeresen visszaadott valid JSON-t.");
-            return cleanedJsonString;
+            JSON.parse(jsonString);
+            console.log("Gemini API (AI Studio) sikeresen visszaadott és megtisztított egy valid JSON-t.");
+            return jsonString;
         } catch (jsonError) {
-            throw new Error(`Gemini válasza nem volt érvényes JSON formátumú.`);
+            console.error("A megtisztított Gemini válasz sem volt valid JSON:", jsonString.substring(0, 500));
+            throw new Error(`Gemini válasza még tisztítás után sem volt érvényes JSON.`);
         }
     } catch (e) {
         console.error(`Végleges hiba a Gemini (AI Studio) API hívás során: ${e.message}`);
@@ -150,23 +162,16 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
             getOptimizedOddsData(homeTeamName, awayTeamName, sport, SPORT_CONFIG[sport], null, leagueName)
         ]);
         let geminiData = geminiJsonString ? JSON.parse(geminiJsonString) : null;
-        if (!geminiData) {
-             geminiData = { stats: {}, key_players: {}, form: {}, tactics: {}, absentees: {}, team_news: {} };
-        }
+        if (!geminiData) { geminiData = { stats: {}, key_players: {}, form: {}, tactics: {}, absentees: {}, team_news: {} }; }
         const finalData = {};
-        const parseStat = (val, defaultVal = 0) => (val === null || (typeof val === 'number' && !isNaN(val) && val >= 0) ? val : defaultVal);
+        const parseStat = (val, d = 0) => (val === null || (typeof val === 'number' && !isNaN(val) && val >= 0)) ? val : d;
         const defaultGpHome = (geminiData?.form?.home_overall && geminiData.form.home_overall !== "N/A") ? 5 : 1;
         const defaultGpAway = (geminiData?.form?.away_overall && geminiData.form.away_overall !== "N/A") ? 5 : 1;
         let homeGp = parseStat(geminiData?.stats?.home?.gp, null);
         let awayGp = parseStat(geminiData?.stats?.away?.gp, null);
         if (homeGp === null) homeGp = defaultGpHome;
         if (awayGp === null) awayGp = defaultGpAway;
-
-        finalData.stats = {
-            home: { gp: homeGp, gf: parseStat(geminiData?.stats?.home?.gf, null), ga: parseStat(geminiData?.stats?.home?.ga, null) },
-            away: { gp: awayGp, gf: parseStat(geminiData?.stats?.away?.gf, null), ga: parseStat(geminiData?.stats?.away?.ga, null) }
-        };
-
+        finalData.stats = { home: { gp: homeGp, gf: parseStat(geminiData?.stats?.home?.gf, null), ga: parseStat(geminiData?.stats?.home?.ga, null) }, away: { gp: awayGp, gf: parseStat(geminiData?.stats?.away?.gf, null), ga: parseStat(geminiData?.stats?.away?.ga, null) } };
         finalData.h2h_summary = geminiData?.h2h_summary || "N/A";
         finalData.h2h_structured = Array.isArray(geminiData?.h2h_structured) ? geminiData.h2h_structured : [];
         finalData.team_news = geminiData?.team_news || { home: "N/A", away: "N/A" };
@@ -187,17 +192,14 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
             (finalData.tactics.home.style !== "N/A" || finalData.tactics.away.style !== "N/A") && `- Taktika: H: ${finalData.tactics.home.style}, V: ${finalData.tactics.away.style}`
         ].filter(Boolean);
         const richContext = richContextParts.length > 0 ? richContextParts.join('\n') : "Nem sikerült kontextuális adatokat gyűjteni.";
-
         const result = { rawStats: finalData.stats, leagueAverages: finalData.league_averages, richContext, advancedData: finalData.advanced_stats, form: finalData.form, rawData: finalData };
-        if (!result.rawStats?.home?.gp || result.rawStats.home.gp <= 0 || !result.rawStats?.away?.gp || result.rawStats.away.gp <= 0) {
-            throw new Error("Kritikus csapat statisztikák (rawStats) érvénytelenek.");
-        }
+        if (!result.rawStats?.home?.gp || result.rawStats.home.gp <= 0 || !result.rawStats?.away?.gp || result.rawStats.away.gp <= 0) { throw new Error("Kritikus csapat statisztikák (rawStats) érvénytelenek."); }
         scriptCache.set(ck, result);
         console.log(`Sikeres adatgyűjtés (AI Studio), cache mentve.`);
         return { ...result, fromCache: false, oddsData: fetchedOddsData };
     } catch (e) {
-        console.error(`KRITIKUS HIBA a getRichContextualData(AI Studio) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`);
-        throw new Error(`Adatgyűjtési hiba (AI Studio): ${e.message}`);
+        console.error(`KRITIKUS HIBA a getRichContextualData(AI Studio) során: ${e.message}`);
+        throw e;
     }
 }
 
@@ -291,10 +293,9 @@ export function findMainTotalsLine(oddsData) {
     return defaultLine;
 }
 
-// --- ESPN MECCSLEKÉRDEZÉS (JAVÍTVA) ---
+// --- ESPN MECCSLEKÉRDEZÉS ---
 export async function _getFixturesFromEspn(sport, days) {
     const sportConfig = SPORT_CONFIG[sport];
-    // JAVÍTÁS: Ellenőrizzük az `espn_sport_path`-t is.
     if (!sportConfig?.espn_sport_path || !sportConfig.espn_leagues) {
         console.error(`_getFixturesFromEspn: Hiányzó ESPN konfig (espn_sport_path) ${sport}-hoz.`);
         return [];
@@ -314,7 +315,6 @@ export async function _getFixturesFromEspn(sport, days) {
     for (const dateString of datesToFetch) {
         for (const [leagueName, slug] of Object.entries(sportConfig.espn_leagues)) {
             if (!slug) continue;
-            // JAVÍTÁS: Itt a `sportConfig.espn_sport_path`-t használjuk a `name` helyett.
             const url = `https://site.api.espn.com/apis/site/v2/sports/${sportConfig.espn_sport_path}/${slug}/scoreboard?dates=${dateString}&limit=200`;
             promises.push(
                 makeRequest(url, { timeout: 8000 }).then(response => {
@@ -326,22 +326,16 @@ export async function _getFixturesFromEspn(sport, days) {
                             const home = competition?.competitors?.find(c => c.homeAway === 'home')?.team;
                             const away = competition?.competitors?.find(c => c.homeAway === 'away')?.team;
                             if (event.id && home?.name && away?.name && event.date) {
-                                return {
-                                    id: String(event.id),
-                                    home: String(home.shortDisplayName || home.displayName || home.name).trim(),
-                                    away: String(away.shortDisplayName || away.displayName || away.name).trim(),
-                                    utcKickoff: event.date,
-                                    league: String(leagueName).trim()
-                                };
+                                return { id: String(event.id), home: String(home.shortDisplayName || home.displayName || home.name).trim(), away: String(away.shortDisplayName || away.displayName || away.name).trim(), utcKickoff: event.date, league: String(leagueName).trim() };
                             }
                             return null;
                         }).filter(Boolean) || [];
                 }).catch((err) => {
                     console.error(`Hiba egy ESPN liga lekérésekor (${leagueName}): ${err.message}`);
-                    return []; // Hiba esetén üres tömböt adunk vissza, a többi hívás folytatódhat
+                    return [];
                 })
             );
-            await new Promise(resolve => setTimeout(resolve, 30)); // Rate limit elkerülése
+            await new Promise(resolve => setTimeout(resolve, 30));
         }
     }
     const results = await Promise.all(promises);
