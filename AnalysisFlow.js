@@ -11,7 +11,7 @@ import {
     calculateValue, 
     analyzeLineMovement, 
     analyzePlayerDuels 
-} from './Model.js'; 
+} from './Model.js';
 import { 
     getRiskAssessment, 
     getTacticalBriefing, 
@@ -30,14 +30,12 @@ import {
     _getContradictionAnalysis, 
     getMasterRecommendation,
     getStrategicClosingThoughts // <<< --- EZ A SOR LETT HOZZÁADVA (JAVÍTÁS)
-} from './AI_Service.js'; // AI funkciók
+} from './AI_Service.js';
 import { saveAnalysisToSheet } from './sheets.js'; // Mentés funkció
 import { buildAnalysisHtml } from './htmlBuilder.js'; // HTML építő funkció
 
 // Gyorsítótár inicializálása
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
-
-
 /**************************************************************
 * AnalysisFlow.js - Fő Elemzési Munkafolyamat (V13.1 - IDŐLIMIT JAVÍTÁS)
 * Feladata: A központi elemzési logika Node.js környezetben.
@@ -96,48 +94,43 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         const psyProfileAway = calculatePsychologicalProfile(away, home); // Model.js-ből importálva
         const mainTotalsLine = findMainTotalsLine(oddsData) || sportConfig.totals_line; // DataFetch.js-ből importálva
         console.log(`Meghatározott fő gól/pont vonal: ${mainTotalsLine}`);
-
         // --- 2. Statisztikai Modellezés ---
         console.log(`Modellezés indul: ${home} vs ${away}...`);
         const { mu_h, mu_a } = estimateXG(home, away, rawStats, sport, form, leagueAverages, advancedData, rawData, psyProfileHome, psyProfileAway);
         const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
         // === IDŐLIMIT JAVÍTÁS: Szimulációk számának csökkentése ===
         const sim = simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData); // Csökkentve 25000-re
-        sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a; sim.mu_corners_sim = mu_corners; sim.mu_cards_sim = mu_cards; sim.mainTotalsLine = mainTotalsLine;
-        const modelConfidence = calculateModelConfidence(sport, home, away, rawData, form, sim);
+        sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a; sim.mu_corners_sim = mu_corners;
+        sim.mu_cards_sim = mu_cards; sim.mainTotalsLine = mainTotalsLine;
+        
+        // === MÓDOSÍTÁS: marketIntel átadása a calculateModelConfidence-nek ===
+        const modelConfidence = calculateModelConfidence(sport, home, away, rawData, form, sim, marketIntel);
+        
         const valueBets = calculateValue(sim, oddsData, sport, home, away); // Model.js-ből importálva
         console.log(`Modellezés kész: ${home} vs ${away}.`);
-
         // --- 3. ÁLTALÁNOS AI BIZOTTSÁG (SZAKÉRTŐI LÁNC) ---
         console.log(`AI Bizottság (lánc) indul: ${home} vs ${away}...`);
         const safeRichContext = typeof richContext === 'string' ? richContext : "Kontextus adatok hiányosak.";
         const richContextWithDuels = `${safeRichContext}\n- **Kulcs Párharc Elemzés:** ${duelAnalysis || 'N/A'}`;
         const propheticTimeline = buildPropheticTimeline(mu_h, mu_a, rawData, sport, home, away);
-
         // Az AI hívások párhuzamosítása a gyorsítás érdekében
         const committeePromises = {};
         const committeeResults = {};
 
         committeePromises.riskAssessment = getRiskAssessment(sim, mu_h, mu_a, rawData, sport, marketIntel)
             .catch(e => { console.error(`AI Hiba (Risk): ${e.message}`); return "Kockázatelemzés hiba."; });
-
         committeePromises.propheticScenario = getPropheticScenario(propheticTimeline, rawData, home, away, sport)
             .catch(e => { console.error(`AI Hiba (Scenario): ${e.message}`); return "Forgatókönyv hiba."; });
-
         committeePromises.keyQuestions = getAiKeyQuestions(richContextWithDuels, rawData)
             .catch(e => { console.error(`AI Hiba (Questions): ${e.message}`); return "- Kulcskérdés hiba."; });
-
         committeePromises.playerMarkets = getPlayerMarkets(rawData?.key_players, richContextWithDuels, rawData)
             .catch(e => { console.error(`AI Hiba (Player Markets): ${e.message}`); return "Játékospiac hiba."; });
-
         committeeResults.riskAssessment = await committeePromises.riskAssessment;
 
         committeePromises.tacticalBriefing = getTacticalBriefing(rawData, sport, home, away, duelAnalysis, committeeResults.riskAssessment)
             .catch(e => { console.error(`AI Hiba (Tactical): ${e.message}`); return "Taktikai elemzés hiba."; });
-
         committeePromises.expertConfidence = getExpertConfidence(modelConfidence, richContextWithDuels, rawData)
             .catch(e => { console.error(`AI Hiba (ExpertConf): ${e.message}`); return "**1.0/10** - Hiba."; });
-
         // Piac-specifikus modellek párhuzamosítása
         const microPromises = {};
         if (sport === 'soccer') {
@@ -160,7 +153,6 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             committeePromises.propheticScenario, committeePromises.keyQuestions, committeePromises.playerMarkets,
             committeePromises.tacticalBriefing, committeePromises.expertConfidence, Promise.all(Object.values(microPromises))
         ]);
-
         // Eredmények összegyűjtése
         committeeResults.propheticScenario = propheticScenarioResult;
         committeeResults.keyQuestions = keyQuestionsResult;
@@ -199,7 +191,6 @@ export async function runFullAnalysis(params, sport, openingOdds) {
 
 
         console.log(`AI Bizottság kész: ${home} vs ${away}.`);
-
         // --- 6. Mester Ajánlás Lekérése ---
         console.log(`Mester Ajánlás kérése indul: ${home} vs ${away}...`);
         const masterRecommendation = await getMasterRecommendation(
@@ -219,26 +210,29 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             modelConfidence,
             sim,
             masterRecommendation
-        );
+   
+         );
         console.log(`HTML generálás kész: ${home} vs ${away}.`);
-
         // --- 8. Válasz Elküldése és Naplózás ---
         const debugInfo = {
-            playerDataFetched: rawData?.key_players && (rawData.key_players.home?.some(p => p.stats && Object.keys(p.stats).length > 0) || rawData.key_players.away?.some(p => p.stats && Object.keys(p.stats).length > 0)) ? `Igen, ${(rawData.key_players.home?.length || 0) + (rawData.key_players.away?.length || 0)} játékosra` : "Nem (vagy nem talált adatot)",
-            sportMonksUsedInXG: (sport === 'soccer' && advancedData?.home?.xg != null) ? "Igen (valós xG)" : (sport === 'hockey' && advancedData?.home?.pp_pct != null) ? "Igen (PP/PK)" : (sport === 'basketball' && advancedData?.home?.pace != null) ? "Igen (Pace/Rating)" : "Nem (becsült adatok)",
+            playerDataFetched: rawData?.key_players && (rawData.key_players.home?.some(p => p.stats && Object.keys(p.stats).length > 0) || rawData.key_players.away?.some(p => p.stats && Object.keys(p.stats).length > 0)) ?
+                `Igen, ${(rawData.key_players.home?.length || 0) + (rawData.key_players.away?.length || 0)} játékosra` : "Nem (vagy nem talált adatot)",
+            sportMonksUsedInXG: (sport === 'soccer' && advancedData?.home?.xg != null) ?
+                "Igen (valós xG)" : (sport === 'hockey' && advancedData?.home?.pp_pct != null) ?
+                "Igen (PP/PK)" : (sport === 'basketball' && advancedData?.home?.pace != null) ?
+                "Igen (Pace/Rating)" : "Nem (becsült adatok)",
             fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
         };
         const jsonResponse = { html: finalHtml, debugInfo: debugInfo };
-
         // Mentés a NodeCache-be
         scriptCache.set(analysisCacheKey, jsonResponse);
         console.log(`Elemzés befejezve és cache mentve (${analysisCacheKey})`);
-
         // Mentés Google Sheet-be (async módon, nem várjuk meg)
         if (params.sheetUrl && typeof params.sheetUrl === 'string') { // Használjuk a params-ból az URL-t
             saveAnalysisToSheet(params.sheetUrl, { sport, home, away, date: new Date(), html: finalHtml, id: analysisCacheKey })
                 .then(() => console.log(`Elemzés mentve a Google Sheet-be (${analysisCacheKey})`))
-                .catch(sheetError => console.error(`Hiba az elemzés Google Sheet-be mentésekor (${analysisCacheKey}): ${sheetError.message}`));
+                .catch(sheetError => console.error(`Hiba az elemzés Google Sheet-be mentésekor 
+(${analysisCacheKey}): ${sheetError.message}`));
         }
 
         return jsonResponse; // Visszaadjuk a kész objektumot

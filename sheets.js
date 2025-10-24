@@ -1,6 +1,6 @@
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
-import NodeCache from 'node-cache'; // CacheService helyett
+// CacheService helyett
 import { SHEET_URL } from './config.js'; // A .env fájlból beolvasott Sheet URL
 
 // --- Fontos: Hitelesítő Fájl ---
@@ -13,13 +13,6 @@ import { SHEET_URL } from './config.js'; // A .env fájlból beolvasott Sheet UR
 import creds from './google-credentials.json' with { type: 'json' };
 // ==========================================================
 
-// Globális gyorsítótárak a ratingeknek (Apps Script PropertiesService helyett)
-// stdTTL: 0 azt jelenti, hogy soha nem jár le automatikusan
-const ratingCache = new NodeCache({ stdTTL: 0 });
-const POWER_RATING_KEY = 'power_ratings_v2';
-const MATCH_LOG_KEY = 'match_log_v2';
-const NARRATIVE_RATINGS_KEY = 'narrative_ratings_v2';
-
 // --- Google Hitelesítés Beállítása ---
 const serviceAccountAuth = new JWT({
     email: creds.client_email,
@@ -29,7 +22,6 @@ const serviceAccountAuth = new JWT({
         'https://www.googleapis.com/auth/drive.file', // Szükséges lehet a fájl eléréséhez
     ],
 });
-
 /**
  * Segédfüggvény a Google Táblázat dokumentum betöltéséhez és hitelesítéséhez.
  * @returns {GoogleSpreadsheet} A hitelesített GoogleSpreadsheet példány.
@@ -64,7 +56,6 @@ async function _getSheet(doc, sheetName, headers) {
     try {
         await doc.loadInfo(); // Betölti a dokumentum metaadatait (lapok listája)
         let sheet = doc.sheetsByTitle[sheetName];
-
         if (!sheet && headers && Array.isArray(headers)) {
             console.log(`'${sheetName}' munkalap nem található, létrehozás...`);
             sheet = await doc.addSheet({ title: sheetName, headerValues: headers });
@@ -104,7 +95,8 @@ async function getHistorySheet() {
 // === Fő Funkciók (Exportálva) ===
 
 /**
- * Lekéri az elemzési előzményeket a táblázatból. (A frontend hívja)
+ * Lekéri az elemzési előzményeket a táblázatból.
+ (A frontend hívja)
  * @returns {Promise<object>} Objektum { history: [...] } vagy { error: ... } formában.
  */
 export async function getHistoryFromSheet() {
@@ -117,11 +109,13 @@ export async function getHistoryFromSheet() {
             let isoDate = new Date().toISOString();
             try {
                 if (dateVal) {
+              
                     const parsedDate = new Date(dateVal);
                     if (!isNaN(parsedDate.getTime())) {
                         isoDate = parsedDate.toISOString();
                     }
                 }
+      
             } catch (dateError) {
                 console.warn(`Dátum feldolgozási hiba a getHistoryFromSheet-ben: ${dateError.message} (Érték: ${dateVal})`);
             }
@@ -129,12 +123,12 @@ export async function getHistoryFromSheet() {
             return {
                 id: row.get("ID"),
                 date: isoDate,
+         
                 sport: row.get("Sport"),
                 home: row.get("Hazai"),
                 away: row.get("Vendég")
             };
         });
-
         return { history: history.filter(item => item.id) };
     } catch (e) {
         console.error(`Előzmények olvasási hiba: ${e.message}`, e.stack);
@@ -143,7 +137,8 @@ export async function getHistoryFromSheet() {
 }
 
 /**
- * Lekéri egy konkrét elemzés részleteit (HTML tartalmát) ID alapján. (A frontend hívja)
+ * Lekéri egy konkrét elemzés részleteit (HTML tartalmát) ID alapján.
+ (A frontend hívja)
  * @param {string} id Az elemzés egyedi ID-ja.
  * @returns {Promise<object>} Objektum { record: {...} } vagy { error: ... } formában.
  */
@@ -153,7 +148,6 @@ export async function getAnalysisDetailFromSheet(id) {
         const rows = await sheet.getRows();
         
         const row = rows.find(r => String(r.get("ID")) === String(id));
-
         if (!row) {
             throw new Error("Az elemzés nem található az ID alapján.");
         }
@@ -172,7 +166,8 @@ export async function getAnalysisDetailFromSheet(id) {
 }
 
 /**
- * Elment egy új elemzést a Google Sheet "History" lapjára. (Az AnalysisFlow hívja)
+ * Elment egy új elemzést a Google Sheet "History" lapjára.
+ (Az AnalysisFlow hívja)
  * @param {string} sheetUrl (Nem használt, a globális SHEET_URL-t használjuk)
  * @param {object} analysisData Az elemzés adatai.
  * @returns {Promise<void>}
@@ -188,7 +183,6 @@ export async function saveAnalysisToSheet(sheetUrl, analysisData) {
         const sheet = await getHistorySheet();
         const newId = analysisData.id || crypto.randomUUID(); // Node.js 19+
         const dateToSave = (analysisData.date instanceof Date ? analysisData.date : new Date()).toISOString();
-        
         // addRow() metódus használata az új sor hozzáadásához
         // A sorrend itt már nem számít, a fejléc neveket használja
         await sheet.addRow({
@@ -196,10 +190,10 @@ export async function saveAnalysisToSheet(sheetUrl, analysisData) {
             "Dátum": dateToSave,
             "Sport": analysisData.sport || 'N/A',
             "Hazai": analysisData.home,
+            
             "Vendég": analysisData.away,
             "HTML Tartalom": analysisData.html || ''
         });
-
         // console.log(`Mentés sikeres (ID: ${newId}) a '${sheet.title}' lapra.`); // Reduce noise
     } catch (e) {
         console.error(`Hiba az elemzés mentésekor a táblázatba (ID: ${analysisId}): ${e.message}`, e.stack);
@@ -207,7 +201,8 @@ export async function saveAnalysisToSheet(sheetUrl, analysisData) {
 }
 
 /**
- * Töröl egy elemet a "History" lapról ID alapján. (A frontend hívja)
+ * Töröl egy elemet a "History" lapról ID alapján.
+ (A frontend hívja)
  * @param {string} id A törlendő elem ID-ja.
  * @returns {Promise<object>} Objektum { success: true } vagy { error: ... } formában.
  */
@@ -216,7 +211,6 @@ export async function deleteHistoryItemFromSheet(id) {
         const sheet = await getHistorySheet();
         const rows = await sheet.getRows();
         const rowToDelete = rows.find(r => String(r.get("ID")) == String(id));
-
         if (rowToDelete) {
             await rowToDelete.delete(); // Sor törlése
             return { success: true };
@@ -228,108 +222,10 @@ export async function deleteHistoryItemFromSheet(id) {
     }
 }
 
-// --- ÖNTANULÓ ÉS ÉRTÉKELŐ MODULOK (Cache alapú) ---
-// Ezek most már a Node.js szerver memóriájában (node-cache) élnek, nem a PropertiesService-ben.
 
 /**
- * Naplózza a meccs eredményét a ratingek frissítéséhez (Cache-be).
- */
-export function logMatchResult(sport, home, away, mu_h, mu_a, actual_gh, actual_ga, confidence, xg_diff) {
-    try {
-        const log = ratingCache.get(MATCH_LOG_KEY) || [];
-        const newEntry = {
-            date: new Date().toISOString(), sport, home, away,
-            predicted: { h: mu_h, a: mu_a },
-            actual: { h: actual_gh, a: actual_ga },
-            confidence, xg_diff
-        };
-        log.push(newEntry);
-        if (log.length > 300) log.shift();
-        ratingCache.set(MATCH_LOG_KEY, log);
-    } catch (e) {
-        console.error(`Hiba a meccs naplózása közben: ${e.message}`);
-    }
-}
-
-/**
- * Frissíti a Power Ratingeket a naplózott meccsek alapján (Cache-ben).
- */
-export function updatePowerRatings() {
-    const log = ratingCache.get(MATCH_LOG_KEY) || [];
-    if (log.length < 20) {
-        console.log(`Power Rating frissítés kihagyva, túl kevés új meccs (${log.length}/20).`);
-        return;
-    }
-
-    const powerRatings = ratingCache.get(POWER_RATING_KEY) || {};
-    const learningRate = 0.008;
-
-    log.forEach(match => {
-        if (!match.actual || typeof match.actual.h !== 'number' || typeof match.actual.a !== 'number') return;
-        const homeTeam = match.home.toLowerCase();
-        const awayTeam = match.away.toLowerCase();
-        if (!powerRatings[homeTeam]) powerRatings[homeTeam] = { atk: 1, def: 1, matches: 0 };
-        if (!powerRatings[awayTeam]) powerRatings[awayTeam] = { atk: 1, def: 1, matches: 0 };
-        const homeAtkError = match.actual.h - match.predicted.h;
-        const awayAtkError = match.actual.a - match.predicted.a;
-        const confidenceWeight = (match.confidence || 5) / 10;
-        powerRatings[homeTeam].atk += learningRate * homeAtkError * confidenceWeight;
-        powerRatings[awayTeam].atk += learningRate * awayAtkError * confidenceWeight;
-        const homeDefError = match.actual.a - match.predicted.h;
-        const awayDefError = match.actual.h - match.predicted.a;
-        powerRatings[homeTeam].def -= learningRate * homeDefError * confidenceWeight;
-        powerRatings[awayTeam].def -= learningRate * awayDefError * confidenceWeight;
-        powerRatings[homeTeam].atk = Math.max(0.7, Math.min(1.3, powerRatings[homeTeam].atk));
-        powerRatings[homeTeam].def = Math.max(0.7, Math.min(1.3, powerRatings[homeTeam].def));
-        powerRatings[awayTeam].atk = Math.max(0.7, Math.min(1.3, powerRatings[awayTeam].atk));
-        powerRatings[awayTeam].def = Math.max(0.7, Math.min(1.3, powerRatings[awayTeam].def));
-        powerRatings[homeTeam].matches++;
-        powerRatings[awayTeam].matches++;
-    });
-
-    ratingCache.set(POWER_RATING_KEY, powerRatings);
-    ratingCache.set(MATCH_LOG_KEY, []); // Ürítjük a logot
-    console.log(`Power ratingek sikeresen frissítve ${log.length} meccs alapján (Cache-ben).`);
-}
-
-/**
- * Lekéri az aktuális Power Ratingeket (Cache-ből).
- * @returns {object} A csapatok Power Ratingjeit tartalmazó objektum.
- */
-export function getAdjustedRatings() {
-    return ratingCache.get(POWER_RATING_KEY) || {};
-}
-
-/**
- * Lekéri az aktuális Narratív Ratingeket (Cache-ből).
- * @returns {object} A csapatok Narratív Ratingjeit tartalmazó objektum.
- */
-export function getNarrativeRatings() {
-    return ratingCache.get(NARRATIVE_RATINGS_KEY) || {};
-}
-
-/**
- * Frissíti a Narratív Ratingeket a kapott tanulságok alapján (Cache-be).
- * @param {Array<object>} learnings Tanulság objektumok tömbje ({team, rating, adjustment}).
- */
-export function updateNarrativeRatings(learnings) {
-    if (!learnings || learnings.length === 0) return;
-    const narrativeRatings = getNarrativeRatings();
-    const learningRate = 0.04;
-    learnings.forEach(learning => {
-        const team = learning.team.toLowerCase();
-        if (!narrativeRatings[team]) narrativeRatings[team] = {};
-        const ratingName = learning.rating;
-        if (!narrativeRatings[team][ratingName]) narrativeRatings[team][ratingName] = 0;
-        let currentRating = narrativeRatings[team][ratingName];
-        currentRating += learningRate * learning.adjustment;
-        narrativeRatings[team][ratingName] = Math.max(-0.4, Math.min(0.4, currentRating));
-    });
-    ratingCache.set(NARRATIVE_RATINGS_KEY, narrativeRatings); // Frissítjük a cache-t
-}
-
-/**
- * Elment egy mélyebb öntanulási tanulságot a "Learning_Insights" lapra. (Async)
+ * Elment egy mélyebb öntanulási tanulságot a "Learning_Insights" lapra.
+ (Async)
  * @param {string} sheetUrl (Nem használt)
  * @param {object} insightData A tanulság adatai.
  * @returns {Promise<void>}
@@ -344,7 +240,8 @@ export async function logLearningInsight(sheetUrl, insightData) {
             return;
         }
         
-        const dateToSave = insightData.date instanceof Date ? insightData.date.toISOString() : new Date().toISOString();
+        const dateToSave = insightData.date instanceof Date ?
+            insightData.date.toISOString() : new Date().toISOString();
         await sheet.addRow({
             "Dátum": dateToSave,
             "Sport": insightData.sport || 'N/A',
@@ -352,6 +249,7 @@ export async function logLearningInsight(sheetUrl, insightData) {
             "Vendég": insightData.away || 'N/A',
             "Tipp": insightData.prediction || 'N/A',
             "Bizalom": typeof insightData.confidence === 'number' ? insightData.confidence.toFixed(1) : 'N/A',
+  
             "Valós Eredmény": insightData.actual || 'N/A',
             "Tanulság (AI)": insightData.insight || 'N/A'
         });

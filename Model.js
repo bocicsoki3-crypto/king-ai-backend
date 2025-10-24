@@ -1,24 +1,16 @@
 import { SPORT_CONFIG } from './config.js'; // Importáljuk a sportág konfigurációt
 
-// === DUMMY FÜGGVÉNYEK (HELYETTESÍTENDŐ!) ===
-// Ezek a függvények az Apps Scriptben valószínűleg a Google Sheet-ből olvastak.
-// Itt most csak üres objektumokat adnak vissza. Később pótolni kell!
-function getAdjustedRatings() {
-    // console.warn("Figyelmeztetés: getAdjustedRatings() dummy függvény hívva!");
-    return {};
-}
-
-function getNarrativeRatings() {
-    // console.warn("Figyelmeztetés: getNarrativeRatings() dummy függvény hívva!");
-    return {};
-}
+// === MÓDOSÍTÁS: A DUMMY FÜGGVÉNYEK TÖRÖLVE ===
+// Az igazi, cache-alapú ratingeket importáljuk az új LearningService-ből
+import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
 // ===========================================
 
 // --- Segédfüggvények (Poisson és Normális eloszlás mintavétel) ---
 /**
  * Poisson distribution sampler using Knuth's algorithm.
  * @param {number} lambda The mean (average) rate.
- * @returns {number} A non-negative integer sampled from the Poisson distribution. Returns 0 if lambda <= 0 or invalid.
+ * @returns {number} A non-negative integer sampled from the Poisson distribution.
+ Returns 0 if lambda <= 0 or invalid.
  */
 function poisson(lambda) {
     if (lambda === null || typeof lambda !== 'number' || isNaN(lambda) || lambda < 0) return 0; // Hibás lambda -> 0
@@ -64,7 +56,7 @@ function sampleGoals(mu_h, mu_a) {
  */
 // Exportálva, mert buildPropheticTimeline hívja
 export function calculateEventProbabilities(gameState, mu_h, mu_a, rawData, sport, homeTeam, awayTeam) {
-    const narrativeRatings = getNarrativeRatings(); // Dummy!
+    const narrativeRatings = getNarrativeRatings(); // MÓDOSÍTÁS: Most már valós adatot hív
     const homeTeamLower = homeTeam.toLowerCase();
     const awayTeamLower = awayTeam.toLowerCase();
     const homeNarrative = narrativeRatings[homeTeamLower] || {};
@@ -164,7 +156,7 @@ export function buildPropheticTimeline(mu_h, mu_a, rawData, sport, homeTeam, awa
 // === estimateXG ===
 /**
  * Estimates expected goals (xG) or points based on various factors.
- * Uses dummy getAdjustedRatings.
+ * Uses getAdjustedRatings (now real data).
  * @returns {object} {mu_h: estimated home goals/points, mu_a: estimated away goals/points}.
  */
 // Exportálva
@@ -176,7 +168,8 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
         typeof stats.ga === 'number' && stats.ga >= 0;
     if (!areStatsValid(homeStats) || !areStatsValid(awayStats)) { // If stats invalid
         console.warn(`HIÁNYOS/ÉRVÉNYTELEN STATS (gp>1): ${homeTeam} (GP:${homeStats?.gp}) vs ${awayTeam} (GP:${awayStats?.gp}). Default xG.`); // Log
-        const defaultGoals = sport === 'basketball' ? 110 : (sport === 'hockey' ? 3.0 : 1.35); // Defaults
+        const defaultGoals = sport === 'basketball' ?
+            110 : (sport === 'hockey' ? 3.0 : 1.35); // Defaults
         return { mu_h: defaultGoals * 1.05, mu_a: defaultGoals * 0.95 }; // Return defaults
     }
 
@@ -201,7 +194,8 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
         logData.homeOffRating = homeOffRating; logData.awayOffRating = awayOffRating; logData.homeDefRating = homeDefRating; logData.awayDefRating = awayDefRating;
         mu_h = (homeOffRating / avgOffRating) * (awayDefRating / avgDefRating) * avgOffRating * (expectedPace / 100);
         mu_a = (awayOffRating / avgOffRating) * (homeDefRating / avgDefRating) * avgOffRating * (expectedPace / 100);
-        logData.base_mu_h = mu_h; logData.base_mu_a = mu_a;
+        logData.base_mu_h = mu_h;
+        logData.base_mu_a = mu_a;
         if (advancedData?.home?.four_factors && advancedData?.away?.four_factors) {
             const homeFF = advancedData.home.four_factors;
             const awayFF = advancedData.away.four_factors;
@@ -209,7 +203,8 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
             const tov_advantage = ((awayFF.TOV_pct ?? 0) - (homeFF.TOV_pct ?? 0)) * 0.05; // Null check
             mu_h *= (1 + ore_advantage - tov_advantage);
             mu_a *= (1 - ore_advantage + tov_advantage);
-            logData.ff_mod_h = (1 + ore_advantage - tov_advantage); logData.ff_mod_a = (1 - ore_advantage + tov_advantage);
+            logData.ff_mod_h = (1 + ore_advantage - tov_advantage);
+            logData.ff_mod_a = (1 - ore_advantage + tov_advantage);
         }
     } else if (sport === 'hockey' || sport === 'soccer') {
         const avgGoalsInLeague = leagueAverages?.avg_goals_per_game || (sport === 'hockey' ? 3.0 : 1.35);
@@ -225,17 +220,20 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
         homeDefenseStrength = Math.max(MIN_STRENGTH, Math.min(MAX_STRENGTH, homeDefenseStrength || 1)); // Null check
         awayDefenseStrength = Math.max(MIN_STRENGTH, Math.min(MAX_STRENGTH, awayDefenseStrength || 1)); // Null check
         logData.homeAtkStr = homeAttackStrength; logData.awayAtkStr = awayAttackStrength;
-        logData.homeDefStr = homeDefenseStrength; logData.awayDefStr = awayDefenseStrength;
+        logData.homeDefStr = homeDefenseStrength;
+        logData.awayDefStr = awayDefenseStrength;
         mu_h = homeAttackStrength * awayDefenseStrength * avgGoalsInLeague;
         mu_a = awayAttackStrength * homeDefenseStrength * avgGoalsInLeague;
-        logData.base_mu_h = mu_h; logData.base_mu_a = mu_a;
+        logData.base_mu_h = mu_h;
+        logData.base_mu_a = mu_a;
         if (sport === 'hockey') {
             const home_pp_advantage = (advancedData?.home?.pp_pct ?? 15) - (advancedData?.away?.pk_pct ?? 85); // Null check
             const away_pp_advantage = (advancedData?.away?.pp_pct ?? 15) - (advancedData?.home?.pk_pct ?? 85); // Null check
             const pp_mod_h = (1 + (home_pp_advantage / 100) * 0.15);
             const pp_mod_a = (1 + (away_pp_advantage / 100) * 0.15);
             mu_h *= pp_mod_h; mu_a *= pp_mod_a;
-            logData.pp_mod_h = pp_mod_h; logData.pp_mod_a = pp_mod_a;
+            logData.pp_mod_h = pp_mod_h;
+            logData.pp_mod_a = pp_mod_a;
             const leagueAvgSavePct = leagueAverages?.avg_goalie_save_pct || 0.905;
             const homeGoalieSavePct = advancedData?.home?.starting_goalie_save_pct_last5 || advancedData?.home?.goalie_save_pct_season || leagueAvgSavePct;
             const awayGoalieSavePct = advancedData?.away?.starting_goalie_save_pct_last5 || advancedData?.away?.goalie_save_pct_season || leagueAvgSavePct;
@@ -253,7 +251,8 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
                 console.warn(`Figyelem: SportMonks irreális xG (${homeTeam} vs ${awayTeam}): H=${advancedData.home.xg}, A=${advancedData.away.xg}. Korlátozva ${maxRealisticXG}-ra.`);
                 logData.source += ' (Korlátozva)';
             }
-            logData.base_mu_h = mu_h; logData.base_mu_a = mu_a;
+            logData.base_mu_h = mu_h;
+            logData.base_mu_a = mu_a;
         } else if (sport === 'soccer') {
             logData.source = 'Calculated xG';
         }
@@ -268,7 +267,8 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
         const draws = (formString.match(/D/g) || []).length;
         return wins * 3 + draws * 1;
     };
-    const homeOverallFormPts = getFormPoints(form?.home_overall); const awayOverallFormPts = getFormPoints(form?.away_overall); const homeVenueFormPts = getFormPoints(form?.home_home); const awayVenueFormPts = getFormPoints(form?.away_away);
+    const homeOverallFormPts = getFormPoints(form?.home_overall);
+    const awayOverallFormPts = getFormPoints(form?.away_overall); const homeVenueFormPts = getFormPoints(form?.home_home); const awayVenueFormPts = getFormPoints(form?.away_away);
     const homeFormFactor = (homeVenueFormPts > 0 || awayVenueFormPts > 0) ? // Use weighted only if venue form exists
                            (0.6 * (homeVenueFormPts / 15)) + (0.4 * (homeOverallFormPts / 15)) : (homeOverallFormPts / 15);
     const awayFormFactor = (homeVenueFormPts > 0 || awayVenueFormPts > 0) ? // Use weighted only if venue form exists
@@ -277,26 +277,63 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
     const form_mod_h = (1 + (homeFormFactor - 0.5) * formImpactFactor);
     const form_mod_a = (1 + (awayFormFactor - 0.5) * formImpactFactor);
     mu_h *= form_mod_h; mu_a *= form_mod_a;
-    logData.form_mod_h = form_mod_h; logData.form_mod_a = form_mod_a;
+    logData.form_mod_h = form_mod_h;
+    logData.form_mod_a = form_mod_a;
     // Dinamikus Hazai Pálya Előny
     const baseHomeAdv = SPORT_CONFIG[sport]?.home_advantage?.home || 1.0;
     const baseAwayAdv = SPORT_CONFIG[sport]?.home_advantage?.away || 1.0;
     const leagueHomeWinPct = leagueAverages?.home_win_pct || (sport === 'soccer' ? 0.45 : sport === 'hockey' ? 0.53 : 0.55);
     const defaultHomeWinPct = (sport === 'soccer' ? 0.45 : sport === 'hockey' ? 0.53 : 0.55);
     const homeAdvMultiplier = defaultHomeWinPct > 0 ? (leagueHomeWinPct / defaultHomeWinPct) : 1; // Avoid division by zero
-    const awayAdvMultiplier = (1-defaultHomeWinPct) > 0 ? ((1 - leagueHomeWinPct) / (1- defaultHomeWinPct)) : 1; // Avoid division by zero
+    const awayAdvMultiplier = (1-defaultHomeWinPct) > 0 ?
+        ((1 - leagueHomeWinPct) / (1- defaultHomeWinPct)) : 1; // Avoid division by zero
     const home_adv_mod = baseHomeAdv * homeAdvMultiplier;
     const away_adv_mod = baseAwayAdv * awayAdvMultiplier;
     mu_h *= home_adv_mod; mu_a *= away_adv_mod;
     logData.home_adv_mod = home_adv_mod; logData.away_adv_mod = away_adv_mod;
-    // Power Ratings (Dummy!)
-    const powerRatings = getAdjustedRatings(); // Dummy!
+
+    // === MÓDOSÍTÁS: Taktikai Modellezés ===
+    logData.step = 'Taktika';
+    const homeStyle = rawData?.tactics?.home?.style?.toLowerCase() || 'n/a';
+    const awayStyle = rawData?.tactics?.away?.style?.toLowerCase() || 'n/a';
+    let tactical_mod_h = 1.0;
+    let tactical_mod_a = 1.0;
+
+    // Kontra vs. Labdabirtoklás
+    if (homeStyle.includes('counter') && (awayStyle.includes('possession') || awayStyle.includes('dominan'))) {
+        tactical_mod_h *= 1.04; // Hazai kontra esély nő
+        tactical_mod_a *= 0.97; // Vendég labdabirtoklás hatékonysága csökken
+    }
+    if (awayStyle.includes('counter') && (homeStyle.includes('possession') || homeStyle.includes('dominan'))) {
+        tactical_mod_a *= 1.04;
+        tactical_mod_h *= 0.97;
+    }
+    // Magas letámadás vs. Gyenge/Lassú védelem
+    if (homeStyle.includes('press') && (awayStyle.includes('defensive frailties') || awayStyle.includes('slow build'))) {
+        tactical_mod_h *= 1.03;
+        tactical_mod_a *= 0.98;
+    }
+    if (awayStyle.includes('press') && (homeStyle.includes('defensive frailties') || homeStyle.includes('slow build'))) {
+        tactical_mod_a *= 1.03;
+        tactical_mod_h *= 0.98;
+    }
+    
+    mu_h *= tactical_mod_h;
+    mu_a *= tactical_mod_a;
+    logData.tactical_mod_h = tactical_mod_h;
+    logData.tactical_mod_a = tactical_mod_a;
+    // === MÓDOSÍTÁS VÉGE ===
+
+    // Power Ratings (MÓDOSÍTÁS: Most már valós adatot használ)
+    logData.step = 'Power Ratings (Tanult)';
+    const powerRatings = getAdjustedRatings(); // Most már valós adat!
     const homeTeamLower = homeTeam.toLowerCase(), awayTeamLower = awayTeam.toLowerCase();
     const homePR = powerRatings[homeTeamLower] || { atk: 1, def: 1 }; const awayPR = powerRatings[awayTeamLower] || { atk: 1, def: 1 }; // Defaults
     const pr_mod_h = (homePR.atk ?? 1) * (awayPR.def ?? 1); // Null check
     const pr_mod_a = (awayPR.atk ?? 1) * (homePR.def ?? 1); // Null check
     mu_h *= pr_mod_h; mu_a *= pr_mod_a;
-    logData.homePR_atk = homePR.atk; logData.homePR_def = homePR.def; logData.awayPR_atk = awayPR.atk; logData.awayPR_def = awayPR.def;
+    logData.homePR_atk = homePR.atk; logData.homePR_def = homePR.def;
+    logData.awayPR_atk = awayPR.atk; logData.awayPR_def = awayPR.def;
     logData.pr_mod_h = pr_mod_h; logData.pr_mod_a = pr_mod_a;
     // Pszichológiai Faktorok
     const psyMultiplier = 1.1;
@@ -327,11 +364,13 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
     }
     logData.weather_mod = weatherFactor;
     // Minimum érték
-    const minVal = sport === 'basketball' ? 80 : (sport === 'hockey' ? 1.5 : 0.5);
+    const minVal = sport === 'basketball' ?
+        80 : (sport === 'hockey' ? 1.5 : 0.5);
     mu_h = Math.max(minVal, mu_h || minVal); // Null check
     mu_a = Math.max(minVal, mu_a || minVal); // Null check
     // Végső Korlátozás
-    const finalMaxVal = sport === 'basketball' ? 200 : (sport === 'hockey' ? 10 : 7);
+    const finalMaxVal = sport === 'basketball' ?
+        200 : (sport === 'hockey' ? 10 : 7);
     if (mu_h > finalMaxVal || mu_a > finalMaxVal) {
         console.warn(`Figyelem: xG/Pont korlátozás (${homeTeam} vs ${awayTeam}): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)} -> Max ${finalMaxVal}. Log: ${JSON.stringify(logData)}`);
         logData.step = 'Végső Korlátozás';
@@ -450,22 +489,26 @@ export function simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, sims, sp
         for (let i = 0; i < safeSims; i++) { //
             const gh = Math.round(sampleNormal(mu_h, stdDev)); //
             const ga = Math.round(sampleNormal(mu_a, stdDev)); //
-            const scoreKey = `${gh}-${ga}`; scores[scoreKey] = (scores[scoreKey] || 0) + 1; //
+            const scoreKey = `${gh}-${ga}`;
+            scores[scoreKey] = (scores[scoreKey] || 0) + 1; //
             if (gh > ga) home++; else if (ga > gh) away++; else draw++; //
             if ((gh + ga) > mainTotalsLine) over_main++; //
         } //
     } else { // Soccer & Hockey simulation
         for (let i = 0; i < safeSims; i++) { //
             const { gh, ga } = sampleGoals(mu_h, mu_a); // Sample goals
-            const scoreKey = `${gh}-${ga}`; scores[scoreKey] = (scores[scoreKey] || 0) + 1; //
+            const scoreKey = `${gh}-${ga}`;
+            scores[scoreKey] = (scores[scoreKey] || 0) + 1; //
             if (gh > ga) home++; else if (ga > gh) away++; else draw++; // Update winner
             if (gh > 0 && ga > 0) btts++; // Update BTTS
             if (mainTotalsLine != null && (gh + ga) > mainTotalsLine) over_main++; // Update Over (check line exists)
             if (sport === 'soccer') { // Soccer specific
                 const corners = poisson(mu_corners); // Sample corners
-                if (corners > 7.5) corners_o7_5++; if (corners > 8.5) corners_o8_5++; if (corners > 9.5) corners_o9_5++; if (corners > 10.5) corners_o10_5++; if (corners > 11.5) corners_o11_5++; // Update corners
+                if (corners > 7.5) corners_o7_5++;
+                if (corners > 8.5) corners_o8_5++; if (corners > 9.5) corners_o9_5++; if (corners > 10.5) corners_o10_5++; if (corners > 11.5) corners_o11_5++; // Update corners
                 const cards = poisson(mu_cards); // Sample cards
-                if (cards > 3.5) cards_o3_5++; if (cards > 4.5) cards_o4_5++; if (cards > 5.5) cards_o5_5++; if (cards > 6.5) cards_o6_5++; // Update cards
+                if (cards > 3.5) cards_o3_5++;
+                if (cards > 4.5) cards_o4_5++; if (cards > 5.5) cards_o5_5++; if (cards > 6.5) cards_o6_5++; // Update cards
             } //
         } //
     }
@@ -479,7 +522,8 @@ export function simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, sims, sp
     } //
 
     const toPct = x => (100 * x / safeSims); // Percent helper
-    const topScoreKey = Object.keys(scores).length > 0 ? Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b, '0-0') : '0-0'; // Find top score
+    const topScoreKey = Object.keys(scores).length > 0 ?
+        Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b, '0-0') : '0-0'; // Find top score
     const [top_gh, top_ga] = topScoreKey.split('-').map(Number); // Get top score goals
 
     return { // Return results
@@ -487,7 +531,8 @@ export function simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, sims, sp
         pOver: toPct(over_main), pUnder: 100 - toPct(over_main), // Main line O/U
         corners: { 'o7.5': toPct(corners_o7_5), 'o8.5': toPct(corners_o8_5), 'o9.5': toPct(corners_o9_5), 'o10.5': toPct(corners_o10_5), 'o11.5': toPct(corners_o11_5) }, // Corner probs
         cards: { 'o3.5': toPct(cards_o3_5), 'o4.5': toPct(cards_o4_5), 'o5.5': toPct(cards_o5_5), 'o6.5': toPct(cards_o6_5) }, // Card probs
-        scores, topScore: { gh: top_gh, ga: top_ga }, // Score details
+        scores, 
+        topScore: { gh: top_gh, ga: top_ga }, // Score details
         mainTotalsLine: mainTotalsLine, // Include the line used for O/U calculation
         mu_h_sim: mu_h, mu_a_sim: mu_a, mu_corners_sim: mu_corners, mu_cards_sim: mu_cards // Input mus for reference
     }; //
@@ -496,18 +541,20 @@ export function simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, sims, sp
 // === calculateModelConfidence ===
 /**
  * Calculates a confidence score for the model's prediction.
- * Uses dummy getAdjustedRatings.
+ * Uses getAdjustedRatings (now real data).
  * @returns {number} Confidence score between 1.0 and 10.0.
  */
 // Exportálva
-export function calculateModelConfidence(sport, home, away, rawData, form, sim) {
+// MÓDOSÍTÁS: Új 'marketIntel' paraméter hozzáadva
+export function calculateModelConfidence(sport, home, away, rawData, form, sim, marketIntel) {
     let score = 5.0; // Base score
     const MAX_SCORE = 10.0; const MIN_SCORE = 1.0; // Limits
     try { // Error handling
         // Form helper
         const getFormPoints = (formString) => { //
              if (!formString || typeof formString !== 'string') return null; // Invalid -> null
-             const wins = (formString.match(/W/g) || []).length; const draws = (formString.match(/D/g) || []).length; const total = (formString.match(/[WDL]/g) || []).length; // Count W,D,L
+             const wins = (formString.match(/W/g) || []).length;
+             const draws = (formString.match(/D/g) || []).length; const total = (formString.match(/[WDL]/g) || []).length; // Count W,D,L
              return total > 0 ? (wins * 3 + draws * 1) / (total * 3) : null; // Calculate score (0 to 1)
         }; //
         const homeOverallFormScore = getFormPoints(form?.home_overall); const awayOverallFormScore = getFormPoints(form?.away_overall); // Get form scores
@@ -521,9 +568,12 @@ export function calculateModelConfidence(sport, home, away, rawData, form, sim) 
 
         // xG difference impact
         const xgDiff = Math.abs(sim.mu_h_sim - sim.mu_a_sim); // xG diff
-        const thresholdHigh = sport === 'basketball' ? 15 : sport === 'hockey' ? 0.8 : 0.4; // High threshold
-        const thresholdLow = sport === 'basketball' ? 5 : sport === 'hockey' ? 0.25 : 0.15; // Low threshold
-        if (xgDiff > thresholdHigh) score += 1.5; if (xgDiff < thresholdLow) score -= 1.0; // Adjust score
+        const thresholdHigh = sport === 'basketball' ?
+            15 : sport === 'hockey' ? 0.8 : 0.4; // High threshold
+        const thresholdLow = sport === 'basketball' ?
+            5 : sport === 'hockey' ? 0.25 : 0.15; // Low threshold
+        if (xgDiff > thresholdHigh) score += 1.5;
+        if (xgDiff < thresholdLow) score -= 1.0; // Adjust score
         // H2H recency impact
         if (rawData?.h2h_structured && rawData.h2h_structured.length > 0) { // If H2H exists
             try { const latestH2HDate = new Date(rawData.h2h_structured[0].date); // Get latest date
@@ -540,11 +590,41 @@ export function calculateModelConfidence(sport, home, away, rawData, form, sim) 
         if (sim.pHome > 60 && awayKeyAbsentees > 0) { score += (0.5 * awayKeyAbsentees); } // Increase if opp has absentees
         if (sim.pAway > 60 && homeKeyAbsentees > 0) { score += (0.5 * homeKeyAbsentees); } // Increase if opp has absentees
 
-        // Historical data availability (Dummy!)
-        const adjustedRatings = getAdjustedRatings(); // Dummy!
+        // === MÓDOSÍTÁS: Piaci Mozgás Elemzése ===
+        const marketIntelLower = marketIntel?.toLowerCase() || 'n/a';
+        if (marketIntelLower !== 'n/a' && marketIntelLower !== 'nincs jelentős oddsmozgás.') {
+            const homeFavored = sim.pHome > sim.pAway && sim.pHome > 45;
+            const awayFavored = sim.pAway > sim.pHome && sim.pAway > 45;
+            const homeNameLower = home.toLowerCase();
+            const awayNameLower = away.toLowerCase();
+            
+            // A piac a hazai *ellen* mozog (pl. a hazai odds nő, a marketIntel '+' jelet mutat a hazainál)
+            if (homeFavored && marketIntelLower.includes(homeNameLower) && marketIntelLower.includes('+')) {
+                score -= 1.5; // A piac nem hisz a favoritban
+            }
+            // A piac a vendég *ellen* mozog
+            else if (awayFavored && marketIntelLower.includes(awayNameLower) && marketIntelLower.includes('+')) {
+                score -= 1.5;
+            }
+            // A piac *egyetért* a szimulációval (pl. hazai favorit és a hazai odds csökken, '-')
+            else if (homeFavored && marketIntelLower.includes(homeNameLower) && marketIntelLower.includes('-')) {
+                score += 1.0;
+            }
+            // A piac *egyetért* a vendéggel
+            else if (awayFavored && marketIntelLower.includes(awayNameLower) && marketIntelLower.includes('-')) {
+                score += 1.0;
+            }
+        }
+        // === MÓDOSÍTÁS VÉGE ===
+
+        // Historical data availability (MÓDOSÍTÁS: Most már valós adatot használ)
+        // Történelmi adatok elérhetősége (Tanult)
+        const adjustedRatings = getAdjustedRatings(); // Most már valós adat!
         const homeHistory = adjustedRatings[home.toLowerCase()]; const awayHistory = adjustedRatings[away.toLowerCase()]; //
-        if (homeHistory && homeHistory.matches > 10) score += 0.25; if (awayHistory && awayHistory.matches > 10) score += 0.25; // Increase if >10
-        if (homeHistory && homeHistory.matches > 25) score += 0.25; if (awayHistory && awayHistory.matches > 25) score += 0.25; // Increase more if >25
+        if (homeHistory && homeHistory.matches > 10) score += 0.25;
+        if (awayHistory && awayHistory.matches > 10) score += 0.25; // Increase if >10
+        if (homeHistory && homeHistory.matches > 25) score += 0.25;
+        if (awayHistory && awayHistory.matches > 25) score += 0.25; // Increase more if >25
 
     } catch(e) { // Error handling
         console.error(`Hiba model konfidencia számításakor (${home} vs ${away}): ${e.message}`); // Log error
@@ -616,6 +696,7 @@ export function calculateValue(sim, oddsData, sport, homeTeam, awayTeam) {
         if (probability != null && typeof outcome.price === 'number' && outcome.price > 1) { // Check valid prob and price
             const value = (probability * outcome.price) - 1; // Calculate value
             if (value > 0.05) { // Threshold 5%
+ 
                 valueBets.push({ market: outcome.name, odds: outcome.price, probability: (probability * 100).toFixed(1) + '%', value: (value * 100).toFixed(1) + '%' }); // Add bet
             } //
         } //
@@ -657,7 +738,8 @@ export function analyzeLineMovement(currentOddsData, openingOddsData, sport, hom
         else if (lowerCurrentName === awayTeam.toLowerCase() || lowerCurrentName.includes('vendég')) simpleName = awayTeam; // Away
         else if (lowerCurrentName.includes('döntetlen') || lowerCurrentName === 'draw') simpleName = 'Döntetlen'; // Draw
 
-        if (simpleName) { // If name found
+   
+         if (simpleName) { // If name found
             const openingOutcome = openingMatch.h2h.find(oo => { // Find opening equivalent
                  const lowerOpeningName = oo.name.toLowerCase(); // Lowercase opening name
                  if (simpleName === homeTeam && (lowerOpeningName === homeTeam.toLowerCase() || lowerOpeningName.includes('hazai'))) return true; // Match home
