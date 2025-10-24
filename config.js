@@ -3,27 +3,18 @@ dotenv.config();
 
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* Innen töltődnek be a titkos kulcsok és a sportág-specifikus
-* beállítások.
+* VÉGLEGES JAVÍTÁS: Hozzáadva az `espn_sport_path` kulcs az API hívásokhoz.
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
 export const PORT = process.env.PORT || 3001;
 
 // --- API KULCSOK ---
-// Ezeket a Render.com Environment fülén kell beállítani!
-
-// JAVÍTÁS: Csak az AI Studio API kulcsra van szükség.
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-// JAVÍTÁS: A modell ID-t innen vesszük. Ez egy stabil, erős modell az AI Studio API-hoz.
-export const GEMINI_MODEL_ID = 'gemini-2.5-pro';
-
-// JAVÍTÁS: A Vertex AI-hoz tartozó PROJECT_ID és LOCATION sorokat töröltük.
-
+export const GEMINI_MODEL_ID = 'gemini-2.5-pro'; // A te bevált modelled
 export const ODDS_API_KEY = process.env.ODDS_API_KEY;
 export const SPORTMONKS_API_KEY = process.env.SPORTMONKS_API_KEY;
-export const PLAYER_API_KEY = process.env.PLAYER_API_KEY; // Ez jelenleg nincs használatban
+export const PLAYER_API_KEY = process.env.PLAYER_API_KEY;
 
 // --- GOOGLE SHEET BEÁLLÍTÁSOK ---
 export const SHEET_URL = process.env.SHEET_URL;
@@ -31,12 +22,13 @@ export const SHEET_URL = process.env.SHEET_URL;
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
 export const SPORT_CONFIG = {
     soccer: {
-        name: 'labdarúgás',
+        name: 'labdarúgás', // Magyar név a megjelenítéshez
+        espn_sport_path: 'soccer', // JAVÍTÁS: Angol név az API URL-hez
         total_minutes: 90,
         home_advantage: { home: 1.08, away: 0.92 },
         avg_goals: 1.35,
         totals_line: 2.5,
-        odds_api_sport_key: 'soccer_uefa_european_championship', // Alapértelmezett, ha nincs jobb
+        odds_api_sport_key: 'soccer_uefa_european_championship',
         odds_api_keys_by_league: {
             'UEFA Champions League': 'soccer_uefa_champs_league',
             'UEFA Europa League': 'soccer_uefa_europa_league',
@@ -60,42 +52,28 @@ export const SPORT_CONFIG = {
     },
     hockey: {
         name: 'jégkorong',
+        espn_sport_path: 'hockey', // JAVÍTÁS: Angol név az API URL-hez
         total_minutes: 60,
         home_advantage: { home: 1.05, away: 0.95 },
         avg_goals: 3.0,
         totals_line: 6.5,
         odds_api_sport_key: 'icehockey_nhl',
-        odds_api_keys_by_league: {
-            'NHL': 'icehockey_nhl',
-            'KHL': 'icehockey_khl',
-            'Sweden Hockey League': 'icehockey_sweden_hockey_league',
-        },
-        espn_leagues: {
-            'NHL': 'nhl',
-        },
+        odds_api_keys_by_league: { 'NHL': 'icehockey_nhl', 'KHL': 'icehockey_khl', 'Sweden Hockey League': 'icehockey_sweden_hockey_league' },
+        espn_leagues: { 'NHL': 'nhl' },
     },
     basketball: {
         name: 'kosárlabda',
+        espn_sport_path: 'basketball', // JAVÍTÁS: Angol név az API URL-hez
         total_minutes: 48,
         home_advantage: { home: 1.02, away: 0.98 },
         avg_goals: 110,
         totals_line: 220.5,
         odds_api_sport_key: 'basketball_nba',
-        odds_api_keys_by_league: {
-            'NBA': 'basketball_nba',
-            'EuroLeague': 'basketball_euroleague',
-        },
-        espn_leagues: {
-            'NBA': 'nba',
-        },
+        odds_api_keys_by_league: { 'NBA': 'basketball_nba', 'EuroLeague': 'basketball_euroleague' },
+        espn_leagues: { 'NBA': 'nba' },
     },
 };
 
-/**
- * Visszaadja a megfelelő Odds API sportág kulcsot a liga neve alapján.
- * @param {string} leagueName A liga neve.
- * @returns {string|null} Az Odds API kulcs vagy null.
- */
 export function getOddsApiKeyForLeague(leagueName) {
     if (!leagueName) return null;
     for (const sport in SPORT_CONFIG) {
@@ -104,5 +82,5 @@ export function getOddsApiKeyForLeague(leagueName) {
             return config.odds_api_keys_by_league[leagueName];
         }
     }
-    return null; // Ha egyik sportágban sem található
+    return null;
 }
