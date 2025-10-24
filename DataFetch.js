@@ -3,7 +3,7 @@ import NodeCache from 'node-cache';
 // Importáljuk az ODDS_TEAM_NAME_MAP-et is a configból
 import { SPORT_CONFIG, GEMINI_API_KEY, GEMINI_MODEL_ID, ODDS_API_KEY, SPORTMONKS_API_KEY, PLAYER_API_KEY, getOddsApiKeyForLeague, ODDS_TEAM_NAME_MAP } from './config.js';
 import pkg from 'string-similarity';
-const { findBestMatch } = pkg;
+const { findBestMatch } = pkg; // findBestMatch importálása
 
 // Cache inicializálás
 const scriptCache = new NodeCache({ stdTTL: 3600 * 2, checkperiod: 600, useClones: false });
@@ -11,7 +11,10 @@ const oddsCache = new NodeCache({ stdTTL: 60 * 10, checkperiod: 60 * 2, useClone
 const sportmonksIdCache = new NodeCache({ stdTTL: 0, useClones: false });
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VÉGLEGES JAVÍTÁS: AI Studio API + Helyes ESPN URL + Robusztus JSON tisztító + Odds név map
+* VÁLTOZÁS (V17.0 - Összevont Fejlesztés):
+* - Robusztusabb Odds API névkeresés (több variáció + string similarity).
+* - Részletesebb logolás az Odds API-hoz.
+* - getRichContextualData prompt bővítve: meccs fontossága, formációk, időjárás részletei.
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY ---
@@ -60,7 +63,8 @@ async function makeRequest(url, config = {}, retries = 1) {
     return null;
 }
 
-// --- SPORTMONKS API ---
+
+// --- SPORTMONKS API --- // (Változatlan maradt)
 async function findSportMonksTeamId(teamName) {
     const originalLowerName = teamName.toLowerCase().trim();
     if (!originalLowerName) return null;
@@ -72,7 +76,7 @@ async function findSportMonksTeamId(teamName) {
          sportmonksIdCache.set(cacheKey, 'not_found');
          // console.log("SportMonks API kulcs hiányzik vagy nincs beállítva, SportMonks ID keresés kihagyva."); // Opcionális log
          return null;
-     }
+    }
     const TEAM_NAME_MAP = { 'genk': 'KRC Genk', 'betis': 'Real Betis', 'red star': 'Red Star Belgrade', 'sparta': 'Sparta Prague', 'inter': 'Internazionale', 'fc copenhagen': 'Copenhagen', 'manchester utd': 'Manchester United', 'atletico': 'Atletico Madrid', 'as roma': 'Roma' };
     let teamId = null;
     let namesToTry = [TEAM_NAME_MAP[originalLowerName] || teamName];
@@ -99,7 +103,7 @@ async function findSportMonksTeamId(teamName) {
             }
         } catch (error) {
             console.error(`Hiba a SportMonks csapat ID lekérésekor ("${searchName}"): ${error.message}`);
-             // Csak akkor állunk le, ha nem timeout hiba volt
+            // Csak akkor állunk le, ha nem timeout hiba volt
             if (!axios.isAxiosError(error) || error.code !== 'ECONNABORTED') break;
         }
          // Várakozás a próbálkozások között, ha van még
@@ -113,7 +117,7 @@ async function findSportMonksTeamId(teamName) {
 }
 
 
-// --- GEMINI API FUNKCIÓ (GOLYÓÁLLÓ JSON KÉNYSZERÍTŐVEL) ---
+// --- GEMINI API FUNKCIÓ (GOLYÓÁLLÓ JSON KÉNYSZERÍTŐVEL) --- // (Változatlan maradt)
 export async function _callGemini(prompt) {
     if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') {
         console.error("KRITIKUS HIBA: A GEMINI_API_KEY hiányzik vagy nincs beállítva a config.js-ben / környezeti változókban!");
@@ -125,7 +129,8 @@ export async function _callGemini(prompt) {
     }
 
     // Technikai kényszerítő parancs hozzáadása minden egyes prompthoz
-    const finalPrompt = `${prompt}\n\nCRITICAL OUTPUT INSTRUCTION: Your entire response must be ONLY a single, valid JSON object. Do not add any text, explanation, or introductory phrases outside of the JSON structure itself.`;
+    const finalPrompt = `${prompt}\n\nCRITICAL OUTPUT INSTRUCTION: Your entire response must be ONLY a single, valid JSON object.
+Do not add any text, explanation, or introductory phrases outside of the JSON structure itself.`;
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent?key=${GEMINI_API_KEY}`;
     const payload = {
@@ -152,7 +157,7 @@ export async function _callGemini(prompt) {
              let blockReason = safetyRatings?.find(r => r.blocked)?.category;
              if (!blockReason && finishReason === 'SAFETY') blockReason = 'Safety'; // Általános biztonsági blokk
              console.error(`Gemini nem adott vissza szöveges tartalmat. FinishReason: ${finishReason}. BlockReason: ${blockReason || 'N/A'}. SafetyRatings: ${JSON.stringify(safetyRatings)}`);
-            throw new Error(`Gemini nem adott vissza szöveges tartalmat. Ok: ${finishReason}${blockReason ? ` (${blockReason})` : ''}`);
+             throw new Error(`Gemini nem adott vissza szöveges tartalmat. Ok: ${finishReason}${blockReason ? ` (${blockReason})` : ''}`);
         }
 
         // A responseMimeType miatt a válasz már eleve tiszta JSON kell legyen.
@@ -167,7 +172,7 @@ export async function _callGemini(prompt) {
             let cleanedJsonString = responseText.trim().match(/```json\n([\s\S]*?)\n```/)?.[1] || responseText.trim();
             if (!cleanedJsonString.startsWith('{') && cleanedJsonString.includes('{')) cleanedJsonString = cleanedJsonString.substring(cleanedJsonString.indexOf('{'));
             if (!cleanedJsonString.endsWith('}') && cleanedJsonString.includes('}')) cleanedJsonString = cleanedJsonString.substring(0, cleanedJsonString.lastIndexOf('}') + 1);
-             try {
+            try {
                  JSON.parse(cleanedJsonString);
                  console.log("Gemini API válasz sikeresen megtisztítva valid JSON-ná.");
                  return cleanedJsonString;
@@ -184,9 +189,10 @@ export async function _callGemini(prompt) {
 
 
 // --- FŐ ADATGYŰJTŐ FUNKCIÓ ---
+// === MÓDOSÍTÁS: A prompt bővítve az új kérésekkel ===
 export async function getRichContextualData(sport, homeTeamName, awayTeamName, leagueName) {
     const teamNames = [homeTeamName, awayTeamName].sort();
-    const ck = `rich_context_v32_aistudio_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
+    const ck = `rich_context_v33_advanced_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`; // Verzió növelve
     const cached = scriptCache.get(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
@@ -195,12 +201,34 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
     }
     console.log(`Nincs cache (${ck}), friss adatok lekérése AI Studio segítségével...`);
     try {
+        // Új prompt, amely kéri a meccs fontosságát, formációkat és időjárási részleteket
+        const PROMPT_V33 = `CRITICAL TASK: Based on your internal knowledge, find data for the ${sport} match: "${homeTeamName}" vs "${awayTeamName}". Provide a single, valid JSON object. Focus ONLY on:
+        1.  Basic Stats: played (gp), goals for (gf), goals against (ga). Use league standings if exact stats unavailable. Ensure numbers or null.
+        2.  H2H: last 5 structured (date, score) + concise overall summary.
+        3.  Team News & Absentees: Key absentees (name, importance [key/important/squad], role/position) + overall news summary + absentee impact analysis.
+        4.  Recent Form: overall & home/away W-D-L string.
+        5.  Tactics: Probable tactics/style + expected formation (e.g., "4-3-3").
+        6.  Key Players: name, role/position.
+        7.  Contextual Factors: Match importance/tension (e.g., "relegation battle", "mid-table clash", "final"), weather forecast (temp, rain/snow chance, wind speed/direction, pitch condition if known).
+        Use "N/A" for missing fields. Ensure stats are numbers or null. The final output must be a single valid JSON object.
+        STRUCTURE: {
+            "stats":{"home":{"gp":<num|null>,"gf":<num|null>,"ga":<num|null>},"away":{"gp":<num|null>,"gf":<num|null>,"ga":<num|null>}},
+            "h2h_summary":"<summary|N/A>",
+            "h2h_structured":[{"date":"YYYY-MM-DD","score":"H-A"}],
+            "team_news":{"home":"<news|N/A>","away":"<news|N/A>"},
+            "absentees":{"home":[{"name":"<Player>","importance":"<key|imp|squad>","role":"<pos>"}],"away":[]},
+            "absentee_impact_analysis":"<analysis|N/A>",
+            "form":{"home_overall":"<WDL|N/A>","away_overall":"<WDL|N/A>","home_home":"<WDL|N/A>","away_away":"<WDL|N/A>"},
+            "tactics":{"home":{"style":"<Style|N/A>","formation":"<form|N/A>"},"away":{"style":"<Style|N/A>","formation":"<form|N/A>"}},
+            "key_players":{"home":[{"name":"<Name>","role":"<Role>"}],"away":[]},
+            "contextual_factors":{"match_tension_index":"<low|medium|high|extreme|N/A>","weather":"<forecast|N/A>","pitch_condition":"<good|poor|N/A>"}
+        }`;
+
         // Párhuzamosan futtatjuk az AI hívást és az odds lekérést
         const [geminiJsonString, fetchedOddsData] = await Promise.all([
-            _callGemini(`CRITICAL TASK: Based on your internal knowledge, find data for the ${sport} match: "${homeTeamName}" vs "${awayTeamName}". Provide a single, valid JSON object. Focus ONLY on: H2H (last 5 structured: date, score + concise summary), team news (key absentees: name, importance + overall impact), recent form (overall & home/away W-D-L), probable tactics/style, key players (name, role). IMPORTANT: Also provide basic stats (played, goals for/against - 'gp', 'gf', 'ga') OR league table standings if exact stats are unavailable. Use "N/A" for missing fields. Ensure stats are numbers or null. The final output must be a single valid JSON object. STRUCTURE: {"stats":{"home":{"gp":<num|null>,"gf":<num|null>,"ga":<num|null>},"away":{"gp":<num|null>,"gf":<num|null>,"ga":<num|null>}},"h2h_summary":"<summary|N/A>","h2h_structured":[{"date":"YYYY-MM-DD","score":"H-A"}],"team_news":{"home":"<news|N/A>","away":"<news|N/A>"},"absentees":{"home":[{"name":"<Player>","importance":"<key|important|squad>"}],"away":[]},"absentee_impact_analysis":"<analysis|N/A>","form":{"home_overall":"<W-D-L|N/A>","away_overall":"<W-D-L|N/A>","home_home":"<W-D-L|N/A>","away_away":"<W-D-L|N/A>"},"tactics":{"home":{"style":"<Style|N/A>"},"away":{"style":"<Style|N/A>"}},"key_players":{"home":[{"name":"<Name>","role":"<Role>"}],"away":[]}}`),
+            _callGemini(PROMPT_V33), // Az új prompt használata
             getOptimizedOddsData(homeTeamName, awayTeamName, sport, SPORT_CONFIG[sport], null, leagueName)
         ]);
-
         let geminiData = null;
          try {
              geminiData = geminiJsonString ? JSON.parse(geminiJsonString) : null;
@@ -212,7 +240,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         // Ha az AI hívás sikertelen volt, üres objektummal inicializálunk
         if (!geminiData) {
             console.warn("getRichContextualData: Gemini API hívás sikertelen vagy nem adott vissza valid adatot. Alapértelmezett adatok.");
-            geminiData = { stats: {}, key_players: {}, form: {}, tactics: {}, absentees: {}, team_news: {} };
+            geminiData = { stats: {}, key_players: {}, form: {}, tactics: {}, absentees: {}, team_news: {}, contextual_factors: {} };
         }
 
         const finalData = {};
@@ -229,18 +257,9 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         if (awayGp === null || awayGp === 0) awayGp = defaultGpAway; // Ha nincs vagy 0 a gp, a formából próbáljuk
 
         finalData.stats = {
-            home: {
-                gp: homeGp,
-                gf: parseStat(geminiData?.stats?.home?.gf, null),
-                ga: parseStat(geminiData?.stats?.home?.ga, null)
-            },
-            away: {
-                gp: awayGp,
-                gf: parseStat(geminiData?.stats?.away?.gf, null),
-                ga: parseStat(geminiData?.stats?.away?.ga, null)
-            }
+            home: { gp: homeGp, gf: parseStat(geminiData?.stats?.home?.gf, null), ga: parseStat(geminiData?.stats?.home?.ga, null) },
+            away: { gp: awayGp, gf: parseStat(geminiData?.stats?.away?.gf, null), ga: parseStat(geminiData?.stats?.away?.ga, null) }
         };
-
         // Többi adat normalizálása, alapértelmezett értékekkel
         finalData.h2h_summary = geminiData?.h2h_summary || "N/A";
         finalData.h2h_structured = Array.isArray(geminiData?.h2h_structured) ? geminiData.h2h_structured : [];
@@ -251,26 +270,29 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         };
         finalData.absentee_impact_analysis = geminiData?.absentee_impact_analysis || "N/A";
         finalData.form = geminiData?.form || { home_overall: "N/A", away_overall: "N/A", home_home: "N/A", away_away: "N/A" };
-        finalData.tactics = geminiData?.tactics || { home: { style: "N/A" }, away: { style: "N/A" } };
+        finalData.tactics = geminiData?.tactics || { home: { style: "N/A", formation: "N/A" }, away: { style: "N/A", formation: "N/A" } };
         finalData.key_players = {
             home: (geminiData?.key_players?.home || []).map(p => ({ name: p?.name || 'Ismeretlen', role: p?.role || 'N/A', stats: {} })),
             away: (geminiData?.key_players?.away || []).map(p => ({ name: p?.name || 'Ismeretlen', role: p?.role || 'N/A', stats: {} }))
         };
+        finalData.contextual_factors = geminiData?.contextual_factors || { match_tension_index: "N/A", weather: "N/A", pitch_condition: "N/A" };
         finalData.advanced_stats = { home: { xg: null }, away: { xg: null } }; // Placeholder
         finalData.referee = { name: 'N/A', stats: 'N/A' }; // Placeholder
         finalData.league_averages = geminiData?.league_averages || {}; // Placeholder
 
-        // Összefoglaló kontextus string generálása
+        // Összefoglaló kontextus string generálása (bővítve)
         const richContextParts = [
             finalData.h2h_summary !== "N/A" && `- H2H: ${finalData.h2h_summary}`,
+            finalData.contextual_factors.match_tension_index !== "N/A" && `- Tét: ${finalData.contextual_factors.match_tension_index}`,
             (finalData.team_news.home !== "N/A" || finalData.team_news.away !== "N/A") && `- Hírek: H: ${finalData.team_news.home}, V: ${finalData.team_news.away}`,
-            (finalData.absentees.home.length > 0 || finalData.absentees.away.length > 0) && `- Hiányzók: H: ${finalData.absentees.home.map(p => `${p.name}(${p.importance || '?'})`).join(', ') || 'Nincs'}, V: ${finalData.absentees.away.map(p => `${p.name}(${p.importance || '?'})`).join(', ') || 'Nincs'}`,
+            (finalData.absentees.home.length > 0 || finalData.absentees.away.length > 0) && `- Hiányzók: H: ${finalData.absentees.home.map(p => `${p.name}(${p.importance || '?'}, ${p.role || '?'})`).join(', ') || 'Nincs'}, V: ${finalData.absentees.away.map(p => `${p.name}(${p.importance || '?'}, ${p.role || '?'})`).join(', ') || 'Nincs'}`,
             finalData.absentee_impact_analysis !== "N/A" && `- Hiányzók Hatása: ${finalData.absentee_impact_analysis}`,
             (finalData.form.home_overall !== "N/A" || finalData.form.away_overall !== "N/A") && `- Forma: H: ${finalData.form.home_overall}, V: ${finalData.form.away_overall}`,
-            (finalData.tactics.home.style !== "N/A" || finalData.tactics.away.style !== "N/A") && `- Taktika: H: ${finalData.tactics.home.style}, V: ${finalData.tactics.away.style}`
+            (finalData.tactics.home.style !== "N/A" || finalData.tactics.away.style !== "N/A") && `- Taktika: H: ${finalData.tactics.home.style} (${finalData.tactics.home.formation || '?'}), V: ${finalData.tactics.away.style} (${finalData.tactics.away.formation || '?'})`,
+            finalData.contextual_factors.weather !== "N/A" && `- Időjárás: ${finalData.contextual_factors.weather}`,
+            finalData.contextual_factors.pitch_condition !== "N/A" && `- Pálya: ${finalData.contextual_factors.pitch_condition}`
         ].filter(Boolean);
         const richContext = richContextParts.length > 0 ? richContextParts.join('\n') : "Nem sikerült kontextuális adatokat gyűjteni.";
-
         const result = {
             rawStats: finalData.stats,
             leagueAverages: finalData.league_averages,
@@ -279,7 +301,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
             form: finalData.form,
             rawData: finalData // Tartalmazza az összes normalizált adatot
         };
-
         // KRITIKUS VALIDÁLÁS: A meccsszám (gp) nem lehet nulla vagy érvénytelen
         if (!result.rawStats?.home?.gp || result.rawStats.home.gp <= 0 || !result.rawStats?.away?.gp || result.rawStats.away.gp <= 0) {
             console.error(`KRITIKUS HIBA (${homeTeamName} vs ${awayTeamName}): Az alap statisztikák (rawStats.gp) érvénytelenek (${result.rawStats.home.gp}, ${result.rawStats.away.gp}). Elemzés nem lehetséges.`);
@@ -295,6 +316,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         throw new Error(`Adatgyűjtési hiba (AI Studio): ${e.message}`);
     }
 }
+// === MÓDOSÍTÁS VÉGE ===
 
 
 // --- ODDS API FUNKCIÓK ---
@@ -305,7 +327,7 @@ export async function getOptimizedOddsData(homeTeam, awayTeam, sport, sportConfi
          return null;
     }
     const key = `${homeTeam.toLowerCase().replace(/\s+/g, '')}_vs_${awayTeam.toLowerCase().replace(/\s+/g, '')}`;
-    const cacheKey = `live_odds_v5_${sport}_${key}_${leagueName || 'noliga'}`; // Cache verzió növelve
+    const cacheKey = `live_odds_v6_robust_${sport}_${key}_${leagueName || 'noliga'}`; // Cache verzió növelve
     const cachedOdds = oddsCache.get(cacheKey);
     if (cachedOdds) {
          // console.log(`Odds cache találat (${cacheKey})`); // Opcionális log
@@ -321,65 +343,93 @@ export async function getOptimizedOddsData(homeTeam, awayTeam, sport, sportConfi
     return null;
 }
 
+// === MÓDOSÍTÁS: Robusztusabb névkeresés az Odds API-hoz ===
+/**
+ * Létrehoz névváltozatokat a kereséshez.
+ * @param {string} teamName Eredeti csapatnév.
+ * @returns {string[]} Névváltozatok tömbje.
+ */
+function generateTeamNameVariations(teamName) {
+    const lowerName = teamName.toLowerCase().trim();
+    const variations = new Set([
+        teamName, // Eredeti
+        lowerName, // Kisbetűs
+        ODDS_TEAM_NAME_MAP[lowerName] || teamName // A térképből
+    ]);
+
+    // FC, SC, stb. eltávolítása
+    variations.add(lowerName.replace(/^(fc|sc|cf|ac|as|krc|real|fk|nk|rc|cd|afc|1\.)\s+/i, '').trim());
+    // Csak az első szó (gyakran ez a város)
+    variations.add(lowerName.split(' ')[0]);
+
+    return Array.from(variations).filter(name => name && name.length > 2); // Üres vagy túl rövid nevek kiszűrése
+}
+
 async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
     const oddsApiKey = leagueName ? getOddsApiKeyForLeague(leagueName) : (sportConfig.odds_api_sport_key || null);
-    if (!ODDS_API_KEY || !oddsApiKey) return null; // API kulcs ellenőrzés itt is
+    if (!ODDS_API_KEY || !oddsApiKey) {
+        console.warn(`Odds API: Hiányzó API kulcs (${ODDS_API_KEY ? 'OK' : 'HIÁNYZIK'}) vagy Sport Kulcs (${oddsApiKey || 'HIÁNYZIK'}) ehhez: ${leagueName || sport}`);
+        return null; // API kulcs ellenőrzés itt is
+    }
 
-    const url = `https://api.the-odds-api.com/v4/sports/${sportConfig.odds_api_sport_key}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals&bookmakers=pinnacle&oddsFormat=decimal&sports=${oddsApiKey}`; // oddsFormat hozzáadva a biztonság kedvéért
+    const url = `https://api.the-odds-api.com/v4/sports/${oddsApiKey}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals&bookmakers=pinnacle&oddsFormat=decimal`;
     try {
         const response = await makeRequest(url, { timeout: 10000 });
         if (!response?.data || !Array.isArray(response.data) || response.data.length === 0) {
             console.warn(`Odds API (${oddsApiKey}): Nem érkezett adat, vagy üres a válasz.`);
             // Ha specifikus liga kulccsal nem ment, és az nem az alap sport kulcs volt, próbáljuk az alap sport kulccsal
             if (leagueName && oddsApiKey !== sportConfig.odds_api_sport_key) {
-                 console.log(`Próbálkozás az alap odds sport kulccsal (${sportConfig.odds_api_sport_key})...`);
-                return getOddsData(homeTeam, awayTeam, sport, sportConfig, null);
+                 console.log(`Odds API: Próbálkozás az alap odds sport kulccsal (${sportConfig.odds_api_sport_key})...`);
+                 return getOddsData(homeTeam, awayTeam, sport, sportConfig, null);
             }
             return null;
         }
         const oddsData = response.data;
 
-        const originalLowerHome = homeTeam.toLowerCase().trim();
-        const originalLowerAway = awayTeam.toLowerCase().trim();
-
-        // Használjuk a map-et, ha van benne bejegyzés, különben az eredetit
-        const searchHomeName = ODDS_TEAM_NAME_MAP[originalLowerHome] || homeTeam;
-        const searchAwayName = ODDS_TEAM_NAME_MAP[originalLowerAway] || awayTeam;
-        const lowerSearchHome = searchHomeName.toLowerCase().trim();
-        const lowerSearchAway = searchAwayName.toLowerCase().trim();
+        const homeVariations = generateTeamNameVariations(homeTeam);
+        const awayVariations = generateTeamNameVariations(awayTeam);
+        console.log(`Odds API (${oddsApiKey}): Keresem "${homeTeam}" vs "${awayTeam}". Változatok: H[${homeVariations.join(', ')}], A[${awayVariations.join(', ')}]. API meccsek: ${oddsData.length}`);
 
         let bestMatch = null;
-        let highestRating = 0.65; // Hasonlósági küszöb
-
-        console.log(`Odds API: Keresem "${lowerSearchHome}" vs "${lowerSearchAway}" (Eredeti: "${originalLowerHome}" vs "${originalLowerAway}"). API meccsek száma: ${oddsData.length}`);
+        let highestCombinedRating = 0.60; // Minimum küszöb a kombinált hasonlóságra
 
         for (const match of oddsData) {
             if (!match.home_team || !match.away_team) continue;
             const apiHomeLower = match.home_team.toLowerCase().trim();
             const apiAwayLower = match.away_team.toLowerCase().trim();
 
-            const homeSim = findBestMatch(lowerSearchHome, [apiHomeLower]).bestMatch.rating;
-            const awaySim = findBestMatch(lowerSearchAway, [apiAwayLower]).bestMatch.rating;
-            // Súlyozott átlag, a hazai csapat nevének nagyobb súlyt adunk (gyakran pontosabb)
-            const avgSim = (homeSim * 0.6 + awaySim * 0.4);
+            // Legjobb hasonlóság keresése a változatok között
+            const homeMatchResult = findBestMatch(apiHomeLower, homeVariations);
+            const awayMatchResult = findBestMatch(apiAwayLower, awayVariations);
 
-             // Logoljuk a top hasonlóságokat a debuggoláshoz
-             if (avgSim > 0.5 && oddsData.length < 50) { // Csak kevés meccs esetén, hogy ne legyen túl sok log
-                 console.log(` -> Odds API hasonlítás: "${match.home_team}" (${(homeSim*100).toFixed(0)}%) vs "${match.away_team}" (${(awaySim*100).toFixed(0)}%) = Avg: ${(avgSim*100).toFixed(0)}%`);
-             }
+            const homeSim = homeMatchResult.bestMatch.rating;
+            const awaySim = awayMatchResult.bestMatch.rating;
 
-            if (avgSim > highestRating) {
-                highestRating = avgSim;
+            // Súlyozott átlag, hogy mindkét név számítson
+            const combinedSim = (homeSim * 0.5 + awaySim * 0.5);
+
+            // Részletes logolás (csak ha van esély az egyezésre)
+            if (combinedSim > 0.5 || homeSim > 0.7 || awaySim > 0.7) {
+                 console.log(` -> Odds API hasonlítás: "${match.home_team}" vs "${match.away_team}" | Hasonlóság H:"${homeMatchResult.bestMatch.target}"(${homeSim.toFixed(2)}), A:"${awayMatchResult.bestMatch.target}"(${awaySim.toFixed(2)}) => Kombinált: ${combinedSim.toFixed(2)}`);
+            }
+
+            if (combinedSim > highestCombinedRating) {
+                highestCombinedRating = combinedSim;
                 bestMatch = match;
             }
         }
 
         if (!bestMatch) {
-            console.warn(`Odds API: Nem találtam megfelelő meccset "${lowerSearchHome}" vs "${lowerSearchAway}" párosításhoz ${highestRating > 0 ? `(legjobb egyezés: ${(highestRating*100).toFixed(0)}%)` : ''}.`);
+            console.warn(`Odds API (${oddsApiKey}): Nem találtam megfelelő meccset "${homeTeam}" vs "${awayTeam}" párosításhoz. Legjobb kombinált egyezés: ${(highestCombinedRating*100).toFixed(0)}%.`);
+            // Ha specifikus liga kulccsal nem ment, próbálkozhatunk az alap sport kulccsal
+            if (leagueName && oddsApiKey !== sportConfig.odds_api_sport_key) {
+                 console.log(`Odds API: Próbálkozás az alap odds sport kulccsal (${sportConfig.odds_api_sport_key})...`);
+                 return getOddsData(homeTeam, awayTeam, sport, sportConfig, null);
+            }
             return null;
         }
-        console.log(`Odds API: A legjobb találat "${bestMatch.home_team}" vs "${bestMatch.away_team}" (${(highestRating*100).toFixed(1)}% egyezés). Kezdés: ${bestMatch.commence_time}`);
 
+        console.log(`Odds API (${oddsApiKey}): Legjobb találat "${bestMatch.home_team}" vs "${bestMatch.away_team}" (${(highestCombinedRating*100).toFixed(1)}% egyezés). Kezdés: ${bestMatch.commence_time}`);
         const bookmaker = bestMatch.bookmakers?.find(b => b.key === 'pinnacle');
         if (!bookmaker?.markets) {
              console.warn(`Odds API: A legjobb találat (${bestMatch.home_team}) nem tartalmazott Pinnacle piacokat.`);
@@ -387,16 +437,17 @@ async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
         }
         const currentOdds = [];
         const allMarkets = bookmaker.markets;
-
         // H2H piac (győztes)
         const h2h = allMarkets.find(m => m.key === 'h2h')?.outcomes;
         if (h2h) {
             h2h.forEach(o => {
                 if (o.price && o.price > 1) { // Ellenőrizzük, hogy az ár létezik és nagyobb 1-nél
                     let name = o.name;
-                    if (name === bestMatch.home_team) name = 'Hazai győzelem';
-                    else if (name === bestMatch.away_team) name = 'Vendég győzelem';
-                    else if (name === 'Draw') name = 'Döntetlen';
+                    // Név normalizálása a KÖVETKEZETESSÉG érdekében
+                    if (name.toLowerCase() === bestMatch.home_team.toLowerCase()) name = 'Hazai győzelem';
+                    else if (name.toLowerCase() === bestMatch.away_team.toLowerCase()) name = 'Vendég győzelem';
+                    else if (name.toLowerCase() === 'draw') name = 'Döntetlen';
+                    else name = o.name; // Ha nem standard, marad az eredeti
                     currentOdds.push({ name: name, price: parseFloat(o.price) }); // Átalakítjuk számmá
                 }
             });
@@ -407,6 +458,7 @@ async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
         // Totals piac (Over/Under)
         const totals = allMarkets.find(m => m.key === 'totals')?.outcomes;
         if (totals) {
+            // Itt a findMainTotalsLine-nak át kell adni a sportot is
             const mainLine = findMainTotalsLine({ allMarkets, sport }) ?? sportConfig.totals_line;
             const over = totals.find(o => o.point === mainLine && o.name === 'Over');
             const under = totals.find(o => o.point === mainLine && o.name === 'Under');
@@ -422,8 +474,10 @@ async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
         return null;
     }
 }
+// === MÓDOSÍTÁS VÉGE ===
 
 export function findMainTotalsLine(oddsData) {
+    // MÓDOSÍTÁS: A sportot is figyelembe vesszük a default line-hoz
     const defaultLine = SPORT_CONFIG[oddsData?.sport]?.totals_line ?? 2.5;
     const totalsMarket = oddsData?.allMarkets?.find(m => m.key === 'totals');
     if (!totalsMarket?.outcomes || totalsMarket.outcomes.length < 2) return defaultLine;
@@ -452,7 +506,7 @@ export function findMainTotalsLine(oddsData) {
 }
 
 
-// --- ESPN MECCSLEKÉRDEZÉS ---
+// --- ESPN MECCSLEKÉRDEZÉS --- // (Változatlan maradt)
 export async function _getFixturesFromEspn(sport, days) {
     const sportConfig = SPORT_CONFIG[sport];
     if (!sportConfig?.espn_sport_path || !sportConfig.espn_leagues || Object.keys(sportConfig.espn_leagues).length === 0) {
@@ -492,10 +546,10 @@ export async function _getFixturesFromEspn(sport, days) {
                         .filter(event => event?.status?.type?.state?.toLowerCase() === 'pre') // Csak a még el nem kezdődött meccsek
                         .map(event => {
                             const competition = event.competitions?.[0];
-                            if (!competition) return null;
+                             if (!competition) return null;
                             const home = competition.competitors?.find(c => c.homeAway === 'home')?.team;
                             const away = competition.competitors?.find(c => c.homeAway === 'away')?.team;
-                             // Robusztusabb névellenőrzés
+                            // Robusztusabb névellenőrzés
                             const homeName = home ? String(home.shortDisplayName || home.displayName || home.name || '').trim() : null;
                             const awayName = away ? String(away.shortDisplayName || away.displayName || away.name || '').trim() : null;
 
