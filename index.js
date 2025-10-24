@@ -6,8 +6,10 @@ import { runFullAnalysis } from './AnalysisFlow.js';
 import { getHistoryFromSheet, getAnalysisDetailFromSheet, deleteHistoryItemFromSheet } from './sheets.js';
 import aiService, { getChatResponse } from './AI_Service.js';
 
-const app = express();
+// === MÓDOSÍTÁS: Az öntanuló modul importálása (későbbi használatra) ===
+// import { runPostMatchLearning } from './PostMatch.js'; // Ezt majd később hozzuk létre
 
+const app = express();
 // --- Middleware Beállítások ---
 
 // JAVÍTÁS: A CORS beállítást ideiglenesen teljesen megengedőre állítjuk a hiba felderítéséhez.
@@ -19,7 +21,6 @@ app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] Kérés érkezett: ${req.method} ${req.originalUrl}`);
     next();
 });
-
 // --- API Útvonalak (Routes) ---
 
 // Meccsek lekérése ESPN-ből
@@ -31,7 +32,8 @@ app.get('/getFixtures', async (req, res) => {
             return res.status(400).json({ error: "Hiányzó 'sport' vagy 'days' paraméter." });
         }
         const fixtures = await _getFixturesFromEspn(sport, days);
-        res.status(200).json({
+       
+         res.status(200).json({
             fixtures: fixtures,
             odds: {}
         });
@@ -40,7 +42,6 @@ app.get('/getFixtures', async (req, res) => {
         res.status(500).json({ error: `Szerver hiba (getFixtures): ${e.message}` });
     }
 });
-
 // Elemzés futtatása
 app.post('/runAnalysis', async (req, res) => {
     try {
@@ -51,6 +52,7 @@ app.post('/runAnalysis', async (req, res) => {
             sheetUrl: req.query.sheetUrl
         };
         const sport = req.query.sport;
+      
         const openingOdds = req.body.openingOdds || {};
 
         if (!params.home || !params.away || !sport) {
@@ -61,7 +63,8 @@ app.post('/runAnalysis', async (req, res) => {
         const result = await runFullAnalysis(params, sport, openingOdds);
 
         if (result.error) {
-           console.error(`Elemzési hiba (AnalysisFlow): ${result.error}`);
+         
+            console.error(`Elemzési hiba (AnalysisFlow): ${result.error}`);
             return res.status(500).json({ error: result.error });
         }
 
@@ -83,10 +86,10 @@ app.get('/getHistory', async (req, res) => {
         res.status(200).json(historyData);
     } catch (e) {
         console.error(`Hiba a /getHistory végponton: ${e.message}`, e.stack);
+      
         res.status(500).json({ error: `Szerver hiba (getHistory): ${e.message}` });
     }
 });
-
 // Egy konkrét elemzés részleteinek lekérése ID alapján
 app.get('/getAnalysisDetail', async (req, res) => {
     try {
@@ -97,6 +100,7 @@ app.get('/getAnalysisDetail', async (req, res) => {
         const detailData = await getAnalysisDetailFromSheet(id);
         if (detailData.error) {
             return res.status(500).json(detailData);
+ 
         }
         res.status(200).json(detailData);
     } catch (e) {
@@ -104,7 +108,6 @@ app.get('/getAnalysisDetail', async (req, res) => {
         res.status(500).json({ error: `Szerver hiba (getAnalysisDetail): ${e.message}` });
     }
 });
-
 // Előzmény elem törlése ID alapján
 app.post('/deleteHistoryItem', async (req, res) => {
     try {
@@ -115,6 +118,7 @@ app.post('/deleteHistoryItem', async (req, res) => {
         const deleteData = await deleteHistoryItemFromSheet(id);
         if (deleteData.error) {
             return res.status(500).json(deleteData);
+ 
         }
         res.status(200).json(deleteData);
     } catch (e) {
@@ -122,7 +126,6 @@ app.post('/deleteHistoryItem', async (req, res) => {
         res.status(500).json({ error: `Szerver hiba (deleteHistoryItem): ${e.message}` });
     }
 });
-
 // Chat funkció
 app.post('/askChat', async (req, res) => {
     try {
@@ -133,7 +136,8 @@ app.post('/askChat', async (req, res) => {
         const chatData = await getChatResponse(context, history, question);
 
         if (chatData.error) {
-            return res.status(500).json(chatData);
+       
+             return res.status(500).json(chatData);
         }
         res.status(200).json(chatData);
     } catch (e) {
@@ -141,6 +145,32 @@ app.post('/askChat', async (req, res) => {
         res.status(500).json({ error: `Szerver hiba (askChat): ${e.message}` });
     }
 });
+
+// === MÓDOSÍTÁS: Új végpont az öntanuláshoz ===
+app.post('/runLearning', async (req, res) => {
+    try {
+        console.log("Öntanulási folyamat indítása...");
+        
+        // Jelenleg ez egy placeholder. A következő fejlesztés fogja ezt feltölteni.
+        // const learningResult = await runPostMatchLearning();
+        
+        // Placeholder válasz
+        const learningResult = { 
+            message: "Öntanuló modul sikeresen meghívva.", 
+            processed: 0, 
+            insights: 0 
+        };
+        
+        if (learningResult.error) {
+            return res.status(500).json(learningResult);
+        }
+        res.status(200).json(learningResult);
+    } catch (e) {
+        console.error(`Hiba a /runLearning végponton: ${e.message}`, e.stack);
+        res.status(500).json({ error: `Szerver hiba (runLearning): ${e.message}` });
+    }
+});
+// === MÓDOSÍTÁS VÉGE ===
 
 // --- Szerver Indítása ---
 async function startServer() {

@@ -86,11 +86,24 @@ async function _getSheet(doc, sheetName, headers) {
  * Lekéri a "History" munkalapot.
  * @returns {Promise<GoogleSpreadsheetWorksheet>} A "History" munkalap.
  */
-async function getHistorySheet() {
+// === MÓDOSÍTÁS: Új fejlécek hozzáadva az öntanuláshoz ===
+export async function getHistorySheet() {
     const doc = getDocInstance();
-    const headers = ["ID", "Dátum", "Sport", "Hazai", "Vendég", "HTML Tartalom"];
+    const headers = [
+        "ID", 
+        "Dátum", 
+        "Sport", 
+        "Hazai", 
+        "Vendég", 
+        "Tipp",                 // <-- ÚJ OSZLOP
+        "Bizalom",            // <-- ÚJ OSZLOP
+        "Valós Eredmény",     // <-- ÚJ OSZLOP (későbbi fejlesztéshez)
+        "Helyes (W/L/P)",       // <-- ÚJ OSZLOP (későbbi fejlesztéshez)
+        "HTML Tartalom"
+    ];
     return await _getSheet(doc, "History", headers);
 }
+// === MÓDOSÍTÁS VÉGE ===
 
 // === Fő Funkciók (Exportálva) ===
 
@@ -126,10 +139,14 @@ export async function getHistoryFromSheet() {
          
                 sport: row.get("Sport"),
                 home: row.get("Hazai"),
-                away: row.get("Vendég")
+                away: row.get("Vendég"),
+                // MÓDOSÍTÁS: Elküldjük a tipp adatokat is a listanézetnek
+                tip: row.get("Tipp") || 'N/A',
+                confidence: row.get("Bizalom") || 'N/A'
             };
         });
-        return { history: history.filter(item => item.id) };
+        // A legújabb elemzések kerüljenek előre
+        return { history: history.filter(item => item.id).reverse() };
     } catch (e) {
         console.error(`Előzmények olvasási hiba: ${e.message}`, e.stack);
         return { error: `Előzmények olvasási hiba: ${e.message}` };
@@ -172,6 +189,7 @@ export async function getAnalysisDetailFromSheet(id) {
  * @param {object} analysisData Az elemzés adatai.
  * @returns {Promise<void>}
  */
+// === MÓDOSÍTÁS: A függvény most már menti a tippet és a bizalmat is ===
 export async function saveAnalysisToSheet(sheetUrl, analysisData) {
     const analysisId = analysisData.id || 'N/A';
     try {
@@ -183,6 +201,12 @@ export async function saveAnalysisToSheet(sheetUrl, analysisData) {
         const sheet = await getHistorySheet();
         const newId = analysisData.id || crypto.randomUUID(); // Node.js 19+
         const dateToSave = (analysisData.date instanceof Date ? analysisData.date : new Date()).toISOString();
+        
+        // Ajánlás adatainak kinyerése
+        const tip = analysisData.recommendation?.recommended_bet || 'N/A';
+        const confidence = analysisData.recommendation?.final_confidence ? 
+            analysisData.recommendation.final_confidence.toFixed(1) : 'N/A';
+
         // addRow() metódus használata az új sor hozzáadásához
         // A sorrend itt már nem számít, a fejléc neveket használja
         await sheet.addRow({
@@ -190,15 +214,17 @@ export async function saveAnalysisToSheet(sheetUrl, analysisData) {
             "Dátum": dateToSave,
             "Sport": analysisData.sport || 'N/A',
             "Hazai": analysisData.home,
-            
             "Vendég": analysisData.away,
-            "HTML Tartalom": analysisData.html || ''
+            "HTML Tartalom": analysisData.html || '',
+            "Tipp": tip,                   // <-- ÚJ ADAT
+            "Bizalom": confidence          // <-- ÚJ ADAT
         });
         // console.log(`Mentés sikeres (ID: ${newId}) a '${sheet.title}' lapra.`); // Reduce noise
     } catch (e) {
         console.error(`Hiba az elemzés mentésekor a táblázatba (ID: ${analysisId}): ${e.message}`, e.stack);
     }
 }
+// === MÓDOSÍTÁS VÉGE ===
 
 /**
  * Töröl egy elemet a "History" lapról ID alapján.
@@ -248,7 +274,7 @@ export async function logLearningInsight(sheetUrl, insightData) {
             "Hazai": insightData.home || 'N/A',
             "Vendég": insightData.away || 'N/A',
             "Tipp": insightData.prediction || 'N/A',
-            "Bizalom": typeof insightData.confidence === 'number' ? insightData.confidence.toFixed(1) : 'N/A',
+            "Bizalom": typeof insightData.confidence === 'number' ? insightData.confidence.toFixed(1) : 'N/Data.confidence',
   
             "Valós Eredmény": insightData.actual || 'N/A',
             "Tanulság (AI)": insightData.insight || 'N/A'

@@ -37,11 +37,10 @@ import { buildAnalysisHtml } from './htmlBuilder.js'; // HTML építő funkció
 // Gyorsítótár inicializálása
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
-* AnalysisFlow.js - Fő Elemzési Munkafolyamat (V15.0 - Vitázó Bizottság)
+* AnalysisFlow.js - Fő Elemzési Munkafolyamat (V15.1 - Önreflexív Memória 1. Lépés)
 * Feladata: A központi elemzési logika Node.js környezetben.
-* VÁLTOZÁS: A "Kritikus Lánc" most már valódi láncolt
-* következtetést végez: Kockázat -> Taktika -> Szcenárió -> Összegzés.
-* Ezáltal az AI elemzők "vitatkoznak" és egymásra épülnek.
+* VÁLTOZÁS: A saveAnalysisToSheet most már megkapja a masterRecommendation
+* objektumot, hogy a tipp és a bizalom naplózásra kerülhessen.
 **************************************************************/
 
 export async function runFullAnalysis(params, sport, openingOdds) {
@@ -272,13 +271,23 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         // Mentés a NodeCache-be
         scriptCache.set(analysisCacheKey, jsonResponse);
         console.log(`Elemzés befejezve és cache mentve (${analysisCacheKey})`);
-        // Mentés Google Sheet-be (async módon, nem várjuk meg)
+        
+        // === MÓDOSÍTÁS: A masterRecommendation átadása a mentéshez ===
         if (params.sheetUrl && typeof params.sheetUrl === 'string') { // Használjuk a params-ból az URL-t
-            saveAnalysisToSheet(params.sheetUrl, { sport, home, away, date: new Date(), html: finalHtml, id: analysisCacheKey })
+            saveAnalysisToSheet(params.sheetUrl, { 
+                sport, 
+                home, 
+                away, 
+                date: new Date(), 
+                html: finalHtml, 
+                id: analysisCacheKey,
+                recommendation: masterRecommendation // <-- EZ AZ ÚJ SOR
+            })
                 .then(() => console.log(`Elemzés mentve a Google Sheet-be (${analysisCacheKey})`))
                 .catch(sheetError => console.error(`Hiba az elemzés Google Sheet-be mentésekor 
 (${analysisCacheKey}): ${sheetError.message}`));
         }
+        // === MÓDOSÍTÁS VÉGE ===
 
         return jsonResponse; // Visszaadjuk a kész objektumot
 
