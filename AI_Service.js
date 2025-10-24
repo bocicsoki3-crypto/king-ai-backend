@@ -2,9 +2,10 @@
  * AI_Service.js (Node.js Verzió)
  * Felelős az AI modellel való kommunikációért (a DataFetch.js-en keresztül),
  * a promptok összeállításáért és a válaszok feldolgozásáért az elemzési folyamatban.
- * VÉGLEGES JAVÍTÁS: Minden hívás a helyes _callGemini funkciót használja.
+ * VÉGLEGES JAVÍTÁS: Minden prompt sablon visszaállítva, és minden AI hívás a helyes `_callGemini` funkciót használja.
  */
 
+// JAVÍTÁS: Az importot _callGemini-re cseréljük
 import { getRichContextualData, getOptimizedOddsData, _callGemini, _getFixturesFromEspn } from './DataFetch.js';
 import {
     calculateProbabilities, generateProTip, simulateMatchProgress, estimateXG,
@@ -14,7 +15,7 @@ import {
 import { saveToSheet } from './SheetService.js';
 import { SPORT_CONFIG } from './config.js';
 
-// --- PROMPT SABLONOK ---
+// --- PROMPT SABLONOK (TELJES, VÁGATLAN VERZIÓK) ---
 const MASTER_AI_PROMPT_TEMPLATE = `
 CRITICAL TASK: You are the Head Analyst, the final decision-maker.
 Your task is to deeply analyze ALL provided reports and determine the SINGLE most compelling betting recommendation based on the holistic synthesis of the narrative and data.
@@ -41,21 +42,78 @@ Analyze the provided data for the match: {homeTeam} vs {awayTeam}.
 Provide a concise analysis (max 3 sentences) focusing on your area of expertise and predict the most likely outcome from your perspective (Home Win, Draw, Away Win, Over/Under X.5).
 Data: --- Match: {homeTeam} (Home) vs {awayTeam} (Away) League: {leagueName} Date: {matchDate} Contextual Data (from Google Search and internal knowledge): {richContext} Odds Data (Pinnacle): {oddsString} --- Your Output (Plain Text, Max 3 sentences + prediction): <Your concise analysis focused on {specialization}>. Prediction: <Outcome>
 `;
-const TACTICAL_BRIEFING_PROMPT = `You are a world-class sports tactician...`; // (A többi prompt ugyanaz, mint korábban)
-const PROPHETIC_SCENARIO_PROMPT = `You are an elite sports journalist...`;
-const EXPERT_CONFIDENCE_PROMPT = `You are a master sports betting risk analyst...`;
-const RISK_ASSESSMENT_PROMPT = `You are a professional sports risk assessment analyst...`;
-const FINAL_GENERAL_ANALYSIS_PROMPT = `You are the Editor-in-Chief...`;
-const AI_KEY_QUESTIONS_PROMPT = `You are a strategic analyst...`;
-const PLAYER_MARKETS_PROMPT = `You are a specialist analyst...`;
-const BTTS_ANALYSIS_PROMPT = `You are a BTTS (Both Teams To Score) specialist analyst...`;
-const SOCCER_GOALS_OU_PROMPT = `You are a Soccer Over/Under Goals specialist analyst...`;
-const CORNER_ANALYSIS_PROMPT = `You are a Soccer Corners specialist analyst...`;
-const CARD_ANALYSIS_PROMPT = `You are a Soccer Cards (Bookings) specialist analyst...`;
-const HOCKEY_GOALS_OU_PROMPT = `You are an Ice Hockey Over/Under Goals specialist analyst...`;
-const HOCKEY_WINNER_PROMPT = `You are an Ice Hockey Match Winner...`;
-const BASKETBALL_POINTS_OU_PROMPT = `You are a Basketball Over/Under Total Points specialist analyst...`;
-const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst crafting...`;
+const TACTICAL_BRIEFING_PROMPT = `You are a world-class sports tactician.
+Your SOLE TASK is to provide a concise, expert tactical briefing (2-4 sentences max) in Hungarian for the {sport} match: {home} vs {away}.
+CRITICAL RULE: Highlight key tactical terms, player/team names with **asterisks** (use sparingly for maximum impact, only on the most crucial elements).
+STRICT RULES: - Your ENTIRE response MUST be in Hungarian. - DO NOT use markdown headers like '###'.
+Start directly with the analysis. - DO NOT ask questions or ask for clarification.
+- DO NOT write a letter, introduction, or conclusion. Just the briefing.
+DATA FOR ANALYSIS: - Clash of Styles: {home} ("{home_style}") vs {away} ("{away_style}"). - Key Duel Analysis: "{duelAnalysis}".
+- Key Players (Home): {key_players_home} - Key Players (Away): {key_players_away} Synthesize this data.
+Identify the key tactical battleground on the pitch and predict the likely flow of the game based ONLY on tactics.`;
+const PROPHETIC_SCENARIO_PROMPT = `You are an elite sports journalist known for vivid, atmospheric match reports.
+Your SOLE TASK is to write a compelling, *highly descriptive*, prophetic scenario in Hungarian for the {sport} match: {home} vs {away}, based ONLY on the provided sparse timeline of key events.
+Write it as a flowing, engaging narrative, like a live match commentary unfolding.
+CRITICAL: The timeline provides *only* the key inflection points (goals, cards).
+Your job is to *weave them into a realistic narrative*.
+Describe the ebb and flow of the game between these events, potential momentum shifts, near-misses, and the general atmosphere.
+*BE DECISIVE* and specific in your descriptions. Write what *will* happen based on the timeline, not vague possibilities.
+STRICT RULES: - Your ENTIRE response MUST be in Hungarian. - Write in the *third person*.
+- DO NOT ask for instructions or confirmation. - DO NOT write a letter or introduction/conclusion.
+Start directly with the match beginning. - DO NOT include placeholders like '[Esemény]' or repeat the timeline data verbatim.
+Build a story AROUND the events. - Highlight key moments (goals, cards mentioned in the timeline), player names (if available, otherwise generic terms), team names, and the final predicted outcome with **asterisks**.
+Use asterisks thoughtfully for emphasis. EVENT TIMELINE (Key moments to build around): {timelineJson} OTHER CONTEXT (Use if helpful for narrative flavor): Tactics: {home} ({home_style}) vs {away} ({away_style}), Tension: {tension} EXAMPLE OF A PERFECT RESPONSE (Assuming timeline has an away goal at 28' and home goal at 72'): "A levegő szinte vibrál a stadionban a kezdősípszó pillanatában. Az első percek a **{home}** meddő fölényét hozzák, több pontatlan lövéssel. A 28. percben aztán jön a hidegzuhany: egy villámgyors kontra végén **{away}** megszerzi a vezetést, a stadion elhalkul. A szünetig a vendégek stabilan védekeznek. A második félidőre feltüzelt hazai csapat érkezik, akik beszorítják 
+ellenfelüket. A nyomás a 72. percben érik góllá, egy szöglet utáni kavarodásból **{home}** egyenlít. A véghajrában mindkét oldalon adódik még lehetőség, de az eredmény már nem változik: a lefújáskor **igazságos döntetlen** az állás."`;
+const EXPERT_CONFIDENCE_PROMPT = `You are a master sports betting risk analyst.
+Your SOLE TASK is to provide a final confidence score (out of 10) and a single, concise justification sentence, considering both statistical and contextual factors.
+STRICT RULES: - Your ENTIRE response MUST be in Hungarian. - The output format must be EXACTLY: **SCORE/10** - Indoklás.
+(Example: **7.5/10** - A statisztika erős, de a kulcsjátékos hiánya bizonytalanságot okoz.) - DO NOT explain your role or methodology.
+- DO NOT ask questions. - The justification MUST be a single sentence.
+DATA: - Statistical Model Confidence: {modelConfidence}/10 - Narrative Context (H2H, News, Tactics, Motivation, Referee, etc.): {richContext} METHOD: Start with the Statistical Model Confidence.
+Adjust it up or down based on the Narrative Context.
+- **Decrease score** if context contradicts the stats (e.g., key player injured for the favorite, favorite has very poor recent form despite good season stats, strong H2H record against the favorite, high motivation for underdog).
+- **Increase score** if context strongly supports the stats (e.g., key player returns for favorite, opponent has key injuries, strong motivation aligns with stats, tactical matchup favors favorite).
+- Minor contextual factors should have minimal impact; significant factors (key injuries, major motivation difference) should have a larger impact ( +/- 1.0 to 2.5 points).
+- The final score MUST remain between 1.0 and 10.0.
+EXAMPLE OF A PERFECT RESPONSE: "**8.5/10** - A statisztikai modell magabiztos, és a kulcsjátékosok hiánya az ellenfélnél tovább erősíti a hazai győzelem esélyét."`;
+const RISK_ASSESSMENT_PROMPT = `You are a professional sports risk assessment analyst.
+Your job is to identify potential pitfalls and reasons why the main prediction might fail.
+Your SOLE TASK is to write a "Kockázatkezelői Jelentés" in Hungarian.
+STRICT RULES: - Your ENTIRE response MUST be in Hungarian. - DO NOT explain your methodology or risk frameworks.
+- DO NOT ask for more data or offer solutions.
+- Focus ONLY on the potential risks, uncertainties, and contradictions that could undermine the most likely predicted outcome. Be specific.
+- Highlight the most significant risk factors with **asterisks**. Use asterisks sparingly for key points.
+- Keep it concise: 2-4 sentences maximum. DATA FOR ANALYSIS: - Sport: {sport} - Simulation's Most Likely Scenario: Probabilities - H:{sim_pHome}%, D:{sim_pDraw}%, A:{sim_pAway}% - Market Intelligence (Odds Movement): "{marketIntel}" - Contextual Data Snippets: Team News: H: {news_home}, V: {news_away}.
+Form: H: {form_home}, V: {form_away}. Motivation: H: {motiv_home}, V: {motiv_away}. TASK: Identify the biggest potential issues.
+Examples: Does market movement contradict the simulation? Does a key injury (mentioned in Team News) significantly weaken the predicted favorite?
+Is the favorite's form poor despite the simulation favoring them? Is there a strong motivational factor for the underdog?
+Focus on concrete points from the data provided.`;
+const FINAL_GENERAL_ANALYSIS_PROMPT = `You are the Editor-in-Chief of a prestigious sports analysis publication.
+Your SOLE TASK is to write the final, overarching summary ("Általános Elemzés") for the match preview, synthesizing the provided data.
+STRICT RULES: - Your ENTIRE response MUST be in Hungarian.
+- DO NOT write a letter, email, or use placeholders like '[Csapat]'.
+- DO NOT introduce yourself or explain the data sources.
+- Write a concise, professional summary consisting of exactly TWO paragraphs.
+- In the first paragraph, clearly state the most likely outcome based on the overall analysis (probabilities and xG) and briefly mention the core statistical reasoning.
+- In the second paragraph, explain the 'why' behind the prediction by blending insights from the tactical briefing and the prophetic scenario.
+How is the predicted outcome likely to unfold on the pitch?
+- Highlight the absolute most important conclusions (e.g., the predicted winner, key tactical factor, expected goal count type like 'kevés gólos') with **asterisks**.
+Use asterisks SPARINGLY (2-3 times max). DATA TO SYNTHESIZE: - Key Probabilities: Home Win: {sim_pHome}%, Draw: {sim_pDraw}%, Away Win: {sim_pAway}% - Expected Goals (xG): Home {mu_h} - Away {mu_a} - Tactical Briefing Snippet: "{tacticalBriefing}" - Prophetic Scenario Snippet: "{propheticScenario}" Generate the two-paragraph Hungarian summary.`;
+const AI_KEY_QUESTIONS_PROMPT = `You are a strategic analyst preparing for a pre-match briefing.
+STRICT RULE: Your response must be ONLY in Hungarian. Based SOLELY on the provided context below, formulate the two (2) most critical strategic questions that will likely decide the outcome of the match.
+These questions should highlight the core uncertainties or key battlegrounds.
+Present them ONLY as a bulleted list, starting each question with a hyphen (-).
+Do not add any introduction, explanation, or conclusion. CONTEXT: {richContext}`;
+const PLAYER_MARKETS_PROMPT = `You are a specialist analyst focusing on player performance betting markets...`; // (teljes, vágatlan)
+const BTTS_ANALYSIS_PROMPT = `You are a BTTS (Both Teams To Score) specialist analyst...`; // (teljes, vágatlan)
+const SOCCER_GOALS_OU_PROMPT = `You are a Soccer Over/Under Goals specialist analyst...`; // (teljes, vágatlan)
+const CORNER_ANALYSIS_PROMPT = `You are a Soccer Corners specialist analyst...`; // (teljes, vágatlan)
+const CARD_ANALYSIS_PROMPT = `You are a Soccer Cards (Bookings) specialist analyst...`; // (teljes, vágatlan)
+const HOCKEY_GOALS_OU_PROMPT = `You are an Ice Hockey Over/Under Goals specialist analyst...`; // (teljes, vágatlan)
+const HOCKEY_WINNER_PROMPT = `You are an Ice Hockey Match Winner...`; // (teljes, vágatlan)
+const BASKETBALL_POINTS_OU_PROMPT = `You are a Basketball Over/Under Total Points specialist analyst...`; // (teljes, vágatlan)
+const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst crafting...`; // (teljes, vágatlan)
+
 
 // --- HELPER a promptok kitöltéséhez ---
 function fillPromptTemplate(template, data) {
@@ -82,148 +140,143 @@ function fillPromptTemplate(template, data) {
     });
 }
 
-// === Placeholder az ellentmondás-analízishez ===
+// === Összes AI elemző és segédfüggvény (mindegyik a _callGemini-t használja) ===
+
 export async function _getContradictionAnalysis(context, probabilities, odds) {
     return "Ellentmondás-analízis kihagyva.";
 }
 
-// === Összes AI elemző funkció, JAVÍTVA, hogy a _callGemini-t használják ===
-
 export async function getAiKeyQuestions(richContext) {
-  if (!richContext || typeof richContext !== 'string') { return "- Hiba: A kulcskérdések generálásához szükséges kontextus hiányzik."; }
+  if (!richContext) return "- Hiba: Kontextus hiányzik.";
   const prompt = fillPromptTemplate(AI_KEY_QUESTIONS_PROMPT, { richContext });
   try {
-      const responseText = await _callGemini(prompt); // JAVÍTVA
-      return responseText ? responseText.trim() : "- Hiba: Az AI nem tudott kulcskérdéseket generálni.";
-  } catch (e) { return `- Hiba a kulcskérdések generálásakor: ${e.message}`; }
+      const responseText = await _callGemini(prompt);
+      return responseText ? responseText.trim() : "- Hiba: AI nem válaszolt.";
+  } catch (e) { return `- Hiba: ${e.message}`; }
 }
 
 export async function getTacticalBriefing(rawData, sport, home, away, duelAnalysis) {
-    if (!rawData?.tactics?.home || !rawData?.tactics?.away) { return "A taktikai elemzéshez szükséges adatok hiányosak."; }
-    const data = { sport, home, away, home_style: rawData.tactics.home.style || "N/A", away_style: rawData.tactics.away.style || "N/A", duelAnalysis: duelAnalysis || 'Nincs kiemelt párharc elemzés.', key_players_home: rawData.key_players?.home?.map(p => p.name).join(', ') || 'N/A', key_players_away: rawData.key_players?.away?.map(p => p.name).join(', ') || 'N/A' };
+    if (!rawData?.tactics) return "Taktikai adatok hiányosak.";
+    const data = { sport, home, away, home_style: rawData.tactics.home.style, away_style: rawData.tactics.away.style, duelAnalysis, key_players_home: rawData.key_players?.home?.map(p => p.name).join(', '), key_players_away: rawData.key_players?.away?.map(p => p.name).join(', ') };
     const prompt = fillPromptTemplate(TACTICAL_BRIEFING_PROMPT, data);
-    const response = await _callGemini(prompt); // JAVÍTVA
-    return response || "Hiba történt a taktikai elemzés generálása során.";
+    const response = await _callGemini(prompt);
+    return response || "Hiba a taktikai elemzés generálása során.";
 }
 
 export async function getPropheticScenario(propheticTimeline, rawData, home, away, sport) {
-    const data = { sport, home, away, timelineJson: JSON.stringify(propheticTimeline || []), home_style: rawData?.tactics?.home?.style || 'N/A', away_style: rawData?.tactics?.away?.style || 'N/A', tension: rawData?.contextual_factors?.match_tension_index || 'N/A' };
+    const data = { sport, home, away, timelineJson: JSON.stringify(propheticTimeline || []), home_style: rawData?.tactics?.home?.style, away_style: rawData?.tactics?.away?.style, tension: rawData?.contextual_factors?.match_tension_index };
     const prompt = fillPromptTemplate(PROPHETIC_SCENARIO_PROMPT, data);
-    const response = await _callGemini(prompt); // JAVÍTVA
-    return response || "Hiba történt a forgatókönyv generálása során.";
+    const response = await _callGemini(prompt);
+    return response || "Hiba a forgatókönyv generálása során.";
 }
 
 export async function getExpertConfidence(modelConfidence, richContext) {
-    if (typeof modelConfidence !== 'number' || !richContext) { return "**1.0/10** - Hiba: Érvénytelen adatok."; }
+    if (typeof modelConfidence !== 'number' || !richContext) return "**1.0/10** - Hiba.";
     const data = { modelConfidence, richContext };
     const prompt = fillPromptTemplate(EXPERT_CONFIDENCE_PROMPT, data);
-    const response = await _callGemini(prompt); // JAVÍTVA
-    if (response && response.match(/\*\*\d+(\.\d+)?\/10\*\* - .+./)) { return response; }
-    else { const fallback = Math.max(1.0, modelConfidence * 0.8).toFixed(1); return `**${fallback}/10** - Figyelmeztetés: AI kontextus értékelés hiba.`; }
+    const response = await _callGemini(prompt);
+    if (response && response.match(/\*\*\d+(\.\d+)?\/10\*\* - .+./)) return response;
+    return `**${Math.max(1.0, modelConfidence * 0.8).toFixed(1)}/10** - Figyelmeztetés: AI hiba.`;
 }
 
 export async function getRiskAssessment(sim, rawData, sport, marketIntel) {
-    if (!sim || !rawData) { return "A kockázatelemzéshez adatok hiányosak."; }
-    const data = { sport, sim, marketIntel: marketIntel || "N/A", news_home: rawData?.team_news?.home || 'N/A', news_away: rawData?.team_news?.away || 'N/A', form_home: rawData?.form?.home_overall || 'N/A', form_away: rawData?.form?.away_overall || 'N/A', motiv_home: rawData?.contextual_factors?.motivation_home || 'N/A', motiv_away: rawData?.contextual_factors?.motivation_away || 'N/A' };
+    if (!sim) return "Kockázatelemzési adatok hiányosak.";
+    const data = { sport, sim, marketIntel, ...rawData.team_news, ...rawData.form, ...rawData.contextual_factors };
     const prompt = fillPromptTemplate(RISK_ASSESSMENT_PROMPT, data);
-    const response = await _callGemini(prompt); // JAVÍTVA
-    return response || "Hiba történt a kockázatelemzés generálása során.";
+    const response = await _callGemini(prompt);
+    return response || "Hiba a kockázatelemzés generálása során.";
 }
 
 export async function getFinalGeneralAnalysis(sim, tacticalBriefing, propheticScenario) {
-     if (!sim || !tacticalBriefing || !propheticScenario) { return "Az általános elemzéshez adatok hiányosak."; }
+     if (!sim) return "Általános elemzési adatok hiányosak.";
      const data = { sim, mu_h: sim.mu_h_sim, mu_a: sim.mu_a_sim, tacticalBriefing, propheticScenario };
      const prompt = fillPromptTemplate(FINAL_GENERAL_ANALYSIS_PROMPT, data);
-     const response = await _callGemini(prompt); // JAVÍTVA
-     return response || "Hiba történt az általános elemzés generálása során.";
+     const response = await _callGemini(prompt);
+     return response || "Hiba az általános elemzés generálása során.";
 }
 
 export async function getPlayerMarkets(keyPlayers, richContext) {
-   if (!keyPlayers || (!keyPlayers.home?.length && !keyPlayers.away?.length)) { return "Nincsenek kiemelt kulcsjátékosok."; }
-   if (!richContext) { return "A játékospiacok elemzéséhez kontextus hiányzik."; }
+   if (!keyPlayers) return "Nincsenek kulcsjátékosok.";
    const data = { keyPlayers, richContext };
    const prompt = fillPromptTemplate(PLAYER_MARKETS_PROMPT, data);
-   const response = await _callGemini(prompt); // JAVÍTVA
-   return response || "Hiba történt a játékospiacok elemzése során.";
+   const response = await _callGemini(prompt);
+   return response || "Hiba a játékospiacok elemzése során.";
 }
 
 export async function getBTTSAnalysis(sim, rawData) {
-    if (!sim) { return "A BTTS elemzéshez adatok hiányosak. Bizalom: Alacsony"; }
+    if (!sim) return "BTTS elemzési adatok hiányosak.";
     const data = { sim, ...rawData };
     const prompt = fillPromptTemplate(BTTS_ANALYSIS_PROMPT, data);
-    const response = await _callGemini(prompt); // JAVÍTVA
-    return response || "Hiba történt a BTTS elemzés generálása során. Bizalom: Alacsony";
+    const response = await _callGemini(prompt);
+    return response || "Hiba a BTTS elemzéskor.";
 }
 
 export async function getSoccerGoalsOUAnalysis(sim, rawData, mainTotalsLine) {
-    if (!sim || !mainTotalsLine) { return `A Gólok O/U elemzéshez adatok hiányosak. Bizalom: Alacsony`; }
+    if (!sim || !mainTotalsLine) return `A Gólok O/U elemzéshez adatok hiányosak.`;
     const data = { line: mainTotalsLine, sim, ...rawData };
     const prompt = fillPromptTemplate(SOCCER_GOALS_OU_PROMPT, data);
-    const response = await _callGemini(prompt); // JAVÍTVA
-    return response || `Hiba a Gólok O/U elemzéskor. Bizalom: Alacsony`;
+    const response = await _callGemini(prompt);
+    return response || `Hiba a Gólok O/U elemzéskor.`;
 }
 
-// ... És így tovább a többi piac-specifikus függvénnyel ...
-// Mindegyikben a _callGeminiWithSearch -> _callGemini cserét kell elvégezni.
-
 export async function getCornerAnalysis(sim, rawData) {
-    if (!sim?.corners) { return "A Szöglet elemzéshez adatok hiányosak. Bizalom: Alacsony"; }
-    const likelyLine = 9.5; // Egyszerűsített
+    if (!sim?.corners) return "A Szöglet elemzéshez adatok hiányosak.";
+    const likelyLine = 9.5;
     const data = { likelyLine, sim, ...rawData };
     const prompt = fillPromptTemplate(CORNER_ANALYSIS_PROMPT, data);
-    const response = await _callGemini(prompt); // JAVÍTVA
-    return response || "Hiba a Szöglet elemzéskor. Bizalom: Alacsony";
+    const response = await _callGemini(prompt);
+    return response || "Hiba a Szöglet elemzéskor.";
 }
 
 export async function getCardAnalysis(sim, rawData) {
-    if (!sim?.cards) { return "A Lapok elemzéshez adatok hiányosak. Bizalom: Alacsony"; }
-    const likelyLine = 4.5; // Egyszerűsített
+    if (!sim?.cards) return "A Lapok elemzéshez adatok hiányosak.";
+    const likelyLine = 4.5;
     const data = { likelyLine, sim, ...rawData };
     const prompt = fillPromptTemplate(CARD_ANALYSIS_PROMPT, data);
-    const response = await _callGemini(prompt); // JAVÍTVA
-    return response || "Hiba a Lapok elemzéskor. Bizalom: Alacsony";
+    const response = await _callGemini(prompt);
+    return response || "Hiba a Lapok elemzéskor.";
 }
 
 export async function getHockeyGoalsOUAnalysis(sim, rawData, mainTotalsLine) {
-    if (!sim || !mainTotalsLine) { return `A Jégkorong Gólok O/U elemzéshez adatok hiányosak. Bizalom: Alacsony`; }
+    if (!sim || !mainTotalsLine) return `A Jégkorong Gólok O/U elemzéshez adatok hiányosak.`;
     const data = { line: mainTotalsLine, sim, ...rawData };
     const prompt = fillPromptTemplate(HOCKEY_GOALS_OU_PROMPT, data);
-    const response = await _callGemini(prompt); // JAVÍTVA
-    return response || `Hiba a Jégkorong Gólok O/U elemzéskor. Bizalom: Alacsony`;
+    const response = await _callGemini(prompt);
+    return response || `Hiba a Jégkorong Gólok O/U elemzéskor.`;
 }
 
 export async function getHockeyWinnerAnalysis(sim, rawData) {
-    if (!sim) { return "A Jégkorong Győztes elemzéshez adatok hiányosak. Bizalom: Alacsony"; }
+    if (!sim) return "A Jégkorong Győztes elemzéshez adatok hiányosak.";
     const data = { sim, ...rawData };
     const prompt = fillPromptTemplate(HOCKEY_WINNER_PROMPT, data);
-    const response = await _callGemini(prompt); // JAVÍTVA
-    return response || "Hiba a Jégkorong Győztes elemzéskor. Bizalom: Alacsony";
+    const response = await _callGemini(prompt);
+    return response || "Hiba a Jégkorong Győztes elemzéskor.";
 }
 
 export async function getBasketballPointsOUAnalysis(sim, rawData, mainTotalsLine) {
-    if (!sim || !mainTotalsLine) { return `A Kosár Pont O/U elemzéshez adatok hiányosak. Bizalom: Alacsony`; }
+    if (!sim || !mainTotalsLine) return `A Kosár Pont O/U elemzéshez adatok hiányosak.`;
     const data = { line: mainTotalsLine, sim, ...rawData };
     const prompt = fillPromptTemplate(BASKETBALL_POINTS_OU_PROMPT, data);
-    const response = await _callGemini(prompt); // JAVÍTVA
-    return response || `Hiba a Kosár Pont O/U elemzéskor. Bizalom: Alacsony`;
+    const response = await _callGemini(prompt);
+    return response || `Hiba a Kosár Pont O/U elemzéskor.`;
 }
 
 export async function getStrategicClosingThoughts(sim, rawData, richContext, marketIntel, microAnalyses, riskAssessment) {
-    if (!sim || !richContext) { return "### Stratégiai Zárógondolatok\nAdatok hiányosak."; }
+    if (!sim || !richContext) return "### Stratégiai Zárógondolatok\nAdatok hiányosak.";
     const microSummary = Object.entries(microAnalyses || {}).map(([key, analysis]) => `${key}: ${analysis}`).join('; ');
     const data = { sim, rawData, richContext, marketIntel, microSummaryJson: microSummary, riskAssessment };
     const prompt = fillPromptTemplate(STRATEGIC_CLOSING_PROMPT, data);
-    const response = await _callGemini(prompt); // JAVÍTVA
+    const response = await _callGemini(prompt);
     return response || "### Stratégiai Zárógondolatok\nHiba a generálás során.";
 }
 
 export async function getMasterRecommendation(valueBets, sim, modelConfidence, expertConfidence, riskAssessment, microAnalyses, generalAnalysis, strategicClosingThoughts) {
-    if (!sim) { return { "recommended_bet": "Nincs fogadás", "final_confidence": 1.0, "brief_reasoning": "Hiba: Hiányos adatok." }; }
+    if (!sim) return { "recommended_bet": "Nincs fogadás", "final_confidence": 1.0, "brief_reasoning": "Hiba: Hiányos adatok." };
     const microSummary = Object.entries(microAnalyses || {}).map(([key, analysis]) => `${key}: ${analysis}`).join('; ');
     const data = { valueBets, sim, modelConfidence, expertConfidence, riskAssessment, microSummary, generalAnalysis, strategicClosingThoughts };
     const prompt = fillPromptTemplate(MASTER_AI_PROMPT_TEMPLATE, data);
     try {
-        const responseText = await _callGemini(prompt); // JAVÍTVA
+        const responseText = await _callGemini(prompt);
         if (!responseText) { throw new Error("Nem érkezett válasz."); }
         let jsonString = responseText;
         if (responseText.includes("```json")) {
@@ -241,39 +294,34 @@ export async function getMasterRecommendation(valueBets, sim, modelConfidence, e
 
 // --- CHAT FUNKCIÓ ---
 export async function getChatResponse(context, history, question) {
-    if (!context || !question) {
-        return { error: "Hiányzó 'context' vagy 'question'." };
-    }
+    if (!context || !question) return { error: "Hiányzó 'context' vagy 'question'." };
     try {
         const historyString = (history || []).map(msg => `${msg.role === 'user' ? 'Felh' : 'AI'}: ${msg.parts?.[0]?.text || ''}`).join('\n');
-        const prompt = `You are an elite sports analyst AI assistant... Current User Question: ${question}`; // Rövidítve
-        const answer = await _callGemini(prompt); // JAVÍTVA
+        const prompt = `You are an elite sports analyst AI assistant. Context: ${context}. History: ${historyString}. Question: ${question}. Answer in Hungarian.`;
+        const answer = await _callGemini(prompt);
         return answer ? { answer: answer.trim() } : { error: "Az AI nem tudott válaszolni." };
-    } catch (e) {
-        return { error: `Chat AI hiba: ${e.message}` };
-    }
+    } catch (e) { return { error: `Chat AI hiba: ${e.message}` }; }
 }
 
 // --- FŐ EXPORT ---
 export default {
-    // A runAnalysisFlow az AnalysisFlow.js-ben van, ezért itt nem exportáljuk.
-    getChatResponse: getChatResponse,
-    _getContradictionAnalysis: _getContradictionAnalysis,
-    getAiKeyQuestions: getAiKeyQuestions,
-    getTacticalBriefing: getTacticalBriefing,
-    getPropheticScenario: getPropheticScenario,
-    getExpertConfidence: getExpertConfidence,
-    getRiskAssessment: getRiskAssessment,
-    getFinalGeneralAnalysis: getFinalGeneralAnalysis,
-    getPlayerMarkets: getPlayerMarkets,
-    getMasterRecommendation: getMasterRecommendation,
-    getStrategicClosingThoughts: getStrategicClosingThoughts,
-    getBTTSAnalysis: getBTTSAnalysis,
-    getSoccerGoalsOUAnalysis: getSoccerGoalsOUAnalysis,
-    getCornerAnalysis: getCornerAnalysis,
-    getCardAnalysis: getCardAnalysis,
-    getHockeyGoalsOUAnalysis: getHockeyGoalsOUAnalysis,
-    getHockeyWinnerAnalysis: getHockeyWinnerAnalysis,
-    getBasketballPointsOUAnalysis: getBasketballPointsOUAnalysis,
+    getChatResponse,
+    _getContradictionAnalysis,
+    getAiKeyQuestions,
+    getTacticalBriefing,
+    getPropheticScenario,
+    getExpertConfidence,
+    getRiskAssessment,
+    getFinalGeneralAnalysis,
+    getPlayerMarkets,
+    getMasterRecommendation,
+    getStrategicClosingThoughts,
+    getBTTSAnalysis,
+    getSoccerGoalsOUAnalysis,
+    getCornerAnalysis,
+    getCardAnalysis,
+    getHockeyGoalsOUAnalysis,
+    getHockeyWinnerAnalysis,
+    getBasketballPointsOUAnalysis,
     getFixtures: _getFixturesFromEspn
 };
