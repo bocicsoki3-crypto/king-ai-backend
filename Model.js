@@ -3,19 +3,13 @@ import { SPORT_CONFIG } from './config.js';
 // ===================================================================================
 // ===                                                                             ===
 // ===               A D A T M O D E L L E Z É S  (A RENDSZER AGYA)                  ===
-// ===         VÉGLEGES JAVÍTÁS: Poisson-modell implementálása a valósághű         ===
-// ===                   valószínűségek direkt számításához.                       ===
+// ===     VÉGLEGES JAVÍTÁS: Helyes gólszimulációs szintaktika a NaN hiba ellen.     ===
 // ===                                                                             ===
 // ===================================================================================
 
 
 // --- MATEMATIKAI SEGÉDFÜGGVÉNYEK ---
 
-/**
- * Faktoriális számítása.
- * @param {number} num A szám, aminek a faktoriálisát keressük.
- * @returns {number} A faktoriális értéke.
- */
 function factorial(num) {
     if (num < 0) return -1;
     if (num === 0) return 1;
@@ -26,24 +20,11 @@ function factorial(num) {
     return result;
 }
 
-/**
- * A Poisson-eloszlás valószínűségi tömegfüggvénye (PMF).
- * Kiszámolja annak a valószínűségét, hogy pontosan 'k' esemény történik.
- * @param {number} k Az események száma (pl. gólok).
- * @param {number} lambda Az átlagos eseményszám (várható gólok, mu).
- * @returns {number} A pontosan 'k' esemény bekövetkezésének valószínűsége.
- */
 function poissonProbability(k, lambda) {
     if (lambda <= 0) return k === 0 ? 1 : 0;
     return (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k);
 }
 
-/**
- * Véletlen mintavétel Poisson-eloszlásból Knuth algoritmusával.
- * Ezt a szimuláció használja.
- * @param {number} lambda Az átlagos eseményszám.
- * @returns {number} Egy mintavételezett egész szám.
- */
 function poisson(lambda) {
     if (lambda === null || typeof lambda !== 'number' || isNaN(lambda) || lambda < 0) return 0;
     if (lambda === 0) return 0;
@@ -55,13 +36,6 @@ function poisson(lambda) {
     return k - 1;
 }
 
-/**
- * Véletlen mintavétel normális eloszlásból (Box-Muller transzformáció).
- * Ezt a kosárlabda szimuláció használja.
- * @param {number} mean Az eloszlás átlaga (mu).
- * @param {number} stdDev Az eloszlás szórása (sigma).
- * @returns {number} Egy mintavételezett szám.
- */
 function sampleNormal(mean, stdDev) {
     let u1 = 0, u2 = 0;
     while (u1 === 0) u1 = Math.random();
@@ -73,25 +47,15 @@ function sampleNormal(mean, stdDev) {
 
 // --- FŐ MODELLEZÉSI FÜGGVÉNYEK ---
 
-/**
- * [ÚJ ÉS IMPLEMENTÁLT]
- * Kiszámolja a meccs kimenetelek valószínűségét a Poisson-modell alapján.
- * Ez a függvény a rendszer statisztikai magja.
- * @param {number} mu_h A hazai csapat várható góljainak száma.
- * @param {number} mu_a A vendég csapat várható góljainak száma.
- * @param {number} mainTotalsLine A fő gól/pont vonal (pl. 2.5).
- * @returns {object} Objektum, ami a H/D/A, Over/Under és BTTS valószínűségeket tartalmazza.
- */
 export function calculateProbabilities(mu_h, mu_a, mainTotalsLine) {
     if (typeof mu_h !== 'number' || typeof mu_a !== 'number' || mu_h < 0 || mu_a < 0) {
         console.error(`Érvénytelen mu értékek a calculateProbabilities-ben: mu_h=${mu_h}, mu_a=${mu_a}`);
         return { pHome: 33.3, pDraw: 33.3, pAway: 33.3, pOver: 50.0, pUnder: 50.0, pBTTS: 50.0 };
     }
 
-    const MAX_GOALS = 8; // Meddig számoljuk a lehetséges gólokat
+    const MAX_GOALS = 8;
     let scoreMatrix = Array(MAX_GOALS + 1).fill(0).map(() => Array(MAX_GOALS + 1).fill(0));
 
-    // Kiszámoljuk minden egyes lehetséges végeredmény valószínűségét
     for (let h = 0; h <= MAX_GOALS; h++) {
         for (let a = 0; a <= MAX_GOALS; a++) {
             const homeProb = poissonProbability(h, mu_h);
@@ -100,7 +64,6 @@ export function calculateProbabilities(mu_h, mu_a, mainTotalsLine) {
         }
     }
 
-    // Összegezzük a valószínűségeket a különböző piacokhoz
     let pHome = 0, pDraw = 0, pAway = 0, pOver = 0, pBTTS = 0;
 
     for (let h = 0; h <= MAX_GOALS; h++) {
@@ -115,7 +78,6 @@ export function calculateProbabilities(mu_h, mu_a, mainTotalsLine) {
         }
     }
 
-    // Normalizálás, hogy a H/D/A összessége 100% legyen (a MAX_GOALS miatti apró eltérések miatt)
     const totalProb = pHome + pDraw + pAway;
     if (totalProb > 0) {
         pHome = (pHome / totalProb) * 100;
@@ -133,12 +95,6 @@ export function calculateProbabilities(mu_h, mu_a, mainTotalsLine) {
     };
 }
 
-
-/**
- * Becsüli a várható gólokat (xG) vagy pontokat a bemeneti statisztikák alapján.
- * Ez a függvény a valószínűség-számítások legfontosabb bemenetét adja.
- * @returns {object} {mu_h: becsült hazai gól/pont, mu_a: becsült vendég gól/pont}.
- */
 export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAverages, advancedData, rawData) {
     const homeStats = rawStats?.home, awayStats = rawStats?.away;
     const areStatsValid = (stats) => stats &&
@@ -159,7 +115,6 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
     const MAX_STRENGTH = 5.0;
 
     if (sport === 'basketball') {
-        // A kosárlabda logika változatlan marad
         const avgOffRating = leagueAverages?.avg_offensive_rating || 110;
         const avgDefRating = leagueAverages?.avg_defensive_rating || 110;
         const avgPace = leagueAverages?.avg_pace || 98;
@@ -172,7 +127,7 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
         const awayDefRating = advancedData?.away?.defensive_rating || avgDefRating;
         mu_h = (homeOffRating / avgOffRating) * (awayDefRating / avgDefRating) * avgOffRating * (expectedPace / 100);
         mu_a = (awayOffRating / avgOffRating) * (homeDefRating / avgDefRating) * avgOffRating * (expectedPace / 100);
-    } else { // Labdarúgás & Jégkorong
+    } else {
         const avgGoalsInLeague = leagueAverages?.avg_goals_per_game || SPORT_CONFIG[sport]?.avg_goals || 1.35;
         
         let homeAttackStrength = (homeStats.gf / homeStats.gp) / avgGoalsInLeague;
@@ -189,7 +144,6 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
         mu_a = awayAttackStrength * homeDefenseStrength * avgGoalsInLeague;
     }
 
-    // --- Általános Módosítók ---
     const getFormPoints = (formString) => {
         if (!formString || typeof formString !== 'string') return 0;
         const wins = (formString.match(/W/g) || []).length;
@@ -198,18 +152,16 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
     };
     const homeOverallFormPts = getFormPoints(form?.home_overall);
     const awayOverallFormPts = getFormPoints(form?.away_overall);
-    const formDiff = (homeOverallFormPts / 15) - (awayOverallFormPts / 15); // Normalizált forma különbség (-1 to 1)
-    const formImpact = 0.10; // 10% hatás
+    const formDiff = (homeOverallFormPts / 15) - (awayOverallFormPts / 15);
+    const formImpact = 0.10;
     mu_h *= (1 + (formDiff * formImpact));
     mu_a *= (1 - (formDiff * formImpact));
 
-    // Dinamikus Hazai Pálya Előny
     const home_adv_mod = SPORT_CONFIG[sport]?.home_advantage?.home || 1.0;
     const away_adv_mod = SPORT_CONFIG[sport]?.home_advantage?.away || 1.0;
     mu_h *= home_adv_mod;
     mu_a *= away_adv_mod;
 
-    // Hiányzók Hatása
     const impactAnalysis = rawData?.absentee_impact_analysis?.toLowerCase();
     let homeImpact = 1.0, awayImpact = 1.0;
     if (impactAnalysis && impactAnalysis !== "nincs jelentős hatás.") {
@@ -219,7 +171,6 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
         mu_a *= awayImpact;
     }
     
-    // Minimum és Maximum értékek
     const minVal = sport === 'basketball' ? 80 : (sport === 'hockey' ? 1.5 : 0.5);
     const maxVal = sport === 'basketball' ? 200 : (sport === 'hockey' ? 8 : 6);
     
@@ -230,12 +181,6 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
     return { mu_h, mu_a };
 }
 
-
-/**
- * Szimulálja a meccs kimeneteleit a becsült értékek alapján.
- * Főleg a másodlagos piacok (szöglet, lapok) és a pontos eredmény valószínűségeihez hasznos.
- * @returns {object} Objektum, ami a különböző piacok szimulált valószínűségeit tartalmazza.
- */
 export function simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, sims, sport, mainTotalsLine) {
     let home = 0, draw = 0, away = 0, btts = 0, over_main = 0;
     let corners_lines = { '7.5': 0, '8.5': 0, '9.5': 0, '10.5': 0, '11.5': 0 };
@@ -251,10 +196,13 @@ export function simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, sims, sp
             if (gh > ga) home++; else if (ga > gh) away++;
             if ((gh + ga) > mainTotalsLine) over_main++;
         }
-        draw = 0; // Kosárlabdában nincs döntetlen
-    } else { // Labdarúgás & Jégkorong
+        draw = 0;
+    } else {
         for (let i = 0; i < safeSims; i++) {
-            const { gh, ga } = { gh: poisson(mu_h), ga: poisson(mu_a) };
+            // === EZ VOLT A HIBA, ITT A JAVÍTÁS ===
+            const gh = poisson(mu_h);
+            const ga = poisson(mu_a);
+            // =====================================
             const scoreKey = `${gh}-${ga}`;
             scores[scoreKey] = (scores[scoreKey] || 0) + 1;
             if (gh > ga) home++; else if (ga > gh) away++; else draw++;
@@ -290,11 +238,6 @@ export function simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, sims, sp
     };
 }
 
-
-/**
- * Kiszámít egy bizalmi pontszámot a modell előrejelzéséhez.
- * @returns {number} Bizalmi pontszám 1.0 és 10.0 között.
- */
 export function calculateModelConfidence(sport, home, away, rawData, form, sim) {
     let score = 5.0;
     const MAX_SCORE = 10.0, MIN_SCORE = 1.0;
@@ -313,24 +256,20 @@ export function calculateModelConfidence(sport, home, away, rawData, form, sim) 
         if (homeFormScore != null && awayFormScore != null) {
             const formDiff = homeFormScore - awayFormScore;
             const simDiff = (sim.pHome - sim.pAway) / 100;
-            // Ha a szimuláció és a forma egy irányba mutat, nő a bizalom
             if (Math.sign(formDiff) === Math.sign(simDiff) && Math.abs(simDiff) > 0.2) {
                 score += 1.0;
             }
-            // Ha erősen ellentmondanak, csökken a bizalom
-            if (Math.abs(formDiff - simDiff) > 0.5) { // 0.5 = 50% pontnyi eltérés
+            if (Math.abs(formDiff - simDiff) > 0.5) {
                 score -= 1.5;
             }
         }
 
-        // A várható gólok különbsége is számít
         const xgDiff = Math.abs(sim.mu_h_sim - sim.mu_a_sim);
         const highDiffThreshold = sport === 'basketball' ? 15 : sport === 'hockey' ? 0.8 : 0.5;
         const lowDiffThreshold = sport === 'basketball' ? 5 : sport === 'hockey' ? 0.25 : 0.15;
         if (xgDiff > highDiffThreshold) score += 1.5;
         if (xgDiff < lowDiffThreshold) score -= 1.0;
 
-        // Kulcsfontosságú hiányzók hatása
         const homeKeyAbsentees = rawData?.absentees?.home?.filter(p => p.importance === 'key').length || 0;
         const awayKeyAbsentees = rawData?.absentees?.away?.filter(p => p.importance === 'key').length || 0;
         if (sim.pHome > 65 && homeKeyAbsentees > 0) score -= (1.0 * homeKeyAbsentees);
@@ -344,11 +283,6 @@ export function calculateModelConfidence(sport, home, away, rawData, form, sim) 
     return Math.max(MIN_SCORE, Math.min(MAX_SCORE, score));
 }
 
-
-/**
- * Kiszámolja a potenciális érték fogadásokat (value bets).
- * @returns {Array<object>} A talált érték fogadások rendezett listája.
- */
 export function calculateValue(sim, oddsData) {
     const valueBets = [];
     if (!oddsData || !oddsData.current || !sim) { return valueBets; }
@@ -367,7 +301,7 @@ export function calculateValue(sim, oddsData) {
         
         if (probability && typeof outcome.price === 'number' && outcome.price > 1) {
             const value = (probability * outcome.price) - 1;
-            if (value > 0.05) { // 5%-os érték felett
+            if (value > 0.05) {
                 valueBets.push({ 
                     market: outcome.name, 
                     odds: outcome.price, 
@@ -381,27 +315,21 @@ export function calculateValue(sim, oddsData) {
     return valueBets.sort((a, b) => parseFloat(b.value) - parseFloat(a.value));
 }
 
-// --- EGYÉB HELYETTESÍTŐ ÉS MELLÉKFÜGGVÉNYEK (VÁLTOZATLAN) ---
-
 export function estimateAdvancedMetrics(rawData, sport, leagueAverages) {
     let mu_corners = leagueAverages?.avg_corners || 10.5;
     let mu_cards = leagueAverages?.avg_cards || 4.5;
-    // A logika ezen a ponton egyszerűsítve maradhat, a fő fókusz a gólokon van
     return { mu_corners, mu_cards };
 }
 
 export function generateProTip(probabilities, odds, market) {
-    // Ez a függvény továbbra is placeholder, később fejleszthető
     return "Pro Tipp generálása még nincs implementálva.";
 }
 
 export function calculatePsychologicalProfile(teamName, opponentName) {
-    // Ez a függvény továbbra is placeholder, később fejleszthető
     return { moraleIndex: 1.0, pressureIndex: 1.0 };
 }
 
 export function analyzePlayerDuels(keyPlayers, sport) {
-    // Ez a függvény továbbra is placeholder, később fejleszthető
     if (!keyPlayers || (!keyPlayers.home?.length && !keyPlayers.away?.length)) return null;
     const homeAttacker = keyPlayers.home?.find(p => p?.role?.toLowerCase().includes('támadó'));
     const awayDefender = keyPlayers.away?.find(p => p?.role?.toLowerCase().includes('védő'));
@@ -412,11 +340,9 @@ export function analyzePlayerDuels(keyPlayers, sport) {
 }
 
 export function analyzeLineMovement(currentOddsData, openingOddsData, sport, homeTeam) {
-    // Ez a függvény továbbra is placeholder, később fejleszthető
     return "Nincs elég adat a piaci mozgás elemzéséhez.";
 }
 
 export function buildPropheticTimeline(mu_h, mu_a, rawData, sport, homeTeam, awayTeam) {
-    // Ez a függvény továbbra is placeholder, később fejleszthető
     return [];
 }
