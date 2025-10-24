@@ -13,9 +13,6 @@ const TACTICAL_BRIEFING_PROMPT = `You are a world-class sports tactician. Provid
 
 const PROPHETIC_SCENARIO_PROMPT = `You are an elite sports journalist. Write a compelling, descriptive, prophetic scenario in Hungarian for {home} vs {away}, based on the event timeline. Weave a narrative. Highlight key moments and the outcome with **asterisks**. TIMELINE: {timelineJson}. CONTEXT: Tactics: {home} ({home_style}) vs {away} ({away_style}), Tension: {tension}. CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"scenario": "<Your Hungarian prophetic narrative here>"}.`;
 
-// =================================================================================================
-// === EZ A PROMPT LETT KIJAVÍTVA AZ 1.0/10-ES HIBA ELLEN ===========================================
-// =================================================================================================
 const EXPERT_CONFIDENCE_PROMPT = `You are a master betting risk analyst. Your task is to provide a final confidence score and a brief justification in Hungarian.
 Start with the objective Statistical Model Confidence ({modelConfidence}/10) as your baseline.
 Then, analyze the subjective Narrative Context ({richContext}) which includes news, H2H, and absentee reports.
@@ -24,8 +21,6 @@ Then, analyze the subjective Narrative Context ({richContext}) which includes ne
 - If the Narrative Context is rich but CONTRADICTS the statistical model, DECREASE the baseline score by 2-4 points.
 - If the Narrative Context is WEAK, POOR, or mostly "N/A", DO NOT drop the score to the minimum. Instead, rely on the statistical baseline and only slightly DECREASE it by 0.5-1.0 point to reflect the uncertainty.**
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"confidence_report": "**SCORE/10** - Indoklás."}.`;
-// =================================================================================================
-// =================================================================================================
 
 const RISK_ASSESSMENT_PROMPT = `You are a risk assessment analyst. Write a "Kockázatkezelői Jelentés" (2-4 sentences, Hungarian). Focus ONLY on risks/contradictions. Highlight significant risks with **asterisks**. DATA: Sim: H:{sim_pHome}%, D:{sim_pDraw}%, A:{sim_pAway}%. Market Intel: "{marketIntel}". Context: News: H:{news_home}, A:{news_away}. Form: H:{form_home}, A:{form_away}. CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"risk_analysis": "<Your Hungarian risk report here>"}.`;
 
@@ -63,7 +58,6 @@ function fillPromptTemplate(template, data) {
                     const objValue = data[baseKey];
                     return objValue !== undefined ? JSON.stringify(objValue) : '{}';
                  }
-                 // Próbálkozás beágyazott objektummal
                  const keys = key.split('_');
                  let nestedValue = data;
                  for (const k of keys) {
@@ -111,6 +105,12 @@ async function getAndParse(prompt, data, key) {
         return `AI Hiba (${key}): ${e.message}`;
     }
 }
+
+// === EZ A HIÁNYZÓ FÜGGVÉNY VISSZAKERÜLT ==================================
+export async function _getContradictionAnalysis(context, probabilities, odds) { 
+    return "Ellentmondás-analízis kihagyva.";
+}
+// =======================================================================
 
 export async function getAiKeyQuestions(richContext) { return await getAndParse(AI_KEY_QUESTIONS_PROMPT, { richContext }, "key_questions"); }
 
@@ -218,3 +218,24 @@ export async function getMasterRecommendation(valueBets, sim, modelConfidence, e
         return { "recommended_bet": "Nincs fogadás", "final_confidence": 1.0, "brief_reasoning": `AI Hiba: ${e.message.substring(0, 100)}` };
     }
 }
+
+// --- FŐ EXPORT (VISSZAÁLLÍTVA) ---
+export default {
+    getAiKeyQuestions,
+    getTacticalBriefing,
+    getPropheticScenario,
+    getExpertConfidence,
+    getRiskAssessment,
+    getFinalGeneralAnalysis,
+    getPlayerMarkets,
+    getMasterRecommendation,
+    getStrategicClosingThoughts,
+    getBTTSAnalysis,
+    getSoccerGoalsOUAnalysis,
+    getCornerAnalysis,
+    getCardAnalysis,
+    getHockeyGoalsOUAnalysis,
+    getHockeyWinnerAnalysis,
+    getBasketballPointsOUAnalysis,
+    _getContradictionAnalysis // Visszatéve a kompatibilitás miatt
+};
