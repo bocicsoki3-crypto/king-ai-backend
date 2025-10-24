@@ -356,7 +356,6 @@ function generateTeamNameVariations(teamName) {
         lowerName, // Kisbetűs
         ODDS_TEAM_NAME_MAP[lowerName] || teamName // A térképből
     ]);
-
     // FC, SC, stb. eltávolítása
     variations.add(lowerName.replace(/^(fc|sc|cf|ac|as|krc|real|fk|nk|rc|cd|afc|1\.)\s+/i, '').trim());
     // Csak az első szó (gyakran ez a város)
