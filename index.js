@@ -6,8 +6,9 @@ import { runFullAnalysis } from './AnalysisFlow.js';
 import { getHistoryFromSheet, getAnalysisDetailFromSheet, deleteHistoryItemFromSheet } from './sheets.js';
 import aiService, { getChatResponse } from './AI_Service.js';
 
-// === MÓDOSÍTÁS: Az öntanuló modul importálása (későbbi használatra) ===
-// import { runPostMatchLearning } from './PostMatch.js'; // Ezt majd később hozzuk létre
+// === MÓDOSÍTÁS: Az öntanuló modulok VALÓDI importálása ===
+import { updatePowerRatings, runConfidenceCalibration } from './LearningService.js';
+// A 'runPostMatchLearning' egy magasabb szintű vezérlő lehet, de most direktben hívjuk a modulokat
 
 const app = express();
 // --- Middleware Beállítások ---
@@ -33,9 +34,10 @@ app.get('/getFixtures', async (req, res) => {
         }
         const fixtures = await _getFixturesFromEspn(sport, days);
        
+         // Az ESPN válaszát közvetlenül adjuk vissza, amely tartalmazza a utcKickoff-ot
          res.status(200).json({
-            fixtures: fixtures,
-            odds: {}
+            fixtures: fixtures, // Ez már tartalmazza a utcKickoff-ot
+            odds: {} // Odds adatokat külön kezeljük, itt üres marad
         });
     } catch (e) {
         console.error(`Hiba a /getFixtures végponton: ${e.message}`, e.stack);
@@ -45,25 +47,29 @@ app.get('/getFixtures', async (req, res) => {
 // Elemzés futtatása
 app.post('/runAnalysis', async (req, res) => {
     try {
+        // --- MÓDOSÍTÁS: utcKickoff és leagueName kinyerése a query-ből ---
         const params = {
             home: req.query.home,
             away: req.query.away,
             force: req.query.force,
-            sheetUrl: req.query.sheetUrl
+            sheetUrl: req.query.sheetUrl,
+            utcKickoff: req.query.utcKickoff, // Új paraméter
+            leagueName: req.query.leagueName // Új paraméter
         };
         const sport = req.query.sport;
       
         const openingOdds = req.body.openingOdds || {};
 
-        if (!params.home || !params.away || !sport) {
-            return res.status(400).json({ error: "Hiányzó 'sport', 'home' vagy 'away' paraméter." });
+        if (!params.home || !params.away || !sport || !params.utcKickoff) { // utcKickoff ellenőrzése is
+            return res.status(400).json({ error: "Hiányzó 'sport', 'home', 'away' vagy 'utcKickoff' paraméter." });
         }
+        // --- MÓDOSÍTÁS VÉGE ---
 
         console.log(`Elemzés indítása... (Ez eltarthat 1-2 percig az AI hívások miatt)`);
         const result = await runFullAnalysis(params, sport, openingOdds);
 
         if (result.error) {
-         
+   
             console.error(`Elemzési hiba (AnalysisFlow): ${result.error}`);
             return res.status(500).json({ error: result.error });
         }
@@ -145,26 +151,33 @@ app.post('/askChat', async (req, res) => {
         res.status(500).json({ error: `Szerver hiba (askChat): ${e.message}` });
     }
 });
-
-// === MÓDOSÍTÁS: Új végpont az öntanuláshoz ===
+// === MÓDOSÍTÁS: Az öntanuló végpont élesítése ===
 app.post('/runLearning', async (req, res) => {
     try {
-        console.log("Öntanulási folyamat indítása...");
+        console.log("Öntanulási folyamat indítása (Power Ratings & Bizalmi Kalibráció)...");
         
-        // Jelenleg ez egy placeholder. A következő fejlesztés fogja ezt feltölteni.
-        // const learningResult = await runPostMatchLearning();
+        // Elindítjuk a két öntanuló folyamatot párhuzamosan (vagy szekvenciálisan, ha a kalibráció függ a friss ratingektől - itt most párhuzamos)
+        // Fontos: a runConfidenceCalibration Promise-t ad vissza, az updatePowerRatings jelenleg nem, de a biztonság kedvéért Promise.all-ba tesszük
+        const [powerRatingResult, calibrationResult] = await Promise.all([
+            Promise.resolve(updatePowerRatings()), // Becsomagoljuk Promise-ba
+            runConfidenceCalibration() // Ez már Promise-t ad vissza
+        ]);
         
-        // Placeholder válasz
         const learningResult = { 
-            message: "Öntanuló modul sikeresen meghívva.", 
-            processed: 0, 
-            insights: 0 
+            message: "Öntanuló modulok sikeresen lefutottak.", 
+            power_ratings: powerRatingResult || { updated: false, message:"Nem volt elég adat a frissítéshez." }, // Jobb visszajelzés
+            confidence_calibration: calibrationResult || { error: "Ismeretlen hiba a kalibráció során." } // Jobb hibakezelés
         };
         
-        if (learningResult.error) {
-            return res.status(500).json(learningResult);
+        // Ellenőrizzük a kalibráció hibáját expliciten
+        if (learningResult.confidence_calibration.error) {
+             console.error("Hiba a bizalmi kalibráció során:", learningResult.confidence_calibration.error);
+             // Dönthetünk úgy, hogy itt 500-as hibát adunk, vagy csak logoljuk és megyünk tovább
+             // Most csak logoljuk, és 200 OK választ adunk a többi eredménnyel
         }
+
         res.status(200).json(learningResult);
+        
     } catch (e) {
         console.error(`Hiba a /runLearning végponton: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (runLearning): ${e.message}` });
@@ -183,9 +196,8 @@ async function startServer() {
         });
     } catch (e) {
         console.error("KRITIKUS HIBA a szerver indítása során:", e.message, e.stack);
-        if (!process.env.GOOGLE_CREDENTIALS) {
-            console.error("!!! HIBA: A GOOGLE_CREDENTIALS környezeti változó nincs beállítva a Renderen!");
-        }
+        // Korábbi hibakereső logok itt voltak, szükség esetén visszaállíthatók
+        // if (!process.env.GOOGLE_CREDENTIALS) { ... }
     }
 }
 
