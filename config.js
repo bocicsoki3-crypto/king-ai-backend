@@ -28,7 +28,7 @@ export const SPORT_CONFIG = {
         home_advantage: { home: 1.08, away: 0.92 },
         avg_goals: 1.35,
         totals_line: 2.5,
-        odds_api_sport_key: 'soccer_uefa_european_championship',
+        odds_api_sport_key: 'soccer_epl',
         odds_api_keys_by_league: {
             'UEFA Champions League': 'soccer_uefa_champs_league',
             'UEFA Europa League': 'soccer_uefa_europa_league',
@@ -39,7 +39,7 @@ export const SPORT_CONFIG = {
             'French Ligue 1': 'soccer_france_ligue_one',
             'NB I': 'soccer_hungary_nb_i'
         },
-        // JAVÍTÁS: A te általad kért, kibővített ESPN liga lista
+        // JAVÍTÁS: A te általad kért, teljes és kibővített ESPN liga lista
         espn_leagues: {
             "Premier League": "eng.1",
             "Championship": "eng.2",
