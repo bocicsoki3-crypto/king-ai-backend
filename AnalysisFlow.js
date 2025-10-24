@@ -37,11 +37,11 @@ import { buildAnalysisHtml } from './htmlBuilder.js'; // HTML építő funkció
 // Gyorsítótár inicializálása
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
-* AnalysisFlow.js - Fő Elemzési Munkafolyamat (V14.1 - VÉGLEGES STABILITÁS JAVÍTÁS)
+* AnalysisFlow.js - Fő Elemzési Munkafolyamat (V15.0 - Vitázó Bizottság)
 * Feladata: A központi elemzési logika Node.js környezetben.
-* VÁLTOZÁS: Az 'expertConfidence' (Szakértői Bizalom) áthelyezve
-* a párhuzamos ágból a szekvenciális "kritikus láncba",
-* hogy garantáltan lefusson és elkerülje a rate limit hibát.
+* VÁLTOZÁS: A "Kritikus Lánc" most már valódi láncolt
+* következtetést végez: Kockázat -> Taktika -> Szcenárió -> Összegzés.
+* Ezáltal az AI elemzők "vitatkoznak" és egymásra épülnek.
 **************************************************************/
 
 export async function runFullAnalysis(params, sport, openingOdds) {
@@ -112,9 +112,9 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         console.log(`Modellezés kész: ${home} vs ${away}.`);
         
         // --- 3. ÁLTALÁNOS AI BIZOTTSÁG (SZAKÉRTŐI LÁNC) ---
-        // === MÓDOSÍTÁS: A "Kritikus Lánc" bővítése ===
+        // === MÓDOSÍTÁS: "Vitázó Bizottság" Lánc ===
         
-        console.log(`AI Bizottság (Kritikus Lánc) indul: ${home} vs ${away}...`);
+        console.log(`AI Bizottság (Kritikus Lánc / Vitázó) indul: ${home} vs ${away}...`);
         const safeRichContext = typeof richContext === 'string' ? richContext : "Kontextus adatok hiányosak.";
         const richContextWithDuels = `${safeRichContext}\n- **Kulcs Párharc Elemzés:** ${duelAnalysis || 'N/A'}`;
         const propheticTimeline = buildPropheticTimeline(mu_h, mu_a, rawData, sport, home, away);
@@ -122,6 +122,7 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         const committeeResults = {};
 
         // LÉPÉS 1: Kockázat (Ez fut először, egyedül)
+        console.log("Kritikus Lánc 1/6: Kockázatelemzés...");
         try {
             committeeResults.riskAssessment = await getRiskAssessment(sim, mu_h, mu_a, rawData, sport, marketIntel);
         } catch (e) {
@@ -129,7 +130,8 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             committeeResults.riskAssessment = "Kockázatelemzés hiba."; 
         }
 
-        // LÉPÉS 2: Taktika
+        // LÉPÉS 2: Taktika (Megkapja a Kockázat eredményét)
+        console.log("Kritikus Lánc 2/6: Taktikai Elemzés...");
         try {
             committeeResults.tacticalBriefing = await getTacticalBriefing(rawData, sport, home, away, duelAnalysis, committeeResults.riskAssessment);
         } catch (e) {
@@ -137,17 +139,17 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             committeeResults.tacticalBriefing = "Taktikai elemzés hiba."; 
         }
 
-        // LÉPÉS 3: Szcenárió
+        // LÉPÉS 3: Szcenárió (Megkapja a Taktika eredményét)
+        console.log("Kritikus Lánc 3/6: Forgatókönyv...");
         try {
-            committeeResults.propheticScenario = await getPropheticScenario(propheticTimeline, rawData, home, away, sport);
+            committeeResults.propheticScenario = await getPropheticScenario(propheticTimeline, rawData, home, away, sport, committeeResults.tacticalBriefing);
         } catch (e) {
             console.error(`AI Hiba (Scenario): ${e.message}`); 
             committeeResults.propheticScenario = "Forgatókönyv hiba."; 
         }
         
-        // LÉPÉS 4: Szakértői Bizalom (MÓDOSÍTÁS: ÁTHELYEZVE IDE)
-        // Ezt a hívást kivettük a párhuzamos ágból, hogy garantáltan lefusson.
-        console.log("AI Bizottság (Kritikus Lánc): Szakértői Bizalom lekérése...");
+        // LÉPÉS 4: Szakértői Bizalom (A lánc része a stabilitásért)
+        console.log("Kritikus Lánc 4/6: Szakértői Bizalom...");
         try {
             committeeResults.expertConfidence = await getExpertConfidence(modelConfidence, richContextWithDuels, rawData);
         } catch (e) {
@@ -155,7 +157,16 @@ export async function runFullAnalysis(params, sport, openingOdds) {
              committeeResults.expertConfidence = "**1.0/10** - Hiba."; // A fallback marad!
         }
 
-        // LÉPÉS 5: Párhuzamos Ág (A maradék)
+        // LÉPÉS 5: Általános Elemzés (Összefoglalja a lánc főbb elemeit)
+        console.log("Kritikus Lánc 5/6: Általános Elemzés...");
+        try {
+            committeeResults.generalAnalysis = await getFinalGeneralAnalysis(sim, mu_h, mu_a, committeeResults.tacticalBriefing, committeeResults.propheticScenario, rawData);
+        } catch (e) {
+            console.error(`AI Hiba (General): ${e.message}`);
+            committeeResults.generalAnalysis = "Ált. elemzés hiba.";
+        }
+
+        // LÉPÉS 6: Párhuzamos Ág (A kevésbé kritikus, "szépítő" elemek)
         console.log("AI Bizottság (Párhuzamos ág) indul...");
         const parallelPromises = {};
 
@@ -181,11 +192,9 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             microPromises.pointsOU = getBasketballPointsOUAnalysis(sim, rawData, mainTotalsLine).catch(e => `Kosár Pont O/U hiba: ${e.message}`);
         }
         
-        // Hozzáadjuk a mikromodellek ígéretét a párhuzamos hívásokhoz
         parallelPromises.microResults = Promise.all(Object.values(microPromises));
 
         // Várjuk meg a teljes párhuzamos ág befejeződését
-        // MÓDOSÍTÁS: expertConfidenceResult eltávolítva innen
         const [
             keyQuestionsResult, 
             playerMarketsResult, 
@@ -203,19 +212,18 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             microAnalyses[microKeys[index]] = result;
         });
         committeeResults.microAnalyses = microAnalyses;
-        // === MÓDOSÍTÁS VÉGE ===
-
-        // Most már futtathatjuk a General Analysist (mivel megvan a tactical és a scenario)
+        
+        // --- 5. STRATÉGIAI ZÁRÓGONDOLATOK (A LÁNC VÉGÉN) ---
+        // Ez már minden adatot felhasznál (lánc + párhuzamos)
+        console.log("Kritikus Lánc 6/6: Stratégiai Zárógondolatok...");
         try {
-            committeeResults.generalAnalysis = await getFinalGeneralAnalysis(sim, mu_h, mu_a, committeeResults.tacticalBriefing, committeeResults.propheticScenario, rawData);
-        } catch (e) {
-            console.error(`AI Hiba (General): ${e.message}`);
-            committeeResults.generalAnalysis = "Ált. elemzés hiba.";
-        }
-
-        // --- 5. STRATÉGIAI ZÁRÓGONDOLATOK ---
-        try {
-            committeeResults.strategicClosingThoughts = await getStrategicClosingThoughts(sim, rawData, richContextWithDuels, marketIntel, committeeResults.microAnalyses, committeeResults.riskAssessment);
+            committeeResults.strategicClosingThoughts = await getStrategicClosingThoughts(
+                sim, rawData, richContextWithDuels, marketIntel, 
+                committeeResults.microAnalyses, 
+                committeeResults.riskAssessment, 
+                committeeResults.tacticalBriefing, 
+                committeeResults.propheticScenario
+            );
         } catch (e) {
             console.error(`AI Hiba (Strategic): ${e.message}`);
             committeeResults.strategicClosingThoughts = "### Stratégiai Zárógondolatok\nStratégiai elemzési hiba.";

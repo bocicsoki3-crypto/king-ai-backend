@@ -2,7 +2,9 @@
  * AI_Service.js (Node.js Verzió)
  * Felelős az AI modellel való kommunikációért (a DataFetch.js-en keresztül),
  * a promptok összeállításáért és a válaszok feldolgozásáért az elemzési folyamatban.
- * VÁLTOZÁS: Automatikus újrapróbálkozás (retry) hozzáadva a getAndParse függvényhez a nagyobb robusztusság érdekében.
+ * VÁLTOZÁS (V15.0 - Vitázó Bizottság): A prompt sablonok módosítva,
+ * hogy fogadni tudják más AI elemzők jelentéseit (pl. riskAssessment, tacticalBriefing)
+ * a láncolt következtetés (chain-of-thought) megvalósításához.
  */
 import { getRichContextualData, getOptimizedOddsData, _callGemini, _getFixturesFromEspn } from './DataFetch.js'; //
 import {
@@ -32,18 +34,26 @@ If a reasonable Value Bet exists and is supported by the narrative, it's a stron
 Otherwise, pick the outcome most supported by combined evidence. //
 OUTPUT FORMAT: Your response MUST be ONLY a single, valid JSON object with this exact structure: {"recommended_bet": "<The SINGLE most compelling market>", "final_confidence": <Number between 1.0-10.0>, "brief_reasoning": "<SINGLE concise Hungarian sentence for the choice>"} //
 `;
+
+// === MÓDOSÍTÁS: A prompt most már fogadja a {riskAssessment}-et ===
 const TACTICAL_BRIEFING_PROMPT = `You are a world-class sports tactician. Provide a concise tactical briefing (2-4 sentences max, Hungarian) for {home} vs {away}.
 //
-Highlight key elements with **asterisks**. DATA: Styles: {home} ("{home_style}") vs {away} ("{away_style}"), Duel: "{duelAnalysis}", Key Players: Home: {key_players_home}, Away: {key_players_away}.
+CONTEXT: First, read the Risk Assessment report: "{riskAssessment}". Reflect this context (e.g., if risk is high, explain the tactical risk).
 //
+DATA: Styles: {home} ("{home_style}") vs {away} ("{away_style}"), Duel: "{duelAnalysis}", Key Players: Home: {key_players_home}, Away: {key_players_away}.
+//
+Highlight key elements with **asterisks**.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"analysis": "<Your Hungarian tactical briefing here>"}.`;
 //
 
+// === MÓDOSÍTÁS: A prompt most már fogadja a {tacticalBriefing}-et ===
 const PROPHETIC_SCENARIO_PROMPT = `You are an elite sports journalist. Write a compelling, descriptive, prophetic scenario in Hungarian for {home} vs {away}, based on the event timeline.
 //
-Weave a narrative. Highlight key moments and the outcome with **asterisks**. TIMELINE: {timelineJson}.
+CONTEXT: First, read the Tactical Briefing: "{tacticalBriefing}". Your narrative MUST match this tactical assessment (e.g., if tactics are defensive, the scenario should be low-scoring).
 //
-CONTEXT: Tactics: {home} ({home_style}) vs {away} ({away_style}), Tension: {tension}. //
+TIMELINE: {timelineJson}. Tactics: {home} ({home_style}) vs {away} ({away_style}), Tension: {tension}.
+//
+Weave a narrative. Highlight key moments and the outcome with **asterisks**.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"scenario": "<Your Hungarian prophetic narrative here>"}.`;
 //
 
@@ -122,9 +132,19 @@ const BASKETBALL_POINTS_OU_PROMPT = `You are a Basketball O/U specialist. Analyz
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"basketball_points_ou_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 //
 
+// === MÓDOSÍTÁS: A prompt most már fogadja a {tacticalBriefing}-et is ===
 const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst. Craft "Stratégiai Zárógondolatok" (2-3 Hungarian paragraphs).
 //
-Discuss promising angles AND risks from all data. DATA: Scenario: "{propheticScenario}", Stats: H:{sim_pHome}%, O/U: O:{sim_pOver}%, Market: "{marketIntel}", Micromodels: {microSummaryJson}, Context: {richContext}, Risk Assessment: "{riskAssessment}".
+Synthesize ALL reports. Discuss promising angles AND risks.
+//
+DATA:
+- Risk Assessment: "{riskAssessment}"
+- Tactical Briefing: "{tacticalBriefing}"
+- Scenario: "{propheticScenario}"
+- Stats: H:{sim_pHome}%, O/U: O:{sim_pOver}%
+- Market: "{marketIntel}"
+- Micromodels: {microSummaryJson}
+- Context: {richContext}
 //
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"strategic_analysis": "<Your Hungarian strategic thoughts here>"}.`;
 //
@@ -226,9 +246,11 @@ export async function _getContradictionAnalysis(context, probabilities, odds) { 
 export async function getAiKeyQuestions(richContext) { return await getAndParse(AI_KEY_QUESTIONS_PROMPT, { richContext }, "key_questions");
 } //
 
-export async function getTacticalBriefing(rawData, sport, home, away, duelAnalysis) { //
+// === MÓDOSÍTÁS: A függvény most már fogadja a {riskAssessment}-et ===
+export async function getTacticalBriefing(rawData, sport, home, away, duelAnalysis, riskAssessment) { //
     const data = { //
         sport, home, away, //
+        riskAssessment: riskAssessment || "N/A", // Új paraméter
         home_style: rawData.tactics?.home?.style ||
             "N/A", //
         away_style: rawData.tactics?.away?.style ||
@@ -244,9 +266,11 @@ export async function getTacticalBriefing(rawData, sport, home, away, duelAnalys
     //
 }
 
-export async function getPropheticScenario(propheticTimeline, rawData, home, away, sport) { //
+// === MÓDOSÍTÁS: A függvény most már fogadja a {tacticalBriefing}-et ===
+export async function getPropheticScenario(propheticTimeline, rawData, home, away, sport, tacticalBriefing) { //
      const data = { //
         sport, home, away, //
+        tacticalBriefing: tacticalBriefing || "N/A", // Új paraméter
         timelineJson: JSON.stringify(propheticTimeline || []), //
         home_style: rawData.tactics?.home?.style ||
             "N/A", //
@@ -271,7 +295,6 @@ export async function getRiskAssessment(sim, mu_h, mu_a, rawData, sport, marketI
         news_away: rawData.team_news?.away || "N/A",
         form_home: rawData.form?.home_overall || "N/A",
         form_away: rawData.form?.away_overall || "N/A",
-        // motiv_home and motiv_away removed as they were not in the final prompt structure
     };
     return await getAndParse(RISK_ASSESSMENT_PROMPT, data, "risk_analysis"); //
 }
@@ -284,8 +307,8 @@ export async function getFinalGeneralAnalysis(sim, mu_h, mu_a, tacticalBriefing,
         sim_pAway: sim.pAway, 
         mu_h: mu_h, 
         mu_a: mu_a, 
-        tacticalBriefing, 
-        propheticScenario 
+        tacticalBriefing: tacticalBriefing || "N/A",
+        propheticScenario: propheticScenario || "N/A"
     }, "general_analysis");
 } //
 
@@ -354,13 +377,15 @@ export async function getBasketballPointsOUAnalysis(sim, rawData, mainTotalsLine
     }, "basketball_points_ou_analysis");
 } //
 
-export async function getStrategicClosingThoughts(sim, rawData, richContext, marketIntel, microAnalyses, riskAssessment) { //
+// === MÓDOSÍTÁS: A függvény most már több kontextust kap ===
+export async function getStrategicClosingThoughts(sim, rawData, richContext, marketIntel, microAnalyses, riskAssessment, tacticalBriefing, propheticScenario) { //
     const microSummary = Object.entries(microAnalyses || {}).map(([key, val]) => `${key}: ${val}`).join('; ');
     //
     return await getAndParse(STRATEGIC_CLOSING_PROMPT, { 
         sim_pHome: sim.pHome,
         sim_pOver: sim.pOver,
-        propheticScenario: rawData.propheticScenario, // Ez valószínűleg hiányzik a rawData-ból, jobb lenne a committeeResults-ból venni
+        propheticScenario: propheticScenario || "N/A",
+        tacticalBriefing: tacticalBriefing || "N/A",
         marketIntel, 
         microSummaryJson: microSummary, 
         richContext, 
