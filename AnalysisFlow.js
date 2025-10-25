@@ -19,7 +19,7 @@ import {
     getRiskAssessment,
     getTacticalBriefing,
     getPropheticScenario,
-    getAiKeyQuestions, // <<< --- Ez volt a hiba forrása, most a helyes listában van
+    getAiKeyQuestions, // <<< --- Ez a funkció volt a hiba forrása
     getPlayerMarkets,
     getFinalGeneralAnalysis,
     getExpertConfidence,
@@ -87,10 +87,8 @@ export async function runFullAnalysis(params, sport, openingOdds) {
 
         const marketIntel = analyzeLineMovement(oddsData, openingOdds, sport, home);
         console.log(`Adatgyűjtés indul: ${home} vs ${away}...`);
-        // --- MÓDOSÍTÁS: Az összes szükséges paraméter átadása a DataFetch-nek ---
         const { rawStats, richContext, advancedData, form, rawData, leagueAverages = {} } = await getRichContextualData(sport, home, away, leagueName, utcKickoff);
         console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
-        // A kritikus validálás már a getRichContextualData-ban megtörténik
 
         const duelAnalysis = analyzePlayerDuels(rawData?.key_players, sport);
         const psyProfileHome = calculatePsychologicalProfile(home, away, rawData);
@@ -100,11 +98,9 @@ export async function runFullAnalysis(params, sport, openingOdds) {
 
         // --- 2. Statisztikai Modellezés ---
         console.log(`Modellezés indul: ${home} vs ${away}...`);
-        // A regresszió nélküli verziót használjuk
         const { mu_h, mu_a } = estimateXG(home, away, rawStats, sport, form, leagueAverages, advancedData, rawData, psyProfileHome, psyProfileAway);
 
         const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
-        // 25000 szimuláció a sebesség és pontosság egyensúlyáért
         const sim = simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData);
         sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a; sim.mu_corners_sim = mu_corners;
         sim.mu_cards_sim = mu_cards; sim.mainTotalsLine = mainTotalsLine;
@@ -219,7 +215,7 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             `Igen, ${(rawData.key_players.home?.length || 0) + (rawData.key_players.away?.length || 0)} játékosra` : "Nem (vagy nem talált adatot)",
              sportMonksUsedInXG: (sport === 'soccer' && advancedData?.home?.xg != null) ?
             "Igen (valós xG)" : (sport === 'hockey' && rawData?.advanced_stats_team?.home?.High_Danger_Chances_For_Pct != null) ?
-            "Igen (HDCF%)" : (sport === 'basketball' && advancedData?.home?.pace != null) ?
+            "Igen (HDCF%)" : (sport === 'basketball' && rawData?.advanced_data?.home?.pace != null) ? // Javítva a data path-ja
             "Igen (Pace/Rating)" : "Nem (becsült adatok)",
             fromCache_RichContext: rawData?.fromCache ??
             'Ismeretlen'
