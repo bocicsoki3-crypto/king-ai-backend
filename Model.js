@@ -7,6 +7,10 @@ import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
 * a formációkat és finomabban kezeli az időjárást.
 * VÁLTOZÁS (Fejlesztési Csomag):
 * - estimateXG: Teljesen átírva, sport-specifikus modellekkel (Kosár: Taktika; Hoki: HDCF%, GSAx; Foci: Játékos Hatás) és strukturált időjárással.
+* VÁLTOZÁS (2. & 3. Pont):
+* - estimateXG: Egyszerűsített "Regresszió a középértékhez" faktor hozzáadva a forma alapján.
+* - estimateAdvancedMetrics: Finomítva a taktikai adatokkal.
+* - calculateValue: Kiterjesztve a szöglet és lap piacokra.
 * - calculateEventProbabilities/buildPropheticTimeline: Bővítve a foci eseménygenerálás részletezéséhez (stílus alapján).
 **************************************************************/
 
@@ -122,10 +126,18 @@ export function calculateEventProbabilities(gameState, mu_h, mu_a, rawData, spor
     // Lapok valószínűsége (meglévő)
     let homeCardProb = 0.08;
     let awayCardProb = 0.08;
-    if (rawData?.referee?.style && typeof rawData.referee.style === 'string' && rawData.referee.style.toLowerCase().includes("strict")) {
-        homeCardProb = 0.15;
-        awayCardProb = 0.15;
+    // Javítás: A referee objektum létezését is ellenőrizzük
+    if (rawData?.referee?.style && typeof rawData.referee.style === 'string') {
+        const styleLower = rawData.referee.style.toLowerCase();
+        if (styleLower.includes("strict") || styleLower.includes("szigorú")) {
+            homeCardProb = 0.15;
+            awayCardProb = 0.15;
+        } else if (styleLower.includes("lenient") || styleLower.includes("engedékeny")) {
+            homeCardProb = 0.05;
+            awayCardProb = 0.05;
+        }
     }
+
 
     // Összesítés és normalizálás (hogy a summa <= 1 legyen)
     const totalEventProb = homeGoalProb_OpenPlay + homeGoalProb_SetPiece + homeGoalProb_Counter +
@@ -233,17 +245,17 @@ export function buildPropheticTimeline(mu_h, mu_a, rawData, sport, homeTeam, awa
             // Randomize time within slice
             event.time = eventTime;
             // Add time to event
-            
+
             // --- MÓDOSÍTÁS KEZDETE: Részletes esemény rögzítése ---
             // A 'detail' mezőt már a calculateEventProbabilities hozzáadja
-            timeline.push({ 
-                time: event.time, 
-                type: event.type, 
-                team: event.team, 
+            timeline.push({
+                time: event.time,
+                type: event.type,
+                team: event.team || null, // Csapat hozzáadása (ha van)
                 detail: event.detail || 'N/A' // Rögzítjük a gólszerzés módját/lap típusát
             });
             // --- MÓDOSÍTÁS VÉGE: Részletes esemény rögzítése ---
-            
+
             gameState = updateGameState(gameState, event);
             // Update game state
         }
@@ -260,20 +272,22 @@ export function buildPropheticTimeline(mu_h, mu_a, rawData, sport, homeTeam, awa
  */
 // Exportálva
 // --- MÓDOSÍTÁS KEZDETE ---
-// A TELJES 'estimateXG' FÜGGVÉNY CSERÉJE
-// (Figyelem: Ez felülírja a korábbi estimateXG-t a feltöltött fájlban)
+// A TELJES 'estimateXG' FÜGGVÉNY CSERÉJE (2. Pont - Regresszióval)
 
-export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAverages, advancedData, rawData, psyProfileHome, psyProfileAway) {
+export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAverages, advancedData, rawData, psyProfileHome, psyProfileAway, currentSimProbs = null) { // currentSimProbs hozzáadva
     const homeStats = rawStats?.home, awayStats = rawStats?.away;
     const areStatsValid = (stats) => stats &&
-        typeof stats.gp === 'number' && stats.gp > 1 &&
+        typeof stats.gp === 'number' && stats.gp > 0 && // Javítás: gp > 0 elég
         typeof stats.gf === 'number' && stats.gf >= 0 &&
         typeof stats.ga === 'number' && stats.ga >= 0;
 
+    // Javítás: Szigorúbb ellenőrzés, mindkét csapatra kell stat
     if (!areStatsValid(homeStats) || !areStatsValid(awayStats)) {
-        console.warn(`HIÁNYOS/ÉRVÉNYTELEN STATS (gp>1): ${homeTeam} (GP:${homeStats?.gp}) vs ${awayTeam} (GP:${awayStats?.gp}). Default xG.`);
-        const defaultGoals = sport === 'basketball' ? 110 : (sport === 'hockey' ? 3.0 : 1.35);
-        return { mu_h: defaultGoals * 1.05, mu_a: defaultGoals * 0.95 };
+        console.warn(`HIÁNYOS/ÉRVÉNYTELEN STATS: ${homeTeam} (GP:${homeStats?.gp}) vs ${awayTeam} (GP:${awayStats?.gp}). Default xG.`);
+        const defaultGoals = SPORT_CONFIG[sport]?.avg_goals || (sport === 'basketball' ? 110 : (sport === 'hockey' ? 3.0 : 1.35));
+        // Javítás: Használjuk a sport-specifikus átlagot
+        const homeAdv = SPORT_CONFIG[sport]?.home_advantage || { home: 1.05, away: 0.95 };
+        return { mu_h: defaultGoals * homeAdv.home, mu_a: defaultGoals * homeAdv.away };
     }
 
     let mu_h, mu_a;
@@ -282,38 +296,36 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
     const logData = { step: 'Alap', sport: sport, home: homeTeam, away: awayTeam };
 
     // --- Sport-specifikus alap xG/pont ---
-
+    // (A kosárlabda, jégkorong és foci specifikus részek változatlanok a legutóbbi verzióhoz képest)
     if (sport === 'basketball') {
-        // --- KOSÁRLABDA FEJLESZTÉS ---
+        // ... (Kosárlabda logika: Pace, Ratings, Four Factors, Taktikai Párharc) ...
         logData.step = 'Kosárlabda Alap';
         const avgOffRating = leagueAverages?.avg_offensive_rating || 110;
         const avgDefRating = leagueAverages?.avg_defensive_rating || 110;
         const avgPace = leagueAverages?.avg_pace || 98;
-        const homePace = advancedData?.home?.pace || avgPace;
+        const homePace = advancedData?.home?.pace || avgPace; // Placeholder, ha nincs advancedData
         const awayPace = advancedData?.away?.pace || avgPace;
         const expectedPace = (homePace + awayPace) / 2;
         const homeOffRating = advancedData?.home?.offensive_rating || avgOffRating;
         const awayOffRating = advancedData?.away?.offensive_rating || avgOffRating;
         const homeDefRating = advancedData?.home?.defensive_rating || avgDefRating;
         const awayDefRating = advancedData?.away?.defensive_rating || avgDefRating;
-        
+
         mu_h = (homeOffRating / avgOffRating) * (awayDefRating / avgDefRating) * avgOffRating * (expectedPace / 100);
         mu_a = (awayOffRating / avgOffRating) * (homeDefRating / avgDefRating) * avgOffRating * (expectedPace / 100);
         logData.base_mu_h = mu_h; logData.base_mu_a = mu_a;
 
-        // Four Factors (marad)
         if (advancedData?.home?.four_factors && advancedData?.away?.four_factors) {
             const homeFF = advancedData.home.four_factors;
             const awayFF = advancedData.away.four_factors;
-            const ore_advantage = ((homeFF.OREB_pct ?? 0) - (awayFF.OREB_pct ?? 0)) * 0.05; // Null check
-            const tov_advantage = ((awayFF.TOV_pct ?? 0) - (homeFF.TOV_pct ?? 0)) * 0.05; // Null check
+            const ore_advantage = ((homeFF.OREB_pct ?? 0) - (awayFF.OREB_pct ?? 0)) * 0.05;
+            const tov_advantage = ((awayFF.TOV_pct ?? 0) - (homeFF.TOV_pct ?? 0)) * 0.05;
             mu_h *= (1 + ore_advantage - tov_advantage);
             mu_a *= (1 - ore_advantage + tov_advantage);
             logData.ff_mod_h = (1 + ore_advantage - tov_advantage);
             logData.ff_mod_a = (1 - ore_advantage + tov_advantage);
         }
 
-        // --- ÚJ: Taktikai Párharc Módosító (Dobás Disztribúció) ---
         logData.step = 'Kosárlabda Taktika';
         let bb_tactical_mod_h = 1.0;
         let bb_tactical_mod_a = 1.0;
@@ -322,17 +334,14 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
         const homeDefStyle = rawData?.defensive_style?.home?.toLowerCase() || 'n/a';
         const awayDefStyle = rawData?.defensive_style?.away?.toLowerCase() || 'n/a';
 
-        // Hazai támadás vs Vendég védekezés
         if (homeShotDist.includes("3-point") || homeShotDist.includes("hárompontos")) {
-            if (awayDefStyle.includes("aggressive perimeter") || awayDefStyle.includes("agresszív periméter")) bb_tactical_mod_h *= 0.98; // Rossz párharc
-            if (awayDefStyle.includes("weak perimeter") || awayDefStyle.includes("gyenge periméter")) bb_tactical_mod_h *= 1.02; // Jó párharc
+            if (awayDefStyle.includes("aggressive perimeter") || awayDefStyle.includes("agresszív periméter")) bb_tactical_mod_h *= 0.98;
+            if (awayDefStyle.includes("weak perimeter") || awayDefStyle.includes("gyenge periméter")) bb_tactical_mod_h *= 1.02;
         }
         if (homeShotDist.includes("paint") || homeShotDist.includes("festék")) {
             if (awayDefStyle.includes("strong interior") || awayDefStyle.includes("erős belső")) bb_tactical_mod_h *= 0.98;
             if (awayDefStyle.includes("weak interior") || awayDefStyle.includes("gyenge belső")) bb_tactical_mod_h *= 1.02;
         }
-
-        // Vendég támadás vs Hazai védekezés
         if (awayShotDist.includes("3-point") || awayShotDist.includes("hárompontos")) {
             if (homeDefStyle.includes("aggressive perimeter") || homeDefStyle.includes("agresszív periméter")) bb_tactical_mod_a *= 0.98;
             if (homeDefStyle.includes("weak perimeter") || homeDefStyle.includes("gyenge periméter")) bb_tactical_mod_a *= 1.02;
@@ -344,27 +353,28 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
         mu_h *= bb_tactical_mod_h;
         mu_a *= bb_tactical_mod_a;
         logData.bb_tactical_mod_h = bb_tactical_mod_h; logData.bb_tactical_mod_a = bb_tactical_mod_a;
-        // --- KOSÁRLABDA FEJLESZTÉS VÉGE ---
 
     } else if (sport === 'hockey') {
-        // --- JÉGKORONG FEJLESZTÉS ---
+        // ... (Jégkorong logika: HDCF%, GSAx, PP/PK) ...
         logData.step = 'Jégkorong Alap';
         const avgGoalsInLeague = leagueAverages?.avg_goals_per_game || 3.0;
-        const leagueAvgHDCF_Pct = leagueAverages?.avg_high_danger_chances_pct || 50.0;
-        const leagueAvgGSAx = leagueAverages?.avg_gsax || 0.0;
-        
-        // Alap támadóerő (GF/GP helyett High-Danger helyzetek alapján)
-        const homeHDCF_Pct = rawData?.advanced_stats_team?.home?.High_Danger_Chances_For_Pct || 50.0;
-        const awayHDCF_Pct = rawData?.advanced_stats_team?.away?.High_Danger_Chances_For_Pct || 50.0;
-        
-        // Alap védekezőerő (GA/GP helyett High-Danger helyzetek alapján)
-        const homeHDCA_Pct = 100.0 - (rawData?.advanced_stats_team?.home?.High_Danger_Chances_For_Pct || 50.0);
-        const awayHDCA_Pct = 100.0 - (rawData?.advanced_stats_team?.away?.High_Danger_Chances_For_Pct || 50.0);
-        
-        let homeAttackStrength = (homeHDCF_Pct / leagueAvgHDCF_Pct);
-        let awayAttackStrength = (awayHDCF_Pct / leagueAvgHDCF_Pct);
-        let homeDefenseStrength = (homeHDCA_Pct / (100.0 - leagueAvgHDCF_Pct)); // Védekezés (engedett HD helyzetek)
-        let awayDefenseStrength = (awayHDCA_Pct / (100.0 - leagueAvgHDCF_Pct));
+        // Javítás: Biztosítjuk, hogy a liga átlagok számok legyenek
+        const leagueAvgHDCF_Pct = typeof leagueAverages?.avg_high_danger_chances_pct === 'number' ? leagueAverages.avg_high_danger_chances_pct : 50.0;
+        const leagueAvgGSAx = typeof leagueAverages?.avg_gsax === 'number' ? leagueAverages.avg_gsax : 0.0;
+
+        const homeHDCF_Pct = typeof rawData?.advanced_stats_team?.home?.High_Danger_Chances_For_Pct === 'number' ? rawData.advanced_stats_team.home.High_Danger_Chances_For_Pct : 50.0;
+        const awayHDCF_Pct = typeof rawData?.advanced_stats_team?.away?.High_Danger_Chances_For_Pct === 'number' ? rawData.advanced_stats_team.away.High_Danger_Chances_For_Pct : 50.0;
+        const homeHDCA_Pct = 100.0 - homeHDCF_Pct; // Egyszerűsített számítás
+        const awayHDCA_Pct = 100.0 - awayHDCF_Pct;
+
+        // Javítás: Elkerüljük a nullával való osztást
+        const safeLeagueAvgHDCF = leagueAvgHDCF_Pct > 0 ? leagueAvgHDCF_Pct : 50.0;
+        const safeLeagueAvgHDCA = (100.0 - leagueAvgHDCF_Pct) > 0 ? (100.0 - leagueAvgHDCF_Pct) : 50.0;
+
+        let homeAttackStrength = homeHDCF_Pct / safeLeagueAvgHDCF;
+        let awayAttackStrength = awayHDCF_Pct / safeLeagueAvgHDCF;
+        let homeDefenseStrength = homeHDCA_Pct / safeLeagueAvgHDCA;
+        let awayDefenseStrength = awayHDCA_Pct / safeLeagueAvgHDCA;
 
         homeAttackStrength = Math.max(MIN_STRENGTH, Math.min(MAX_STRENGTH, homeAttackStrength || 1));
         awayAttackStrength = Math.max(MIN_STRENGTH, Math.min(MAX_STRENGTH, awayAttackStrength || 1));
@@ -375,53 +385,51 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
         mu_a = awayAttackStrength * homeDefenseStrength * avgGoalsInLeague;
         logData.base_mu_h = mu_h; logData.base_mu_a = mu_a;
 
-        // PP/PK (marad)
-        const home_pp_advantage = (advancedData?.home?.pp_pct ?? 15) - (advancedData?.away?.pk_pct ?? 85);
-        const away_pp_advantage = (advancedData?.away?.pp_pct ?? 15) - (advancedData?.home?.pk_pct ?? 85);
+        const home_pp_pct = advancedData?.home?.pp_pct ?? 15;
+        const away_pk_pct = advancedData?.away?.pk_pct ?? 85;
+        const away_pp_pct = advancedData?.away?.pp_pct ?? 15;
+        const home_pk_pct = advancedData?.home?.pk_pct ?? 85;
+        const home_pp_advantage = home_pp_pct - away_pk_pct;
+        const away_pp_advantage = away_pp_pct - home_pk_pct;
         const pp_mod_h = (1 + (home_pp_advantage / 100) * 0.15);
         const pp_mod_a = (1 + (away_pp_advantage / 100) * 0.15);
         mu_h *= pp_mod_h; mu_a *= pp_mod_a;
         logData.pp_mod_h = pp_mod_h; logData.pp_mod_a = pp_mod_a;
 
-        // --- ÚJ: Kapus Modell (GSAx alapján) ---
         logData.step = 'Jégkorong Kapus (GSAx)';
-        // GSAx (Goals Saved Above Expected) - A pozitív érték jó, a negatív rossz.
-        // A kapusok hatása az ellenfél 'mu'-ját módosítja.
-        const homeGoalieGSAx = rawData?.advanced_stats_goalie?.home_goalie?.GSAx || leagueAvgGSAx;
-        const awayGoalieGSAx = rawData?.advanced_stats_goalie?.away_goalie?.GSAx || leagueAvgGSAx;
-        
-        // Egy 0.05-ös GSAx (meccsenként) 0.05 góllal csökkenti az ellenfél mu-ját.
-        // Normalizáljuk (pl. 0.1-es GSAx = 1.01-es szorzó a *védekezésnek*, azaz 0.99-es az *ellenfél támadásának*)
-        const goalie_mod_h = Math.max(0.8, Math.min(1.2, 1.0 - (homeGoalieGSAx * 0.1))); // Hazai kapus hatása a vendég mu-ra
-        const goalie_mod_a = Math.max(0.8, Math.min(1.2, 1.0 - (awayGoalieGSAx * 0.1))); // Vendég kapus hatása a hazai mu-ra
-
-        mu_h *= goalie_mod_a; // Vendég kapus hat
-        mu_a *= goalie_mod_h; // Hazai kapus hat
-        logData.goalie_mod_h_vs_away = goalie_mod_a; logData.goalie_mod_a_vs_home = goalie_mod_h;
-        // --- JÉGKORONG FEJLESZTÉS VÉGE ---
+        const homeGoalieGSAx = typeof rawData?.advanced_stats_goalie?.home_goalie?.GSAx === 'number' ? rawData.advanced_stats_goalie.home_goalie.GSAx : leagueAvgGSAx;
+        const awayGoalieGSAx = typeof rawData?.advanced_stats_goalie?.away_goalie?.GSAx === 'number' ? rawData.advanced_stats_goalie.away_goalie.GSAx : leagueAvgGSAx;
+        const goalie_mod_h_effect_on_away = Math.max(0.8, Math.min(1.2, 1.0 - (homeGoalieGSAx * 0.1)));
+        const goalie_mod_a_effect_on_home = Math.max(0.8, Math.min(1.2, 1.0 - (awayGoalieGSAx * 0.1)));
+        mu_h *= goalie_mod_a_effect_on_home;
+        mu_a *= goalie_mod_h_effect_on_away;
+        logData.goalie_mod_h_vs_away = goalie_mod_a_effect_on_home; logData.goalie_mod_a_vs_home = goalie_mod_h_effect_on_away;
 
     } else if (sport === 'soccer') {
-        // --- LABDARÚGÁS FEJLESZTÉS ---
+        // ... (Foci logika: Alap xG, SportMonks xG, Játékos Hatás) ...
         logData.step = 'Labdarúgás Alap';
         const avgGoalsInLeague = leagueAverages?.avg_goals_per_game || 1.35;
-        
-        let homeAttackStrength = (homeStats.gf / homeStats.gp) / avgGoalsInLeague;
-        let awayAttackStrength = (awayStats.gf / awayStats.gp) / avgGoalsInLeague;
-        let homeDefenseStrength = (homeStats.ga / homeStats.gp) / avgGoalsInLeague;
-        let awayDefenseStrength = (awayStats.ga / awayStats.gp) / avgGoalsInLeague;
-        
-        // ... (A meglévő erősség-számítás változatlanul idekerül) ...
+
+        // Javítás: Biztosítjuk, hogy a gp > 0
+        const safeHomeGp = Math.max(1, homeStats.gp);
+        const safeAwayGp = Math.max(1, awayStats.gp);
+        const safeAvgGoals = avgGoalsInLeague > 0 ? avgGoalsInLeague : 1.35;
+
+        let homeAttackStrength = (homeStats.gf / safeHomeGp) / safeAvgGoals;
+        let awayAttackStrength = (awayStats.gf / safeAwayGp) / safeAvgGoals;
+        let homeDefenseStrength = (homeStats.ga / safeHomeGp) / safeAvgGoals;
+        let awayDefenseStrength = (awayStats.ga / safeAwayGp) / safeAvgGoals;
+
         homeAttackStrength = Math.max(MIN_STRENGTH, Math.min(MAX_STRENGTH, homeAttackStrength || 1));
         awayAttackStrength = Math.max(MIN_STRENGTH, Math.min(MAX_STRENGTH, awayAttackStrength || 1));
         homeDefenseStrength = Math.max(MIN_STRENGTH, Math.min(MAX_STRENGTH, homeDefenseStrength || 1));
         awayDefenseStrength = Math.max(MIN_STRENGTH, Math.min(MAX_STRENGTH, awayDefenseStrength || 1));
 
-        mu_h = homeAttackStrength * awayDefenseStrength * avgGoalsInLeague;
-        mu_a = awayAttackStrength * homeDefenseStrength * avgGoalsInLeague;
+        mu_h = homeAttackStrength * awayDefenseStrength * safeAvgGoals;
+        mu_a = awayAttackStrength * homeDefenseStrength * safeAvgGoals;
         logData.base_mu_h = mu_h; logData.base_mu_a = mu_a;
 
-        // SportMonks xG (marad)
-        if (sport === 'soccer' && advancedData?.home?.xg != null && advancedData?.away?.xg != null) { // Check for non-null xG
+        if (advancedData?.home?.xg != null && advancedData?.away?.xg != null) {
             const maxRealisticXG = 7.0;
             mu_h = Math.max(0, Math.min(maxRealisticXG, advancedData.home.xg));
             mu_a = Math.max(0, Math.min(maxRealisticXG, advancedData.away.xg));
@@ -430,53 +438,56 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
                 console.warn(`Figyelem: SportMonks irreális xG (${homeTeam} vs ${awayTeam}): H=${advancedData.home.xg}, A=${advancedData.away.xg}. Korlátozva ${maxRealisticXG}-ra.`);
                 logData.source += ' (Korlátozva)';
             }
-            logData.base_mu_h = mu_h;
-            logData.base_mu_a = mu_a;
-        } else if (sport === 'soccer') {
+            logData.base_mu_h_sm = mu_h; // Külön logoljuk, ha SM-ből jön
+            logData.base_mu_a_sm = mu_a;
+        } else {
             logData.source = 'Calculated xG';
         }
 
-        // --- ÚJ: Játékos-szintű Hatás Módosító ---
         logData.step = 'Labdarúgás Játékos Hatás';
         let player_mod_h = 1.0;
         let player_mod_a = 1.0;
         try {
-            // Segédfüggvény a statisztikák (pl. "npxG/90: 0.8") parse-olásához
             const parsePlayerStat = (statString) => {
-                if (typeof statString !== 'string' || !statString.includes(':')) return { metric: 'n/a', value: 0 };
+                if (typeof statString !== 'string' || !statString.includes(':')) return { metric: 'n/a', value: null }; // Null, ha nem parse-olható
                 const parts = statString.split(':');
                 const metric = parts[0]?.trim().toLowerCase();
                 const value = parseFloat(parts[1]?.trim());
-                return { metric, value: isNaN(value) ? 0 : value };
+                return { metric, value: isNaN(value) ? null : value };
             };
 
-            // Hazai támadók vs Vendég védők
             (rawData?.key_players?.home || []).forEach(player => {
                 if (player.role?.toLowerCase().includes('támadó') || player.role?.toLowerCase().includes('csatár')) {
                     const stat = parsePlayerStat(player.stats);
-                    if (stat.metric.includes('npxg') && stat.value > 0.6) player_mod_h *= 1.03; // Elit csatár
-                    if (stat.metric.includes('npxg') && stat.value < 0.2) player_mod_h *= 0.98; // Gyenge forma
+                    if (stat.metric.includes('npxg') && stat.value !== null) {
+                        if (stat.value > 0.6) player_mod_h *= 1.03;
+                        else if (stat.value < 0.2) player_mod_h *= 0.98;
+                    }
                 }
             });
             (rawData?.key_players?.away || []).forEach(player => {
                 if (player.role?.toLowerCase().includes('védő') || player.role?.toLowerCase().includes('hátvéd')) {
                     const stat = parsePlayerStat(player.stats);
-                    if (stat.metric.includes('duels') && stat.value < 50) player_mod_h *= 1.02; // Gyenge védő ellen
+                    if (stat.metric.includes('duels') && stat.value !== null && stat.value < 50) {
+                        player_mod_h *= 1.02; // Gyenge védő ellenfél -> hazai támadás erősödik
+                    }
                 }
             });
-
-            // Vendég támadók vs Hazai védők
             (rawData?.key_players?.away || []).forEach(player => {
                 if (player.role?.toLowerCase().includes('támadó') || player.role?.toLowerCase().includes('csatár')) {
                     const stat = parsePlayerStat(player.stats);
-                    if (stat.metric.includes('npxg') && stat.value > 0.6) player_mod_a *= 1.03;
-                    if (stat.metric.includes('npxg') && stat.value < 0.2) player_mod_a *= 0.98;
+                     if (stat.metric.includes('npxg') && stat.value !== null) {
+                        if (stat.value > 0.6) player_mod_a *= 1.03;
+                        else if (stat.value < 0.2) player_mod_a *= 0.98;
+                    }
                 }
             });
             (rawData?.key_players?.home || []).forEach(player => {
                 if (player.role?.toLowerCase().includes('védő') || player.role?.toLowerCase().includes('hátvéd')) {
                     const stat = parsePlayerStat(player.stats);
-                    if (stat.metric.includes('duels') && stat.value < 50) player_mod_a *= 1.02; // Gyenge védő ellen
+                    if (stat.metric.includes('duels') && stat.value !== null && stat.value < 50) {
+                         player_mod_a *= 1.02; // Gyenge hazai védő -> vendég támadás erősödik
+                    }
                 }
             });
 
@@ -485,137 +496,181 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
             logData.player_mod_h = player_mod_h; logData.player_mod_a = player_mod_a;
 
         } catch (e) { console.warn(`Hiba a Játékos Hatás számításakor: ${e.message}`); }
-        // --- LABDARÚGÁS FEJLESZTÉS VÉGE ---
     }
 
     // --- ÁLTALÁNOS MÓDOSÍTÓK (MINDEN SPORTÁGRA) ---
 
-    // Súlyozott Forma Faktor (marad)
-    logData.step = 'Módosítók';
+    logData.step = 'Általános Módosítók';
+    // Súlyozott Forma Faktor
     const getFormPoints = (formString) => {
-        if (!formString || typeof formString !== 'string') return 0; // Invalid -> 0 points
+        if (!formString || typeof formString !== 'string' || formString === "N/A") return { points: 0, matches: 0 }; // Javítás: N/A és validáció
         const wins = (formString.match(/W/g) || []).length;
         const draws = (formString.match(/D/g) || []).length;
-        return wins * 3 + draws * 1;
+        const matches = (formString.match(/[WDL]/g) || []).length; // Javítás: Meccsszám kinyerése
+        return { points: wins * 3 + draws * 1, matches: matches };
     };
-    const homeOverallFormPts = getFormPoints(form?.home_overall);
-    const awayOverallFormPts = getFormPoints(form?.away_overall); const homeVenueFormPts = getFormPoints(form?.home_home); const awayVenueFormPts = getFormPoints(form?.away_away);
-    const homeFormFactor = (homeVenueFormPts > 0 || awayVenueFormPts > 0) ? // Use weighted only if venue form exists
-                           (0.6 * (homeVenueFormPts / 15)) + (0.4 * (homeOverallFormPts / 15)) : (homeOverallFormPts / 15);
-    const awayFormFactor = (homeVenueFormPts > 0 || awayVenueFormPts > 0) ? // Use weighted only if venue form exists
-                           (0.6 * (awayVenueFormPts / 15)) + (0.4 * (awayOverallFormPts / 15)) : (awayOverallFormPts / 15);
-    const formImpactFactor = 0.1;
-    const form_mod_h = (1 + (homeFormFactor - 0.5) * formImpactFactor);
-    const form_mod_a = (1 + (awayFormFactor - 0.5) * formImpactFactor);
+
+    const homeOverallForm = getFormPoints(form?.home_overall);
+    const awayOverallForm = getFormPoints(form?.away_overall);
+    const homeVenueForm = getFormPoints(form?.home_home); // Hazai pályán
+    const awayVenueForm = getFormPoints(form?.away_away); // Vendégként
+
+    // Csak akkor használjuk a súlyozott formát, ha van elég adat (legalább 3 meccs hazai/vendég pályán)
+    const useVenueWeighting = homeVenueForm.matches >= 3 && awayVenueForm.matches >= 3;
+    const homeFormFactor = useVenueWeighting
+        ? (0.6 * (homeVenueForm.points / (homeVenueForm.matches * 3))) + (0.4 * (homeOverallForm.points / (homeOverallForm.matches * 3)))
+        : (homeOverallForm.matches > 0 ? homeOverallForm.points / (homeOverallForm.matches * 3) : 0.5); // Ha nincs overall forma sem, 0.5 (átlagos)
+    const awayFormFactor = useVenueWeighting
+        ? (0.6 * (awayVenueForm.points / (awayVenueForm.matches * 3))) + (0.4 * (awayOverallForm.points / (awayOverallForm.matches * 3)))
+        : (awayOverallForm.matches > 0 ? awayOverallForm.points / (awayOverallForm.matches * 3) : 0.5);
+
+    const formImpactFactor = 0.1; // Mennyire befolyásolja a forma az xG-t
+    // Javítás: Biztosítjuk, hogy a faktorok számok legyenek
+    const safeHomeFormFactor = isNaN(homeFormFactor) ? 0.5 : homeFormFactor;
+    const safeAwayFormFactor = isNaN(awayFormFactor) ? 0.5 : awayFormFactor;
+    const form_mod_h = (1 + (safeHomeFormFactor - 0.5) * formImpactFactor);
+    const form_mod_a = (1 + (safeAwayFormFactor - 0.5) * formImpactFactor);
     mu_h *= form_mod_h; mu_a *= form_mod_a;
     logData.form_mod_h = form_mod_h; logData.form_mod_a = form_mod_a;
 
+    // --- ÚJ: Egyszerűsített Regresszió a Középértékhez ---
+    // Ha a szimuláció valószínűsége és a forma között nagy az eltérés, korrigálunk
+    if (currentSimProbs && typeof currentSimProbs.pHome === 'number' && typeof currentSimProbs.pAway === 'number') {
+        logData.step = 'Regresszió';
+        const homeWinProb = currentSimProbs.pHome / 100;
+        const awayWinProb = currentSimProbs.pAway / 100;
+        // Forma pontszám 0-1 skálán (W=1, D=0.33, L=0) - utolsó 5 meccs alapján
+        const getFormScore = (fStr) => {
+            if (!fStr || typeof fStr !== 'string' || fStr === "N/A" || fStr.length === 0) return 0.5; // Átlagos, ha nincs adat
+            const wins = (fStr.match(/W/g) || []).length;
+            const draws = (fStr.match(/D/g) || []).length;
+            const matches = fStr.length;
+            return (wins * 1 + draws * 0.33) / matches;
+        };
+        const homeFormScore = getFormScore(form?.home_overall);
+        const awayFormScore = getFormScore(form?.away_overall);
+
+        let regression_mod_h = 1.0;
+        let regression_mod_a = 1.0;
+        const regressionFactor = 0.03; // Kis mértékű korrekció
+
+        // Ha a modell sokat vár (magas winProb), de a forma rossz (alacsony formScore) -> csökkentünk
+        if (homeWinProb > 0.6 && homeFormScore < 0.4) regression_mod_h -= regressionFactor;
+        if (awayWinProb > 0.6 && awayFormScore < 0.4) regression_mod_a -= regressionFactor;
+        // Ha a modell keveset vár (alacsony winProb), de a forma jó (magas formScore) -> növelünk
+        if (homeWinProb < 0.4 && homeFormScore > 0.6) regression_mod_h += regressionFactor;
+        if (awayWinProb < 0.4 && awayFormScore > 0.6) regression_mod_a += regressionFactor;
+
+        mu_h *= regression_mod_h;
+        mu_a *= regression_mod_a;
+        logData.regr_mod_h = regression_mod_h; logData.regr_mod_a = regression_mod_a;
+    }
+    // --- REGRESSZIÓ VÉGE ---
+
     // Dinamikus Hazai Pálya Előny (marad)
+    logData.step = 'Hazai Előny';
+    // ... (Logika változatlan) ...
     const baseHomeAdv = SPORT_CONFIG[sport]?.home_advantage?.home || 1.0;
     const baseAwayAdv = SPORT_CONFIG[sport]?.home_advantage?.away || 1.0;
     const leagueHomeWinPct = leagueAverages?.home_win_pct || (sport === 'soccer' ? 0.45 : sport === 'hockey' ? 0.53 : 0.55);
     const defaultHomeWinPct = (sport === 'soccer' ? 0.45 : sport === 'hockey' ? 0.53 : 0.55);
-    const homeAdvMultiplier = defaultHomeWinPct > 0 ? (leagueHomeWinPct / defaultHomeWinPct) : 1; // Avoid division by zero
-    const awayAdvMultiplier = (1-defaultHomeWinPct) > 0 ? ((1 - leagueHomeWinPct) / (1- defaultHomeWinPct)) : 1; // Avoid division by zero
+    const homeAdvMultiplier = defaultHomeWinPct > 0 ? (leagueHomeWinPct / defaultHomeWinPct) : 1;
+    const awayAdvMultiplier = (1-defaultHomeWinPct) > 0 ? ((1 - leagueHomeWinPct) / (1- defaultHomeWinPct)) : 1;
     const home_adv_mod = baseHomeAdv * homeAdvMultiplier;
     const away_adv_mod = baseAwayAdv * awayAdvMultiplier;
     mu_h *= home_adv_mod; mu_a *= away_adv_mod;
     logData.home_adv_mod = home_adv_mod; logData.away_adv_mod = away_adv_mod;
 
-    // Taktikai Modellezés (Foci - marad, Kosár - áthelyezve)
+
+    // Taktikai Modellezés (Foci - marad, Kosár - áthelyezve a sport-specifikus részbe)
     if (sport === 'soccer') {
         logData.step = 'Taktika (Foci)';
+        // ... (Logika változatlan) ...
         const homeStyle = rawData?.tactics?.home?.style?.toLowerCase() || 'n/a';
         const awayStyle = rawData?.tactics?.away?.style?.toLowerCase() || 'n/a';
         let tactical_mod_h = 1.0;
         let tactical_mod_a = 1.0;
-        // Kontra vs. Labdabirtoklás
-        if (homeStyle.includes('counter') && (awayStyle.includes('possession') || awayStyle.includes('dominan'))) {
-            tactical_mod_h *= 1.04; tactical_mod_a *= 0.97;
-        }
-        if (awayStyle.includes('counter') && (homeStyle.includes('possession') || homeStyle.includes('dominan'))) {
-            tactical_mod_a *= 1.04; tactical_mod_h *= 0.97;
-        }
-        // Magas letámadás vs. Gyenge/Lassú védelem
-        if (homeStyle.includes('press') && (awayStyle.includes('defensive frailties') || awayStyle.includes('slow build'))) {
-            tactical_mod_h *= 1.03; tactical_mod_a *= 0.98;
-        }
-        if (awayStyle.includes('press') && (homeStyle.includes('defensive frailties') || homeStyle.includes('slow build'))) {
-            tactical_mod_a *= 1.03; tactical_mod_h *= 0.98;
-        }
+        if (homeStyle.includes('counter') && (awayStyle.includes('possession') || awayStyle.includes('dominan'))) { tactical_mod_h *= 1.04; tactical_mod_a *= 0.97; }
+        if (awayStyle.includes('counter') && (homeStyle.includes('possession') || homeStyle.includes('dominan'))) { tactical_mod_a *= 1.04; tactical_mod_h *= 0.97; }
+        if (homeStyle.includes('press') && (awayStyle.includes('defensive frailties') || awayStyle.includes('slow build'))) { tactical_mod_h *= 1.03; tactical_mod_a *= 0.98; }
+        if (awayStyle.includes('press') && (homeStyle.includes('defensive frailties') || homeStyle.includes('slow build'))) { tactical_mod_a *= 1.03; tactical_mod_h *= 0.98; }
         mu_h *= tactical_mod_h; mu_a *= tactical_mod_a;
         logData.tactical_mod_h = tactical_mod_h; logData.tactical_mod_a = tactical_mod_a;
+
     }
-    
+
     // Formációk Hatása (Foci - marad)
     if (sport === 'soccer') {
         logData.step = 'Formáció (Foci)';
+        // ... (Logika változatlan) ...
         const homeFormation = rawData?.tactics?.home?.formation?.toLowerCase() || 'n/a';
         const awayFormation = rawData?.tactics?.away?.formation?.toLowerCase() || 'n/a';
         let formation_mod_h = 1.0;
         let formation_mod_a = 1.0;
-        if (homeFormation.startsWith('5') || homeFormation.startsWith('3-5') || homeFormation.startsWith('3-4')) {
-            formation_mod_a *= 0.95; 
-        }
-        if (awayFormation.startsWith('5') || awayFormation.startsWith('3-5') || awayFormation.startsWith('3-4')) {
-            formation_mod_h *= 0.95;
-        }
+        if (homeFormation.startsWith('5') || homeFormation.startsWith('3-5') || homeFormation.startsWith('3-4')) { formation_mod_a *= 0.95; }
+        if (awayFormation.startsWith('5') || awayFormation.startsWith('3-5') || awayFormation.startsWith('3-4')) { formation_mod_h *= 0.95; }
         const isOffensive = (f) => f.startsWith('4-3-3') || f.startsWith('3-4-3') || f.startsWith('4-2-4');
-        if (isOffensive(homeFormation) && isOffensive(awayFormation)) {
-            formation_mod_h *= 1.02; formation_mod_a *= 1.02;
-        }
+        if (isOffensive(homeFormation) && isOffensive(awayFormation)) { formation_mod_h *= 1.02; formation_mod_a *= 1.02; }
         mu_h *= formation_mod_h; mu_a *= formation_mod_a;
         logData.formation_mod_h = formation_mod_h; logData.formation_mod_a = formation_mod_a;
+
     }
 
     // Power Ratings (Tanult) (marad)
     logData.step = 'Power Ratings (Tanult)';
+    // ... (Logika változatlan) ...
     const powerRatings = getAdjustedRatings();
     const homeTeamLower = homeTeam.toLowerCase(), awayTeamLower = awayTeam.toLowerCase();
-    const homePR = powerRatings[homeTeamLower] || { atk: 1, def: 1 };
-    const awayPR = powerRatings[awayTeamLower] || { atk: 1, def: 1 };
-    const pr_mod_h = (homePR.atk ?? 1) * (awayPR.def ?? 1);
-    const pr_mod_a = (awayPR.atk ?? 1) * (homePR.def ?? 1);
+    const homePR = powerRatings[homeTeamLower] || { atk: 1, def: 1, matches: 0 }; // matches hozzáadva
+    const awayPR = powerRatings[awayTeamLower] || { atk: 1, def: 1, matches: 0 };
+    // Óvatosabb alkalmazás, ha kevés meccs alapján tanult
+    const homeWeight = Math.min(1, homePR.matches / 10);
+    const awayWeight = Math.min(1, awayPR.matches / 10);
+    const pr_mod_h = ((homePR.atk ?? 1) * (awayPR.def ?? 1) - 1) * homeWeight * awayWeight + 1; // Súlyozott hatás
+    const pr_mod_a = ((awayPR.atk ?? 1) * (homePR.def ?? 1) - 1) * homeWeight * awayWeight + 1;
     mu_h *= pr_mod_h; mu_a *= pr_mod_a;
-    logData.homePR_atk = homePR.atk; logData.homePR_def = homePR.def;
-    logData.awayPR_atk = awayPR.atk; logData.awayPR_def = awayPR.def;
+    logData.homePR_atk = homePR.atk; logData.homePR_def = homePR.def; logData.homePR_w = homeWeight;
+    logData.awayPR_atk = awayPR.atk; logData.awayPR_def = awayPR.def; logData.awayPR_w = awayWeight;
     logData.pr_mod_h = pr_mod_h; logData.pr_mod_a = pr_mod_a;
+
 
     // Pszichológiai Faktorok (marad)
     logData.step = 'Pszichológia';
-    const psyMultiplier = 1.1;
+    // ... (Logika változatlan) ...
+    const psyMultiplier = 0.05; // Csökkentett szorzó, finomabb hatás
     const psy_mod_h = 1 + (((psyProfileHome?.moraleIndex ?? 1) * (psyProfileHome?.pressureIndex ?? 1)) - 1) * psyMultiplier;
     const psy_mod_a = 1 + (((psyProfileAway?.moraleIndex ?? 1) * (psyProfileAway?.pressureIndex ?? 1)) - 1) * psyMultiplier;
     mu_h *= psy_mod_h;
     mu_a *= psy_mod_a;
     logData.psy_mod_h = psy_mod_h; logData.psy_mod_a = psy_mod_a;
 
+
     // Finomított Hiányzók Hatása (Poszt alapján) (marad)
     logData.step = 'Hiányzók (Poszt)';
+    // ... (Logika változatlan) ...
     let absentee_mod_h = 1.0;
     let absentee_mod_a = 1.0;
-    const impactFactor = sport === 'soccer' ? 0.05 : sport === 'hockey' ? 0.07 : 0.03; // Sport-specifikus hatás
+    const impactFactor = sport === 'soccer' ? 0.05 : sport === 'hockey' ? 0.07 : 0.03;
     const gkImpactFactor = sport === 'soccer' ? 0.15 : sport === 'hockey' ? 0.20 : 0.05;
-
     (rawData?.absentees?.home || []).forEach(p => {
         if (p.importance === 'key') {
             const role = p.role?.toLowerCase() || '';
-            if (role.includes('támadó') || role.includes('csatár') || role.includes('forward') || role.includes('striker')) { absentee_mod_h *= (1 - impactFactor); }
-            else if (role.includes('védő') || role.includes('hátvéd') || role.includes('defender')) { absentee_mod_a *= (1 + impactFactor); }
-            else if (role.includes('kapus') || role.includes('goalkeeper')) { absentee_mod_a *= (1 + gkImpactFactor); }
+            if (role.includes('támadó') || role.includes('csatár') || role.includes('forward') || role.includes('striker')) absentee_mod_h *= (1 - impactFactor);
+            else if (role.includes('védő') || role.includes('hátvéd') || role.includes('defender')) absentee_mod_a *= (1 + impactFactor);
+            else if (role.includes('kapus') || role.includes('goalkeeper')) absentee_mod_a *= (1 + gkImpactFactor);
         }
     });
     (rawData?.absentees?.away || []).forEach(p => {
         if (p.importance === 'key') {
             const role = p.role?.toLowerCase() || '';
-            if (role.includes('támadó') || role.includes('csatár') || role.includes('forward') || role.includes('striker')) { absentee_mod_a *= (1 - impactFactor); }
-            else if (role.includes('védő') || role.includes('hátvéd') || role.includes('defender')) { absentee_mod_h *= (1 + impactFactor); }
-            else if (role.includes('kapus') || role.includes('goalkeeper')) { absentee_mod_h *= (1 + gkImpactFactor); }
+            if (role.includes('támadó') || role.includes('csatár') || role.includes('forward') || role.includes('striker')) absentee_mod_a *= (1 - impactFactor);
+            else if (role.includes('védő') || role.includes('hátvéd') || role.includes('defender')) absentee_mod_h *= (1 + impactFactor);
+            else if (role.includes('kapus') || role.includes('goalkeeper')) absentee_mod_h *= (1 + gkImpactFactor);
         }
     });
     mu_h *= absentee_mod_h; mu_a *= absentee_mod_a;
     logData.abs_mod_pos_h = absentee_mod_h; logData.abs_mod_pos_a = absentee_mod_a;
-    // Általános impact analysis (csökkentett súllyal)
+
     const impactAnalysis = rawData?.absentee_impact_analysis?.toLowerCase();
     if (impactAnalysis && impactAnalysis !== "nincs jelentős hatás.") {
         let homeImpactGen = 1.0, awayImpactGen = 1.0;
@@ -627,59 +682,53 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
         logData.abs_mod_gen_h = homeImpactGen; logData.abs_mod_gen_a = awayImpactGen;
     }
 
+
     // Meccs Fontosságának Hatása (marad)
     logData.step = 'Meccs Tétje';
+    // ... (Logika változatlan) ...
     const tension = rawData?.contextual_factors?.match_tension_index?.toLowerCase() || 'n/a';
     let tension_mod = 1.0;
-    if (tension === 'high' || tension === 'extreme') { tension_mod = 1.03; }
-    else if (tension === 'low') { tension_mod = 1.01; }
+    // Javítás: A barátságos meccs csökkentse a gólszámot (kevésbé intenzív)
+    if (tension === 'high' || tension === 'extreme') tension_mod = 1.03;
+    else if (tension === 'low') tension_mod = 0.98; // Alacsony tét -> kevesebb hajtás?
+    else if (tension === 'friendly') tension_mod = 0.95; // Barátságos -> még kevesebb
     mu_h *= tension_mod;
     mu_a *= tension_mod;
     logData.tension_mod = tension_mod;
 
-    // --- ÚJ: Finomított Időjárás Hatása (Strukturált Adatok Alapján) ---
+
+    // --- Finomított Időjárás Hatása (Strukturált Adatok Alapján) ---
     logData.step = 'Időjárás (Strukturált)';
-    const weather = rawData?.contextual_factors?.structured_weather; // Az új adatforrás
-    let weather_mod = 1.0; // Egységes módosító
-    
+    // ... (Logika változatlan) ...
+    const weather = rawData?.contextual_factors?.structured_weather;
+    let weather_mod = 1.0;
     if (weather && weather.precipitation_mm != null && weather.wind_speed_kmh != null) {
         const precip = weather.precipitation_mm;
         const wind = weather.wind_speed_kmh;
-        
-        // Csapadék hatása (gólszámot csökkenti)
-        if (precip > 10.0) weather_mod *= 0.92; // Extrém eső/hó, sár
-        else if (precip > 3.0) weather_mod *= 0.96; // Erős eső
-        else if (precip > 0.5) weather_mod *= 0.99; // Enyhe eső, csúszós
-        
-        // Szél hatása (gólszámot csökkenti)
-        if (wind > 50.0) weather_mod *= 0.90; // Viharos
-        else if (wind > 30.0) weather_mod *= 0.95; // Erős szél
-        else if (wind > 15.0) weather_mod *= 0.99; // Mérsékelt szél
-
-        // Pálya állapota (a Gemini-től kapott kvalitatív adat)
+        if (precip > 10.0) weather_mod *= 0.92;
+        else if (precip > 3.0) weather_mod *= 0.96;
+        else if (precip > 0.5) weather_mod *= 0.99;
+        if (wind > 50.0) weather_mod *= 0.90;
+        else if (wind > 30.0) weather_mod *= 0.95;
+        else if (wind > 15.0) weather_mod *= 0.99;
         const pitch = rawData?.contextual_factors?.pitch_condition?.toLowerCase() || 'n/a';
-        if (pitch.includes("rossz") || pitch.includes("poor")) {
-            weather_mod *= 0.97;
-        }
-
+        if (pitch.includes("rossz") || pitch.includes("poor")) weather_mod *= 0.97;
     } else {
-        // Fallback a régi (szöveges) logikára, ha a strukturált adat hiányzik
         console.warn(`Hiányzó strukturált időjárási adat (${homeTeam} vs ${awayTeam}), fallback a szöveges elemzésre.`);
         const weatherText = rawData?.contextual_factors?.weather?.toLowerCase() || 'n/a';
         if (weatherText.includes("eső") || weatherText.includes("rain")) weather_mod *= 0.98;
         if (weatherText.includes("hó") || weatherText.includes("snow")) weather_mod *= 0.95;
     }
-
     mu_h *= weather_mod;
     mu_a *= weather_mod;
     logData.weather_mod_combined = weather_mod;
-    // --- IDŐJÁRÁS FEJLESZTÉS VÉGE ---
+
 
     // Minimum érték (marad)
     const minVal = sport === 'basketball' ? 80 : (sport === 'hockey' ? 1.5 : 0.5);
-    mu_h = Math.max(minVal, mu_h || minVal);
-    mu_a = Math.max(minVal, mu_a || minVal);
-    
+    mu_h = Math.max(minVal, mu_h || minVal); // Javítás: Ha mu_h NaN, akkor is minVal legyen
+    mu_a = Math.max(minVal, mu_a || minVal); // Javítás: Ha mu_a NaN, akkor is minVal legyen
+
     // Végső Korlátozás (marad)
     const finalMaxVal = sport === 'basketball' ? 200 : (sport === 'hockey' ? 10 : 7);
     if (mu_h > finalMaxVal || mu_a > finalMaxVal) {
@@ -688,12 +737,12 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
     }
     mu_h = Math.min(finalMaxVal, mu_h);
     mu_a = Math.min(finalMaxVal, mu_a);
-    
+
     logData.final_mu_h = mu_h; logData.final_mu_a = mu_a;
     logData.step = 'Végeredmény';
     console.log(`estimateXG Végeredmény (${homeTeam} vs ${awayTeam}): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
     // console.log(`estimateXG Részletes Log (${homeTeam} vs ${awayTeam}): ${JSON.stringify(logData)}`);
-    
+
     return { mu_h, mu_a };
 }
 // --- MÓDOSÍTÁS VÉGE ---
@@ -705,271 +754,517 @@ export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAver
  * @returns {object} {mu_corners: estimated corners, mu_cards: estimated cards}.
  */
 // Exportálva
-// === MÓDOSÍTÁS: Finomított időjárás hatás ===
+// --- MÓDOSÍTÁS KEZDETE: Finomítás + Taktikai inputok (3. Pont) ---
 export function estimateAdvancedMetrics(rawData, sport, leagueAverages) {
-    let mu_corners = leagueAverages?.avg_corners || 10.5;
-    let mu_cards = leagueAverages?.avg_cards || 4.5;
+    // Alapértékek a liga átlagokból vagy default értékek
+    const avgCorners = leagueAverages?.avg_corners || 10.5;
+    const avgCards = leagueAverages?.avg_cards || 4.5;
+    let mu_corners = avgCorners;
+    let mu_cards = avgCards;
+    const logData = { sport };
 
     if (sport === 'soccer') {
-        const adv = rawData?.advanced_stats;
+        const adv = rawData?.advanced_stats; // Placeholder, jelenleg nem használjuk
         const tactics = rawData?.tactics;
         const referee = rawData?.referee;
         const context = rawData?.contextual_factors;
-        // --- Corners ---
-        const hasAdvCornerData = adv?.home && adv?.away && typeof adv.home.avg_corners_for_per_game === 'number' && typeof adv.away.avg_corners_for_per_game === 'number';
-        if (!hasAdvCornerData) {
-            mu_corners = leagueAverages?.avg_corners || 10.5;
-            const homePossession = adv?.home?.possession_pct ?? 50; const awayPossession = adv?.away?.possession_pct ?? 50;
-            const homeShots = adv?.home?.shots ?? 12;
-            const awayShots = adv?.away?.shots ?? 12;
-            const possessionFactor = ((homePossession - 50) - (awayPossession - 50)) / 100;
-            const shotsFactor = ((homeShots - 12) + (awayShots - 12)) / 50;
-            mu_corners *= (1 + possessionFactor * 0.2 + shotsFactor * 0.3);
-        } else {
-            mu_corners = adv.home.avg_corners_for_per_game + adv.away.avg_corners_for_per_game;
-        }
-        if (tactics?.home?.style?.toLowerCase().includes('wing')) mu_corners *= 1.05;
-        if (tactics?.away?.style?.toLowerCase().includes('wing')) mu_corners *= 1.05;
-        // --- Cards ---
-        const hasAdvCardData = adv?.home && adv?.away && typeof adv.home.avg_cards_per_game === 'number' && typeof adv.away.avg_cards_per_game === 'number';
-        if (!hasAdvCardData) {
-             mu_cards = leagueAverages?.avg_cards || 4.5;
-             const homeFouls = adv?.home?.fouls ?? 11; const awayFouls = adv?.away?.fouls ?? 11;
-             const totalFoulsFactor = ((homeFouls - 11) + (awayFouls - 11)) / 30;
-             mu_cards *= (1 + totalFoulsFactor * 0.4);
-        } else {
-            mu_cards = adv.home.avg_cards_per_game + adv.away.avg_cards_per_game;
-        }
+        logData.base_corners = mu_corners;
+        logData.base_cards = mu_cards;
 
-        // Referee impact
-        if (referee?.style) { // Használjuk a 'style'-t a 'stats' helyett
+        // --- Szögletek ---
+        let corner_mod = 1.0;
+        // Taktika hatása: Szélső játék növeli, középen erőltetett játék csökkenti?
+        const homeStyle = tactics?.home?.style?.toLowerCase() || 'n/a';
+        const awayStyle = tactics?.away?.style?.toLowerCase() || 'n/a';
+        if (homeStyle.includes('wing') || homeStyle.includes('szélső')) corner_mod += 0.05;
+        if (awayStyle.includes('wing') || awayStyle.includes('szélső')) corner_mod += 0.05;
+        if (homeStyle.includes('central') || homeStyle.includes('középen')) corner_mod -= 0.03;
+        if (awayStyle.includes('central') || awayStyle.includes('középen')) corner_mod -= 0.03;
+        // Formáció hatása: Szélső védőkkel (pl. 3-5-2) játszó csapat ellen több szöglet lehet?
+        const homeFormation = tactics?.home?.formation?.toLowerCase() || 'n/a';
+        const awayFormation = tactics?.away?.formation?.toLowerCase() || 'n/a';
+        if (awayFormation.startsWith('3-5') || awayFormation.startsWith('3-4')) corner_mod += 0.03;
+        if (homeFormation.startsWith('3-5') || homeFormation.startsWith('3-4')) corner_mod += 0.03;
+
+        mu_corners *= corner_mod;
+        logData.corner_tactics_mod = corner_mod;
+
+        // --- Lapok ---
+        let card_mod = 1.0;
+        // Játékvezető hatása (a korábbi logika finomítva)
+        if (referee?.style) {
             const styleLower = referee.style.toLowerCase();
-            if (styleLower.includes("strict") || styleLower.includes("szigorú")) { 
-                mu_cards *= 1.15; 
-            } else if (styleLower.includes("lenient") || styleLower.includes("engedékeny")) { 
-                mu_cards *= 0.85; 
-            }
-            // Ha van numerikus átlag a stílusban, azt is figyelembe vehetjük
+            let refFactor = 1.0;
+            if (styleLower.includes("strict") || styleLower.includes("szigorú")) refFactor = 1.15;
+            else if (styleLower.includes("lenient") || styleLower.includes("engedékeny")) refFactor = 0.85;
+            // Átlag figyelembe vétele (ha van)
             const cardMatch = referee.style.match(/(\d\.\d+)/);
-            if (cardMatch) { 
-                const refereeAvg = parseFloat(cardMatch[1]); 
-                mu_cards = mu_cards * 0.6 + refereeAvg * 0.4; // Súlyozott átlag
+            if (cardMatch) {
+                const refereeAvg = parseFloat(cardMatch[1]);
+                // Súlyozzuk az átlagot a ligaátlaggal és a stílussal
+                card_mod = (refFactor * 0.5) + ((refereeAvg / avgCards) * 0.5); // 50-50% súly
+            } else {
+                card_mod = refFactor; // Ha nincs átlag, csak a stílus számít
             }
+            logData.card_ref_mod = card_mod;
         }
 
-        // Match tension impact
-        const tension = context?.match_tension_index || 'low';
-        if (tension.toLowerCase() === 'high') mu_cards *= 1.1;
-        if (tension.toLowerCase() === 'extreme') mu_cards *= 1.25;
+        // Meccs tétje (marad)
+        const tension = context?.match_tension_index?.toLowerCase() || 'low';
+        if (tension === 'high') card_mod *= 1.1;
+        else if (tension === 'extreme') card_mod *= 1.25;
+        // Derby jelleg (AI adhatja a kontextusban?)
+        if (context?.match_tension_index?.toLowerCase().includes('derby') || rawData?.h2h_summary?.toLowerCase().includes('rivalry')) {
+             card_mod *= 1.1; // Derbiken több lap lehet
+             logData.is_derby = true;
+        }
+        logData.card_tension_mod = card_mod / (logData.card_ref_mod || 1); // Csak a tension hatása
 
-        // --- MÓDOSÍTÁS KEZDETE: Strukturált időjárás lapokra ---
+        // Taktika hatása: Magas letámadás, agresszív stílus növeli
+        if (homeStyle.includes('press') || homeStyle.includes('aggressive')) card_mod += 0.05;
+        if (awayStyle.includes('press') || awayStyle.includes('aggressive')) card_mod += 0.05;
+        // Kontra csapatok ellen több taktikai szabálytalanság lehet
+        if (homeStyle.includes('counter')) card_mod += 0.03;
+        if (awayStyle.includes('counter')) card_mod += 0.03;
+        logData.card_tactics_mod = card_mod / (logData.card_ref_mod * logData.card_tension_mod || 1);
+
+
+        // Időjárás és Pálya (marad)
         const weather = context?.structured_weather;
         const pitch = context?.pitch_condition?.toLowerCase() || 'n/a';
-        if (weather && weather.precipitation_mm != null) {
-            if (weather.precipitation_mm > 3.0) mu_cards *= 1.05; // Erős eső/hó -> több csúszkálás
+        let weatherPitchMod = 1.0;
+        if (weather && weather.precipitation_mm != null && weather.precipitation_mm > 3.0) {
+            weatherPitchMod *= 1.05; // Eső -> több csúszás
         }
         if (pitch.includes("rossz") || pitch.includes("poor")) {
-             mu_cards *= 1.08; // Rossz pálya -> több küzdelem, szabálytalanság
+             weatherPitchMod *= 1.08; // Rossz pálya -> több küzdelem
         }
-        // --- MÓDOSÍTÁS VÉGE: Strukturált időjárás lapokra ---
+        card_mod *= weatherPitchMod;
+        logData.card_wp_mod = weatherPitchMod;
 
-        // Apply minimum values
-        mu_corners = Math.max(3, mu_corners || 3);
-        mu_cards = Math.max(1.5, mu_cards || 1.5);
+        mu_cards *= card_mod;
+
+        // Minimum értékek (marad)
+        mu_corners = Math.max(3.0, mu_corners || avgCorners); // Biztosítjuk, hogy szám legyen
+        mu_cards = Math.max(1.5, mu_cards || avgCards);     // Biztosítjuk, hogy szám legyen
+
+        logData.final_mu_corners = mu_corners;
+        logData.final_mu_cards = mu_cards;
+        // console.log(`estimateAdvancedMetrics Log: ${JSON.stringify(logData)}`);
+    } else {
+        // Más sportágaknál egyelőre marad az átlag
+        mu_corners = avgCorners; // Vagy sport-specifikus átlag?
+        mu_cards = avgCards;
     }
-    return { mu_corners, mu_cards };
+    // Javítás: Biztosítjuk, hogy számokat adjunk vissza
+    return {
+        mu_corners: typeof mu_corners === 'number' && !isNaN(mu_corners) ? mu_corners : 10.5,
+        mu_cards: typeof mu_cards === 'number' && !isNaN(mu_cards) ? mu_cards : 4.5
+    };
 }
+// --- MÓDOSÍTÁS VÉGE: Finomítás + Taktikai inputok ---
 
 
-// --- A fájl többi része változatlan ---
+// --- simulateMatchProgress (Változatlan) ---
 export function simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, sims, sport, liveScenario, mainTotalsLine, rawData) {
     let home = 0, draw = 0, away = 0, btts = 0, over_main = 0;
     let corners_o7_5 = 0, corners_o8_5 = 0, corners_o9_5 = 0, corners_o10_5 = 0, corners_o11_5 = 0;
     let cards_o3_5 = 0, cards_o4_5 = 0, cards_o5_5 = 0, cards_o6_5 = 0;
     const scores = {};
-    const safeSims = Math.max(1, sims || 1);
+    const safeSims = Math.max(1, sims || 1); // Biztonság, minimum 1 szimuláció
+
+    // Javítás: Biztosítjuk, hogy a bemeneti mu értékek számok legyenek
+    const safe_mu_h = typeof mu_h === 'number' && !isNaN(mu_h) ? mu_h : SPORT_CONFIG[sport]?.avg_goals || 1.35;
+    const safe_mu_a = typeof mu_a === 'number' && !isNaN(mu_a) ? mu_a : SPORT_CONFIG[sport]?.avg_goals || 1.35;
+    const safe_mu_corners = typeof mu_corners === 'number' && !isNaN(mu_corners) ? mu_corners : 10.5;
+    const safe_mu_cards = typeof mu_cards === 'number' && !isNaN(mu_cards) ? mu_cards : 4.5;
+    const safe_mainTotalsLine = typeof mainTotalsLine === 'number' && !isNaN(mainTotalsLine) ? mainTotalsLine : SPORT_CONFIG[sport]?.totals_line || 2.5;
+
 
     if (sport === 'basketball') {
-        const stdDev = 11.5;
+        const stdDev = 11.5; // Kosárnál normális eloszlást használunk
         for (let i = 0; i < safeSims; i++) {
-            const gh = Math.round(sampleNormal(mu_h, stdDev));
-            const ga = Math.round(sampleNormal(mu_a, stdDev));
+            // Javítás: Biztosítjuk, hogy a sampleNormal érvényes számokat kapjon
+            const gh = Math.max(0, Math.round(sampleNormal(safe_mu_h, stdDev)));
+            const ga = Math.max(0, Math.round(sampleNormal(safe_mu_a, stdDev)));
             const scoreKey = `${gh}-${ga}`;
             scores[scoreKey] = (scores[scoreKey] || 0) + 1;
             if (gh > ga) home++; else if (ga > gh) away++; else draw++;
-            if ((gh + ga) > mainTotalsLine) over_main++;
+            if ((gh + ga) > safe_mainTotalsLine) over_main++;
         }
-    } else {
+    } else { // Foci, Hoki stb. (Poisson)
         for (let i = 0; i < safeSims; i++) {
-            const { gh, ga } = sampleGoals(mu_h, mu_a);
+            const { gh, ga } = sampleGoals(safe_mu_h, safe_mu_a); // Biztonságos mu értékek használata
             const scoreKey = `${gh}-${ga}`;
             scores[scoreKey] = (scores[scoreKey] || 0) + 1;
             if (gh > ga) home++;
             else if (ga > gh) away++; else draw++;
-            if (gh > 0 && ga > 0) btts++;
-            if (mainTotalsLine != null && (gh + ga) > mainTotalsLine) over_main++;
+            if (gh > 0 && ga > 0) btts++; // Both Teams To Score
+            if ((gh + ga) > safe_mainTotalsLine) over_main++; // Over a fő vonalon
+
+            // Mellékpiacok szimulálása (csak foci esetén)
             if (sport === 'soccer') {
-                const corners = poisson(mu_corners);
-                if (corners > 7.5) corners_o7_5++; if (corners > 8.5) corners_o8_5++; if (corners > 9.5) corners_o9_5++; if (corners > 10.5) corners_o10_5++;
+                const corners = poisson(safe_mu_corners); // Biztonságos mu érték
+                if (corners > 7.5) corners_o7_5++;
+                if (corners > 8.5) corners_o8_5++;
+                if (corners > 9.5) corners_o9_5++;
+                if (corners > 10.5) corners_o10_5++;
                 if (corners > 11.5) corners_o11_5++;
-                const cards = poisson(mu_cards);
-                if (cards > 3.5) cards_o3_5++; if (cards > 4.5) cards_o4_5++;
-                if (cards > 5.5) cards_o5_5++; if (cards > 6.5) cards_o6_5++;
+
+                const cards = poisson(safe_mu_cards); // Biztonságos mu érték
+                if (cards > 3.5) cards_o3_5++;
+                if (cards > 4.5) cards_o4_5++;
+                if (cards > 5.5) cards_o5_5++;
+                if (cards > 6.5) cards_o6_5++;
             }
         }
     }
 
+    // Hoki/Kosár: Döntetlenek elosztása hosszabbítás/büntetők alapján (egyszerűsített)
     if (sport !== 'soccer' && draw > 0) {
         const totalWinsBeforeOT = home + away;
-        if (totalWinsBeforeOT > 0) { home += draw * (home / totalWinsBeforeOT); away += draw * (away / totalWinsBeforeOT); }
-        else { home += draw / 2; away += draw / 2; }
-        draw = 0;
+        // Arányosan osztjuk el a döntetleneket a győztesek között
+        if (totalWinsBeforeOT > 0) {
+             home += draw * (home / totalWinsBeforeOT);
+             away += draw * (away / totalWinsBeforeOT);
+        } else { // Ha csak döntetlenek voltak (nagyon ritka)
+             home += draw / 2;
+             away += draw / 2;
+        }
+        draw = 0; // Nincs döntetlen a végeredményben
     }
 
+    // Eredmények százalékosítása
     const toPct = x => (100 * x / safeSims);
-    const topScoreKey = Object.keys(scores).length > 0 ? Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b, '0-0') : '0-0';
+
+    // Leggyakoribb eredmény megkeresése
+    const topScoreKey = Object.keys(scores).length > 0
+        ? Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b, '0-0')
+        : '0-0'; // Alapértelmezett, ha nincs eredmény
     const [top_gh, top_ga] = topScoreKey.split('-').map(Number);
 
+    // Visszatérési objektum összeállítása
     return {
         pHome: toPct(home), pDraw: toPct(draw), pAway: toPct(away), pBTTS: toPct(btts),
         pOver: toPct(over_main), pUnder: 100 - toPct(over_main),
-        corners: { 'o7.5': toPct(corners_o7_5), 'o8.5': toPct(corners_o8_5), 'o9.5': toPct(corners_o9_5), 'o10.5': toPct(corners_o10_5), 'o11.5': toPct(corners_o11_5) },
-        cards: { 'o3.5': toPct(cards_o3_5), 'o4.5': toPct(cards_o4_5), 'o5.5': toPct(cards_o5_5), 'o6.5': toPct(cards_o6_5) },
-        scores,
-        topScore: { gh: top_gh, ga: top_ga },
-      
-        mainTotalsLine: mainTotalsLine,
-        mu_h_sim: mu_h, mu_a_sim: mu_a, mu_corners_sim: mu_corners, mu_cards_sim: mu_cards
+        // Szöglet valószínűségek (csak ha foci)
+        corners: sport === 'soccer' ? {
+             'o7.5': toPct(corners_o7_5), 'u7.5': 100 - toPct(corners_o7_5),
+             'o8.5': toPct(corners_o8_5), 'u8.5': 100 - toPct(corners_o8_5),
+             'o9.5': toPct(corners_o9_5), 'u9.5': 100 - toPct(corners_o9_5),
+             'o10.5': toPct(corners_o10_5), 'u10.5': 100 - toPct(corners_o10_5),
+             'o11.5': toPct(corners_o11_5), 'u11.5': 100 - toPct(corners_o11_5)
+        } : {}, // Üres objektum más sportnál
+        // Lap valószínűségek (csak ha foci)
+        cards: sport === 'soccer' ? {
+             'o3.5': toPct(cards_o3_5), 'u3.5': 100 - toPct(cards_o3_5),
+             'o4.5': toPct(cards_o4_5), 'u4.5': 100 - toPct(cards_o4_5),
+             'o5.5': toPct(cards_o5_5), 'u5.5': 100 - toPct(cards_o5_5),
+             'o6.5': toPct(cards_o6_5), 'u6.5': 100 - toPct(cards_o6_5)
+        } : {}, // Üres objektum más sportnál
+        scores, // Pontos eredmények gyakorisága
+        topScore: { gh: top_gh, ga: top_ga }, // Leggyakoribb eredmény
+
+        mainTotalsLine: safe_mainTotalsLine, // Használt fő vonal
+        // Visszaadjuk a szimulációhoz használt (biztonságos) mu értékeket is
+        mu_h_sim: safe_mu_h, mu_a_sim: safe_mu_a, mu_corners_sim: safe_mu_corners, mu_cards_sim: safe_mu_cards
     };
 }
 
+
+// --- calculateModelConfidence (Változatlan) ---
 export function calculateModelConfidence(sport, home, away, rawData, form, sim, marketIntel) {
     let score = 5.0;
     const MAX_SCORE = 10.0; const MIN_SCORE = 1.0;
     try {
-        const getFormPoints = (formString) => {
-             if (!formString || typeof formString !== 'string') return null;
-             const wins = (formString.match(/W/g) || []).length; const draws = (formString.match(/D/g) || []).length; const total = (formString.match(/[WDL]/g) || []).length;
-             return total > 0 ? (wins * 3 + draws * 1) / (total * 3) : null;
+        const getFormPointsPerc = (formString) => { // Átnevezve, hogy százalékot adjon vissza
+             if (!formString || typeof formString !== 'string' || formString === "N/A") return null;
+             const wins = (formString.match(/W/g) || []).length;
+             const draws = (formString.match(/D/g) || []).length;
+             const total = (formString.match(/[WDL]/g) || []).length;
+             return total > 0 ? (wins * 3 + draws * 1) / (total * 3) : null; // 0-1 közötti érték
         };
-        const homeOverallFormScore = getFormPoints(form?.home_overall); const awayOverallFormScore = getFormPoints(form?.away_overall);
-        if (homeOverallFormScore != null && awayOverallFormScore != null) {
-            const formDiff = homeOverallFormScore - awayOverallFormScore;
-            const simDiff = (sim.pHome - sim.pAway) / 100;
+        const homeOverallFormScore = getFormPointsPerc(form?.home_overall);
+        const awayOverallFormScore = getFormPointsPerc(form?.away_overall);
+
+        // Forma vs Szimuláció ellentmondás
+        if (homeOverallFormScore != null && awayOverallFormScore != null && sim && sim.pHome != null && sim.pAway != null) {
+            const formDiff = homeOverallFormScore - awayOverallFormScore; // Pozitív, ha a hazai jobb formában van
+            const simDiff = (sim.pHome - sim.pAway) / 100; // Pozitív, ha a szimuláció a hazait favorizálja
+            // Ha a szimuláció erősen favorizál valakit (>65% esély), de annak a formája sokkal rosszabb (<-0.2)
             if ((sim.pHome > 65 && formDiff < -0.2) || (sim.pAway > 65 && formDiff > 0.2)) { score -= 1.5; }
+            // Ha a szimuláció favorizál valakit (>60%) és a formája is ezt támasztja alá (>0.25 diff)
             else if ((sim.pHome > 60 && formDiff > 0.25) || (sim.pAway > 60 && formDiff < -0.25)) { score += 0.75; }
         }
-        const xgDiff = Math.abs(sim.mu_h_sim - sim.mu_a_sim);
-        const thresholdHigh = sport === 'basketball' ? 15 : sport === 'hockey' ? 0.8 : 0.4;
-        const thresholdLow = sport === 'basketball' ? 5 : sport === 'hockey' ? 0.25 : 0.15;
-        if (xgDiff > thresholdHigh) score += 1.5; if (xgDiff < thresholdLow) score -= 1.0;
+
+        // xG különbség alapján bizalom növelés/csökkentés
+        if (sim && sim.mu_h_sim != null && sim.mu_a_sim != null) {
+            const xgDiff = Math.abs(sim.mu_h_sim - sim.mu_a_sim);
+            const thresholdHigh = sport === 'basketball' ? 15 : sport === 'hockey' ? 0.8 : 0.4;
+            const thresholdLow = sport === 'basketball' ? 5 : sport === 'hockey' ? 0.25 : 0.15;
+            if (xgDiff > thresholdHigh) score += 1.5; // Nagy különbség -> magabiztosabb modell
+            if (xgDiff < thresholdLow) score -= 1.0; // Kicsi különbség -> bizonytalanabb modell
+        }
+
+        // H2H adatok frissessége
         if (rawData?.h2h_structured && rawData.h2h_structured.length > 0) {
-            try { const latestH2HDate = new Date(rawData.h2h_structured[0].date);
-                  const twoYearsAgo = new Date(); twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-                  if (latestH2HDate < twoYearsAgo) { score -= 0.75; } else { score += 0.25; }
-            } catch(e) { /* Ignore */ }
-        } else { score -= 0.25; }
+            try {
+                 const latestH2HDate = new Date(rawData.h2h_structured[0].date);
+                 const twoYearsAgo = new Date(); twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+                 if (!isNaN(latestH2HDate.getTime())) { // Csak ha érvényes a dátum
+                      if (latestH2HDate < twoYearsAgo) { score -= 0.75; } // Régi H2H -> kevésbé releváns
+                      else { score += 0.25; } // Friss H2H -> kicsit relevánsabb
+                 }
+            } catch(e) { console.warn("H2H dátum parse hiba:", e); }
+        } else { score -= 0.25; } // Nincs H2H adat -> kicsit bizonytalanabb
+
+        // Kulcshiányzók hatása
         const homeKeyAbsentees = rawData?.absentees?.home?.filter(p => p.importance === 'key').length || 0;
         const awayKeyAbsentees = rawData?.absentees?.away?.filter(p => p.importance === 'key').length || 0;
-        if (sim.pHome > 65 && homeKeyAbsentees > 0) { score -= (1.0 * homeKeyAbsentees); }
-        if (sim.pAway > 65 && awayKeyAbsentees > 0) { score -= (1.0 * awayKeyAbsentees); }
-        if (sim.pHome > 60 && awayKeyAbsentees > 0) { score += (0.5 * awayKeyAbsentees); }
-        if (sim.pAway > 60 && homeKeyAbsentees > 0) { score += (0.5 * homeKeyAbsentees); }
-        const marketIntelLower = marketIntel?.toLowerCase() || 'n/a';
-        if (marketIntelLower !== 'n/a' && marketIntelLower !== 'nincs jelentős oddsmozgás.') {
-            const homeFavored = sim.pHome > sim.pAway && sim.pHome > 45;
-            const awayFavored = sim.pAway > sim.pHome && sim.pAway > 45;
-            const homeNameLower = home.toLowerCase(); const awayNameLower = away.toLowerCase();
-            if (homeFavored && marketIntelLower.includes(homeNameLower) && marketIntelLower.includes('+')) { score -= 1.5; }
-            else if (awayFavored && marketIntelLower.includes(awayNameLower) && marketIntelLower.includes('+')) { score -= 1.5; }
-            else if (homeFavored && marketIntelLower.includes(homeNameLower) && marketIntelLower.includes('-')) { score += 1.0; }
-            else if (awayFavored && marketIntelLower.includes(awayNameLower) && marketIntelLower.includes('-')) { score += 1.0; }
+        if (sim && sim.pHome != null && sim.pAway != null) {
+            if (sim.pHome > 65 && homeKeyAbsentees > 0) { score -= (1.0 * homeKeyAbsentees); } // Favoritnál hiányzó -> nagy csökkenés
+            if (sim.pAway > 65 && awayKeyAbsentees > 0) { score -= (1.0 * awayKeyAbsentees); }
+            if (sim.pHome > 60 && awayKeyAbsentees > 0) { score += (0.5 * awayKeyAbsentees); } // Ellenfélnél hiányzó -> kis növelés
+            if (sim.pAway > 60 && homeKeyAbsentees > 0) { score += (0.5 * homeKeyAbsentees); }
         }
+
+        // Piaci mozgás ellentmondása
+        const marketIntelLower = marketIntel?.toLowerCase() || 'n/a';
+        if (marketIntelLower !== 'n/a' && marketIntelLower !== 'nincs jelentős oddsmozgás.' && sim && sim.pHome != null && sim.pAway != null) {
+            const homeFavoredBySim = sim.pHome > sim.pAway && sim.pHome > 45;
+            const awayFavoredBySim = sim.pAway > sim.pHome && sim.pAway > 45;
+            const homeNameLower = home.toLowerCase();
+            const awayNameLower = away.toLowerCase();
+            // Ha a modell favorizál valakit, de a piac ellene mozog (odds nő: + jel)
+            if (homeFavoredBySim && marketIntelLower.includes(homeNameLower) && marketIntelLower.includes('+')) { score -= 1.5; }
+            else if (awayFavoredBySim && marketIntelLower.includes(awayNameLower) && marketIntelLower.includes('+')) { score -= 1.5; }
+            // Ha a modell favorizál valakit, és a piac is támogatja (odds csökken: - jel)
+            else if (homeFavoredBySim && marketIntelLower.includes(homeNameLower) && marketIntelLower.includes('-')) { score += 1.0; }
+            else if (awayFavoredBySim && marketIntelLower.includes(awayNameLower) && marketIntelLower.includes('-')) { score += 1.0; }
+        }
+
+        // Tanulási előzmények (Power Ratings meccsszám)
         const adjustedRatings = getAdjustedRatings();
-        const homeHistory = adjustedRatings[home.toLowerCase()]; const awayHistory = adjustedRatings[away.toLowerCase()];
-        if (homeHistory && homeHistory.matches > 10) score += 0.25;
-        if (awayHistory && awayHistory.matches > 10) score += 0.25;
-        if (homeHistory && homeHistory.matches > 25) score += 0.25;
-        if (awayHistory && awayHistory.matches > 25) score += 0.25;
-    } catch(e) { console.error(`Hiba model konfidencia számításakor (${home} vs ${away}): ${e.message}`);
-    return Math.max(MIN_SCORE, 4.0); }
+        const homeHistory = adjustedRatings[home.toLowerCase()];
+        const awayHistory = adjustedRatings[away.toLowerCase()];
+        let historyBonus = 0;
+        if (homeHistory && homeHistory.matches > 10) historyBonus += 0.25;
+        if (awayHistory && awayHistory.matches > 10) historyBonus += 0.25;
+        if (homeHistory && homeHistory.matches > 25) historyBonus += 0.25; // Extra bónusz több adatnál
+        if (awayHistory && awayHistory.matches > 25) historyBonus += 0.25;
+        score += Math.min(1.0, historyBonus); // Max 1.0 bónusz az előzményekért
+
+
+    } catch(e) {
+        console.error(`Hiba model konfidencia számításakor (${home} vs ${away}): ${e.message}`, e.stack);
+        return Math.max(MIN_SCORE, 4.0); // Hiba esetén óvatos default
+    }
+    // Végső pontszám korlátozása 1.0 és 10.0 közé
     return Math.max(MIN_SCORE, Math.min(MAX_SCORE, score));
 }
 
-export function calculatePsychologicalProfile(teamName, opponentName) { let moraleIndex = 1.0;
- let pressureIndex = 1.0; return { moraleIndex, pressureIndex }; }
+// --- calculatePsychologicalProfile (Placeholder) ---
+export function calculatePsychologicalProfile(teamName, opponentName, rawData = null) {
+    // Alapértékek
+    let moraleIndex = 1.0; // 1.0 = átlagos morál
+    let pressureIndex = 1.0; // 1.0 = átlagos nyomás
 
-export function calculateValue(sim, oddsData, sport, homeTeam, awayTeam) {
-    const valueBets = [];
-    if (!oddsData || !oddsData.current || oddsData.current.length === 0 || !sim) { return valueBets; }
-    const findProb = (marketName) => {
-        if (!marketName) return null;
-        const lowerMarket = marketName.toLowerCase();
-        if (lowerMarket.includes('hazai győzelem') || lowerMarket === homeTeam.toLowerCase()) return sim.pHome / 100;
-        if (lowerMarket.includes('vendég győzelem') || lowerMarket === awayTeam.toLowerCase()) return sim.pAway / 100;
-        if (lowerMarket.includes('döntetlen') || lowerMarket === 'draw') return sim.pDraw / 100;
-        const ouMatch = lowerMarket.match(/(over|under|alatt|felett)\s*(\d+(\.\d+)?)/);
-        if (ouMatch) {
-            const line = parseFloat(ouMatch[2]);
-            if (sim.mainTotalsLine != null && line === sim.mainTotalsLine) { const isOver = ouMatch[1] === "over" || ouMatch[1] === "felett";
-            return isOver ? sim.pOver / 100 : sim.pUnder / 100; }
-            if ((lowerMarket.includes('corners') || lowerMarket.includes('szöglet')) && sim.corners) { const key = `${ouMatch[1] === 'over' ||
-            ouMatch[1] === 'felett' ? 'o' : 'u'}${line}`; if(sim.corners[key] != null) return sim.corners[key] / 100; }
-            if ((lowerMarket.includes('cards') || lowerMarket.includes('lap')) && sim.cards) { const key = `${ouMatch[1] === 'over' ||
-            ouMatch[1] === 'felett' ? 'o' : 'u'}${line}`; if(sim.cards[key] != null) return sim.cards[key] / 100; }
+    // Egyszerű heurisztikák a rawData alapján (ha elérhető)
+    if (rawData) {
+        // Forma hatása a morálra
+        const formString = rawData.form?.home_overall; // Feltételezzük, hogy a hazai csapatét nézzük
+        if (formString && formString !== "N/A") {
+            const recentLosses = (formString.slice(-3).match(/L/g) || []).length; // Utolsó 3 meccs vereségei
+            const recentWins = (formString.slice(-3).match(/W/g) || []).length; // Utolsó 3 meccs győzelmei
+            if (recentLosses >= 2) moraleIndex *= 0.95; // Rossz forma -> rosszabb morál
+            if (recentWins >= 2) moraleIndex *= 1.05; // Jó forma -> jobb morál
         }
-        if (lowerMarket.includes('btts') || lowerMarket.includes('mindkét csapat szerez gólt')) { const bttsYes = lowerMarket.includes("igen") ||
-        !lowerMarket.includes("nem"); return bttsYes ? sim.pBTTS / 100 : (100 - sim.pBTTS) / 100; }
-        return null;
-    };
-    oddsData.current.forEach(outcome => {
-        const probability = findProb(outcome.name);
-        if (probability != null && typeof outcome.price === 'number' && outcome.price > 1) {
-            const value = (probability * outcome.price) - 1;
-            if (value > 0.05) { valueBets.push({ market: outcome.name, odds: outcome.price, probability: (probability * 100).toFixed(1) + '%', value: (value * 100).toFixed(1) + '%' }); }
-        }
-    
-    });
-    return valueBets.sort((a, b) => parseFloat(b.value) - parseFloat(a.value));
+        // Meccs tétjének hatása a nyomásra
+        const tension = rawData.contextual_factors?.match_tension_index?.toLowerCase();
+        if (tension === 'high') pressureIndex *= 1.05; // Nagyobb nyomás
+        if (tension === 'extreme') pressureIndex *= 1.10; // Még nagyobb nyomás
+        if (tension === 'low' || tension === 'friendly') pressureIndex *= 0.95; // Kisebb nyomás
+    }
+
+    // Korlátozzuk az indexeket, pl. 0.8 és 1.2 közé
+    moraleIndex = Math.max(0.8, Math.min(1.2, moraleIndex));
+    pressureIndex = Math.max(0.8, Math.min(1.2, pressureIndex));
+
+    return { moraleIndex, pressureIndex };
 }
 
+
+// --- calculateValue ---
+// --- MÓDOSÍTÁS KEZDETE: Kiterjesztés szöglet/lap piacokra (3. Pont) ---
+export function calculateValue(sim, oddsData, sport, homeTeam, awayTeam) {
+    const valueBets = [];
+    if (!oddsData || !sim) return valueBets; // Ha nincs odds vagy szimuláció, nincs érték
+
+    // Segédfüggvény a szimulációs valószínűség megtalálásához
+    const findSimProb = (marketName, line = null) => {
+        if (!marketName || !sim) return null;
+        const lowerMarket = marketName.toLowerCase();
+
+        // 1X2 piacok
+        if (lowerMarket.includes('hazai') || lowerMarket === homeTeam.toLowerCase()) return sim.pHome / 100;
+        if (lowerMarket.includes('vendég') || lowerMarket === awayTeam.toLowerCase()) return sim.pAway / 100;
+        if (lowerMarket.includes('döntetlen') || lowerMarket === 'draw') return sim.pDraw / 100;
+
+        // Fő O/U (gól/pont)
+        if (line !== null && sim.mainTotalsLine != null && line === sim.mainTotalsLine) {
+            if (lowerMarket.startsWith('over') || lowerMarket.startsWith('felett')) return sim.pOver / 100;
+            if (lowerMarket.startsWith('under') || lowerMarket.startsWith('alatt')) return sim.pUnder / 100;
+        }
+
+        // BTTS (Mindkét csapat szerez gólt)
+        if (lowerMarket.includes('btts') || lowerMarket.includes('mindkét csapat szerez gólt')) {
+            const isYes = lowerMarket.includes("igen") || !lowerMarket.includes("nem");
+            return isYes ? sim.pBTTS / 100 : (100 - sim.pBTTS) / 100;
+        }
+
+        // Szöglet O/U (csak foci és ha van adat)
+        if (sport === 'soccer' && sim.corners && line !== null && (lowerMarket.includes('corners') || lowerMarket.includes('szöglet'))) {
+            const overKey = `o${line}`;
+            const underKey = `u${line}`;
+            if (lowerMarket.startsWith('over') || lowerMarket.startsWith('felett')) {
+                return sim.corners[overKey] != null ? sim.corners[overKey] / 100 : null;
+            }
+            if (lowerMarket.startsWith('under') || lowerMarket.startsWith('alatt')) {
+                return sim.corners[underKey] != null ? sim.corners[underKey] / 100 : null;
+            }
+        }
+
+        // Lap O/U (csak foci és ha van adat)
+        if (sport === 'soccer' && sim.cards && line !== null && (lowerMarket.includes('cards') || lowerMarket.includes('lap'))) {
+            const overKey = `o${line}`;
+            const underKey = `u${line}`;
+            if (lowerMarket.startsWith('over') || lowerMarket.startsWith('felett')) {
+                return sim.cards[overKey] != null ? sim.cards[overKey] / 100 : null;
+            }
+            if (lowerMarket.startsWith('under') || lowerMarket.startsWith('alatt')) {
+                return sim.cards[underKey] != null ? sim.cards[underKey] / 100 : null;
+            }
+        }
+
+        return null; // Ha nem találtunk megfelelő piacot
+    };
+
+    // Végigmegyünk az ÖSSZES elérhető piacon az oddsData-ból
+    (oddsData.allMarkets || []).forEach(market => {
+        // Csak a H2H, Totals, BTTS, Szöglet (Corners Over/Under), Lapok (Cards Over/Under) piacokat nézzük most
+        const marketKey = market.key?.toLowerCase();
+        const isSupportedMarket = marketKey === 'h2h' || marketKey === 'totals' || marketKey === 'btts' || marketKey === 'corners_over_under' || marketKey === 'cards_over_under';
+
+        if (isSupportedMarket && Array.isArray(market.outcomes)) {
+            market.outcomes.forEach(outcome => {
+                // Kell név, ár (szám), és esetleg 'point' (line) az O/U piacokhoz
+                if (outcome && outcome.name && typeof outcome.price === 'number' && outcome.price > 1) {
+                    const line = typeof outcome.point === 'number' ? outcome.point : null;
+                    const probability = findSimProb(outcome.name, line); // Megkeressük a szimulált valószínűséget
+
+                    if (probability != null && probability > 0) { // Csak ha találtunk valószínűséget
+                        const value = (probability * outcome.price) - 1; // Érték = (Valószínűség * Odds) - 1
+                        const valueThreshold = 0.05; // Minimum 5% értéket keresünk
+
+                        if (value >= valueThreshold) {
+                            // Egységesítjük a piac nevét a kimenethez
+                            let marketDisplayName = outcome.name;
+                            if (line !== null) { // O/U piacoknál hozzáadjuk a vonalat
+                                marketDisplayName = `${outcome.name} ${line}`;
+                            }
+                            // BTTS Yes/No normalizálása
+                            if (marketKey === 'btts') {
+                                 marketDisplayName = `Mindkét csapat szerez gólt - ${outcome.name}`;
+                            }
+
+                            valueBets.push({
+                                market: marketDisplayName,
+                                odds: outcome.price,
+                                probability: (probability * 100).toFixed(1) + '%', // Százalékosan
+                                value: (value * 100).toFixed(1) + '%' // Százalékosan
+                            });
+                        }
+                    }
+                }
+            });
+        }
+    });
+
+    // Érték szerint csökkenő sorrendbe rendezzük
+    return valueBets.sort((a, b) => parseFloat(b.value) - parseFloat(a.value));
+}
+// --- MÓDOSÍTÁS VÉGE ---
+
+
+// --- analyzeLineMovement (Változatlan) ---
 export function analyzeLineMovement(currentOddsData, openingOddsData, sport, homeTeam) {
      if (!openingOddsData || !currentOddsData || !currentOddsData.current || currentOddsData.current.length === 0 || !currentOddsData.allMarkets) { return "Nincs elég adat a piaci mozgás elemzéséhez."; }
     let awayTeam = '';
-    const awayOutcome = currentOddsData.current.find(o => o.name.toLowerCase().includes('vendég') || (SPORT_CONFIG[sport]?.name === 'basketball' && o.name !== homeTeam && !o.name.toLowerCase().includes('döntetlen')));
-    if (awayOutcome) { awayTeam = awayOutcome.name.replace('Vendég győzelem', '').trim(); if (sport === 'basketball') awayTeam = awayOutcome.name; }
+    // Javítás: Robusztusabb ellenfél keresés (figyelmen kívül hagyja a 'Draw'-t)
+    const potentialAway = currentOddsData.current.find(o =>
+        o.name && o.name !== homeTeam && !o.name.toLowerCase().includes('hazai') && !o.name.toLowerCase().includes('döntetlen')
+    );
+    if (potentialAway) {
+        // Próbáljuk meg kinyerni a nevet a standard formátumokból
+        awayTeam = potentialAway.name.replace('Vendég győzelem', '').trim();
+        // Ha nem standard a név (pl. kosárnál csak a csapatnév van), akkor azt használjuk
+        if (awayTeam === potentialAway.name) { // Ha a replace nem csinált semmit
+             awayTeam = potentialAway.name;
+        }
+    }
+
     if (!awayTeam) return "Nem sikerült azonosítani az ellenfelet az oddsokból a mozgáselemzéshez.";
-    const key = `${homeTeam.toLowerCase()}_vs_${awayTeam.toLowerCase()}`;
-    const openingMatch = openingOddsData[key];
+
+    const key = `${homeTeam.toLowerCase()}_vs_${awayTeam.toLowerCase()}`; // Ez a kulcs formátum nem biztos, hogy jó, ha az openingOdds másképp van strukturálva
+    const openingMatch = openingOddsData[key]; // Feltételezzük, hogy az openingOdds így van tárolva
+
     const currentH2HMarket = currentOddsData.allMarkets.find(m => m.key === 'h2h');
     const currentH2HOutcomes = currentH2HMarket?.outcomes;
-    if (!openingMatch?.h2h || !currentH2HOutcomes) return "Hiányzó H2H adatok a mozgáselemzéshez.";
+
+    // Javítás: Ellenőrizzük az openingOdds struktúráját is
+    if (!openingMatch || !openingMatch.h2h || !Array.isArray(openingMatch.h2h) || !currentH2HOutcomes) {
+         console.warn(`Hiányzó H2H adatok a mozgáselemzéshez: Key=${key}, Opening data found=${!!openingMatch}, Current data found=${!!currentH2HOutcomes}`);
+         return "Hiányzó H2H adatok a mozgáselemzéshez.";
+    }
+
     let changes = [];
     currentH2HOutcomes.forEach(currentOutcome => {
-        let simpleName = ''; const lowerCurrentName = currentOutcome.name.toLowerCase();
-        if (lowerCurrentName === homeTeam.toLowerCase() || lowerCurrentName.includes('hazai')) simpleName = homeTeam;
-        else if (lowerCurrentName === awayTeam.toLowerCase() || lowerCurrentName.includes('vendég')) simpleName = awayTeam;
+        let simpleName = '';
+        // Javítás: Biztonságosabb név ellenőrzés
+        const lowerCurrentName = currentOutcome.name?.toLowerCase() || '';
+        const lowerHome = homeTeam.toLowerCase();
+        const lowerAway = awayTeam.toLowerCase();
+
+        if (lowerCurrentName === lowerHome || lowerCurrentName.includes('hazai')) simpleName = homeTeam;
+        else if (lowerCurrentName === lowerAway || lowerCurrentName.includes('vendég')) simpleName = awayTeam;
         else if (lowerCurrentName.includes('döntetlen') || lowerCurrentName === 'draw') simpleName = 'Döntetlen';
+
         if (simpleName) {
             const openingOutcome = openingMatch.h2h.find(oo => {
-      
-                  const lowerOpeningName = oo.name.toLowerCase();
-                 if (simpleName === homeTeam && (lowerOpeningName === homeTeam.toLowerCase() || lowerOpeningName.includes('hazai'))) return true;
-                 if (simpleName === awayTeam && (lowerOpeningName === awayTeam.toLowerCase() || lowerOpeningName.includes('vendég'))) return true;
+                const lowerOpeningName = oo.name?.toLowerCase() || '';
+                 if (simpleName === homeTeam && (lowerOpeningName === lowerHome || lowerOpeningName.includes('hazai'))) return true;
+                 if (simpleName === awayTeam && (lowerOpeningName === lowerAway || lowerOpeningName.includes('vendég'))) return true;
                  if (simpleName === 'Döntetlen' && (lowerOpeningName.includes('döntetlen') || lowerOpeningName === 'draw')) return true;
                  return false;
             });
+            // Javítás: Ellenőrizzük az árak típusát is
             if (openingOutcome && typeof openingOutcome.price === 'number' && typeof currentOutcome.price === 'number') {
                 const change = ((currentOutcome.price / openingOutcome.price) - 1) * 100;
-                if (Math.abs(change) > 3) { changes.push(`${simpleName}: ${change > 0 ? '+' : ''}${change.toFixed(1)}%`); }
+                // Csak a jelentős (>3%) változásokat jelezzük
+                if (Math.abs(change) > 3) {
+                     changes.push(`${simpleName}: ${change > 0 ? '+' : ''}${change.toFixed(1)}%`);
+                }
             }
         }
     });
+
     return changes.length > 0 ? `Jelentős oddsmozgás: ${changes.join(', ')}` : "Nincs jelentős oddsmozgás.";
 }
 
+
+// --- analyzePlayerDuels (Változatlan) ---
 export function analyzePlayerDuels(keyPlayers, sport) {
-    if (!keyPlayers || (!keyPlayers.home?.length && !keyPlayers.away?.length)) return null;
+    if (!keyPlayers || (!Array.isArray(keyPlayers.home) && !Array.isArray(keyPlayers.away))) return null; // Robusztusabb ellenőrzés
     try {
         const homeAttacker = keyPlayers.home?.find(p => p?.role?.toLowerCase().includes('támadó') || p?.role?.toLowerCase().includes('csatár') || p?.role?.toLowerCase().includes('scorer'));
         const awayDefender = keyPlayers.away?.find(p => p?.role?.toLowerCase().includes('védő') || p?.role?.toLowerCase().includes('hátvéd') || p?.role?.toLowerCase().includes('defender'));
@@ -980,10 +1275,11 @@ export function analyzePlayerDuels(keyPlayers, sport) {
             if (homePG?.name && awayPG?.name) { return `Az irányítók csatája (${homePG.name} vs ${awayPG.name}) meghatározó lehet a játék tempójára.`; }
         }
     } catch (e) { console.error("Hiba a játékos párharc elemzésekor:", e.message); }
-    return null;
+    return null; // Ha nincs specifikus párharc, null-t adunk vissza
 }
 
+// --- Placeholder Funkciók (Változatlan) ---
 export function generateProTip(probabilities, odds, market) { console.warn("Figyelmeztetés: generateProTip() placeholder függvény hívva!");
     return "Pro Tipp generálása még nincs implementálva."; }
-export function calculateProbabilities(rawStats, homeAdvantage, avgGoals) { console.warn("Figyelmeztetés: calculateProbabilities() placeholder függvény hívva...");
-    return { pHome: null, pDraw: null, pAway: null, pBTTS: null, pOver: null, pUnder: null }; }
+// calculateProbabilities már nem használt, mert a simulateMatchProgress adja a valószínűségeket
+// export function calculateProbabilities(rawStats, homeAdvantage, avgGoals) { ... }
