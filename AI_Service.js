@@ -21,12 +21,12 @@ Your task is to analyze ALL provided reports and determine the SINGLE most compe
 Select the 'least bad' or most logical option even with uncertainty, and reflect this in the final_confidence score.**
 
 CRITICAL INPUTS:
-1. Value Bets: {valueBetsJson}
+1. Value Bets: {valueBetsJson} (Includes main & side markets like Corners/Cards if value found)
 2. Sim Probs: H:{sim_pHome}%, D:{sim_pDraw}%, A:{sim_pAway}%, O/U {sim_mainTotalsLine}: O:{sim_pOver}%
 3. Model Confidence: {modelConfidence}/10
-4. Expert Confidence: "{expertConfidence}"
+4. Expert Confidence: "{expertConfidence}" (This is the full report string including justification)
 5. Risk Assessment: "{riskAssessment}"
-6. Specialist Conclusions (Micromodels): "{microSummary}"
+6. Specialist Conclusions (Micromodels): "{microSummary}" (Includes Corners/Cards analysis if available)
 7. General Analysis: "{generalAnalysis}"
 8. Strategic Thoughts: "{strategicClosingThoughts}"
 9. Contradiction Analysis: "{contradictionAnalysis}"
@@ -94,7 +94,7 @@ const AI_KEY_QUESTIONS_PROMPT = `You are a strategic analyst. Based ONLY on the 
 Present as a bulleted list, starting each with '- '. CONTEXT: {richContext}.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"key_questions": "- Kérdés 1...\\n- Kérdés 2..."}.`;
 
-const PLAYER_MARKETS_PROMPT = `You are a player performance markets specialist. Based on the key players and context, suggest 1-2 potentially interesting player-specific betting markets in Hungarian (e.g., player shots on target, assists, cards, points). Provide a very brief (1 sentence) justification. Max 3 sentences total.
+const PLAYER_MARKETS_PROMPT = `You are a player performance markets specialist. Suggest 1-2 potentially interesting player-specific betting markets in Hungarian (e.g., player shots on target, assists, cards, points). Provide a very brief (1 sentence) justification. Max 3 sentences total.
 Highlight player names & markets with **asterisks**. DATA: Key Players: {keyPlayersJson}, Context: {richContext}.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"player_market_analysis": "<Your Hungarian player market analysis here>"}. If no interesting market is found, state "Nincs kiemelkedő játékospiaci lehetőség."`;
 
@@ -258,7 +258,6 @@ export async function getPropheticScenario(propheticTimeline, rawData, home, awa
 
 export async function getExpertConfidence(modelConfidence, richContext, rawData = null) {
      const safeModelConfidence = typeof modelConfidence === 'number' ? modelConfidence : 5.0;
-     // --- MÓDOSÍTÁS: home/away hozzáadva a prompt kitöltéshez ---
      const data = {
          modelConfidence: safeModelConfidence,
          richContext: richContext || "Nincs kontextus.",

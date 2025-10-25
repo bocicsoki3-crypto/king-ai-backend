@@ -19,7 +19,7 @@ import {
     getRiskAssessment,
     getTacticalBriefing,
     getPropheticScenario,
-    getAiKeyQuestions, // <<< --- Ezt a sort most már KÜLÖN importáljuk
+    getAiKeyQuestions, // <<< --- Ez volt a hiba forrása, most a helyes listában van
     getPlayerMarkets,
     getFinalGeneralAnalysis,
     getExpertConfidence,
@@ -87,8 +87,10 @@ export async function runFullAnalysis(params, sport, openingOdds) {
 
         const marketIntel = analyzeLineMovement(oddsData, openingOdds, sport, home);
         console.log(`Adatgyűjtés indul: ${home} vs ${away}...`);
+        // --- MÓDOSÍTÁS: Az összes szükséges paraméter átadása a DataFetch-nek ---
         const { rawStats, richContext, advancedData, form, rawData, leagueAverages = {} } = await getRichContextualData(sport, home, away, leagueName, utcKickoff);
         console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
+        // A kritikus validálás már a getRichContextualData-ban megtörténik
 
         const duelAnalysis = analyzePlayerDuels(rawData?.key_players, sport);
         const psyProfileHome = calculatePsychologicalProfile(home, away, rawData);
@@ -98,9 +100,11 @@ export async function runFullAnalysis(params, sport, openingOdds) {
 
         // --- 2. Statisztikai Modellezés ---
         console.log(`Modellezés indul: ${home} vs ${away}...`);
+        // A regresszió nélküli verziót használjuk
         const { mu_h, mu_a } = estimateXG(home, away, rawStats, sport, form, leagueAverages, advancedData, rawData, psyProfileHome, psyProfileAway);
 
         const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
+        // 25000 szimuláció a sebesség és pontosság egyensúlyáért
         const sim = simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData);
         sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a; sim.mu_corners_sim = mu_corners;
         sim.mu_cards_sim = mu_cards; sim.mainTotalsLine = mainTotalsLine;
