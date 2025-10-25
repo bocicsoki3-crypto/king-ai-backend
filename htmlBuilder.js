@@ -1,15 +1,11 @@
+// htmlBuilder.txt
+
 /**************************************************************
 * htmlBuilder.js - HTML Generátor Modul (Node.js Verzió)
-* Feladata: Az elemzési adatokból a frontend számára
-* fogyasztható HTML kód generálása.
-* VÁLTOZÁS (V16.3 - Végleges Javítás):
-* - escapeHTML teljesen újraírva a **kiemelések** robusztus kezelésére.
-* - Minden fejlesztői komment eltávolítva.
-* - Kiemelések ('glowing-text-white' és 'strong') következetesen alkalmazva.
-* - AI szövegek feldolgozása javítva a kiemelések megőrzése érdekében.
+* VÁLTOZÁS: UI Javítások: Kiemelések következetes alkalmazása.
 **************************************************************/
 
-// Robusztus escapeHTML függvény
+// Robusztus escapeHTML függvény (Változatlan, ez a helyes verzió)
 function escapeHTML(str) {
     if (str == null) return '';
     let tempStr = String(str);
@@ -21,22 +17,17 @@ function escapeHTML(str) {
         placeholders.push(content);
         return `__STRONG_PLACEHOLDER_${placeholders.length - 1}__`;
     });
-
     // 2. HTML karakterek escape-elése a maradék szövegben
     tempStr = tempStr.replace(/[&<>"']/g, (match) => {
         return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[match];
     });
-
     // 3. Placeholderek visszahelyezése <strong> tag-ekkel
-    // Most escape-eljük a placeholder *belsejét*, mielőtt a strong tagbe kerül,
-    // hogy megakadályozzuk a HTML injectiont a kiemelt részen belül.
     placeholders.forEach((originalContent, index) => {
         const escapedContent = String(originalContent).replace(/[&<>"']/g, (match) => {
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[match];
         });
         tempStr = tempStr.replace(`__STRONG_PLACEHOLDER_${index}__`, `<strong>${escapedContent}</strong>`);
     });
-
     return tempStr;
 }
 
@@ -54,7 +45,6 @@ function getRadialChartHtml(pHome, pDraw, pAway) {
     const homeOffset = 0;
     const drawOffset = -homeSegment;
     const awayOffset = -(homeSegment + drawSegment);
-
     // Kiemelések narancssárgával (strong) a százalékokra
     return `
     <div class="radial-chart-container">
@@ -76,16 +66,17 @@ function getRadialChartHtml(pHome, pDraw, pAway) {
     </div>
     <div class="diagram-legend">
         <div class="legend-item">
-            <span class="legend-color-box" style="background-color: var(--primary);"></span>
-            <span>Hazai (<strong>${pHome}%</strong>)</span>
+            <span class="legend-color-box" 
+            style="background-color: var(--primary);"></span>
+            <span>Hazai (<strong class="glowing-text-white">${pHome}%</strong>)</span>
         </div>
         <div class="legend-item">
              <span class="legend-color-box" style="background-color: var(--text-secondary);"></span>
-            <span>Döntetlen (<strong>${pDraw}%</strong>)</span>
+            <span>Döntetlen (<strong class="glowing-text-white">${pDraw}%</strong>)</span>
         </div>
         <div class="legend-item">
             <span class="legend-color-box" style="background-color: var(--accent);"></span>
-            <span>Vendég (<strong>${pAway}%</strong>)</span>
+            <span>Vendég (<strong class="glowing-text-white">${pAway}%</strong>)</span>
         </div>
     </div>`;
 }
@@ -146,8 +137,8 @@ function getMicroAnalysesHtml(microAnalyses) {
         html += `
         <div class="micromodel-card">
             <h5><strong>${escapeHTML(title)} Specialista</strong></h5>
-            <p>${escapeHTML(analysisText)}</p>
-            <p class="confidence"><em>${escapeHTML(confidenceText)}</em></p>
+            <p>${processAiText(analysisText)}</p>
+            <p class="confidence"><em>${processAiText(confidenceText)}</em></p>
         </div>`;
     });
     return html;
@@ -156,10 +147,9 @@ function getMicroAnalysesHtml(microAnalyses) {
 // Segédfüggvény AI szövegek feldolgozásához (escape + newline -> <br>)
 const processAiText = (text) => {
     if (!text || text.includes("Hiba")) return `<p>${escapeHTML(text || "Hiba.")}</p>`;
-    // Az escapeHTML már elvégezte a ** és karakter escape-elést
+    // 1. **kiemelés** (strong tag) kezelése már az escapeHTML-ben megtörténik
     const escapedHtml = escapeHTML(text);
-    // Majd sortörések cseréje <br>-re a P tagen belül
-    // (Ha nincs P tag, akkor is működik)
+    // 2. Sortörések cseréje <br>-re
     return escapedHtml.replace(/\n/g, '<br>');
 };
 
@@ -183,7 +173,7 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
     } catch(e) { /* Hiba figyelmen kívül hagyása */ }
 
     const finalRec = masterRecommendation || { recommended_bet: "Hiba", final_confidence: 1.0, brief_reasoning: "Hiba" };
-    const finalReasoningHtml = processAiText(finalRec.brief_reasoning); // processAiText használata
+    const finalReasoningHtml = processAiText(finalRec.brief_reasoning);
     const finalConfInterpretationHtml = getConfidenceInterpretationHtml(finalRec.final_confidence);
 
     const masterRecommendationHtml = `
@@ -191,7 +181,7 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
         <h5>👑 Fő Elemző Ajánlása 👑</h5>
         <div class="master-bet"><strong>${escapeHTML(finalRec.recommended_bet)}</strong></div>
         <div class="master-confidence">
-            Végső Bizalom: <strong>${finalRec.final_confidence.toFixed(1)}/10</strong>
+            Végső Bizalom: <strong class="glowing-text-white">${finalRec.final_confidence.toFixed(1)}/10</strong>
         </div>
         <div class="master-reasoning">${finalReasoningHtml}</div>
         ${finalConfInterpretationHtml}
@@ -225,21 +215,21 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
                 <div class="total-line">
                     <span class="total-label">Over ${mainTotalsLine}</span>
                     <strong class="glowing-text-white">${pOver}%</strong>
-                 </div>
+                </div>
                 <div class="total-line">
                     <span class="total-label">Under ${mainTotalsLine}</span>
                     <strong class="glowing-text-white">${pUnder}%</strong>
                 </div>
             </div>
-             ${matchData.sport === 'soccer' ? `<div class="details">BTTS Igen: <strong class="glowing-text-white">${sim?.pBTTS?.toFixed(1) ?? 'N/A'}%</strong></div>` : ''}
+            ${matchData.sport === 'soccer' ? `<div class="details">BTTS Igen: <strong class="glowing-text-white">${sim?.pBTTS?.toFixed(1) ?? 'N/A'}%</strong></div>` : ''}
         </div>
         <div class="summary-card">
             <h5>Statisztikai Modell</h5>
-            ${getGaugeHtml(modelConf, "")}
+            ${getGaugeHtml(modelConf, "STATISZTIKAI MODELL")}
         </div>
         <div class="summary-card">
             <h5>Szakértői Bizalom</h5>
-             ${getGaugeHtml(expertConfScore, "")}
+             ${getGaugeHtml(expertConfScore, "SZAKÉRTŐI BIZALOM")}
         </div>
     </div>`;
 
@@ -274,7 +264,7 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
         const questions = committeeResults.keyQuestions.split('- ').filter(q => q.trim() !== '');
         keyQuestionsHtml = '<ul class="key-questions">';
         questions.forEach(q => {
-            keyQuestionsHtml += `<li>${escapeHTML(q.trim())}</li>`; // escapeHTML kezeli az esetleges ** jeleket
+            keyQuestionsHtml += `<li>${processAiText(q.trim())}</li>`; // processAiText használata
         });
         keyQuestionsHtml += '</ul>';
     }
@@ -308,7 +298,7 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
         <details class="analysis-accordion-item">
             <summary class="analysis-accordion-header">
                 <span class="section-title">
-                    <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M3 9h18"></path><path d="M3 15h18"></path><path d="M9 3v18"></path><path d="M15 3v18"></path></svg>
+                    <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M3 9h18"></path><path d="M9 3v18"></path><path d="M15 3v18"></path></svg>
                    Taktikai Elemzés
                 </span>
             </summary>
@@ -327,7 +317,7 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
         <details class="analysis-accordion-item">
             <summary class="analysis-accordion-header">
                  <span class="section-title">
-                      <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" x2="12" y1="9" y2="13"></line><line x1="12" x2="12.01" y1="17" y2="17"></line></svg>
+                    <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" x2="12" y1="9" y2="13"></line><line x1="12" x2="12.01" y1="17" y2="17"></line></svg>
                     Kockázat & További Kontextus
                </span>
             </summary>
@@ -337,12 +327,13 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
                 <br>
                  <h4>Kockázatkezelői Jelentés</h4>
                 <p>${processAiText(committeeResults?.riskAssessment)}</p>
-                 <br>
+                <br>
                 <h4>Játékospiaci Meglátások</h4>
                 <p>${processAiText(committeeResults?.playerMarkets)}</p>
             </div>
           </details>
     </div>`;
+
     return `
         ${masterRecommendationHtml}
         ${atAGlanceHtml}
