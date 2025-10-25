@@ -281,7 +281,7 @@ gameState.away_momentum = Math.max(1.0, gameState.away_momentum - 0.05);
 // A TELJES 'estimateXG' FÜGGVÉNY CSERÉJE (2. Pont - Regresszióval + H2H Súlyozás)
 
 export function estimateXG(homeTeam, awayTeam, rawStats, sport, form, leagueAverages, advancedData, rawData, psyProfileHome, psyProfileAway, currentSimProbs = null) { // currentSimProbs hozzáadva
-    const homeStats = rawStats?.home, awayStats = rawData?.rawStats?.away;
+    const homeStats = rawStats?.home, awayStats = rawStats?.away;
 const areStatsValid = (stats) => stats &&
         typeof stats.gp === 'number' && stats.gp > 0 && // Javítás: gp > 0 elég
         typeof stats.gf === 'number' && stats.gf >= 0 &&
@@ -607,41 +607,56 @@ mu_h *= home_adv_mod; mu_a *= away_adv_mod;
         if (h2hStructured.length > 0) {
             // Csak az utolsó 5 meccset vesszük figyelembe
             const recentH2H = h2hStructured.slice(0, 5); 
-            // A h2h_structured az aktuális meccs kontextusában van, így a home/away_team az adott meccs home/away csapata
-            const homeWins = recentH2H.filter(m => m.home_team.toLowerCase().includes(homeTeam.toLowerCase()) && m.score.startsWith('1')).length;
-            const awayWins = recentH2H.filter(m => m.home_team.toLowerCase().includes(awayTeam.toLowerCase()) && m.score.startsWith('1')).length;
-            // Ezen logika feltételezi, hogy a h2h_structured a SportMonks/TSDB-ből érkezik és az '1' a győzelmet jelöli
-            // Mivel a Gemini JSON-t ad, a 'score' mező "H-A" formátumú.
             
             // Új, robusztusabb H2H kiértékelés:
             let homeDominance = 0;
             let awayDominance = 0;
 
             recentH2H.forEach(m => {
-                if (!m.score) return;
+                if (!m.score || typeof m.score !== 'string') return;
+                
                 const [score1, score2] = m.score.split('-').map(s => parseInt(s.trim()));
                 if (isNaN(score1) || isNaN(score2)) return;
 
-                const isHomeInMatch = m.home_team.toLowerCase().includes(homeTeam.toLowerCase());
-                const isAwayInMatch = m.home_team.toLowerCase().includes(awayTeam.toLowerCase());
+                const isHomeTeam = m.home_team.toLowerCase().includes(homeTeam.toLowerCase());
+                const isAwayTeam = m.home_team.toLowerCase().includes(awayTeam.toLowerCase());
 
-                if (isHomeInMatch) { // Aktuális hazai a H2H meccs hazaija
+                if (isHomeTeam) { // Aktuális hazai a H2H meccs hazaija
                     if (score1 > score2) homeDominance++;
                     else if (score2 > score1) awayDominance++;
-                } else if (isAwayInMatch) { // Aktuális hazai a H2H meccs vendégje
-                    if (score2 > score1) homeDominance++;
+                } else if (isAwayTeam) { // Aktuális hazai a H2H meccs vendégje (a csapatok felcserélve szerepelnek)
+                    if (score2 > score1) homeDominance++; // Itt az aktuális hazai a vendég volt, ha ő nyert (score2) az ellen a hazai (score1) ellen, akkor az otthoni dominancia nő
                     else if (score1 > score2) awayDominance++;
                 }
+                
+                // Mivel a Gemini H2H struktúrája (m.home_team) nem mindig egyértelmű,
+                // feltételezzük, hogy az 'm.home_team' mindig az adott H2H meccs hazai csapata.
+                // A legegyszerűbb, ha feltételezzük, hogy a H2H meccsben szereplő csapatok egyike
+                // a mi "homeTeam"-ünk, a másik a "awayTeam"-ünk.
+
+                // Helyesebb logika: Ha a meccs H-ja az aktuális H, akkor H győzelem a score1 > score2.
+                // Ha a meccs H-ja az aktuális A, akkor A győzelem a score1 > score2.
+                
+                const isHomeTheMatchHome = m.home_team.toLowerCase().includes(homeTeam.toLowerCase());
+                
+                if (isHomeTheMatchHome) {
+                    if (score1 > score2) homeDominance++;
+                    else if (score2 > score1) awayDominance++;
+                } else { // Az aktuális awayTeam volt a H2H meccs hazaija
+                    if (score1 > score2) awayDominance++; // A meccs hazaija nyert, ami az aktuális awayTeam.
+                    else if (score2 > score1) homeDominance++;
+                }
+
             });
 
             if (homeDominance > awayDominance && homeDominance >= 3) { 
                 h2hHomeAdjust += H2H_WEIGHTING_FACTOR * (homeDominance - awayDominance) / 5; 
                 h2hHomeAdjust = Math.min(h2hHomeAdjust, 1.05); 
-                console.log(`Model H2H Boost: Hazai csapat (3+ győzelem az utolsó 5 H2H meccsen). MuHome szorzó: ${h2hHomeAdjust.toFixed(3)}`);
+                console.log(`Model H2H Boost: Hazai csapat (${homeDominance}-${awayDominance} győzelem). MuHome szorzó: ${h2hHomeAdjust.toFixed(3)}`);
             } else if (awayDominance > homeDominance && awayDominance >= 3) { 
                 h2hAwayAdjust += H2H_WEIGHTING_FACTOR * (awayDominance - homeDominance) / 5;
                 h2hAwayAdjust = Math.min(h2hAwayAdjust, 1.05); 
-                console.log(`Model H2H Boost: Vendég csapat (3+ győzelem az utolsó 5 H2H meccsen). MuAway szorzó: ${h2hAwayAdjust.toFixed(3)}`);
+                console.log(`Model H2H Boost: Vendég csapat (${awayDominance}-${homeDominance} győzelem). MuAway szorzó: ${h2hAwayAdjust.toFixed(3)}`);
             }
         }
         mu_h *= h2hHomeAdjust;
@@ -649,7 +664,7 @@ mu_h *= home_adv_mod; mu_a *= away_adv_mod;
         logData.h2h_mod_h = h2hHomeAdjust; logData.h2h_mod_a = h2hAwayAdjust;
     }
     // --- MÓDOSÍTÁS VÉGE (H2H DOMINANCIA) ---
-
+    
     // Taktikai Modellezés (Foci - marad)
     if (sport === 'soccer') {
         logData.step = 'Taktika (Foci)';
@@ -1184,7 +1199,7 @@ return Math.max(MIN_SCORE, 4.0); // Hiba esetén óvatos default
     return Math.max(MIN_SCORE, Math.min(MAX_SCORE, score));
 }
 
-// --- calculatePsychologicalProfile (Javított) ---
+// --- calculatePsychologicalProfile (JAVÍTVA: Blokkszerkezet) ---
 export function calculatePsychologicalProfile(teamName, opponentName, rawData = null) {
     // Alapértékek
     let moraleIndex = 1.0;
@@ -1198,9 +1213,9 @@ export function calculatePsychologicalProfile(teamName, opponentName, rawData = 
         const formString = rawData.form?.home_overall;
         // Feltételezzük, hogy a hazai csapatét nézzük
         if (formString && formString !== "N/A") {
-            const recentLosses = (formString.slice(-3).match(/L/g) || []).length;
+            const recentLosses = (formString.match(/L/g) || []).length;
             // Utolsó 3 meccs vereségei
-            const recentWins = (formString.slice(-3).match(/W/g) || []).length;
+            const recentWins = (formString.match(/W/g) || []).length;
             // Utolsó 3 meccs győzelmei
             if (recentLosses >= 2) moraleIndex *= 0.95;
             // Rossz forma -> rosszabb morál
@@ -1218,7 +1233,7 @@ export function calculatePsychologicalProfile(teamName, opponentName, rawData = 
         } else if (tension === 'low' || tension === 'friendly') {
              pressureIndex *= 0.95; // Kisebb nyomás
         }
-    }
+    } // <<<--- A FŐ if (rawData) BLOKK ZÁRÓJELÉT IDE KELL TENNED
 
     // Korlátozzuk az indexeket, pl. 0.8 és 1.2 közé
     moraleIndex = Math.max(0.8, Math.min(1.2, moraleIndex));

@@ -62,7 +62,7 @@ odds_api_keys_by_league: { // Specifikus odds kulcsok ligákhoz
     "Ligue 1": "fra.1", //
             "Ligue 2": "fra.2", //
             "Bundesliga": "ger.1", //
-            "2.Bundesliga": "ger.2", //
+            "2. Bundesliga": "ger.2", // <<<--- SZINTAKTIKAILAG JAVÍTVA
             "Serie A": "ita.1", //
             "Serie B": "ita.2", //
             "LaLiga": "esp.1", //
