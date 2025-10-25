@@ -15,7 +15,7 @@
  */
 import { getRichContextualData, getOptimizedOddsData, _callGemini, _getFixturesFromEspn } from './DataFetch.js'; // Adatlekérő importok
 import {
-    calculateProbabilities, generateProTip, simulateMatchProgress, estimateXG,
+    generateProTip, simulateMatchProgress, estimateXG,
     estimateAdvancedMetrics, calculateModelConfidence, calculatePsychologicalProfile,
     calculateValue, analyzeLineMovement, analyzePlayerDuels, buildPropheticTimeline
 } from './Model.js'; // Modell importok (bár néhány placeholder)
