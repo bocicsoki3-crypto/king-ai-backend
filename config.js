@@ -15,6 +15,7 @@ export const GEMINI_MODEL_ID = 'gemini-2.5-pro'; // A te bevált, működő mode
 export const ODDS_API_KEY = process.env.ODDS_API_KEY; //
 export const SPORTMONKS_API_KEY = process.env.SPORTMONKS_API_KEY; //
 export const PLAYER_API_KEY = process.env.PLAYER_API_KEY; //
+export const THESPORTSDB_API_KEY = process.env.THESPORTSDB_API_KEY;
 
 // --- GOOGLE SHEET BEÁLLÍTÁSOK ---
 export const SHEET_URL = process.env.SHEET_URL; //
