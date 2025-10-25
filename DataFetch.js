@@ -17,12 +17,9 @@ const sportsDbCache = new NodeCache({ stdTTL: 3600 * 24, checkperiod: 3600, useC
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VÁLTOZÁS (Fejlesztési Csomag):
-* - Prompt (V35) bővítve granuláris adatokkal + TSDB inputtal.
-* - Strukturált időjárás lekérése (Open-Meteo).
-* - THESPORTSDB_API_KEY integrálva, példa API hívó funkciókkal.
-* - GP (lejátszott meccs) kezelése robusztusabbá téve.
-* - TheSportsDB V2 URL javítva + Header alapú hitelesítés.
+* VÁLTOZÁS: TheSportsDB V2 API hívás végleges javítása:
+* Helyes V2 végpont (/search/teams) és Header alapú hitelesítés (X-API-KEY).
+* Teljesen vágatlan verzió.
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY (Header támogatással) ---
@@ -36,19 +33,26 @@ async function makeRequest(url, config = {}, retries = 1) {
                 validateStatus: (status) => status >= 200 && status < 500,
                 headers: {} // Üres header objektum alapból
             };
+            // Fontos: A config.headers felülírja a baseConfig.headers-t, ha van átfedés
             const currentConfig = { ...baseConfig, ...config, headers: { ...baseConfig.headers, ...config.headers } };
 
             let response;
             if (currentConfig.method?.toUpperCase() === 'POST') {
                 response = await axios.post(url, currentConfig.data, currentConfig);
             } else {
-                response = await axios.get(url, currentConfig); // A config most már tartalmazhatja a header-t
+                response = await axios.get(url, currentConfig); // A config most már tartalmazza a header-t
             }
             if (response.status < 200 || response.status >= 300) {
                  const error = new Error(`API hiba: Státusz kód ${response.status} URL: ${url.substring(0, 100)}...`);
                  error.response = response;
-                 if (url.includes('thesportsdb') && response?.data?.Message) { // Nagy M betűvel jön a válaszban
-                     error.message += ` - TheSportsDB: ${response.data.Message}`;
+                 // Üzenet keresése nagy M-mel is
+                 const apiMessage = response?.data?.Message || response?.data?.message;
+                 if (url.includes('thesportsdb') && apiMessage) {
+                     error.message += ` - TheSportsDB: ${apiMessage}`;
+                 }
+                 // Speciális logolás 401/403 esetén
+                 if ([401, 403].includes(response.status)) {
+                    console.error(`TheSportsDB Hitelesítési Hiba (${response.status})! Ellenőrizd az API kulcsot a .env fájlban és a Render környezeti változókban! Küldött header:`, currentConfig.headers);
                  }
                  throw error;
             }
@@ -58,12 +62,12 @@ async function makeRequest(url, config = {}, retries = 1) {
              let errorMessage = `API hívás hiba (${attempts}/${retries + 1}): ${url.substring(0, 150)}... - `;
              if (error.response) {
                  errorMessage += `Státusz: ${error.response.status}, Válasz: ${JSON.stringify(error.response.data)?.substring(0, 150)}`;
-                 // Header hiba vagy rate limit esetén nincs újrapróbálkozás
+                 // Header hiba ("Missing API key") vagy rate limit (429) esetén nincs újrapróbálkozás
                  if ([401, 403, 429].includes(error.response.status) || error.message.includes('Invalid API Key') || error.message.includes('Missing API key')) {
                      console.error(errorMessage); return null;
                  }
              } else if (error.request) {
-                 errorMessage += `Timeout (${currentConfig.timeout || 10000}ms) vagy nincs válasz.`; // Javítás: currentConfig
+                 errorMessage += `Timeout (${config.timeout || 10000}ms) vagy nincs válasz.`; // config timeout használata itt
              } else {
                  errorMessage += `Beállítási hiba: ${error.message}`;
                  console.error(errorMessage, error.stack); return null;
@@ -161,39 +165,39 @@ async function getSportsDbTeamId(teamName) {
     if (!THESPORTSDB_API_KEY) { console.warn("TheSportsDB API kulcs hiányzik."); return null; }
     const lowerName = teamName.toLowerCase().trim();
     if (!lowerName) return null;
-    const cacheKey = `tsdb_teamid_${lowerName.replace(/\s+/g, '')}`;
+    const cacheKey = `tsdb_teamid_v2h_${lowerName.replace(/\s+/g, '')}`; // v2h cache kulcs (h=header)
     const cachedId = sportsDbCache.get(cacheKey);
     if (cachedId !== undefined) {
         // console.log(`TheSportsDB Cache ${cachedId === 'not_found' ? 'miss (not found)' : 'hit'} for ${teamName}`);
         return cachedId === 'not_found' ? null : cachedId;
     }
 
-    // Helyes V2 URL (kulcs nélkül) és Header beállítása
+    // Helyes V2 URL + Helyes V2 Header Hitelesítés
     const url = `https://www.thesportsdb.com/api/v2/json/search/teams?query=${encodeURIComponent(teamName)}`;
     const config = {
         headers: {
-            'x-api-key': THESPORTSDB_API_KEY // API kulcs a headerben
+            'X-API-KEY': THESPORTSDB_API_KEY // API kulcs a headerben
         }
     };
-    console.log(`TheSportsDB V2 Search URL: ${url} (Kulcs headerben küldve)`);
+    console.log(`TheSportsDB V2 Search: URL=${url} (Kulcs X-API-KEY headerben)`);
 
     try {
         const response = await makeRequest(url, config); // Átadjuk a configot
         if (response === null) { sportsDbCache.set(cacheKey, 'not_found'); return null; } // makeRequest hiba
 
-        // A válaszban a csapatok a 'teams' kulcs alatt vannak (lehet, hogy null, ha nincs találat)
+        // A válaszban a csapatok a 'teams' kulcs alatt vannak
         const teamId = response?.data?.teams?.[0]?.idTeam;
         if (teamId) {
-            console.log(`TheSportsDB (V2): ID találat "${teamName}" -> ${teamId}`);
+            console.log(`TheSportsDB (V2/Header): ID találat "${teamName}" -> ${teamId}`);
             sportsDbCache.set(cacheKey, teamId);
             return teamId;
         } else {
-            console.warn(`TheSportsDB (V2): Nem található ID ehhez: "${teamName}".`);
+            console.warn(`TheSportsDB (V2/Header): Nem található ID ehhez: "${teamName}". Válasz:`, JSON.stringify(response?.data).substring(0, 200));
             sportsDbCache.set(cacheKey, 'not_found');
             return null;
         }
     } catch (error) {
-        console.error(`TheSportsDB Hiba (V2 getTeamId for ${teamName}): ${error.message}`);
+        console.error(`TheSportsDB Hiba (V2/Header getTeamId for ${teamName}): ${error.message}`, error.response?.data ? `Data: ${JSON.stringify(error.response.data).substring(0, 200)}` : '');
         sportsDbCache.set(cacheKey, 'not_found');
         return null;
     }
@@ -266,11 +270,9 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
             _callGemini(PROMPT_V35),
             getOptimizedOddsData(homeTeamName, awayTeamName, sport, SPORT_CONFIG[sport], null, leagueName)
         ]);
-
         let geminiData = null;
         try { geminiData = geminiJsonString ? JSON.parse(geminiJsonString) : null; }
-        catch (e) { console.error(`Gemini JSON parse hiba: ${e.message}`, geminiJsonString); }
-
+        catch (e) { console.error(`Gemini JSON parse hiba: ${e.message}`); }
         if (!geminiData) {
             console.warn("Gemini API hívás sikertelen. Alapértelmezett adatok.");
             geminiData = { stats: { home: {}, away: {} }, form: {}, key_players: { home: [], away: [] }, contextual_factors: {}, tactics: { home:{}, away:{} }, tactical_patterns:{ home:[], away:[] }, key_matchups:{}, advanced_stats_team:{ home:{}, away:{} }, advanced_stats_goalie:{ home_goalie:{}, away_goalie:{} }, shot_distribution:{}, defensive_style:{} };
@@ -283,24 +285,12 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         // --- 4. LÉPÉS: Adatok Összefésülése és Visszaadása ---
         const finalData = {};
         const parseStat = (val, d = null) => (val === null || (typeof val === 'number' && !isNaN(val) && val >= 0)) ? val : d;
-        const inferGp = (formString) => {
-             if (!formString || typeof formString !== 'string' || formString === "N/A") return 1;
-             const matches = formString.match(/[WDL]/g); return matches ? matches.length : 1;
-        };
-        let defaultGpHome = inferGp(geminiData?.form?.home_overall);
-        let defaultGpAway = inferGp(geminiData?.form?.away_overall);
-
-        let homeGp = parseStat(geminiData?.stats?.home?.gp, null);
-        let awayGp = parseStat(geminiData?.stats?.away?.gp, null);
-        if (homeGp === null || homeGp <= 0) homeGp = Math.max(1, defaultGpHome);
-        if (awayGp === null || awayGp <= 0) awayGp = Math.max(1, defaultGpAway);
-        homeGp = (typeof homeGp === 'number' && homeGp > 0) ? homeGp : 1;
-        awayGp = (typeof awayGp === 'number' && awayGp > 0) ? awayGp : 1;
-
-        finalData.stats = {
-            home: { gp: homeGp, gf: parseStat(geminiData?.stats?.home?.gf), ga: parseStat(geminiData?.stats?.home?.ga) },
-            away: { gp: awayGp, gf: parseStat(geminiData?.stats?.away?.gf), ga: parseStat(geminiData?.stats?.away?.ga) }
-        };
+        const inferGp = (formString) => { if (!formString || typeof formString !== 'string' || formString === "N/A") return 1; const matches = formString.match(/[WDL]/g); return matches ? matches.length : 1; };
+        let defaultGpHome = inferGp(geminiData?.form?.home_overall); let defaultGpAway = inferGp(geminiData?.form?.away_overall);
+        let homeGp = parseStat(geminiData?.stats?.home?.gp, null); let awayGp = parseStat(geminiData?.stats?.away?.gp, null);
+        if (homeGp === null || homeGp <= 0) homeGp = Math.max(1, defaultGpHome); if (awayGp === null || awayGp <= 0) awayGp = Math.max(1, defaultGpAway);
+        homeGp = (typeof homeGp === 'number' && homeGp > 0) ? homeGp : 1; awayGp = (typeof awayGp === 'number' && awayGp > 0) ? awayGp : 1;
+        finalData.stats = { home: { gp: homeGp, gf: parseStat(geminiData?.stats?.home?.gf), ga: parseStat(geminiData?.stats?.home?.ga) }, away: { gp: awayGp, gf: parseStat(geminiData?.stats?.away?.gf), ga: parseStat(geminiData?.stats?.away?.ga) } };
         finalData.h2h_summary = geminiData?.h2h_summary || "N/A";
         finalData.h2h_structured = Array.isArray(geminiData?.h2h_structured) ? geminiData.h2h_structured : [];
         finalData.team_news = geminiData?.team_news || { home: "N/A", away: "N/A" };
@@ -335,16 +325,10 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
              finalData.contextual_factors.pitch_condition !== "N/A" && `- Pálya: ${finalData.contextual_factors.pitch_condition}`
         ].filter(Boolean);
         const richContext = richContextParts.length > 0 ? richContextParts.join('\n') : "N/A";
-
-        const result = {
-            rawStats: finalData.stats, leagueAverages: finalData.league_averages, richContext,
-            advancedData: finalData.advanced_stats, form: finalData.form, rawData: finalData
-        };
+        const result = { rawStats: finalData.stats, leagueAverages: finalData.league_averages, richContext, advancedData: finalData.advanced_stats, form: finalData.form, rawData: finalData };
 
         // KRITIKUS VALIDÁLÁS
-        if (typeof result.rawStats?.home !== 'object' || typeof result.rawStats?.away !== 'object' ||
-            typeof result.rawStats.home.gp !== 'number' || result.rawStats.home.gp <= 0 ||
-            typeof result.rawStats.away.gp !== 'number' || result.rawStats.away.gp <= 0) {
+        if (typeof result.rawStats?.home !== 'object' || typeof result.rawStats?.away !== 'object' || typeof result.rawStats.home.gp !== 'number' || result.rawStats.home.gp <= 0 || typeof result.rawStats.away.gp !== 'number' || result.rawStats.away.gp <= 0) {
             console.error(`KRITIKUS HIBA (${homeTeamName} vs ${awayTeamName}): Érvénytelen statisztikák. HomeGP: ${result.rawStats?.home?.gp}, AwayGP: ${result.rawStats?.away?.gp}`);
             throw new Error(`Kritikus statisztikák érvénytelenek a ${homeTeamName} vs ${awayTeamName} meccshez.`);
         }
@@ -362,11 +346,18 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
 
 // --- ODDS API FUNKCIÓK ---
 export async function getOptimizedOddsData(homeTeam, awayTeam, sport, sportConfig, openingOdds, leagueName = null) {
-    if (!ODDS_API_KEY) return null;
+    if (!ODDS_API_KEY) {
+        // console.log("Odds API kulcs hiányzik, szorzó lekérés kihagyva.");
+        return null;
+    }
     const key = `${homeTeam}${awayTeam}${sport}${leagueName || ''}`.toLowerCase().replace(/\s+/g, '');
     const cacheKey = `live_odds_v7_${key}`;
     const cached = oddsCache.get(cacheKey);
-    if (cached) return { ...cached, fromCache: true };
+    if (cached) {
+        // console.log(`Odds cache találat (${cacheKey})`);
+        return { ...cached, fromCache: true };
+    }
+    // console.log(`Nincs odds cache (${cacheKey}), friss adatok lekérése...`);
     const live = await getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName);
     if (live?.current?.length > 0) {
         oddsCache.set(cacheKey, live);
@@ -404,6 +395,7 @@ async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
         const awayVariations = generateTeamNameVariations(awayTeam);
         let bestMatch = null;
         let highestCombinedRating = 0.60;
+        console.log(`Odds API (${oddsApiKey}): Keresés ${homeTeam} vs ${awayTeam}... ${oddsData.length} meccs az API-ban.`); // Kevesebb log
         for (const match of oddsData) {
             if (!match?.home_team || !match?.away_team) continue;
             const apiHomeLower = match.home_team.toLowerCase().trim();
@@ -414,6 +406,8 @@ async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
             const homeSim = homeMatchResult.bestMatch.rating;
             const awaySim = awayMatchResult.bestMatch.rating;
             const combinedSim = (homeSim * 0.5 + awaySim * 0.5);
+             // Csak akkor logolunk, ha magas a hasonlóság
+             // if (combinedSim > 0.7) console.log(` -> Odds hasonlítás: "${match.home_team}" vs "${match.away_team}" => Komb: ${combinedSim.toFixed(2)}`);
             if (combinedSim > highestCombinedRating) { highestCombinedRating = combinedSim; bestMatch = match; }
         }
         if (!bestMatch) {
