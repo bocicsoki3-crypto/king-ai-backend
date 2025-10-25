@@ -21,7 +21,8 @@ import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
  * @returns {number} A non-negative integer sampled from the Poisson distribution.
 * Returns 0 if lambda <= 0 or invalid.
  */
-function poisson(lambda) {
+// JAVÍTÁS: Exportáljuk a poisson függvényt, hogy látható legyen a modulon belül
+export function poisson(lambda) {
     if (lambda === null || typeof lambda !== 'number' || isNaN(lambda) || lambda < 0) return 0;
 // Hibás lambda -> 0
     if (lambda === 0) return 0;
@@ -55,7 +56,8 @@ return z0 * stdDev + mean;
  * @param {number} mu_a Mean goals for away team.
 * @returns {{gh: number, ga: number}} Sampled goals for home (gh) and away (ga).
 */
-function sampleGoals(mu_h, mu_a) {
+// JAVÍTÁS: Exportáljuk a sampleGoals függvényt, hogy látható legyen a modulon belül
+export function sampleGoals(mu_h, mu_a) {
     return { gh: poisson(mu_h), ga: poisson(mu_a) };
 }
 
