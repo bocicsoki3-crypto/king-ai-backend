@@ -3,7 +3,7 @@ import NodeCache from 'node-cache';
 // Importáljuk az ODDS_TEAM_NAME_MAP-et is a configból
 import {
     SPORT_CONFIG, GEMINI_API_KEY, GEMINI_MODEL_ID, ODDS_API_KEY, SPORTMONKS_API_KEY, PLAYER_API_KEY,
-    getOddsApiKeyForLeague, ODDS_TEAM_NAME_MAP, THESPORTSDB_API_KEY
+    getOddsApiKeyForLeague, ODDS_TEAM_NAME_MAP, THESPORTSDB_API_KEY // <<< --- KULCS IMPORTÁLVA
 } from './config.js';
 import pkg from 'string-similarity';
 const { findBestMatch } = pkg;
@@ -19,8 +19,7 @@ const sportsDbCache = new NodeCache({ stdTTL: 3600 * 12, checkperiod: 3600, useC
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
 * VÁLTOZÁS: TheSportsDB V2 API hívás végleges javítása:
 * Helyes V2 végpont (/search/team/{name}) és Header alapú hitelesítés (X-API-KEY).
-* Teljesen vágatlan verzió, minden funkcióval.
-* Robusztusabb _callGemini hibakezelés.
+* Teljesen vágatlan verzió.
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY (Header támogatással) ---
@@ -46,9 +45,15 @@ async function makeRequest(url, config = {}, retries = 1) {
                  const error = new Error(`API hiba: Státusz kód ${response.status} URL: ${url.substring(0, 100)}...`);
                  error.response = response;
                  const apiMessage = response?.data?.Message || response?.data?.message;
-                 if (url.includes('thesportsdb') && apiMessage) { error.message += ` - TheSportsDB: ${apiMessage}`; }
-                 if ([401, 403].includes(response.status)) { console.error(`Hitelesítési Hiba (${response.status})! Ellenőrizd az API kulcsot! URL: ${url.substring(0,100)}...`); }
-                 if (response.status === 404) { console.warn(`API Hiba: Végpont nem található (404). URL: ${url}`); }
+                 if (url.includes('thesportsdb') && apiMessage) {
+                     error.message += ` - TheSportsDB: ${apiMessage}`;
+                 }
+                 if ([401, 403].includes(response.status)) {
+                    console.error(`Hitelesítési Hiba (${response.status})! Ellenőrizd az API kulcsot! URL: ${url.substring(0,100)}...`);
+                 }
+                 if (response.status === 404) {
+                     console.warn(`API Hiba: Végpont nem található (404). URL: ${url}`);
+                 }
                  throw error;
             }
             return response;
@@ -57,9 +62,15 @@ async function makeRequest(url, config = {}, retries = 1) {
              let errorMessage = `API hívás hiba (${attempts}/${retries + 1}): ${url.substring(0, 150)}... - `;
              if (error.response) {
                  errorMessage += `Státusz: ${error.response.status}, Válasz: ${JSON.stringify(error.response.data)?.substring(0, 150)}`;
-                 if ([401, 403, 429].includes(error.response.status) || error.message.includes('Invalid API Key') || error.message.includes('Missing API key')) { console.error(errorMessage); return null; }
-             } else if (error.request) { errorMessage += `Timeout (${config.timeout || 10000}ms) vagy nincs válasz.`; }
-             else { errorMessage += `Beállítási hiba: ${error.message}`; console.error(errorMessage, error.stack); return null; }
+                 if ([401, 403, 429].includes(error.response.status) || error.message.includes('Invalid API Key') || error.message.includes('Missing API key')) {
+                     console.error(errorMessage); return null;
+                 }
+             } else if (error.request) {
+                 errorMessage += `Timeout (${config.timeout || 10000}ms) vagy nincs válasz.`;
+             } else {
+                 errorMessage += `Beállítási hiba: ${error.message}`;
+                 console.error(errorMessage, error.stack); return null;
+             }
              console.warn(errorMessage);
              if (attempts <= retries) { await new Promise(resolve => setTimeout(resolve, 1500 * attempts)); }
              else { console.error(`API hívás végleg sikertelen: ${url.substring(0, 150)}...`); return null; }
@@ -176,10 +187,11 @@ export async function _callGemini(prompt) {
              throw new Error("A Gemini válasza nem volt felismerhető JSON formátumú.");
         }
 
+
         try {
-            JSON.parse(potentialJson);
+            JSON.parse(potentialJson); // Csak ellenőrizzük, hogy valid-e
             console.log("Gemini API válasz sikeresen validálva JSON-ként.");
-            return potentialJson;
+            return potentialJson; // Visszaadjuk a (potenciálisan tisztított) valid JSON stringet
         } catch (parseError) {
             console.error("A Gemini válasza a tisztítási kísérlet után sem volt valid JSON:", potentialJson.substring(0, 500), parseError);
             throw new Error(`A Gemini válasza nem volt érvényes JSON: ${parseError.message}`);
@@ -190,6 +202,7 @@ export async function _callGemini(prompt) {
         throw e;
     }
 }
+
 
 // --- THESPORTSDB FUNKCIÓK ---
 /**
@@ -361,7 +374,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         catch (e) { console.error(`Gemini JSON parse hiba: ${e.message}`); }
         if (!geminiData) {
             console.warn("Gemini API hívás sikertelen. Alapértelmezett adatok.");
-            geminiData = { stats:{home:{},away:{}}, form:{}, key_players:{home:[],away:[]}, contextual_factors:{}, tactics:{home:{},away:{}}, tactical_patterns:{home:[],away:[]}, key_matchups:{}, advanced_stats_team:{home:{},away:{}}, advanced_stats_goalie:{home_goalie:{},away_goalie:{}}, shot_distribution:{}, defensive_style:{} };
+            geminiData = { stats: { home: {}, away: {} }, form: {}, key_players: { home: [], away: [] }, contextual_factors: {}, tactics: { home:{}, away:{} }, tactical_patterns:{ home:[], away:[] }, key_matchups:{}, advanced_stats_team:{ home:{}, away:{} }, advanced_stats_goalie:{ home_goalie:{}, away_goalie:{} }, shot_distribution:{}, defensive_style:{} };
         }
 
         // --- 3. LÉPÉS: Strukturált időjárás lekérése ---
@@ -415,7 +428,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
 
         // KRITIKUS VALIDÁLÁS
         if (typeof result.rawStats?.home !== 'object' || typeof result.rawStats?.away !== 'object' || typeof result.rawStats.home.gp !== 'number' || result.rawStats.home.gp <= 0 || typeof result.rawStats.away.gp !== 'number' || result.rawStats.away.gp <= 0) {
-            console.error(`KRITIKUS HIBA (${homeTeamName} vs ${awayTeamName}): Érvénytelen statisztikák.`);
+            console.error(`KRITIKUS HIBA (${homeTeamName} vs ${awayTeamName}): Érvénytelen statisztikák. HomeGP: ${result.rawStats?.home?.gp}, AwayGP: ${result.rawStats?.away?.gp}`);
             throw new Error(`Kritikus statisztikák érvénytelenek a ${homeTeamName} vs ${awayTeamName} meccshez.`);
         }
 
