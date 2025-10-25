@@ -51,6 +51,10 @@ async function makeRequest(url, config = {}, retries = 1) {
                  if ([401, 403].includes(response.status)) {
                     console.error(`TheSportsDB Hitelesítési Hiba (${response.status})! Ellenőrizd az API kulcsot! Header:`, currentConfig.headers);
                  }
+                 // Speciális log 404 esetén, hogy lássuk a próbált URL-t
+                 if (response.status === 404) {
+                     console.warn(`API Hiba: Végpont nem található (404). Próbált URL: ${url}`);
+                 }
                  throw error;
             }
             return response;
@@ -161,17 +165,17 @@ async function getSportsDbTeamId(teamName) {
     if (!THESPORTSDB_API_KEY) { console.warn("TheSportsDB API kulcs hiányzik."); return null; }
     const lowerName = teamName.toLowerCase().trim();
     if (!lowerName) return null;
-    const cacheKey = `tsdb_teamid_v2h_path_${lowerName.replace(/\s+/g, '')}`; // Új cache kulcs
+    const cacheKey = `tsdb_teamid_v2h_path_${lowerName.replace(/\s+/g, '')}`; // v2h_path cache kulcs
     const cachedId = sportsDbCache.get(cacheKey);
     if (cachedId !== undefined) {
         // console.log(`TheSportsDB Cache ${cachedId === 'not_found' ? 'miss (not found)' : 'hit'} for ${teamName}`);
         return cachedId === 'not_found' ? null : cachedId;
     }
 
-    // --- MÓDOSÍTÁS KEZDETE: V2 Base URL + Path-alapú keresés + Header Hitelesítés ---
+    // --- MÓDOSÍTÁS KEZDETE: HELYES V2 URL (/search/team/{name}) + HELYES V2 Header Hitelesítés ---
     // V2 Base URL
     const baseUrl = `https://www.thesportsdb.com/api/v2/json`;
-    // Új végpont: /search/team/{csapatnév} - a név az URL részévé válik
+    // Végpont: /search/team/{csapatnév}
     const endpoint = `/search/team/${encodeURIComponent(teamName)}`;
     const url = baseUrl + endpoint;
 
@@ -188,8 +192,12 @@ async function getSportsDbTeamId(teamName) {
         const response = await makeRequest(url, config); // Átadjuk a configot
         if (response === null) { sportsDbCache.set(cacheKey, 'not_found'); return null; } // makeRequest hiba
 
-        // A válaszban a csapatok a 'teams' kulcs alatt vannak
-        const teamId = response?.data?.teams?.[0]?.idTeam;
+        // A válaszban a V2 search a 'search' kulcs alatt adhatja vissza a találatokat, vagy továbbra is 'teams'? Ellenőrizzük mindkettőt.
+        const teamsArray = response?.data?.teams || response?.data?.search;
+
+        // Csak akkor keressük az ID-t, ha a 'teamsArray' egy tömb és nem üres
+        const teamId = (Array.isArray(teamsArray) && teamsArray.length > 0) ? teamsArray[0]?.idTeam : null;
+
         if (teamId) {
             console.log(`TheSportsDB (V2/Path): ID találat "${teamName}" -> ${teamId}`);
             sportsDbCache.set(cacheKey, teamId);
@@ -200,7 +208,8 @@ async function getSportsDbTeamId(teamName) {
             return null;
         }
     } catch (error) {
-        console.error(`TheSportsDB Hiba (V2/Path getTeamId for ${teamName}): ${error.message}`);
+        // Részletesebb hibalogolás
+        console.error(`TheSportsDB Hiba (V2/Path getTeamId for ${teamName}): ${error.message}`, error.response?.status ? `Status: ${error.response.status}` : '', error.response?.data ? `Data: ${JSON.stringify(error.response.data).substring(0, 200)}` : '');
         sportsDbCache.set(cacheKey, 'not_found');
         return null;
     }
@@ -398,7 +407,7 @@ async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
         const awayVariations = generateTeamNameVariations(awayTeam);
         let bestMatch = null;
         let highestCombinedRating = 0.60;
-        console.log(`Odds API (${oddsApiKey}): Keresés ${homeTeam} vs ${awayTeam}... ${oddsData.length} meccs az API-ban.`);
+        console.log(`Odds API (${oddsApiKey}): Keresés ${homeTeam} vs ${awayTeam}... ${oddsData.length} meccs az API-ban.`); // Kevesebb log
         for (const match of oddsData) {
             if (!match?.home_team || !match?.away_team) continue;
             const apiHomeLower = match.home_team.toLowerCase().trim();
@@ -409,6 +418,8 @@ async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
             const homeSim = homeMatchResult.bestMatch.rating;
             const awaySim = awayMatchResult.bestMatch.rating;
             const combinedSim = (homeSim * 0.5 + awaySim * 0.5);
+             // Csak akkor logolunk, ha magas a hasonlóság
+             // if (combinedSim > 0.7) console.log(` -> Odds hasonlítás: "${match.home_team}" vs "${match.away_team}" => Komb: ${combinedSim.toFixed(2)}`);
             if (combinedSim > highestCombinedRating) { highestCombinedRating = combinedSim; bestMatch = match; }
         }
         if (!bestMatch) {
@@ -501,7 +512,6 @@ export async function _getFixturesFromEspn(sport, days) {
                         const homeName = home ? String(home.shortDisplayName || home.displayName || home.name || '').trim() : null;
                         const awayName = away ? String(away.shortDisplayName || away.displayName || away.name || '').trim() : null;
                         const safeLeagueName = typeof leagueName === 'string' ? leagueName.trim() : leagueName;
-                        // Javítás: Ellenőrizzük, hogy az event.date valid dátum string-e
                         if (event.id && homeName && awayName && event.date && !isNaN(new Date(event.date).getTime())) {
                              return { id: String(event.id), home: homeName, away: awayName, utcKickoff: event.date, league: safeLeagueName };
                         } else {
@@ -523,7 +533,6 @@ export async function _getFixturesFromEspn(sport, days) {
         results.flat().forEach(f => { if (f?.id && !uniqueFixturesMap.has(f.id)) uniqueFixturesMap.set(f.id, f); });
         const finalFixtures = Array.from(uniqueFixturesMap.values()).sort((a, b) => {
             const dateA = new Date(a.utcKickoff); const dateB = new Date(b.utcKickoff);
-            // Ha valamelyik dátum érvénytelen, ne próbáljuk rendezni, vagy tegyük a végére
             if (isNaN(dateA.getTime())) return 1; if (isNaN(dateB.getTime())) return -1;
             return dateA - dateB;
         });
