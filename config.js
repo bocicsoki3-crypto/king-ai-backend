@@ -1,11 +1,13 @@
-// --- JAVÍTOTT config.txt ---
+// --- JAVÍTOTT config.js ---
 
 import dotenv from 'dotenv';
 dotenv.config();
 
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* VÉGLEGES JAVÍTÁS: Hibás ESPN ligák eltávolítva, Odds csapatnév térkép hozzáadva.
+* KRITIKUS JAVÍTÁS: Hozzáadva az `APIFOOTBALL_TEAM_NAME_MAP` a csapatnevek
+* pontosabb azonosításához, különösen a "Spurs" -> "Tottenham Hotspur"
+* és hasonló becenevek helyes kezelésére.
 * JAVÍTÁS (2025-10-25): 'Serie A' kulcs hozzáadva az odds_api_keys_by_league-hez.
 **************************************************************/
 
@@ -14,32 +16,49 @@ export const PORT = process.env.PORT || 3001; // Port, amin a szerver fut
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY; // Gemini API kulcs
-export const GEMINI_MODEL_ID = 'gemini-2.5-pro'; // *** JAVASLAT: Válts erre, ha elérhető (a check_models.txt alapján), vagy hagyd a 'gemini-2.5-pro'-t, ha az működik neked ***
+export const GEMINI_MODEL_ID = 'gemini-1.5-flash-latest'; // Ajánlott modell a sebesség és költséghatékonyság miatt
 export const ODDS_API_KEY = process.env.ODDS_API_KEY; // Odds API kulcs
+export const THESPORTSDB_API_KEY = process.env.THESPORTSDB_API_KEY; // TheSportsDB API kulcs
+export const APIFOOTBALL_API_KEY = process.env.APIFOOTBALL_API_KEY; // API-Football kulcs
 export const SPORTMONKS_API_KEY = process.env.SPORTMONKS_API_KEY; // SportMonks API kulcs (opcionális)
 export const PLAYER_API_KEY = process.env.PLAYER_API_KEY; // Player API kulcs (opcionális, nem látszik használatban)
-export const THESPORTSDB_API_KEY = process.env.THESPORTSDB_API_KEY; // TheSportsDB API kulcs
-export const APIFOOTBALL_API_KEY = process.env.APIFOOTBALL_API_KEY; // API-FOOTBALL kulcs
+
 
 // --- GOOGLE SHEET BEÁLLÍTÁSOK ---
 export const SHEET_URL = process.env.SHEET_URL; // Google Sheet URL
 
-// --- CSAPATNÉV HOZZÁRENDELÉS (ODDS API-hoz) ---
-// Bővítsd ezt a listát, ha további eltéréseket találsz a logokban!
-// Kulcs: Az ESPN/Frontend által használt név (kisbetűvel)
-// Érték: A The Odds API által használt név (ahogy a logban látod, ha eltér)
+// --- CSAPATNÉV HOZZÁRENDELÉSEK ---
+
+// Bővítsd ezt a listát, ha további eltéréseket találsz a The Odds API logokban!
 export const ODDS_TEAM_NAME_MAP = {
-    'schalke': 'FC Schalke 04', // Példa, ellenőrizd a pontos nevet az Odds API dokumentációjában vagy a logokban
-    'bremen': 'Werder Bremen', // Példa
-    'union berlin': 'Union Berlin', // Ha ugyanaz, akkor is beteheted a teljesség kedvéért
-    // --- Újabb példák (ezeket neked kell ellenőrizni és bővíteni!) ---
+    // Kulcs: Az ESPN/Frontend által használt név (kisbetűvel)
+    // Érték: A The Odds API által használt név
+    'schalke': 'FC Schalke 04',
+    'bremen': 'Werder Bremen',
     'manchester city': 'Man City',
     'manchester united': 'Man United',
+    'spurs': 'Tottenham Hotspur',
+    'tottenham': 'Tottenham Hotspur',
     'real madrid': 'Real Madrid',
     'atletico madrid': 'Atletico Madrid',
     'bayern munich': 'Bayern Munich',
-    // ... további csapatok ...
 };
+
+// --- JAVÍTÁS KEZDETE: ÚJ NÉVTÉRKÉP AZ API-FOOTBALLHOZ ---
+// Bővítsd ezt a listát, ha az API-Football tévesen azonosít egy csapatot!
+export const APIFOOTBALL_TEAM_NAME_MAP = {
+    // Kulcs: A frontendről érkező név (kisbetűvel)
+    // Érték: A pontos, hivatalos csapatnév, amire az API-Football keresni fog
+    'spurs': 'Tottenham Hotspur',
+    'tottenham': 'Tottenham Hotspur',
+    'man utd': 'Manchester United',
+    'man city': 'Manchester City',
+    'inter': 'Inter Milan', // Gyakori rövidítés
+    'wolves': 'Wolverhampton Wanderers',
+    // ... további csapatok, ha szükséges ...
+};
+// --- JAVÍTÁS VÉGE ---
+
 
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
 export const SPORT_CONFIG = {
@@ -53,31 +72,28 @@ export const SPORT_CONFIG = {
         odds_api_sport_key: 'soccer_epl', // Alapértelmezett odds sport kulcs
         odds_api_keys_by_league: { // Specifikus odds kulcsok ligákhoz
             'UEFA Champions League': 'soccer_uefa_champs_league',
-            'Champions League': 'soccer_uefa_champs_league', // Rövid név is
+            'Champions League': 'soccer_uefa_champs_league',
             'UEFA Europa League': 'soccer_uefa_europa_league',
-            'Europa League': 'soccer_uefa_europa_league', // Rövid név is
-            'UEFA Conference League': 'soccer_uefa_europa_conference_league', // Pontosabb kulcs? Ellenőrizd az Odds API doksit!
-            'Conference League': 'soccer_uefa_europa_conference_league', // Rövid név is
+            'Europa League': 'soccer_uefa_europa_league',
+            'UEFA Conference League': 'soccer_uefa_europa_conference_league',
+            'Conference League': 'soccer_uefa_europa_conference_league',
             'English Premier League': 'soccer_epl',
-            'Premier League': 'soccer_epl', // Rövid név is
+            'Premier League': 'soccer_epl',
             'Spanish La Liga': 'soccer_spain_la_liga',
-            'LaLiga': 'soccer_spain_la_liga', // Rövid név is
+            'LaLiga': 'soccer_spain_la_liga',
             'German Bundesliga': 'soccer_germany_bundesliga',
-            'Bundesliga': 'soccer_germany_bundesliga', // Rövid név is
+            'Bundesliga': 'soccer_germany_bundesliga',
             'Italian Serie A': 'soccer_italy_serie_a',
-            'Serie A': 'soccer_italy_serie_a', // <<< --- JAVÍTÁS: Hiányzó kulcs hozzáadva ---
+            'Serie A': 'soccer_italy_serie_a',
             'French Ligue 1': 'soccer_france_ligue_one',
-            'Ligue 1': 'soccer_france_ligue_one', // Rövid név is
+            'Ligue 1': 'soccer_france_ligue_one',
             'NB I': 'soccer_hungary_nb_i',
-            // --- További ligák (ellenőrizd az Odds API dokumentációját a pontos kulcsokért!) ---
             'Eredivisie': 'soccer_netherlands_eredivisie',
             'Liga Portugal': 'soccer_portugal_primeira_liga',
             'MLS': 'soccer_usa_mls',
             'Brazil Serie A': 'soccer_brazil_campeonato',
             'Argentinian Liga Profesional': 'soccer_argentina_primera_division'
-            // ... stb. ...
         },
-        // JAVÍTÁS: Hibás/elavult ligák eltávolítva, pontosabb ESPN nevek
         espn_leagues: {
             "Premier League": "eng.1",
             "Championship": "eng.2",
@@ -107,12 +123,12 @@ export const SPORT_CONFIG = {
             "Europa League": "uefa.europa",
             "Conference League": "uefa.europa.conf",
             "FIFA World Cup": "fifa.world",
-            "World Cup Qualifier": "fifa.worldq", // Lehet specifikusabb kell (pl. uefa)
+            "World Cup Qualifier": "fifa.worldq",
             "UEFA European Championship": "uefa.euro",
             "UEFA Nations League": "uefa.nations",
             "CAF World Cup Qualifying": "fifa.worldq.caf",
             "AFC World Cup Qualifying": "fifa.worldq.afc",
-            "CONCACAF World Cup Qualifying": "fifa.worldq.concacaf", // Ellenőrizd, hogy ez a helyes ESPN slug
+            "CONCACAF World Cup Qualifying": "fifa.worldq.concaf",
             "UEFA World Cup Qualifying": "fifa.worldq.uefa",
             "Brazil Serie A": "bra.1",
             "Brazil Serie B": "bra.2",
@@ -121,7 +137,6 @@ export const SPORT_CONFIG = {
             "Austrian Bundesliga": "aut.1",
             "Swiss Super League": "sui.1",
             "Greek Super League": "gre.1"
-            // "NB I": "hun.1" // Ellenőrizd az ESPN slugot, ha magyar bajnokság kell
         },
     },
     hockey: {
@@ -136,13 +151,11 @@ export const SPORT_CONFIG = {
             'NHL': 'icehockey_nhl',
             'KHL': 'icehockey_khl',
             'Sweden Hockey League': 'icehockey_sweden_hockey_league',
-            'Liiga': 'icehockey_finland_liiga', // Finn
-            'DEL': 'icehockey_germany_del', // Német
-            // ... további ligák ...
+            'Liiga': 'icehockey_finland_liiga',
+            'DEL': 'icehockey_germany_del',
         },
         espn_leagues: {
              'NHL': 'nhl'
-             // ... esetleg más ligák, ha az ESPN támogatja ...
         },
     },
     basketball: {
@@ -150,19 +163,17 @@ export const SPORT_CONFIG = {
         espn_sport_path: 'basketball',
         total_minutes: 48,
         home_advantage: { home: 1.02, away: 0.98 },
-        avg_goals: 110, // Ez inkább pont
+        avg_goals: 110,
         totals_line: 220.5,
         odds_api_sport_key: 'basketball_nba',
         odds_api_keys_by_league: {
             'NBA': 'basketball_nba',
             'EuroLeague': 'basketball_euroleague',
-            'Liga ACB': 'basketball_spain_acb', // Spanyol
-            // ... további ligák ...
+            'Liga ACB': 'basketball_spain_acb',
         },
         espn_leagues: {
             'NBA': 'nba',
-            'Euroleague': 'euroleague' // Ellenőrizd az ESPN slugot
-            // ... esetleg más ligák ...
+            'Euroleague': 'euroleague'
         },
     },
 };
@@ -172,8 +183,6 @@ export const SPORT_CONFIG = {
  */
 export function getOddsApiKeyForLeague(leagueName) {
     if (!leagueName) return null;
-
-    // Közvetlen keresés a megadott ligakulcsokkal (nagy/kisbetű érzéketlen)
     const lowerLeagueName = leagueName.toLowerCase().trim();
     for (const sport in SPORT_CONFIG) {
         const config = SPORT_CONFIG[sport];
@@ -185,9 +194,6 @@ export function getOddsApiKeyForLeague(leagueName) {
             }
         }
     }
-
-    // Ha nincs pontos egyezés, visszaadjuk az alapértelmezett sportkulcsot (ha van)
-    // Ez a fallback logika már a getOddsData-ban van, itt null-t adunk vissza, ha nincs direkt találat
     console.warn(`getOddsApiKeyForLeague: Nem található direkt Odds API kulcs ehhez a ligához: "${leagueName}"`);
     return null;
 }
