@@ -16,7 +16,7 @@ export const PORT = process.env.PORT || 3001; // Port, amin a szerver fut
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY; // Gemini API kulcs
-export const GEMINI_MODEL_ID = 'gemini-1.5-flash-latest'; // Ajánlott modell a sebesség és költséghatékonyság miatt
+export const GEMINI_MODEL_ID = 'gemini-2.5-pro'; // Ajánlott modell a sebesség és költséghatékonyság miatt
 export const ODDS_API_KEY = process.env.ODDS_API_KEY; // Odds API kulcs
 export const THESPORTSDB_API_KEY = process.env.THESPORTSDB_API_KEY; // TheSportsDB API kulcs
 export const APIFOOTBALL_API_KEY = process.env.APIFOOTBALL_API_KEY; // API-Football kulcs
