@@ -187,8 +187,8 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
         <h5>👑 Fő Elemző Ajánlása 👑</h5>
         <div class="master-bet"><strong>${escapeHTML(finalRec.recommended_bet)}</strong></div>
         <div class="master-confidence">
-            Végső Bizalom: <strong class="glowing-text-white">${finalRec.final_confidence.toFixed(1)}/10</strong>
-        </div>
+    Végső Bizalom: <strong>${finalRec.final_confidence.toFixed(1)}/10</strong>
+</div>
         <div class="master-reasoning">${finalReasoningHtml}</div>
         ${finalConfInterpretationHtml}
     </div>`;
@@ -233,11 +233,11 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
         </div>
         <div class="summary-card">
             <h5>Statisztikai Modell</h5>
-            ${getGaugeHtml(modelConf, "STATISZTIKAI MODELL")}
+            ${getGaugeHtml(modelConf)}
         </div>
         <div class="summary-card">
             <h5>Szakértői Bizalom</h5>
-             ${getGaugeHtml(expertConfScore, "SZAKÉRTŐI BIZALOM")}
+             ${getGaugeHtml(expertConfScore)}
         </div>
     </div>`;
 
