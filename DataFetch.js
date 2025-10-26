@@ -778,12 +778,299 @@ STRUCTURE: {
   "league_averages": { /* Optional: avg_goals_per_game, etc. */ }
 }`;
 }
+// --- ODDS API FUNKCIÓK ---
+async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
+    const specificApiKey = leagueName ? getOddsApiKeyForLeague(leagueName) : null;
+    const oddsApiKey = specificApiKey || sportConfig.odds_api_sport_key;
+    if (!ODDS_API_KEY || !oddsApiKey) { console.warn(`Odds API: Hiányzó kulcs/sportkulcs. Liga: "${leagueName}", Használt: "${oddsApiKey || 'NINCS'}"`); return null; }
+    // API URL összeállítása - piacok: h2h (1X2), totals (O/U)
+    const url = `https://api.the-odds-api.com/v4/sports/${oddsApiKey}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals&bookmakers=pinnacle&oddsFormat=decimal`;
+    console.log(`Odds API (${oddsApiKey}): Adatok lekérése... URL: ${url.replace(ODDS_API_KEY,'<apikey>')}`);
+    try {
+        const response = await makeRequest(url, { timeout: 10000 }); // API hívás
+        if (!response?.data || !Array.isArray(response.data)) { console.warn(`Odds API (${oddsApiKey}): Érvénytelen/üres válasz. Státusz: ${response?.status}`); return null; }
+        if (response.data.length === 0) { console.warn(`Odds API (${oddsApiKey}): Nincs elérhető meccs.`); return null; }
 
-// --- ODDS API FUNKCIÓK --- (Változatlanok)
-async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) { /* ... kód változatlan ... */ }
-export async function getOptimizedOddsData(homeTeam, awayTeam, sport, sportConfig, openingOdds, leagueName = null) { /* ... kód változatlan ... */ }
-function generateTeamNameVariations(teamName) { /* ... kód változatlan ... */ }
-export function findMainTotalsLine(oddsData) { /* ... kód változatlan ... */ }
+        const oddsData = response.data;
+        // Csapatnév variációk generálása a pontosabb egyezéshez
+        const homeVariations = generateTeamNameVariations(homeTeam);
+        const awayVariations = generateTeamNameVariations(awayTeam);
 
-// --- ESPN MECCSLEKÉRDEZÉS --- // (Változatlan)
-export async function _getFixturesFromEspn(sport, days) { /* ... kód változatlan ... */ }
+        let bestMatch = null;
+        let highestCombinedRating = 0.60; // Minimális hasonlósági küszöb
+
+        // Végigmegyünk a kapott meccseken, és keressük a leginkább illőt
+        for (const match of oddsData) {
+            if (!match?.home_team || !match?.away_team) continue; // Hibás adat kihagyása
+            const apiHomeLower = match.home_team.toLowerCase().trim();
+            const apiAwayLower = match.away_team.toLowerCase().trim();
+
+            // Megkeressük a legjobb egyezést a generált variációk között
+            const homeMatchResult = findBestMatch(apiHomeLower, homeVariations);
+            const awayMatchResult = findBestMatch(apiAwayLower, awayVariations);
+
+            // Csak akkor vesszük figyelembe, ha mindkét név legalább közepesen hasonlít
+            if (!homeMatchResult?.bestMatch || !awayMatchResult?.bestMatch || homeMatchResult.bestMatch.rating < 0.5 || awayMatchResult.bestMatch.rating < 0.5) continue;
+
+            const homeSim = homeMatchResult.bestMatch.rating;
+            const awaySim = awayMatchResult.bestMatch.rating;
+            const combinedSim = (homeSim + awaySim) / 2; // Átlagos hasonlóság
+
+            // Ha ez a meccs jobban hasonlít, mint az eddigi legjobb, elmentjük
+            if (combinedSim > highestCombinedRating) {
+                highestCombinedRating = combinedSim;
+                bestMatch = match;
+            }
+        }
+
+        if (!bestMatch) { console.warn(`Odds API (${oddsApiKey}): Nem található elég jó egyezés (${(highestCombinedRating*100).toFixed(1)}%) ehhez: ${homeTeam} vs ${awayTeam}.`); return null; }
+
+        console.log(`Odds API (${oddsApiKey}): Találat ${bestMatch.home_team} vs ${bestMatch.away_team} (${(highestCombinedRating*100).toFixed(1)}%).`);
+
+        // Keressük a Pinnacle oddsait
+        const bookmaker = bestMatch.bookmakers?.find(b => b.key === 'pinnacle');
+        if (!bookmaker?.markets) { console.warn(`Odds API: Nincs Pinnacle piac: ${bestMatch.home_team}`); return null; }
+
+        const currentOdds = []; // Ide gyűjtjük a releváns oddsokat
+        const allMarkets = bookmaker.markets; // Összes piac (H2H, Totals)
+
+        // H2H (1X2) piac feldolgozása
+        const h2hMarket = allMarkets.find(m => m.key === 'h2h');
+        const h2hOutcomes = h2hMarket?.outcomes;
+        if (h2hOutcomes && Array.isArray(h2hOutcomes)) {
+            h2hOutcomes.forEach(o => {
+                if (o?.price && typeof o.price === 'number' && o.price > 1) {
+                    let n = o.name; // Fogadási opció neve (pl. "Torino", "Genoa", "Draw")
+                    // Nevek egységesítése
+                    if (n.toLowerCase() === bestMatch.home_team.toLowerCase()) n = 'Hazai győzelem';
+                    else if (n.toLowerCase() === bestMatch.away_team.toLowerCase()) n = 'Vendég győzelem';
+                    else if (n.toLowerCase() === 'draw') n = 'Döntetlen';
+                    currentOdds.push({ name: n, price: o.price });
+                }
+            });
+        } else { console.warn(`Odds API: Nincs H2H: ${bestMatch.home_team}`); }
+
+        // Totals (O/U) piac feldolgozása
+        const totalsMarket = allMarkets.find(m => m.key === 'totals');
+        const totalsOutcomes = totalsMarket?.outcomes;
+        if (totalsOutcomes && Array.isArray(totalsOutcomes)) {
+            // Meghatározzuk a "fő" vonalat (általában az, ahol az Over és Under oddsok a legközelebb vannak egymáshoz)
+            const mainLine = findMainTotalsLine({ allMarkets, sport }) ?? sportConfig.totals_line; // Ha nem találunk, a configból vesszük
+            console.log(`Odds API: Fő Totals vonal: ${mainLine}`);
+
+            // Keressük az Over és Under oddsokat ehhez a vonalhoz
+            const overOutcome = totalsOutcomes.find(o => typeof o.point === 'number' && o.point === mainLine && o.name === 'Over');
+            const underOutcome = totalsOutcomes.find(o => typeof o.point === 'number' && o.point === mainLine && o.name === 'Under');
+
+            if (overOutcome?.price && typeof overOutcome.price === 'number' && overOutcome.price > 1) { currentOdds.push({ name: `Over ${mainLine}`, price: overOutcome.price }); }
+            if (underOutcome?.price && typeof underOutcome.price === 'number' && underOutcome.price > 1) { currentOdds.push({ name: `Under ${mainLine}`, price: underOutcome.price }); }
+        } else { console.warn(`Odds API: Nincs Totals: ${bestMatch.home_team}`); }
+
+        // Visszaadjuk a talált oddsokat és az összes piacot (a fő vonal meghatározásához kellhet később)
+        return currentOdds.length > 0 ? { current: currentOdds, allMarkets, sport } : null;
+
+    } catch (e) { console.error(`Hiba getOddsData (${homeTeam} vs ${awayTeam}, Liga: ${leagueName||'N/A'}, Kulcs: ${oddsApiKey}): ${e.message}`, e.stack); return null; }
+}
+
+export async function getOptimizedOddsData(homeTeam, awayTeam, sport, sportConfig, openingOdds, leagueName = null) {
+     if (!ODDS_API_KEY) {
+        console.warn("Odds API kulcs hiányzik, odds lekérés kihagyva.");
+        return null;
+     }
+    // Cache kulcs generálása a paraméterekből
+    const key = `${homeTeam}${awayTeam}${sport}${leagueName || ''}`.toLowerCase().replace(/\s+/g, '');
+    const cacheKey = `live_odds_v8_${key}`; // Verziózott kulcs
+    const cached = oddsCache.get(cacheKey);
+    // Ha van érvényes adat a cache-ben, visszaadjuk azt
+    if (cached) {
+        // console.log(`Odds cache találat (${cacheKey})`); // Csökkentett logolás
+        return { ...cached, fromCache: true };
+    }
+
+    // Ha nincs cache, lekérjük az adatokat
+    // console.log(`Nincs odds cache (${cacheKey}), friss adatok lekérése...`);
+    let liveOdds = await getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName);
+
+    // Fallback logika: Ha a specifikus ligakulccsal nem sikerült, próbáljuk az alap sportkulccsal
+    if (!liveOdds && leagueName && getOddsApiKeyForLeague(leagueName) !== sportConfig.odds_api_sport_key) {
+        console.log(`Odds API: Specifikus liga (${leagueName}) sikertelen, próbálkozás alap sport kulccsal (${sportConfig.odds_api_sport_key})...`);
+        liveOdds = await getOddsData(homeTeam, awayTeam, sport, sportConfig, null); // null ligával hívjuk -> alap kulcsot használ
+    }
+
+    // Ha sikerült adatot szerezni (akár fallback után), cache-eljük és visszaadjuk
+    if (liveOdds?.current?.length > 0) {
+        oddsCache.set(cacheKey, liveOdds);
+        return { ...liveOdds, fromCache: false };
+    }
+
+    // Ha sehol nem sikerült, logolunk és null-t adunk vissza
+    console.warn(`Nem sikerült élő szorzókat lekérni (még fallback után sem): ${homeTeam} vs ${awayTeam}`);
+    return null;
+}
+
+// --- GENERATE TEAM NAME VARIATIONS ---
+function generateTeamNameVariations(teamName) {
+     const lowerName = teamName.toLowerCase().trim();
+     // Alap variációk: Eredeti, kisbetűs, Térképből (ha van)
+     const variations = new Set([ teamName, lowerName, ODDS_TEAM_NAME_MAP[lowerName] || teamName ]);
+     // Gyakori prefixek eltávolítása (bővített lista)
+     variations.add(lowerName.replace(/^(fc|sc|cf|ac|as|krc|real|fk|nk|rc|cd|afc|1\.|us)\s+/i, '').trim());
+     // Néhány gyakori rövidítés/alternatíva
+     if (lowerName === 'manchester united') variations.add('man united');
+     if (lowerName === 'manchester city') variations.add('man city');
+     if (lowerName === 'tottenham hotspur') variations.add('tottenham');
+     if (lowerName === 'golden knights') variations.add('vegas golden knights');
+     // Szűrjük a használható neveket (nem üres, legalább 3 karakter)
+     return Array.from(variations).filter(name => name && name.length > 2);
+}
+
+// --- FIND MAIN TOTALS LINE ---
+export function findMainTotalsLine(oddsData) {
+    // Alapértelmezett vonal a sport konfigurációból vagy 2.5
+    const defaultLine = SPORT_CONFIG[oddsData?.sport]?.totals_line ?? 2.5;
+    // Megkeressük a 'totals' piacot az odds adatokból
+    const totalsMarket = oddsData?.allMarkets?.find(m => m.key === 'totals');
+    // Ha nincs totals piac, vagy nincs elég opció, visszaadjuk a defaultot
+    if (!totalsMarket?.outcomes || !Array.isArray(totalsMarket.outcomes) || totalsMarket.outcomes.length < 2) return defaultLine;
+
+    let closestPair = { diff: Infinity, line: defaultLine }; // Ahol a legkisebb a különbség az O/U oddsok között
+    // Összegyűjtjük az egyedi pontértékeket (vonalakat) a piacról
+    const points = [...new Set(totalsMarket.outcomes.map(o => o.point).filter(p => typeof p === 'number' && !isNaN(p)))];
+    if (points.length === 0) return defaultLine; // Ha nincs érvényes vonal
+
+    // Végigmegyünk az összes vonalon
+    for (const point of points) {
+        // Megkeressük az Over és Under oddsot az adott vonalhoz
+        const over = totalsMarket.outcomes.find(o => o.point === point && o.name === 'Over');
+        const under = totalsMarket.outcomes.find(o => o.point === point && o.name === 'Under');
+        // Ha mindkettő megvan és érvényes szám
+        if (over?.price && typeof over.price === 'number' && under?.price && typeof under.price === 'number') {
+            const diff = Math.abs(over.price - under.price); // Különbség számítása
+            // Ha ez a különbség kisebb, mint az eddigi legkisebb, ez lesz az új fő vonal
+            if (diff < closestPair.diff) {
+                closestPair = { diff, line: point };
+            }
+        }
+    }
+
+    // Ha találtunk olyan vonalat, ahol az oddsok közel vannak (<0.5 különbség), azt tekintjük főnek
+    if (closestPair.diff < 0.5) return closestPair.line;
+
+    // Ha nincs ilyen szoros pár, akkor azt a vonalat adjuk vissza, ami a legközelebb van a default vonalhoz
+    const numericDefaultLine = typeof defaultLine === 'number' ? defaultLine : 2.5; // Biztosítjuk, hogy szám legyen
+    points.sort((a, b) => Math.abs(a - numericDefaultLine) - Math.abs(b - numericDefaultLine)); // Rendezés távolság szerint
+    return points[0]; // A legközelebbit adjuk vissza
+}
+
+// --- ESPN MECCSLEKÉRDEZÉS --- //
+export async function _getFixturesFromEspn(sport, days) {
+     const sportConfig = SPORT_CONFIG[sport];
+     // Ellenőrizzük, hogy van-e ESPN konfiguráció az adott sporthoz
+     if (!sportConfig?.espn_sport_path || !sportConfig.espn_leagues || Object.keys(sportConfig.espn_leagues).length === 0) {
+        console.error(`_getFixturesFromEspn: Hiányzó ESPN konfig (${sport}).`);
+        return []; // Üres listával térünk vissza
+     }
+    // Napok számának validálása
+    const daysInt = parseInt(days, 10);
+    if (isNaN(daysInt) || daysInt <= 0 || daysInt > 7) { // Max 7 napra engedjük
+        console.error(`_getFixturesFromEspn: Érvénytelen napok: ${days}`);
+        return [];
+    }
+    // Dátum stringek generálása a következő 'daysInt' napra (YYYYMMDD formátumban)
+    const datesToFetch = Array.from({ length: daysInt }, (_, d) => {
+        const date = new Date();
+        date.setUTCDate(date.getUTCDate() + d); // UTC dátummal számolunk
+        return date.toISOString().split('T')[0].replace(/-/g, '');
+    });
+
+    const promises = []; // Ide gyűjtjük az API hívások Promise-ait
+    console.log(`ESPN: ${daysInt} nap, ${Object.keys(sportConfig.espn_leagues).length} liga lekérése...`);
+
+    // Végigmegyünk a dátumokon és a konfigurált ligákon
+    for (const dateString of datesToFetch) {
+        for (const [leagueName, slug] of Object.entries(sportConfig.espn_leagues)) {
+            if (!slug) { // Ellenőrizzük, hogy a liga slugja meg van-e adva
+                console.warn(`_getFixturesFromEspn: Üres slug (${leagueName}).`);
+                continue; // Kihagyjuk ezt a ligát
+            }
+            // ESPN API URL összeállítása
+            const url = `https://site.api.espn.com/apis/site/v2/sports/${sportConfig.espn_sport_path}/${slug}/scoreboard?dates=${dateString}&limit=200`; // Limit növelve
+            // Hozzáadjuk a Promise-t a listához
+            promises.push( makeRequest(url, { timeout: 8000 }).then(response => {
+                // Ha nincs válasz vagy nincs 'events' tömb, üres listát adunk
+                if (!response?.data?.events) return [];
+                // Feldolgozzuk az eseményeket
+                return response.data.events
+                    // Csak azokat tartjuk meg, amik még nem kezdődtek el ('pre' state)
+                    .filter(event => event?.status?.type?.state?.toLowerCase() === 'pre')
+                    .map(event => {
+                         const competition = event.competitions?.[0];
+                         if (!competition) return null; // Ha nincs competition adat, kihagyjuk
+                         // Hazai és vendég csapat adatainak kinyerése
+                         const homeTeamData = competition.competitors?.find(c => c.homeAway === 'home')?.team;
+                         const awayTeamData = competition.competitors?.find(c => c.homeAway === 'away')?.team;
+                         // Csapatnevek kinyerése (több lehetséges mezőből) és tisztítása
+                         const homeName = homeTeamData ? String(homeTeamData.shortDisplayName || homeTeamData.displayName || homeTeamData.name || '').trim() : null;
+                         const awayName = awayTeamData ? String(awayTeamData.shortDisplayName || awayTeamData.displayName || awayTeamData.name || '').trim() : null;
+                         // Liga nevének tisztítása
+                         const safeLeagueName = typeof leagueName === 'string' ? leagueName.trim() : leagueName;
+
+                         // Csak akkor adjuk hozzá, ha minden szükséges adat megvan és a dátum érvényes
+                         if (event.id && homeName && awayName && event.date && !isNaN(new Date(event.date).getTime())) {
+                            return {
+                                id: String(event.id), // ESPN esemény ID
+                                home: homeName,       // Hazai csapat neve
+                                away: awayName,       // Vendég csapat neve
+                                utcKickoff: event.date, // Kezdési idő UTC ISO stringként
+                                league: safeLeagueName // Liga neve
+                            };
+                         }
+                         else {
+                            // Ha valami hiányzik, logolhatnánk, de most csak null-t adunk vissza
+                            // console.warn(`Hiányos ESPN adat: ID=${event.id}, H=${homeName}, A=${awayName}, Date=${event.date}`);
+                            return null;
+                         }
+                    })
+                    // Kiszűrjük a null értékeket (ahol hiányos volt az adat)
+                    .filter(Boolean);
+            }).catch(error => {
+                // Hibakezelés: Speciális üzenet 400/404 esetén (valószínűleg rossz slug)
+                if (error.response?.status === 400 || error.message.includes('404')) {
+                    console.warn(`ESPN Hiba (40x): Lehetséges, hogy rossz a slug '${slug}' (${leagueName})? URL: ${url}`);
+                } else { // Egyéb hibák logolása
+                    console.error(`ESPN Hiba (${leagueName}, ${slug}): ${error.message}`);
+                }
+                return []; // Hiba esetén üres listát adunk vissza ehhez a híváshoz
+            }));
+            // Kis késleltetés az API hívások között, hogy ne terheljük túl az ESPN szervert
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+    }
+    try {
+        // Megvárjuk az összes API hívás befejeződését
+        const results = await Promise.all(promises);
+        // Összefűzzük az összes eredményt egyetlen listába
+        const allFixtures = results.flat();
+        // Kiszűrjük a duplikátumokat az ESPN ID alapján
+        const uniqueFixturesMap = new Map();
+        allFixtures.forEach(f => {
+            if (f?.id && !uniqueFixturesMap.has(f.id)) {
+                uniqueFixturesMap.set(f.id, f);
+            }
+        });
+        // Tömbbé alakítjuk és időrendbe rendezzük
+        const finalFixtures = Array.from(uniqueFixturesMap.values()).sort((a, b) => {
+            const dateA = new Date(a.utcKickoff);
+            const dateB = new Date(b.utcKickoff);
+            // Hibakezelés érvénytelen dátumokra
+            if (isNaN(dateA.getTime())) return 1;
+            if (isNaN(dateB.getTime())) return -1;
+            return dateA - dateB; // Növekvő sorrend
+        });
+        console.log(`ESPN: ${finalFixtures.length} egyedi meccs lekérve.`);
+        return finalFixtures; // Visszaadjuk az egyedi, rendezett meccslistát
+    } catch (e) { // Hiba az összesítés vagy rendezés során
+        console.error(`ESPN feldolgozási hiba: ${e.message}`, e.stack);
+        return []; // Hiba esetén üres lista
+    }
+}
