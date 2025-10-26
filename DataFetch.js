@@ -280,7 +280,7 @@ async function getSportsDbTeamId(teamName, sport, leagueName) {
     const originalLowerName = teamName.toLowerCase().trim();
     if (!originalLowerName) return null;
     const leaguePart = leagueName ? `_${encodeURIComponent(leagueName.toLowerCase().replace(/\s+/g, ''))}` : '_noleague';
-    const cacheKey = `tsdb_teamid_v12_final_${sport}_${leaguePart}_${originalLowerName.replace(/\s+/g, '')}`;
+    const cacheKey = `tsdb_teamid_v13_final_${sport}_${leaguePart}_${originalLowerName.replace(/\s+/g, '')}`;
     const cachedId = sportsDbCache.get(cacheKey);
     if (cachedId !== undefined) { return cachedId === 'not_found' ? null : cachedId; }
 
@@ -300,9 +300,8 @@ async function getSportsDbTeamId(teamName, sport, leagueName) {
                 const teamsInLeague = listResponse?.data?.list || listResponse?.data?.teams;
                 if (teamsInLeague && Array.isArray(teamsInLeague) && teamsInLeague.length > 0) {
                     const teamNamesFromLeague = teamsInLeague.map(t => t.strTeam);
-                    // JAVÍTÁS: findBestMatch használata a liga-alapú keresésnél is
                     const matchResult = findBestMatch(teamName, teamNamesFromLeague);
-                    if (matchResult.bestMatch.rating > 0.6) { // Küszöb a pontossághoz
+                    if (matchResult.bestMatch.rating > 0.6) {
                         const foundTeam = teamsInLeague[matchResult.bestMatchIndex];
                         teamId = foundTeam.idTeam;
                         console.log(`TheSportsDB (Liga-lista): ID találat "${teamName}" -> "${foundTeam.strTeam}" (Hasonlóság: ${(matchResult.bestMatch.rating * 100).toFixed(1)}%) -> ${teamId}`);
@@ -531,6 +530,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         const structuredWeather = await getStructuredWeatherData(stadiumLocation, utcKickoff);
         const finalData = {};
         const parseStat = (val, d = null) => { if (val === null || val === undefined || val === "N/A") return d; const n = Number(val); return (!isNaN(n) && n >= 0) ? n : d; };
+
         const homeGp = parseStat(calculatedStats.home?.gp, parseStat(geminiData?.stats?.home?.gp, 1));
         const homeGf = parseStat(calculatedStats.home?.gf, parseStat(geminiData?.stats?.home?.gf, null));
         const homeGa = parseStat(calculatedStats.home?.ga, parseStat(geminiData?.stats?.home?.ga, null));
