@@ -1,4 +1,4 @@
-// --- VÉGLEGES JAVÍTOTT (v11) datafetch.js ---
+// --- VÉGLEGES JAVÍTOTT (v12) datafetch.js ---
 
 import axios from 'axios';
 import NodeCache from 'node-cache';
@@ -19,7 +19,7 @@ const sportmonksIdCache = new NodeCache({ stdTTL: 0, useClones: false });
 const sportsDbCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 3600, useClones: false });
 const sportsDbLeagueIdCache = new NodeCache({ stdTTL: 3600 * 24, checkperiod: 3600 * 2, useClones: false });
 const apiFootballTeamIdCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
-const apiFootballLeagueIdCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 }); // Új cache ligáknak
+const apiFootballLeagueIdCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,11 +29,10 @@ let localLeaguesCache = null;
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* JAVÍTÁS (2025-10-26 v11):
-* - `getApiFootballH2H`: A H2H lekérdezés most már liga és szezon paramétert is használ a pontosság érdekében.
-* - Hozzáadva: `getApiFootballLeagueId` a liga ID-k kereséséhez és cache-eléséhez.
-* - `getRichContextualData`: Átadja a `leagueName`-et az új H2H funkciónak.
-* - Cache kulcsok frissítve (v11).
+* JAVÍTÁS (2025-10-26 v12):
+* - Hozzáadva a hiányzó API-FOOTBALL funkciók (`getApiFootball...`).
+* - `calculateTeamStats`: Javítva a név-egyeztetési hiba (pl. "PSV" vs "PSV Eindhoven").
+* - Minden korábbi fejlesztés egy fájlba integrálva.
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY ---
@@ -186,7 +185,6 @@ export async function _callGemini(prompt) {
 // --- THESPORTSDB FUNKCIÓK ---
 const TSDB_HEADERS = { 'X-API-KEY': THESPORTSDB_API_KEY };
 
-// --- Liga Lista Kezelése ---
 async function loadLeaguesFromFile() {
     if (localLeaguesCache) { return localLeaguesCache; }
     try {
@@ -526,7 +524,140 @@ async function getSportsDbMatchStats(matchId) {
 async function getStructuredWeatherData(stadiumLocation, utcKickoff) { /* ... kód változatlan ... */ }
 
 // --- API-FOOTBALL H2H ---
-// (Itt helyezkednek el a már legenerált getApiFootballTeamId, getApiFootballLeagueId, getApiFootballH2H funkciók)
+const APIFOOTBALL_HEADERS = { 'x-apisports-key': APIFOOTBALL_API_KEY };
+const APIFOOTBALL_BASE_URL = 'https://v3.football.api-sports.io';
+
+async function getApiFootballTeamId(teamName) {
+    if (!APIFOOTBALL_API_KEY) {
+        console.warn("API-FOOTBALL kulcs hiányzik, csapat ID keresés kihagyva.");
+        return null;
+    }
+    const lowerName = teamName.toLowerCase().trim();
+    const cacheKey = `apifootball_teamid_${lowerName.replace(/\s+/g, '')}`;
+    const cachedId = apiFootballTeamIdCache.get(cacheKey);
+    if (cachedId !== undefined) {
+        return cachedId === 'not_found' ? null : cachedId;
+    }
+    const url = `${APIFOOTBALL_BASE_URL}/teams?search=${encodeURIComponent(teamName)}`;
+    console.log(`API-FOOTBALL Team Search: ${teamName}...`);
+    try {
+        const response = await axios.get(url, { headers: APIFOOTBALL_HEADERS, timeout: 8000 });
+        if (response.data?.response?.length > 0) {
+            const teams = response.data.response;
+            let bestMatch = teams[0];
+            if (teams.length > 1) {
+                const exactMatch = teams.find(t => t.team?.name?.toLowerCase() === lowerName);
+                if (exactMatch) {
+                    bestMatch = exactMatch;
+                } else {
+                    console.warn(`API-FOOTBALL: Több találat "${teamName}"-re, az elsőt használjuk: "${bestMatch.team?.name}".`);
+                }
+            }
+            const teamId = bestMatch.team?.id;
+            if (teamId) {
+                console.log(`API-FOOTBALL: ID találat "${teamName}" -> "${bestMatch.team?.name}" -> ${teamId}`);
+                apiFootballTeamIdCache.set(cacheKey, teamId);
+                return teamId;
+            }
+        }
+        console.warn(`API-FOOTBALL: Nem található csapat ID ehhez: "${teamName}". Válasz:`, JSON.stringify(response.data).substring(0, 100));
+        apiFootballTeamIdCache.set(cacheKey, 'not_found');
+        return null;
+    } catch (error) {
+        console.error(`API-FOOTBALL Hiba (csapatkeresés "${teamName}"): ${error.response?.data?.message || error.message}`);
+        apiFootballTeamIdCache.set(cacheKey, 'not_found');
+        return null;
+    }
+}
+
+async function getApiFootballLeagueId(leagueName) {
+    if (!APIFOOTBALL_API_KEY || !leagueName) {
+        return null;
+    }
+    const lowerName = leagueName.toLowerCase().trim();
+    const cacheKey = `apifootball_leagueid_${lowerName.replace(/\s+/g, '')}`;
+    const cachedId = apiFootballLeagueIdCache.get(cacheKey);
+    if (cachedId !== undefined) {
+        return cachedId === 'not_found' ? null : cachedId;
+    }
+
+    const url = `${APIFOOTBALL_BASE_URL}/leagues?search=${encodeURIComponent(leagueName)}`;
+    console.log(`API-FOOTBALL League Search: ${leagueName}...`);
+    try {
+        const response = await axios.get(url, { headers: APIFOOTBALL_HEADERS, timeout: 8000 });
+        if (response.data?.response?.length > 0) {
+            const leagues = response.data.response;
+            const bestMatch = leagues.find(l => l.league?.name?.toLowerCase() === lowerName) || leagues[0];
+            const leagueId = bestMatch.league?.id;
+            if (leagueId) {
+                console.log(`API-FOOTBALL: Liga ID találat "${leagueName}" -> "${bestMatch.league?.name}" -> ${leagueId}`);
+                apiFootballLeagueIdCache.set(cacheKey, leagueId);
+                return leagueId;
+            }
+        }
+        console.warn(`API-FOOTBALL: Nem található liga ID ehhez: "${leagueName}".`);
+        apiFootballLeagueIdCache.set(cacheKey, 'not_found');
+        return null;
+    } catch (error) {
+        console.error(`API-FOOTBALL Hiba (ligakeresés "${leagueName}"): ${error.response?.data?.message || error.message}`);
+        apiFootballLeagueIdCache.set(cacheKey, 'not_found');
+        return null;
+    }
+}
+
+async function getApiFootballH2H(homeTeamName, awayTeamName, leagueName, limit = 5) {
+    if (!APIFOOTBALL_API_KEY) {
+        console.warn("API-FOOTBALL kulcs hiányzik, H2H lekérés kihagyva.");
+        return null;
+    }
+    try {
+        const [homeId, awayId, leagueId] = await Promise.all([
+            getApiFootballTeamId(homeTeamName),
+            getApiFootballTeamId(awayTeamName),
+            getApiFootballLeagueId(leagueName)
+        ]);
+
+        if (!homeId || !awayId) {
+            console.warn(`API-FOOTBALL H2H: Nem található mindkét csapat ID (${homeTeamName}:${homeId}, ${awayTeamName}:${awayId}). H2H lekérés kihagyva.`);
+            return null;
+        }
+
+        const currentYear = new Date().getUTCFullYear();
+        let h2hUrl = `${APIFOOTBALL_BASE_URL}/fixtures/headtohead?h2h=${homeId}-${awayId}`;
+
+        if (leagueId) {
+            h2hUrl += `&league=${leagueId}&season=${currentYear}`;
+            console.log(`API-FOOTBALL H2H lekérés (Liga & Szezon alapján): ${homeTeamName} vs ${awayTeamName}...`);
+        } else {
+            h2hUrl += `&last=${limit}`;
+            console.log(`API-FOOTBALL H2H lekérés (Általános): ${homeTeamName} vs ${awayTeamName} (Last ${limit})...`);
+        }
+
+        const response = await axios.get(h2hUrl, { headers: APIFOOTBALL_HEADERS, timeout: 10000 });
+
+        const fixtures = response.data?.response;
+        if (fixtures && Array.isArray(fixtures)) {
+            console.log(`API-FOOTBALL H2H: ${fixtures.length} meccs adat lekérve.`);
+            const structuredH2H = fixtures.map(fix => ({
+                date: fix.fixture?.date?.split('T')[0] || 'N/A',
+                competition: fix.league?.name || 'N/A',
+                home_team: fix.teams?.home?.name || 'N/A',
+                away_team: fix.teams?.away?.name || 'N/A',
+                home_score: fix.goals?.home,
+                away_score: fix.goals?.away,
+                score: `${fix.goals?.home ?? '?'} - ${fix.goals?.away ?? '?'}`
+            })).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            return structuredH2H.slice(0, limit);
+        } else {
+            console.warn(`API-FOOTBALL H2H: Nem érkezett érvényes meccslista. Válasz:`, JSON.stringify(response.data).substring(0, 100));
+            return null;
+        }
+    } catch (error) {
+        console.error(`API-FOOTBALL Hiba (H2H lekérés ${homeTeamName} vs ${awayTeamName}): ${error.response?.data?.message || error.message}`);
+        return null;
+    }
+}
 
 // --- FŐ ADATGYŰJTŐ FUNKCIÓ ---
 export async function getRichContextualData(sport, homeTeamName, awayTeamName, leagueName, utcKickoff) {
@@ -543,7 +674,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
     try {
         console.log(`Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}...`);
 
-        // --- TheSportsDB Adatok ---
         const [homeTeamId, awayTeamId] = await Promise.all([
             getSportsDbTeamId(homeTeamName, sport, leagueName),
             getSportsDbTeamId(awayTeamName, sport, leagueName)
@@ -565,7 +695,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         const sportsDbData = { homeTeamId, awayTeamId, matchId, homePlayers: homePlayers || [], awayPlayers: awayPlayers || [], homeMatches: homeMatches || [], awayMatches: awayMatches || [], lineups, matchStats };
         console.log(`TheSportsDB adatok lekérve: H_ID=${homeTeamId || 'N/A'}, A_ID=${awayTeamId || 'N/A'}, MatchID=${matchId || 'N/A'}, Lineups: ${lineups ? 'OK' : 'N/A'}, Stats: ${matchStats ? 'OK' : 'N/A'}, H_Players: ${homePlayers?.length || 0}, A_Players: ${awayPlayers?.length || 0}, H_Matches: ${homeMatches?.length || 0}, A_Matches: ${awayMatches?.length || 0}`);
 
-        // --- Backend Statisztika Számítás ---
         let calculatedStats = { home: { gp: null, gf: null, ga: null }, away: { gp: null, gf: null, ga: null } };
         const calculateTeamStats = (matches, teamName) => {
             let gp = 0, gf = 0, ga = 0;
@@ -589,7 +718,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         if (sportsDbData.awayMatches?.length > 0) { calculatedStats.away = calculateTeamStats(sportsDbData.awayMatches, awayTeamName); console.log(`Számított statisztika (${awayTeamName}): GP=${calculatedStats.away?.gp ?? 'N/A'}, GF=${calculatedStats.away?.gf ?? 'N/A'}, GA=${calculatedStats.away?.ga ?? 'N/A'} (TSDB meccsek alapján)`); }
         else { console.warn(`Nincs TSDB meccselőzmény ${awayTeamName} számára a statisztika számításához.`); }
 
-        // --- Párhuzamos API hívások ---
         const homePlayerNames = sportsDbData.homePlayers.slice(0, 15).map(p => `${p?.strPlayer || '?'} (${p?.strPosition || '?'})`).join(', ') || 'N/A';
         const awayPlayerNames = sportsDbData.awayPlayers.slice(0, 15).map(p => `${p?.strPlayer || '?'} (${p?.strPosition || '?'})`).join(', ') || 'N/A';
         const homeRecentMatchInfo = sportsDbData.homeMatches.slice(0, 5).map(m => `${m?.dateEvent || '?'} ${m?.strHomeTeam || '?'} ${m?.intHomeScore ?? '?'}-${m?.intAwayScore ?? '?'} ${m?.strAwayTeam || '?'}`).join('; ') || 'N/A';
@@ -613,7 +741,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         const structuredWeather = await getStructuredWeatherData(stadiumLocation, utcKickoff);
         const finalData = {};
         const parseStat = (val, d = null) => { if (val === null || val === undefined || val === "N/A") return d; const n = Number(val); return (!isNaN(n) && n >= 0) ? n : d; };
-
         const homeGp = parseStat(calculatedStats.home?.gp, parseStat(geminiData?.stats?.home?.gp, 1));
         const homeGf = parseStat(calculatedStats.home?.gf, parseStat(geminiData?.stats?.home?.gf, null));
         const homeGa = parseStat(calculatedStats.home?.ga, parseStat(geminiData?.stats?.home?.ga, null));
@@ -740,6 +867,7 @@ STRUCTURE: {
   "league_averages": { /* Optional: avg_goals_per_game, etc. */ }
 }`;
 }
+
 // --- ODDS API FUNKCIÓK ---
 async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
     const specificApiKey = leagueName ? getOddsApiKeyForLeague(leagueName) : null;
