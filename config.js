@@ -19,6 +19,7 @@ export const ODDS_API_KEY = process.env.ODDS_API_KEY; // Odds API kulcs
 export const SPORTMONKS_API_KEY = process.env.SPORTMONKS_API_KEY; // SportMonks API kulcs (opcionális)
 export const PLAYER_API_KEY = process.env.PLAYER_API_KEY; // Player API kulcs (opcionális, nem látszik használatban)
 export const THESPORTSDB_API_KEY = process.env.THESPORTSDB_API_KEY; // TheSportsDB API kulcs
+export const APIFOOTBALL_API_KEY = process.env.APIFOOTBALL_API_KEY; // API-FOOTBALL kulcs
 
 // --- GOOGLE SHEET BEÁLLÍTÁSOK ---
 export const SHEET_URL = process.env.SHEET_URL; // Google Sheet URL
