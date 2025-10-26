@@ -482,10 +482,10 @@ async function getStructuredWeatherData(stadiumLocation, utcKickoff) {
      } catch (e) { console.error(`Időjárás API hiba (adatlekérés): ${e.message}`); return null; }
 }
 
-// --- FŐ ADATGYŰJTŐ FUNKCIÓ --- (JAVÍTOTT: GP/GF/GA számítás, új prompt)
+// --- FŐ ADATGYŰJTŐ FUNKCIÓ --- (JAVÍTOTT: GP/GF/GA számítás, új prompt, VÁLTOZÓ DEFINÍCIÓK HELYE JAVÍTVA v7)
 export async function getRichContextualData(sport, homeTeamName, awayTeamName, leagueName, utcKickoff) {
     const teamNames = [homeTeamName, awayTeamName].sort();
-    // Cache kulcs verzió növelve (v41)
+    // Cache kulcs verzió marad v41
     const ck = `rich_context_v41_stats_calc_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
     const cached = scriptCache.get(ck);
     if (cached) {
@@ -498,7 +498,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
     try {
         console.log(`TheSportsDB adatok lekérése indul: ${homeTeamName} vs ${awayTeamName} (${leagueName || 'N/A Liga'})`);
         const [homeTeamId, awayTeamId] = await Promise.all([
-            getSportsDbTeamId(homeTeamName, sport, leagueName),
+            getSportsDbTeamId(homeTeamName, sport, leagueName), // Használja a v6 javított getSportsDbTeamId-t
             getSportsDbTeamId(awayTeamName, sport, leagueName)
         ]);
         let matchId = null; let lineups = null; let matchStats = null;
@@ -515,7 +515,18 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         const sportsDbData = { homeTeamId, awayTeamId, matchId, homePlayers: homePlayers || [], awayPlayers: awayPlayers || [], homeMatches: homeMatches || [], awayMatches: awayMatches || [], lineups: lineups, matchStats: matchStats };
         console.log(`TheSportsDB adatok lekérve: H_ID=${homeTeamId || 'N/A'}, A_ID=${awayTeamId || 'N/A'}, MatchID=${matchId || 'N/A'}, Lineups: ${lineups ? 'OK' : 'N/A'}, Stats: ${matchStats ? 'OK' : 'N/A'}, H_Players: ${homePlayers?.length || 0}, A_Players: ${awayPlayers?.length || 0}, H_Matches: ${homeMatches?.length || 0}, A_Matches: ${awayMatches?.length || 0}`);
 
-        // --- ÚJ RÉSZ: GP/GF/GA SZÁMÍTÁS A MECCSEKBŐL ---
+        // --- JAVÍTÁS: Prompt adatok előkészítése IDE ---
+        const homePlayerNames = sportsDbData.homePlayers.slice(0, 15).map(p => `${p.strPlayer} (${p.strPosition || '?'})`).join(', ') || 'N/A';
+        const awayPlayerNames = sportsDbData.awayPlayers.slice(0, 15).map(p => `${p.strPlayer} (${p.strPosition || '?'})`).join(', ') || 'N/A';
+        const homeRecentMatchInfo = sportsDbData.homeMatches.slice(0, 5).map(m => `${m.dateEvent} ${m.strHomeTeam} ${m.intHomeScore}-${m.intAwayScore} ${m.strAwayTeam}`).join('; ') || 'N/A';
+        const awayRecentMatchInfo = sportsDbData.awayMatches.slice(0, 5).map(m => `${m.dateEvent} ${m.strHomeTeam} ${m.intHomeScore}-${m.intAwayScore} ${m.strAwayTeam}`).join('; ') || 'N/A';
+        const extractLineup = (lineupData, teamId) => { if (!lineupData || !Array.isArray(lineupData)) return 'N/A'; const teamLineup = lineupData.find(l => String(l.idTeam) === String(teamId) && l.strFormation); return teamLineup?.strLineup || 'N/A'; };
+        const startingHomePlayers = extractLineup(sportsDbData.lineups, homeTeamId);
+        const startingAwayPlayers = extractLineup(sportsDbData.lineups, awayTeamId);
+        const matchStatsSample = sportsDbData.matchStats ? JSON.stringify(sportsDbData.matchStats).substring(0, 500) + '...' : 'N/A';
+        // --- JAVÍTÁS VÉGE ---
+
+        // --- GP/GF/GA SZÁMÍTÁS --- (Marad itt)
         let calculatedStats = { home: { gp: 0, gf: 0, ga: 0 }, away: { gp: 0, gf: 0, ga: 0 } };
         const calculateTeamStats = (matches, teamName) => {
             let gp = 0, gf = 0, ga = 0;
@@ -523,7 +534,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
                 matches.forEach(m => {
                     const homeScore = parseInt(m.intHomeScore);
                     const awayScore = parseInt(m.intAwayScore);
-                    // Csak akkor számoljuk, ha mindkét eredmény érvényes szám
                     if (!isNaN(homeScore) && !isNaN(awayScore)) {
                         gp++;
                         if (m.strHomeTeam === teamName) {
@@ -533,14 +543,12 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
                             gf += awayScore;
                             ga += homeScore;
                         } else {
-                            // Ha a csapat neve nem egyezik (ez nem fordulhatna elő az API hívás miatt)
-                            gp--; // Mégsem számoljuk ezt a meccset
+                            gp--;
                             console.warn(`Stats számítás: A ${teamName} csapat nem található a ${m.strHomeTeam} vs ${m.strAwayTeam} meccsben.`);
                         }
                     }
                 });
             }
-            // Biztosítjuk, hogy legalább 1 legyen a gp, ha volt legalább egy érvényes meccs
             return { gp: Math.max(1, gp), gf, ga };
         };
 
@@ -549,7 +557,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
             console.log(`Számított statisztika (${homeTeamName}): GP=${calculatedStats.home.gp}, GF=${calculatedStats.home.gf}, GA=${calculatedStats.home.ga} (TSDB meccsek alapján)`);
         } else {
             console.warn(`Nincs TSDB meccselőzmény ${homeTeamName} számára a statisztika számításához.`);
-            // Itt null-ra állíthatnánk, hogy jelezzük a hiányt, vagy hagyhatjuk 0-n
              calculatedStats.home = { gp: null, gf: null, ga: null };
         }
         if (sportsDbData.awayMatches.length > 0) {
@@ -561,55 +568,51 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         }
         // --- GP/GF/GA SZÁMÍTÁS VÉGE ---
 
-        // Gemini és Odds hívások (párhuzamosan)
+        // Gemini és Odds hívások (most már a prompt adatok definiálása UTÁN)
         const [geminiJsonString, fetchedOddsData] = await Promise.all([
-             _callGemini(PROMPT_V41( // Új prompt használata
+             _callGemini(PROMPT_V41( // Prompt hívás most már a definiált változókkal
                  sport, homeTeamName, awayTeamName, sportsDbData,
-                 homePlayerNames, awayPlayerNames, homeRecentMatchInfo, awayRecentMatchInfo,
-                 startingHomePlayers, startingAwayPlayers, matchStatsSample,
-                 calculatedStats // Átadjuk a számított statisztikákat is
+                 homePlayerNames, awayPlayerNames, homeRecentMatchInfo, awayRecentMatchInfo, // Ezek már léteznek
+                 startingHomePlayers, startingAwayPlayers, matchStatsSample, // Ezek is
+                 calculatedStats
              )),
              getOptimizedOddsData(homeTeamName, awayTeamName, sport, SPORT_CONFIG[sport], null, leagueName)
         ]);
 
         let geminiData = null;
         try { geminiData = geminiJsonString ? JSON.parse(geminiJsonString) : null; } catch (e) { console.error(`Gemini JSON parse hiba: ${e.message}.`, (geminiJsonString || '').substring(0, 500)); }
-        if (!geminiData) { console.warn("Gemini API hívás sikertelen vagy invalid JSON. Alap adatok."); geminiData = { /* ... (alap objektum marad) ... */ stats: { home: {}, away: {} }, form: {}, key_players: { home: [], away: [] }, contextual_factors: {}, tactics: { home:{}, away:{} }, tactical_patterns:{ home:[], away:[] }, key_matchups:{}, advanced_stats_team:{ home:{}, away:{} }, advanced_stats_goalie:{ home_goalie:{}, away_goalie:{} }, shot_distribution:{}, defensive_style:{}, absentees: { home:[], away:[] }, team_news: { home:"N/A", away:"N/A" }, h2h_structured: [] }; }
+        if (!geminiData) { console.warn("Gemini API hívás sikertelen vagy invalid JSON. Alap adatok."); geminiData = { /* ... (alap objektum) ... */ stats: { home: {}, away: {} }, form: {}, key_players: { home: [], away: [] }, contextual_factors: {}, tactics: { home:{}, away:{} }, tactical_patterns:{ home:[], away:[] }, key_matchups:{}, advanced_stats_team:{ home:{}, away:{} }, advanced_stats_goalie:{ home_goalie:{}, away_goalie:{} }, shot_distribution:{}, defensive_style:{}, absentees: { home:[], away:[] }, team_news: { home:"N/A", away:"N/A" }, h2h_structured: [] }; }
 
         // Időjárás lekérés
         const stadiumLocation = geminiData?.contextual_factors?.stadium_location || "N/A";
         const structuredWeather = await getStructuredWeatherData(stadiumLocation, utcKickoff);
         const finalData = {};
 
-        // Adatok feldolgozása: Most már a calculatedStats-ot használjuk elsődlegesen!
+        // Adatok feldolgozása (marad ugyanaz, calculatedStats prioritással)
         const parseStat = (val, d = null) => { if (val === null || val === undefined || val === "N/A") return d; const n = Number(val); return (!isNaN(n) && n >= 0) ? n : d; };
-        // Használjuk a számított statisztikát, ha van, különben a Gemini által adottat (ha az is van), különben null
-        const homeGp = parseStat(calculatedStats.home.gp, parseStat(geminiData?.stats?.home?.gp, 1)); // Minimum 1 gp
+        const homeGp = parseStat(calculatedStats.home.gp, parseStat(geminiData?.stats?.home?.gp, 1));
         const homeGf = parseStat(calculatedStats.home.gf, parseStat(geminiData?.stats?.home?.gf, null));
         const homeGa = parseStat(calculatedStats.home.ga, parseStat(geminiData?.stats?.home?.ga, null));
-        const awayGp = parseStat(calculatedStats.away.gp, parseStat(geminiData?.stats?.away?.gp, 1)); // Minimum 1 gp
+        const awayGp = parseStat(calculatedStats.away.gp, parseStat(geminiData?.stats?.away?.gp, 1));
         const awayGf = parseStat(calculatedStats.away.gf, parseStat(geminiData?.stats?.away?.gf, null));
         const awayGa = parseStat(calculatedStats.away.ga, parseStat(geminiData?.stats?.away?.ga, null));
-
         finalData.stats = { home: { gp: homeGp, gf: homeGf, ga: homeGa }, away: { gp: awayGp, gf: awayGf, ga: awayGa } };
-        // Logoljuk, hogy melyik statisztikát használjuk végül
         console.log(`Végleges stats használatban: Home(GP:${homeGp}, GF:${homeGf}, GA:${homeGa}), Away(GP:${awayGp}, GF:${awayGf}, GA:${awayGa})`);
 
-        // A többi adat feldolgozása marad ugyanaz, mint korábban
+        // Többi adat feldolgozása... (marad változatlan)
         finalData.h2h_summary = geminiData?.h2h_summary || "N/A"; finalData.h2h_structured = Array.isArray(geminiData?.h2h_structured) ? geminiData.h2h_structured : []; finalData.team_news = geminiData?.team_news || { home: "N/A", away: "N/A" }; finalData.absentees = { home: Array.isArray(geminiData?.absentees?.home) ? geminiData.absentees.home : [], away: Array.isArray(geminiData?.absentees?.away) ? geminiData.absentees.away : [] }; finalData.absentee_impact_analysis = geminiData?.absentee_impact_analysis || "N/A";
-        // Forma: Ha TSDB meccsek vannak, abból kellene generálni a W-D-L stringet, de ez bonyolultabb. Egyelőre marad a Gemini által adott.
         finalData.form = geminiData?.form || { home_overall: "N/A", away_overall: "N/A", home_home: "N/A", away_away: "N/A" };
         const normKP = (p) => (Array.isArray(p)?p:[]).map(i=>({name:i?.name||'?',role:i?.role||'?',stats:i?.stat||i?.stats||'N/A'})); finalData.key_players = { home: normKP(geminiData?.key_players?.home), away: normKP(geminiData?.key_players?.away) }; finalData.contextual_factors = geminiData?.contextual_factors || {}; finalData.contextual_factors.stadium_location = finalData.contextual_factors.stadium_location || "N/A"; finalData.contextual_factors.match_tension_index = finalData.contextual_factors.match_tension_index || "N/A"; finalData.contextual_factors.pitch_condition = finalData.contextual_factors.pitch_condition || "N/A"; finalData.contextual_factors.referee = finalData.contextual_factors.referee || { name: "N/A", style: "N/A" }; finalData.contextual_factors.structured_weather = structuredWeather; finalData.referee = finalData.contextual_factors.referee; finalData.tactics = geminiData?.tactics || { home: { style: "N/A", formation: "N/A" }, away: { style: "N/A", formation: "N/A" } }; finalData.tactical_patterns = geminiData?.tactical_patterns || { home: [], away: [] }; finalData.key_matchups = geminiData?.key_matchups || {}; finalData.advanced_stats_team = geminiData?.advanced_stats_team || { home: {}, away: {} }; finalData.advanced_stats_goalie = geminiData?.advanced_stats_goalie || { home_goalie: {}, away_goalie: {} }; finalData.shot_distribution = geminiData?.shot_distribution || { home: "N/A", away: "N/A" }; finalData.defensive_style = geminiData?.defensive_style || { home: "N/A", away: "N/A" };
         finalData.advancedData = { home: { xg: null }, away: { xg: null } };
         finalData.league_averages = geminiData?.league_averages || {};
         finalData.sportsDbData = sportsDbData;
 
-        // RichContext összeállítása marad
+        // RichContext összeállítása
         const richContextParts = [ /* ... */ finalData.h2h_summary !== "N/A" && `- H2H: ${finalData.h2h_summary}`, finalData.contextual_factors.match_tension_index !== "N/A" && `- Tét: ${finalData.contextual_factors.match_tension_index}`, (finalData.team_news.home !== "N/A" || finalData.team_news.away !== "N/A") && `- Hírek: H:${finalData.team_news.home||'-'}, V:${finalData.team_news.away||'-'}`, (finalData.absentees.home.length > 0 || finalData.absentees.away.length > 0) && `- Hiányzók: H:${finalData.absentees.home.map(p=>p.name).join(', ')||'-'}, V:${finalData.absentees.away.map(p=>p.name).join(', ')||'-'}`, finalData.absentee_impact_analysis !== "N/A" && `- Hiányzók Hatása: ${finalData.absentee_impact_analysis}`, (finalData.form.home_overall !== "N/A" || finalData.form.away_overall !== "N/A") && `- Forma: H:${finalData.form.home_overall}, V:${finalData.form.away_overall}`, (finalData.tactics?.home?.style !== "N/A" || finalData.tactics?.away?.style !== "N/A") && `- Taktika: H:${finalData.tactics?.home?.style||'?'}(${finalData.tactics?.home?.formation||'?'}), V:${finalData.tactics?.away?.style||'?'}(${finalData.tactics?.away?.formation||'?'})`, structuredWeather ? `- Időjárás: ${structuredWeather.precipitation_mm}mm csap, ${structuredWeather.wind_speed_kmh}km/h szél.` : (finalData.contextual_factors.weather ? `- Időjárás: ${finalData.contextual_factors.weather}` : `- Időjárás: N/A`), finalData.contextual_factors.pitch_condition !== "N/A" && `- Pálya: ${finalData.contextual_factors.pitch_condition}` ].filter(Boolean);
         const richContext = richContextParts.length > 0 ? richContextParts.join('\n') : "N/A";
         const result = { rawStats: finalData.stats, leagueAverages: finalData.league_averages, richContext, advancedData: finalData.advancedData, form: finalData.form, rawData: finalData };
 
-        // Kritikus statisztikák ellenőrzése (most már a `finalData.stats`-ot használjuk)
+        // Kritikus statisztikák ellenőrzése
         if (typeof result.rawStats?.home !== 'object' || typeof result.rawStats?.away !== 'object' || typeof result.rawStats.home.gp !== 'number' || result.rawStats.home.gp <= 0 || typeof result.rawStats.away.gp !== 'number' || result.rawStats.away.gp <= 0) { console.error(`KRITIKUS HIBA (${homeTeamName} vs ${awayTeamName}): Érvénytelen VÉGLEGES statisztikák. HomeGP: ${result.rawStats?.home?.gp}, AwayGP: ${result.rawStats?.away?.gp}`); throw new Error(`Kritikus statisztikák érvénytelenek a ${homeTeamName} vs ${awayTeamName} meccshez.`); }
         scriptCache.set(ck, result);
         console.log(`Sikeres adatgyűjtés (AI + TSDB(ID,Pl,M) + StatsCalc + Időjárás), cache mentve (${ck}).`);
