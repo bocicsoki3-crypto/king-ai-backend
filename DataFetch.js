@@ -266,6 +266,7 @@ async function getSportsDbTeamId(teamName, sport, leagueName) {
         const namesToTry = generateTeamNameVariations(teamName);
 
         for (const searchName of namesToTry) {
+            const apiFriendlySearchName = searchName.trim().replace(/\s+/g, '_');
             const searchUrl = `https://www.thesportsdb.com/api/v2/json/search/team/${encodeURIComponent(searchName)}`;
             console.log(`TheSportsDB V2 Team Search próbálkozás (Fallback): URL=${searchUrl.replace(THESPORTSDB_API_KEY,'<apikey>')}`);
             try {
