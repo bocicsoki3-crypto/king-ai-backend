@@ -19,7 +19,7 @@ export const GEMINI_API_KEY = process.env.GEMINI_API_KEY; // Gemini API kulcs
 export const GEMINI_MODEL_ID = 'gemini-2.5-pro'; // Ajánlott modell a sebesség és költséghatékonyság miatt
 export const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 export const APIFOOTBALL_RAPIDAPI_HOST = process.env.APIFOOTBALL_RAPIDAPI_HOST;
-export const ODDS_API_BASE_URL = process.env.ODDS_API_BASE_URL;
+export const RAPIDAPI_ODDS_HOST = process.env.RAPIDAPI_ODDS_HOST;
 export const SPORTMONKS_API_KEY = process.env.SPORTMONKS_API_KEY; // SportMonks API kulcs (opcionális)
 export const PLAYER_API_KEY = process.env.PLAYER_API_KEY; // Player API kulcs (opcionális, nem látszik használatban)
 
