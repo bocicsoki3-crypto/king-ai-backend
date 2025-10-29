@@ -1,15 +1,14 @@
-// --- VÉGLEGES INTEGRÁLT (v35 - API-Football Odds) datafetch.js ---
-// - V35 VÁLTOZÁS: A hibás 'Odds-Feed' API teljes eltávolítása.
-// - V35 VÁLTOZÁS: Az 'getApiFootballOdds' függvény implementálása, amely a fixtureId alapján kéri le a szorzókat.
-// - V35 VÁLTOZÁS: A 'findMainTotalsLine' átírva az API-Football adatszerkezetére.
-// - V35 MEGTARTVA: A 'GP:undefined' elleni "bombabiztos" statisztika-egyesítés.
+// --- VÉGLEGES INTEGRÁLT (v36 - Kompatibilitási Javítás) datafetch.js ---
+// - V36 JAVÍTÁS: A 'getRichContextualData' visszatérési struktúrája javítva,
+// hogy kompatibilis legyen az AnalysisFlow.js elvárásaival (pl. rawStats, richContext).
+// - MEGTARTVA (v35): Az Odds lekérés az API-Football /v3/odds végpontjáról történik.
+// - MEGTARTVA (v34): A "bombabiztos" GP statisztika-egyesítés.
 
 import axios from 'axios';
 import NodeCache from 'node-cache';
 import {
     SPORT_CONFIG, GEMINI_API_KEY, GEMINI_MODEL_ID,
     APIFOOTBALL_KEY, APIFOOTBALL_HOST,
-    // Az ODDS_API_KEY és ODDS_API_HOST már nem szükséges, de a MAP maradhat
     ODDS_TEAM_NAME_MAP 
 } from './config.js';
 import pkg from 'string-similarity';
@@ -19,7 +18,6 @@ import path from 'path';
 
 // Cache inicializálás
 const scriptCache = new NodeCache({ stdTTL: 3600 * 2, checkperiod: 600, useClones: false });
-// A régi oddsCache helyett új API-Football odds cache
 const apiFootballOddsCache = new NodeCache({ stdTTL: 60 * 10, checkperiod: 60 * 2, useClones: false }); 
 const apiFootballTeamIdCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
 const apiFootballLeagueIdCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
@@ -31,10 +29,10 @@ const __dirname = path.dirname(__filename);
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v35 (2025-10-29) - Átállás API-Football Odds-ra
-* - A hibás 'odds-feed' API eltávolítva.
-* - A szorzók mostantól az API-Football /v3/odds végpontjáról
-* érkeznek a fixtureId alapján.
+* VERZIÓ: v36 (2025-10-29) - Átállás API-Football Odds-ra + Kompatibilitás
+* - A 'getRichContextualData' visszatérési értéke javítva,
+* hogy az AnalysisFlow.js (v25+) által várt 'rawStats', 'richContext'
+* stb. mezőket is tartalmazza, az 'oddsData' mellett.
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY ---
@@ -307,10 +305,7 @@ async function getApiFootballOdds(fixtureId) {
         return null;
     }
 
-    // Visszaadjuk a teljes szorzócsomagot (tartalmazza a meccset, ligát, bookmakereket)
     const oddsData = response.data.response[0]; 
-    
-    // Alap 1X2 szorzók kinyerése a 'current' mezőhöz (opcionális, de hasznos)
     const bookmaker = oddsData.bookmakers?.find(b => b.name === "Bet365") || oddsData.bookmakers?.[0];
     const matchWinnerMarket = bookmaker?.bets?.find(b => b.name === "Match Winner");
     
@@ -326,8 +321,8 @@ async function getApiFootballOdds(fixtureId) {
     }
 
     const result = {
-        current: currentOdds, // Az egyszerű 1X2 szorzók
-        fullApiData: oddsData // A teljes adat (minden bookmaker, minden piac)
+        current: currentOdds, 
+        fullApiData: oddsData 
     };
 
     if (result.current.length > 0) {
@@ -340,40 +335,30 @@ async function getApiFootballOdds(fixtureId) {
     return { ...result, fromCache: false };
 }
 
-// --- *** TÖRÖLVE (v35) *** ---
-// A régi 'getOddsData' és 'getOptimizedOddsData' függvények eltávolítva.
-
-// --- *** TÖRÖLVE (v35) *** ---
-// A 'generateTeamNameVariations' törölve, mivel már nincs rá szükség.
-
 // --- *** ÁTÍRVA (v35): Fő gólvonal kereső API-Football adatszerkezethez *** ---
 export function findMainTotalsLine(oddsData) {
     const defaultLine = 2.5;
     
-    // Az új oddsData struktúra a fullApiData-t tartalmazza
     if (!oddsData?.fullApiData?.bookmakers || oddsData.fullApiData.bookmakers.length === 0) {
         return defaultLine;
     }
 
-    // Keressünk egy megbízható bookmakert, vagy vegyük az elsőt
     const bookmaker = oddsData.fullApiData.bookmakers.find(b => b.name === "Bet365") || oddsData.fullApiData.bookmakers[0];
     if (!bookmaker?.bets) return defaultLine;
 
-    // Keressük az "Over/Under" piacot (API-Footballban általában ez a neve)
     const totalsMarket = bookmaker.bets.find(b => b.name.toLowerCase() === "over/under");
     if (!totalsMarket?.values) {
         console.warn("Nem található 'Over/Under' piac a szorzókban.");
         return defaultLine;
     }
 
-    // Gyűjtsük össze az elérhető vonalakat (pl. 1.5, 2.5, 3.5)
-    const linesAvailable = {}; // Struktúra: { "2.5": { over: 1.90, under: 1.90 }, "1.5": { ... } }
+    const linesAvailable = {}; 
 
     for (const val of totalsMarket.values) {
         const lineMatch = val.value.match(/(\d\.\d)/);
         if (!lineMatch || !lineMatch[1]) continue;
         
-        const line = lineMatch[1]; // pl. "2.5"
+        const line = lineMatch[1]; 
         if (!linesAvailable[line]) linesAvailable[line] = {};
 
         if (val.value.toLowerCase().startsWith("over")) {
@@ -387,7 +372,6 @@ export function findMainTotalsLine(oddsData) {
         return defaultLine;
     }
 
-    // Keressük a legkiegyensúlyozottabb párt (ahol az over és under szorzó a legközelebb van egymáshoz)
     let closestPair = { diff: Infinity, line: defaultLine };
 
     for (const line in linesAvailable) {
@@ -400,27 +384,25 @@ export function findMainTotalsLine(oddsData) {
         }
     }
 
-    // Ha találtunk egy 0.5-nél kisebb eltérésű párt, az a fő vonal
     if (closestPair.diff < 0.5) {
         return closestPair.line;
     }
 
-    // Ha nincs kiegyensúlyozott pár, vegyük azt, ami a legközelebb van a 2.5-höz
+    const numericDefaultLine = 2.5;
     const numericLines = Object.keys(linesAvailable).map(parseFloat);
-    numericLines.sort((a, b) => Math.abs(a - defaultLine) - Math.abs(b - defaultLine));
+    numericLines.sort((a, b) => Math.abs(a - numericDefaultLine) - Math.abs(b - numericDefaultLine));
     return numericLines[0];
 }
 
 
-// --- FŐ ADATGYŰJTŐ FUNKCIÓ (v35 - Átírva) ---
+// --- FŐ ADATGYŰJTŐ FUNKCIÓ (v36 - Kompatibilitás Javítva) ---
 export async function getRichContextualData(sport, homeTeamName, awayTeamName, leagueName, utcKickoff) {
     const teamNames = [homeTeamName, awayTeamName].sort();
-    const ck = `rich_context_v43_apif_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
+    const ck = `rich_context_v36_apif_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
     const cached = scriptCache.get(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
         
-        // Gyorsítótárazott adatok esetén is ellenőrizzük az oddsokat, de már az ÚJ függvénnyel
         const fixtureId = cached.rawData.apiFootballData.fixtureId;
         const oddsResult = await getApiFootballOdds(fixtureId); 
         
@@ -436,7 +418,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         const season = new Date(decodedUtcKickoff).getFullYear();
         if (isNaN(season)) throw new Error(`Érvénytelen utcKickoff: ${decodedUtcKickoff}`);
         
-        console.log(`Adatgyűjtés indul (v35 - API-Football): ${homeTeamName} vs ${awayTeamName}...`);
+        console.log(`Adatgyűjtés indul (v36 - API-Football): ${homeTeamName} vs ${awayTeamName}...`);
         const [homeTeamId, awayTeamId] = await Promise.all([
             getApiFootballTeamId(homeTeamName),
             getApiFootballTeamId(awayTeamName),
@@ -451,7 +433,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         if (!leagueId) throw new Error(`Nem sikerült a 'leagueId' azonosítása.`);
         console.log(`API-Football: Végleges LeagueID: ${leagueId}`);
         
-        // Először meg kell szereznünk a fixtureId-t
         const { fixtureId, fixtureDate } = await findApiFootballFixture(homeTeamId, awayTeamId, season, leagueId, decodedUtcKickoff);
         
         if (!fixtureId) {
@@ -460,33 +441,52 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
 
         console.log(`API-Football: Adatok párhuzamos lekérése... (FixtureID: ${fixtureId})`);
         const [
-            fetchedOddsData, // <-- ÚJ hívás
+            fetchedOddsData,
             apiFootballH2HData,
             apiFootballHomeSeasonStats,
             apiFootballAwaySeasonStats
         ] = await Promise.all([
-            getApiFootballOdds(fixtureId), // <-- ÚJ hívás
+            getApiFootballOdds(fixtureId), 
             getApiFootballH2H(homeTeamId, awayTeamId, 5),
             getApiFootballTeamSeasonStats(homeTeamId, leagueId, season),
             getApiFootballTeamSeasonStats(awayTeamId, leagueId, season)
         ]);
         console.log(`API-Football: Párhuzamos lekérések befejezve.`);
         
+        // A 'v25'-ös kódodban [cite: 318] az apiFootballLineups is itt volt, de a Gemini promptod [cite: 361] és a v35 logikája szerint ez opcionális.
+        // Ha mégis kell, ide illeszd be:
+        // const apiFootballLineups = fixtureId ? getApiFootballLineups(fixtureId) : Promise.resolve(null);
+        // És add hozzá a Promise.all-hoz. Jelenleg a v25-ös [cite: 361] promptod alapján nem kritikus.
+
         const geminiJsonString = await _callGemini(PROMPT_V43(
              sport, homeTeamName, awayTeamName,
              apiFootballHomeSeasonStats, apiFootballAwaySeasonStats,
-             apiFootballH2HData
+             apiFootballH2HData,
+             null // Lineups (opcionális, lásd fent)
         ));
-        let geminiData = geminiJsonString ? JSON.parse(geminiJsonString) : {};
-
-        // --- *** KRITIKUS JAVÍTÁS KEZDETE (v34/v35 - GP Fix) *** ---
-        // Bombabiztos adategyesítés a 'GP:undefined' hiba elhárítására.
         
+        let geminiData = null;
+        try { 
+            geminiData = geminiJsonString ? JSON.parse(geminiJsonString) : null;
+        } catch (e) { 
+            console.error(`Gemini JSON parse hiba: ${e.message}.`, (geminiJsonString || '').substring(0, 500));
+        }
+
+        if (!geminiData || typeof geminiData !== 'object') {
+             geminiData = { stats: { home: {}, away: {} }, form: {}, key_players: { home: [], away: [] }, contextual_factors: {}, tactics: { home: {}, away: {} }, tactical_patterns: { home: [], away: [] }, key_matchups: {}, advanced_stats_team: { home: {}, away: {} }, advanced_stats_goalie: { home_goalie: {}, away_goalie: {} }, shot_distribution: {}, defensive_style: {}, absentees: { home: [], away: [] }, team_news: { home: "N/A", away: "N/A" }, h2h_structured: [] };
+             console.warn("Gemini válasz hibás vagy üres, default struktúra használva.");
+        }
+
+        // --- *** VÉGLEGES ADAT EGYESÍTÉS (v36) *** ---
+        // Ez a rész a te 'v25'-ös [cite: 325-354] fájlod logikáját és a 'v34'-es GP fix-et ötvözi.
+        
+        const finalData = { ...geminiData }; // Kezdjük a Gemini által adott adatokkal
+
+        // --- 1. Statisztikák (v34 GP Fix) ---
         const finalHomeStats = {
             ...(geminiData.stats?.home || {}),
             ...(apiFootballHomeSeasonStats || {}),
         };
-        // Explicit GP (nagybetűs), gp (kisbetűs) és gamesPlayed kulcsok biztosítása.
         const homeGP = apiFootballHomeSeasonStats?.gamesPlayed || geminiData.stats?.home?.gp || 1;
         finalHomeStats.GP = homeGP;
         finalHomeStats.gp = homeGP;
@@ -496,31 +496,87 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
             ...(geminiData.stats?.away || {}),
             ...(apiFootballAwaySeasonStats || {}),
         };
-        // Explicit GP (nagybetűs), gp (kisbetűs) és gamesPlayed kulcsok biztosítása.
         const awayGP = apiFootballAwaySeasonStats?.gamesPlayed || geminiData.stats?.away?.gp || 1;
         finalAwayStats.GP = awayGP;
         finalAwayStats.gp = awayGP;
         finalAwayStats.gamesPlayed = awayGP;
 
-        const finalData = {
-            ...geminiData,
-            apiFootballData: { homeTeamId, awayTeamId, leagueId, fixtureId, fixtureDate },
-            h2h_structured: apiFootballH2HData || geminiData.h2h_structured,
-            stats: {
-                home: finalHomeStats,
-                away: finalAwayStats
-            }
+        finalData.stats = {
+            home: finalHomeStats,
+            away: finalAwayStats
         };
-        // --- *** KRITIKUS JAVÍTÁS VÉGE *** ---
+        console.log(`Végleges stats használatban: Home(GP:${homeGP}, GF:${finalHomeStats.goalsFor ?? 'N/A'}, GA:${finalHomeStats.goalsAgainst ?? 'N/A'}), Away(GP:${awayGP}, GF:${finalAwayStats.goalsFor ?? 'N/A'}, GA:${finalAwayStats.goalsAgainst ?? 'N/A'})`);
 
-        const result = { rawData: finalData, oddsData: fetchedOddsData, fromCache: false };
+        // --- 2. API-Football adatok (v25 logika [cite: 334-335]) ---
+        finalData.apiFootballData = {
+            homeTeamId, awayTeamId, leagueId, fixtureId, fixtureDate,
+            lineups: null, // Lineups (opcionális)
+            liveStats: null, // Live stats (opcionális)
+            seasonStats: { home: apiFootballHomeSeasonStats, away: apiFootballAwaySeasonStats }
+        };
+        finalData.sportsDbData = finalData.apiFootballData; // Kompatibilitás a v25-tel [cite: 335]
+
+        // --- 3. H2H (v25 logika [cite: 335]) ---
+        finalData.h2h_structured = apiFootballH2HData || (Array.isArray(geminiData?.h2h_structured) ? geminiData.h2h_structured : []);
+        finalData.h2h_summary = geminiData?.h2h_summary || "N/A";
+
+        // --- 4. Forma (v25 logika [cite: 337-339]) ---
+        const homeForm = apiFootballHomeSeasonStats?.form || geminiData?.form?.home_overall || "N/A";
+        const awayForm = apiFootballAwaySeasonStats?.form || geminiData?.form?.away_overall || "N/A";
+        finalData.form = { 
+            home_overall: homeForm, 
+            away_overall: awayForm, 
+            home_home: geminiData?.form?.home_home || "N/A", 
+            away_away: geminiData?.form?.away_away || "N/A" 
+        };
+        
+        // --- 5. Időjárás (v25 logika [cite: 325, 343]) ---
+        const stadiumLocation = geminiData?.contextual_factors?.stadium_location || "N/A";
+        const structuredWeather = await getStructuredWeatherData(stadiumLocation, decodedUtcKickoff);
+        if (!finalData.contextual_factors) finalData.contextual_factors = {};
+        finalData.contextual_factors.structured_weather = structuredWeather;
+        
+        // --- 6. Rich Context (v25 logika [cite: 349-355]) ---
+        const richContextParts = [
+             finalData.h2h_summary && finalData.h2h_summary !== "N/A" && `- H2H: ${finalData.h2h_summary}`,
+             finalData.contextual_factors.match_tension_index && finalData.contextual_factors.match_tension_index !== "N/A" && `- Tét: ${finalData.contextual_factors.match_tension_index}`,
+             (finalData.team_news?.home && finalData.team_news.home !== "N/A") || (finalData.team_news?.away && finalData.team_news.away !== "N/A") && `- Hírek: H:${finalData.team_news?.home||'-'}, V:${finalData.team_news?.away||'-'}`,
+             (finalData.absentees?.home?.length > 0 || finalData.absentees?.away?.length > 0) && `- Hiányzók: H:${finalData.absentees?.home?.map(p=>p?.name).join(', ')||'-'}, V:${finalData.absentees?.away?.map(p=>p?.name).join(', ')||'-'}`,
+             finalData.absentee_impact_analysis && finalData.absentee_impact_analysis !== "N/A" && `- Hiányzók Hatása: ${finalData.absentee_impact_analysis}`,
+             (finalData.form?.home_overall && finalData.form.home_overall !== "N/A") || (finalData.form?.away_overall && finalData.form.away_overall !== "N/A") && `- Forma: H:${finalData.form?.home_overall||'N/A'}, V:${finalData.form?.away_overall||'N/A'}`,
+             (finalData.tactics?.home?.style && finalData.tactics.home.style !== "N/A") || (finalData.tactics?.away?.style && finalData.tactics.away.style !== "N/A") && `- Taktika: H:${finalData.tactics?.home?.style||'?'}(${finalData.tactics?.home?.formation||'?'}), V:${finalData.tactics?.away?.style||'?'}(${finalData.tactics?.away?.formation||'?'})`,
+             structuredWeather && structuredWeather.description !== "N/A" ? `- Időjárás: ${structuredWeather.description}, ${structuredWeather.temperature_celsius ?? '?'}°C` : `- Időjárás: N/A`,
+             finalData.contextual_factors?.pitch_condition && finalData.contextual_factors.pitch_condition !== "N/A" && `- Pálya: ${finalData.contextual_factors.pitch_condition}`
+        ].filter(Boolean);
+        const richContext = richContextParts.length > 0 ? richContextParts.join('\n') : "N/A";
+
+        // --- 7. Végleges Visszatérési Objektum (v36) ---
+        // Ez most már tartalmazza az AnalysisFlow.js  által várt mezőket,
+        // ÉS a v35-ös oddsData-t.
+        const result = {
+             rawStats: finalData.stats,
+             leagueAverages: finalData.league_averages || {},
+             richContext,
+             advancedData: finalData.advancedData || { home: { xg: null }, away: { xg: null } },
+             form: finalData.form,
+             rawData: finalData,
+             oddsData: fetchedOddsData, // <-- Az ÚJ odds adatok
+             fromCache: false
+        };
+
+        // Hibakezelés (v25 logika [cite: 357-359])
+        if (typeof result.rawStats?.home?.gp !== 'number' || result.rawStats.home.gp <= 0 || typeof result.rawStats?.away?.gp !== 'number' || result.rawStats.away.gp <= 0) {
+            console.error(`KRITIKUS HIBA (${homeTeamName} vs ${awayTeamName}): Érvénytelen VÉGLEGES statisztikák (GP <= 0). HomeGP: ${result.rawStats?.home?.gp}, AwayGP: ${result.rawStats?.away?.gp}`);
+            throw new Error(`Kritikus statisztikák (GP <= 0) érvénytelenek.`);
+        }
+        
         scriptCache.set(ck, result);
-        console.log(`Sikeres adatgyűjtés (v35), cache mentve (${ck}).`);
+        console.log(`Sikeres adatgyűjtés (v36), cache mentve (${ck}).`);
         return result;
 
     } catch (e) {
-        console.error(`KRITIKUS HIBA a getRichContextualData (v35) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
-        throw new Error(`Adatgyűjtési hiba (v35): ${e.message}`);
+        console.error(`KRITIKUS HIBA a getRichContextualData (v36) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
+        throw new Error(`Adatgyűjtési hiba (v36): ${e.message}`);
     }
 }
 
@@ -594,12 +650,87 @@ export async function _getFixturesFromEspn(sport, days) {
     }
 }
 
-// --- PROMPT ---
-function PROMPT_V43(sport, homeTeamName, awayTeamName, apiFootballHomeSeasonStats, apiFootballAwaySeasonStats, apiFootballH2HData) {
-    return `Analyze the ${sport} match: "${homeTeamName}" vs "${awayTeamName}".
-Provide a single, valid JSON object.
-    Home Stats: ${JSON.stringify(apiFootballHomeSeasonStats)}
-    Away Stats: ${JSON.stringify(apiFootballAwaySeasonStats)}
-    H2H: ${JSON.stringify(apiFootballH2HData)}
-    OUTPUT FORMAT: Strict JSON.`;
+// --- PROMPT (v25 alapján [cite: 361-388]) ---
+function PROMPT_V43(sport, homeTeamName, awayTeamName, apiFootballHomeSeasonStats, apiFootballAwaySeasonStats, apiFootballH2HData, apiFootballLineups) {
+    let calculatedStatsInfo = "NOTE ON STATS: No reliable API-Football season stats available. Please use your best knowledge for the CURRENT SEASON/COMPETITION stats (gp, gf, ga).\n";
+    if (apiFootballHomeSeasonStats || apiFootballAwaySeasonStats) {
+        calculatedStatsInfo = `CRITICAL NOTE ON STATS: The following basic stats (gp, gf, ga, form) have been PRE-CALCULATED from API-Football.
+Use these exact numbers; do not rely on your internal knowledge for these specific stats.\n`;
+        if (apiFootballHomeSeasonStats) {
+            calculatedStatsInfo += `Home Calculated (GP=${apiFootballHomeSeasonStats.gamesPlayed ?? 'N/A'}, GF=${apiFootballHomeSeasonStats.goalsFor ?? 'N/A'}, GA=${apiFootballHomeSeasonStats.goalsAgainst ?? 'N/A'}, Form=${apiFootballHomeSeasonStats.form ?? 'N/A'})\n`;
+        } else { calculatedStatsInfo += `Home Calculated: N/A\n`; }
+        if (apiFootballAwaySeasonStats) {
+            calculatedStatsInfo += `Away Calculated (GP=${apiFootballAwaySeasonStats.gamesPlayed ?? 'N/A'}, GF=${apiFootballAwaySeasonStats.goalsFor ?? 'N/A'}, GA=${apiFootballAwaySeasonStats.goalsAgainst ?? 'N/A'}, Form=${apiFootballAwaySeasonStats.form ?? 'N/A'})\n`;
+        } else { calculatedStatsInfo += `Away Calculated: N/A\n`; }
+    }
+    let h2hInfo = "NOTE ON H2H: No reliable H2H data available from API-FOOTBALL. Use your general knowledge for H2H summary and potentially older structured data.\n";
+    if (apiFootballH2HData && Array.isArray(apiFootballH2HData) && apiFootballH2HData.length > 0) {
+        const h2hString = apiFootballH2HData.map(m => `${m.date} (${m.competition}): ${m.home_team} ${m.score} ${m.away_team}`).join('; ');
+        h2hInfo = `CRITICAL H2H DATA (from API-FOOTBALL, Last ${apiFootballH2HData.length}): ${h2hString}\nUse THIS data to generate the h2h_summary and h2h_structured fields.
+Do not use your internal knowledge for H2H.\n`;
+        h2hInfo += `Structured H2H (for JSON output): ${JSON.stringify(apiFootballH2HData)}\n`;
+    }
+    let lineupInfo = "NOTE ON LINEUPS: No API-Football lineup data available (this is normal if the match is far away). Analyze absentees and formation based on your general knowledge and recent news.\n";
+    if (apiFootballLineups && apiFootballLineups.length > 0) {
+        const relevantLineupData = apiFootballLineups.map(t => ({
+             team: t.team?.name,
+             formation: t.formation,
+             startXI: t.startXI?.map(p => p.player?.name),
+             substitutes: t.substitutes?.map(p => p.player?.name)
+        }));
+        lineupInfo = `CRITICAL LINEUP DATA (from API-Football): ${JSON.stringify(relevantLineupData)}\nUse THIS data *first* to determine absentees, key players, and formation.
+This is more reliable than general knowledge.\n`;
+    }
+    return `CRITICAL TASK: Analyze the ${sport} match: "${homeTeamName}" (Home) vs "${awayTeamName}" (Away).
+Provide a single, valid JSON object. Focus ONLY on the requested fields.
+**CRITICAL: You MUST use the latest factual data provided below (API-Football) over your general knowledge.**
+${calculatedStatsInfo}
+${h2hInfo}
+${lineupInfo}
+AVAILABLE FACTUAL DATA (From API-Football):
+- Home Season Stats: ${JSON.stringify(apiFootballHomeSeasonStats || 'N/A')}
+- Away Season Stats: ${JSON.stringify(apiFootballAwaySeasonStats || 'N/A')}
+- Recent H2H: ${h2hInfo.substring(0, 500)}... (See full data above if provided)
+- Lineups: ${lineupInfo.substring(0, 500)}... (See full data above if provided)
+
+REQUESTED ANALYSIS (Fill in based on your knowledge AND the provided factual data):
+1. Basic Stats: gp, gf, ga.
+**USE THE PRE-CALCULATED STATS PROVIDED ABOVE.** If not available, use your knowledge.
+2. H2H: **Generate 'h2h_summary' AND 'h2h_structured' based PRIMARILY on the API-FOOTBALL H2H DATA provided above.**
+3. Team News & Absentees: Key absentees (name, importance, role) + news summary + impact analysis.
+**(CRITICAL: Use the API-Football LINEUP DATA first. If a key player is missing from the 'startXI' or 'substitutes', list them as an absentee).**
+4. Recent Form: W-D-L strings (overall).
+**(CRITICAL: Use the 'Form' string from the API-Football Season Stats provided above.)** Provide home_home and away_away based on general knowledge if season stats are limited.
+5. Key Players: name, role, recent key stat. **(Use API-Football LINEUP data to see who is STARTING).**
+6. Contextual Factors: Stadium Location (with lat/lon if possible), Match Tension Index (Low/Medium/High/Extreme/Friendly), Pitch Condition, Referee (name, style/avg cards if known).
+--- SPECIFIC DATA BY SPORT ---
+IF soccer:
+  7. Tactics: Style (e.g., Possession, Counter, Pressing) + formation.
+**(CRITICAL: Infer formation from the 'formation' field in the API-Football LINEUP data. If N/A, use your knowledge but state it's an estimate).**
+  8. Tactical Patterns: { home: ["pattern1", "pattern2"], away: [...] }.
+  9. Key Matchups: Identify 1-2 key positional or player battles.
+IF hockey:
+  7. Advanced Stats: Team { Corsi_For_Pct, High_Danger_Chances_For_Pct }, Goalie { GSAx }.
+IF basketball:
+  7. Advanced Styles: Shot Distribution { home: "...", away: "..." }, Defensive Style { home: "...", away: "..." }.
+OUTPUT FORMAT: Strict JSON as defined below. Use "N/A" or null appropriately.
+STRUCTURE: {
+  "stats":{ "home":{ "gp": <number_or_null>, "gf": <number_or_null>, "ga": <number_or_null> }, "away":{ "gp": <number_or_null>, "gf": <number_or_null>, "ga": <number_or_null> } },
+  "h2h_summary":"...",
+  "h2h_structured":[...],
+  "team_news":{ "home":"...", "away":"..." },
+  "absentees":{ "home":[{name, importance, role}], "away":[] },
+  "absentee_impact_analysis":"...",
+  "form":{ "home_overall":"...", "away_overall":"...", "home_home":"...", "away_away":"..." },
+  "key_players":{ "home":[{name, role, stat}], "away":[] },
+  "contextual_factors":{ "stadium_location":"...", "match_tension_index":"...", "pitch_condition":"...", "referee":{ "name":"...", "style":"..." } },
+  "tactics":{ "home":{ "style":"...", "formation":"..." }, "away":{...} },
+  "tactical_patterns":{ "home":[], "away":[] },
+  "key_matchups":{ "description":"..." },
+  "advanced_stats_team":{ "home":{...}, "away":{...} },
+  "advanced_stats_goalie":{ "home_goalie":{...}, "away_goalie":{...} },
+  "shot_distribution":{ "home":"...", "away":"..." },
+  "defensive_style":{ "home":"...", "away":"..." }, 
+  "league_averages": { /* Optional: avg_goals_per_game, etc. */ }
+}`;
 }
