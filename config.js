@@ -1,15 +1,13 @@
-// --- VÉGLEGES config.js (v30.2-javított, név-hozzárendeléssel) ---
+// --- VÉGLEGES config.js (v37 - API-Football Név Térképezés) ---
 
 import dotenv from 'dotenv';
 dotenv.config();
 
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* KRITIKUS JAVÍTÁS: Hozzáadva a Hellas Verona, AS Roma és Como
-* név-hozzárendelések az API-Football és Odds API pontosabb
-* működéséhez a logok alapján.
-*
-* v30.2 JAVÍTÁS: SyntaxError javítva ("slug:g:" -> "slug:")
+* v37 JAVÍTÁS: Hozzáadva az "LAFC" és "Austin FC" az
+* APIFOOTBALL_TEAM_NAME_MAP-hez, hogy megoldja a csapat ID
+* keresési hibát (log: image_417255.png).
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
@@ -24,7 +22,7 @@ export const SHEET_URL = process.env.SHEET_URL;
 export const APIFOOTBALL_KEY = process.env.APIFOOTBALL_KEY;
 export const APIFOOTBALL_HOST = process.env.APIFOOTBALL_HOST;
 
-// Odds API specifikus kulcsok
+// Odds API specifikus kulcsok (MÁR NINCSENEK HASZNÁLATBAN v35 ÓTA)
 export const ODDS_API_KEY = process.env.ODDS_API_KEY;
 export const ODDS_API_HOST = process.env.ODDS_API_HOST;
 
@@ -32,29 +30,22 @@ export const ODDS_API_HOST = process.env.ODDS_API_HOST;
 
 // Bővítsd ezt a listát, ha további eltéréseket találsz az Odds API logokban!
 export const ODDS_TEAM_NAME_MAP = {
-    // Kulcs: Az ESPN/Frontend által használt név (kisbetűvel)
-    // Érték: A The Odds API által használt név
+    // Ez a térkép már nincs aktívan használatban a v35 óta,
+    // de itt hagyjuk jövőbeli referenciaként.
     'schalke': 'FC Schalke 04',
     'bremen': 'Werder Bremen',
     'manchester city': 'Man City',
     'manchester united': 'Man United',
     'spurs': 'Tottenham Hotspur',
     'tottenham': 'Tottenham Hotspur',
-    'real madrid': 'Real Madrid',
-    'atletico madrid': 'Atletico Madrid',
-    'bayern munich': 'Bayern Munich',
     'as roma': 'Roma',
     'hellas verona': 'Verona',
     'como': 'Como',
-
-    // --- JAVÍTVA: Hozzáadva a Bologna és Torino (PÉLDA nevek, ellenőrizni kell az API-ban!) ---
-    'bologna': 'Bologna FC',
-    'torino': 'Torino FC',
 };
 
 // Bővítsd ezt a listát, ha az API-Football tévesen azonosít egy csapatot!
 export const APIFOOTBALL_TEAM_NAME_MAP = {
-    // Kulcs: A frontendről érkező név (kisbetűvel)
+    // Kulcs: A frontendről/ESPN-ről érkező név (kisbetűvel)
     // Érték: A pontos, hivatalos csapatnév, amire az API-Football keresni fog
     'spurs': 'Tottenham Hotspur',
     'tottenham': 'Tottenham Hotspur',
@@ -63,6 +54,10 @@ export const APIFOOTBALL_TEAM_NAME_MAP = {
     'inter': 'Inter Milan', // Gyakori rövidítés
     'wolves': 'Wolverhampton Wanderers',
     'hellas verona': 'Hellas Verona', // Megakadályozza, hogy az U20-as csapatot találja meg
+    
+    // --- V37 JAVÍTÁS (image_417255.png alapján) ---
+    'lafc': 'Los Angeles FC',
+    'austin fc': 'Austin FC'
 };
 
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
@@ -104,7 +99,6 @@ export const SPORT_CONFIG = {
             "UEFA European Championship": { slug: "uefa.euro", country: "World" },
             "UEFA Nations League": { slug: "uefa.nations", country: "World" },
             "CAF World Cup Qualifying": { slug: "fifa.worldq.caf", country: "World" },
-            // *** ITT VOLT A HIBA, JAVÍTVA ***
             "AFC World Cup Qualifying": { slug: "fifa.worldq.afc", country: "World" },
             "UEFA World Cup Qualifying": { slug: "fifa.worldq.uefa", country: "World" },
             "Brazil Serie A": { slug: "bra.1", country: "Brazil" },
