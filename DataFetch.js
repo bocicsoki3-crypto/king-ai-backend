@@ -35,7 +35,7 @@ const __dirname = path.dirname(__filename);
 * - HITELESÍTÉS JAVÍTVA: Külön API kulcsok és hostok kezelése
 * a helyes, config.js-ben definiált változónevekkel.
 * - EXPORT HIBA JAVÍTVA: A hiányzó 'export' kulcsszavak pótolva
-* a 'getOptimizedOddsData' és más funkciók előtt.
+* a 'getOptimizedOddsData', 'findMainTotalsLine' és más funkciók előtt.
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY ---
@@ -55,7 +55,8 @@ async function makeRequest(url, config = {}, retries = 1) {
             if (method === 'POST') {
                 response = await axios.post(url, currentConfig.data || {}, currentConfig);
             } else {
-                response = await axios.get(url, { ...currentConfig });
+                // Axios expects the URL to be part of the config object for GET requests
+                response = await axios({ url, ...currentConfig });
             }
 
             if (response.status < 200 || response.status >= 300) {
@@ -317,7 +318,6 @@ async function getOddsData(homeTeam, awayTeam) {
     return { current: currentOdds, allMarkets: marketsData };
 }
 
-// v30.1 JAVÍTÁS: HIÁNYZÓ EXPORT PÓTOLVA
 export async function getOptimizedOddsData(homeTeam, awayTeam, sport) {
     const key = `${homeTeam}${awayTeam}${sport}`.toLowerCase().replace(/\s+/g, '');
     const cacheKey = `live_odds_v30_rapidapi_${key}`;
@@ -344,9 +344,57 @@ function generateTeamNameVariations(teamName) {
     return Array.from(variations);
 }
 
+export function findMainTotalsLine(oddsData) {
+    const defaultLine = 2.5;
+    if (!oddsData || !oddsData.allMarkets) {
+        return defaultLine;
+    }
+    const totalsMarket = oddsData.allMarkets.find(m => m.market_name === 'Goals Over/Under');
+
+    if (!totalsMarket?.market_books?.[0]) {
+        return defaultLine;
+    }
+    
+    const linesAvailable = [...new Set(oddsData.allMarkets
+        .filter(m => m.market_name === 'Goals Over/Under')
+        .map(m => m.value)
+        .filter(v => typeof v === 'number' && !isNaN(v))
+    )];
+    
+    if (linesAvailable.length === 0) {
+        return defaultLine;
+    }
+
+    let closestPair = { diff: Infinity, line: defaultLine };
+    for (const line of linesAvailable) {
+        const marketForLine = oddsData.allMarkets.find(m => m.market_name === 'Goals Over/Under' && m.value === line);
+        const book = marketForLine?.market_books?.[0];
+        if (book) {
+            const overPrice = book.outcome_0;
+            const underPrice = book.outcome_1;
+            if (overPrice > 1 && underPrice > 1) {
+                const diff = Math.abs(overPrice - underPrice);
+                if (diff < closestPair.diff) {
+                    closestPair = { diff, line: line };
+                }
+            }
+        }
+    }
+
+    if (closestPair.diff < 0.5) {
+        return closestPair.line;
+    }
+
+    const numericDefaultLine = 2.5;
+    linesAvailable.sort((a, b) => Math.abs(a - numericDefaultLine) - Math.abs(b - numericDefaultLine));
+    return linesAvailable[0];
+}
+
+
 // --- FŐ ADATGYŰJTŐ FUNKCIÓ ---
 export async function getRichContextualData(sport, homeTeamName, awayTeamName, leagueName, utcKickoff) {
-    const ck = `rich_context_v43_apif_${sport}_${encodeURIComponent(homeTeamName)}_${encodeURIComponent(awayTeamName)}`;
+    const teamNames = [homeTeamName, awayTeamName].sort();
+    const ck = `rich_context_v43_apif_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
     const cached = scriptCache.get(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
@@ -398,7 +446,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         const geminiJsonString = await _callGemini(PROMPT_V43(
              sport, homeTeamName, awayTeamName,
              apiFootballHomeSeasonStats, apiFootballAwaySeasonStats,
-             apiFootballH2HData, null
+             apiFootballH2HData
         ));
         const geminiData = JSON.parse(geminiJsonString);
         
