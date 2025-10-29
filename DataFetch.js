@@ -1,6 +1,6 @@
-// --- VÉGLEGES INTEGRÁLT (v33 - GP Fix & Odds Lister) datafetch.js ---
-// - V33 JAVÍTÁS: A 'getRichContextualData' most már explicit NAGYBETŰS 'GP' kulcsot is generál a modellező motor számára.
-// - V33 JAVÍTÁS: Az 'Odds API Debugger' most már nem keres, hanem listázza az első 15 futball eseményt, hogy lássuk, mit ad vissza az API.
+// --- VÉGLEGES INTEGRÁLT (v34 - Bombabiztos GP Fix & Odds Sport Lister) datafetch.js ---
+// - V34 JAVÍTÁS: A 'getRichContextualData' most már bombabiztos módon ad értéket a 'GP' (nagybetűs), 'gp' (kisbetűs) és 'gamesPlayed' kulcsoknak.
+// - V34 JAVÍTÁS: Az 'Odds API Debugger' mostantól az első 20 esemény sportágát listázza, hogy kiderítsük, miért hiányzik a futball.
 
 import axios from 'axios';
 import NodeCache from 'node-cache';
@@ -28,10 +28,10 @@ const __dirname = path.dirname(__filename);
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v33 (2025-10-29) - GP Fix és Odds Lister
-* - STATISZTIKA JAVÍTÁS: Explicit 'GP' (nagybetűs) mező hozzáadása
-* a 'finalData' objektumhoz a modellező kompatibilitása érdekében.
-* - ODDS DEBUGGER: Az Odds API hívás most listázza a kapott eseményeket.
+* VERZIÓ: v34 (2025-10-29) - GP Fix és Odds Sport Lister
+* - STATISZTIKA JAVÍTÁS: Bombabiztos 'GP' (nagybetűs) mező hozzáadása
+* a 'finalData' objektumhoz a GP:undefined hiba elhárítására.
+* - ODDS DEBUGGER: Az Odds API hívás most listázza a kapott események sportágát.
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY ---
@@ -295,23 +295,23 @@ async function getOddsData(homeTeam, awayTeam) {
 
     const events = response.data.data;
 
-    // --- *** V33 DEBUGGER KÓD KEZDETE (Javított) *** ---
-    // Kiírja az első 15 futball eseményt, hogy lássuk, mit kapunk az API-tól.
+    // --- *** V34 DEBUGGER KÓD KEZDETE (Javított) *** ---
+    // Kiírja az első 20 esemény sportágát (slug), hogy lássuk, mit kapunk.
     try {
-        const footballEvents = events
-            .filter(event => event.sport?.slug === 'football' && event.home && event.away)
-            .map(event => `${event.home} vs ${event.away} (Liga: ${event.league?.name || 'N/A'})`);
+        const sportSlugs = events
+            .slice(0, 20)
+            .map(event => event.sport?.slug || 'NO_SLUG');
         
-        console.log(`[ODDS DEBUG v33] Az API-tól kapott első 15 futball esemény:`);
-        if (footballEvents.length > 0) {
-            console.log(footballEvents.slice(0, 15));
+        console.log(`[ODDS DEBUG v34] Az API-tól kapott első 20 esemény SPORTÁG SLUG-ja:`);
+        if (sportSlugs.length > 0) {
+            console.log(sportSlugs);
         } else {
-            console.log("Nem található 'football' esemény a listában.");
+            console.log("Nem található egyetlen esemény sem a listában.");
         }
     } catch (e) {
-        console.warn(`[ODDS DEBUG v33] Hiba a debug nevek gyűjtése során: ${e.message}`);
+        console.warn(`[ODDS DEBUG v34] Hiba a debug sportágak gyűjtése során: ${e.message}`);
     }
-    // --- *** V33 DEBUGGER KÓD VÉGE *** ---
+    // --- *** V34 DEBUGGER KÓD VÉGE *** ---
 
     const homeVariations = generateTeamNameVariations(homeTeam);
     const awayVariations = generateTeamNameVariations(awayTeam);
@@ -483,22 +483,28 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         ));
         let geminiData = geminiJsonString ? JSON.parse(geminiJsonString) : {};
 
-        // --- *** KRITIKUS JAVÍTÁS KEZDETE (v33 - GP Fix) *** ---
-        // Adatok összefésülése, explicit NAGYBETŰS 'GP' kulccsal.
+        // --- *** KRITIKUS JAVÍTÁS KEZDETE (v34 - GP Fix) *** ---
+        // Bombabiztos adategyesítés a 'GP:undefined' hiba elhárítására.
         
         const finalHomeStats = {
             ...(geminiData.stats?.home || {}),
             ...(apiFootballHomeSeasonStats || {}),
         };
-        // Explicit GP (nagybetűs) hozzáadása a modellező motor számára
-        finalHomeStats.GP = apiFootballHomeSeasonStats?.gamesPlayed || geminiData.stats?.home?.gp || 1;
+        // Explicit GP (nagybetűs), gp (kisbetűs) és gamesPlayed kulcsok biztosítása.
+        const homeGP = apiFootballHomeSeasonStats?.gamesPlayed || geminiData.stats?.home?.gp || 1;
+        finalHomeStats.GP = homeGP;
+        finalHomeStats.gp = homeGP;
+        finalHomeStats.gamesPlayed = homeGP;
 
         const finalAwayStats = {
             ...(geminiData.stats?.away || {}),
             ...(apiFootballAwaySeasonStats || {}),
         };
-        // Explicit GP (nagybetűs) hozzáadása a modellező motor számára
-        finalAwayStats.GP = apiFootballAwaySeasonStats?.gamesPlayed || geminiData.stats?.away?.gp || 1;
+        // Explicit GP (nagybetűs), gp (kisbetűs) és gamesPlayed kulcsok biztosítása.
+        const awayGP = apiFootballAwaySeasonStats?.gamesPlayed || geminiData.stats?.away?.gp || 1;
+        finalAwayStats.GP = awayGP;
+        finalAwayStats.gp = awayGP;
+        finalAwayStats.gamesPlayed = awayGP;
 
         const finalData = {
             ...geminiData,
@@ -509,7 +515,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
                 away: finalAwayStats
             }
         };
-        // --- *** KRITIKUS JAVÍTÁS VÉGE (v33) *** ---
+        // --- *** KRITIKUS JAVÍTÁS VÉGE (v34) *** ---
 
         const result = { rawData: finalData, oddsData: fetchedOddsData, fromCache: false };
         scriptCache.set(ck, result);
