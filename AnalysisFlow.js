@@ -1,7 +1,7 @@
 import NodeCache from 'node-cache'; // CacheService helyett
 import { SPORT_CONFIG } from './config.js';
 // Konfiguráció importálása
-import { getOptimizedOddsData, findMainTotalsLine, getRichContextualData } from './DataFetch.js';
+import { findMainTotalsLine, getRichContextualData } from './DataFetch.js';
 // Adatgyűjtő funkciók
 import {
     estimateXG,
