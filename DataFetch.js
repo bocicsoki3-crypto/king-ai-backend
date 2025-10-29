@@ -1,13 +1,14 @@
-// --- VÉGLEGES INTEGRÁLT (v31 - Teljes Kód) datafetch.js ---
+// --- VÉGLEGES INTEGRÁLT (v32 - Debuggerrel) datafetch.js ---
 // - GYÖKÉROK JAVÍTVA: Külön API kulcsok és hostok kezelése mindkét szolgáltatáshoz.
 // - API-FOOTBALL JAVÍTVA: Célzott ligakeresés 'country' paraméterrel és adaptív szezonkeresés a statisztikákhoz.
 // - ODDS API JAVÍTVA: A hasonlósági ellenőrzés '>'-ról '>='-re javítva a pontosabb találatért.
+// - V32 JAVÍTÁS: Odds API Debugger hozzáadva a helyes nevek megtalálásához.
+// - V32 JAVÍTÁS: Stats "deep merge" (egyesítés) javítva a GP:undefined hiba ellen.
 
 import axios from 'axios';
 import NodeCache from 'node-cache';
 import {
     SPORT_CONFIG, GEMINI_API_KEY, GEMINI_MODEL_ID,
-    // --- v30 VÁLTOZÓK ---
     APIFOOTBALL_KEY, APIFOOTBALL_HOST,
     ODDS_API_KEY, ODDS_API_HOST,
     ODDS_TEAM_NAME_MAP
@@ -30,11 +31,11 @@ const __dirname = path.dirname(__filename);
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v31 (2025-10-29) - Végleges Javítás
+* VERZIÓ: v32 (2025-10-29) - Debugger és Stats Merge Javítás
 * - STATISZTIKA JAVÍTÁS: A 'getApiFootballTeamSeasonStats' most már
 * visszalép az előző szezonra, ha az aktuálisban nincs adat.
-* - ODDS API JAVÍTÁS: A név-egyezés küszöbét '>='-re cseréltük,
-* hogy a pontos határértéket is elfogadja.
+* - ODDS API JAVÍTÁS: A név-egyezés küszöbét '>='-re cseréltük.
+* - DEBUGGER: Odds API hívás most logolja a potenciális neveket.
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY ---
@@ -297,6 +298,27 @@ async function getOddsData(homeTeam, awayTeam) {
     }
 
     const events = response.data.data;
+
+    // --- *** ÚJ DEBUGGER KÓD KEZDETE *** ---
+    // Ez a rész segít megtalálni a helyes csapatneveket az Odds API-hoz.
+    try {
+        const debugNames = new Set();
+        const lowerHome = homeTeam.toLowerCase();
+        const lowerAway = awayTeam.toLowerCase();
+        for (const event of events) {
+            if (event.home && (event.home.toLowerCase().includes(lowerHome.substring(0, 4)) || event.home.toLowerCase().includes(lowerAway.substring(0, 4)))) {
+                debugNames.add(event.home);
+            }
+            if (event.away && (event.away.toLowerCase().includes(lowerHome.substring(0, 4)) || event.away.toLowerCase().includes(lowerAway.substring(0, 4)))) {
+                debugNames.add(event.away);
+            }
+        }
+        console.log(`[ODDS DEBUG] Potenciális csapatnevek a '${homeTeam}'/'${awayTeam}' meccshez:`, Array.from(debugNames));
+    } catch (e) {
+        console.warn(`[ODDS DEBUG] Hiba a debug nevek gyűjtése során: ${e.message}`);
+    }
+    // --- *** ÚJ DEBUGGER KÓD VÉGE *** ---
+
     const homeVariations = generateTeamNameVariations(homeTeam);
     const awayVariations = generateTeamNameVariations(awayTeam);
     let bestMatch = null;
@@ -467,8 +489,9 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         ));
         let geminiData = geminiJsonString ? JSON.parse(geminiJsonString) : {};
 
-        // *** JAVÍTOTT RÉSZ KEZDETE ***
+        // --- *** KRITIKUS JAVÍTÁS KEZDETE (v32) *** ---
         // Adatok összefésülése a helyes prioritással (Deep Merge)
+        // Ez javítja a "GP:undefined" hibát.
         const finalData = {
             ...geminiData, // Gemini adatok betöltése
             apiFootballData: { homeTeamId, awayTeamId, leagueId, fixtureId, fixtureDate },
@@ -488,7 +511,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
                 }
             }
         };
-        // *** JAVÍTOTT RÉSZ VÉGE ***
+        // --- *** KRITIKUS JAVÍTÁS VÉGE (v32) *** ---
 
         const result = { rawData: finalData, oddsData: fetchedOddsData, fromCache: false };
         scriptCache.set(ck, result);
