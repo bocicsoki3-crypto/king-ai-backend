@@ -79,7 +79,6 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         if (!sportConfig) {
             throw new Error(`Nincs konfiguráció a(z) '${sport}' sporthoz.`);
         }
-        let oddsData = await getOptimizedOddsData(home, away, sport, sportConfig, openingOdds, leagueName);
         if (!oddsData) {
             console.warn(`Figyelmeztetés: Nem sikerült szorzó adatokat lekérni ${home} vs ${away} meccshez.`);
             oddsData = { current: [], allMarkets: [], fromCache: false, sport: sport };
