@@ -57,11 +57,11 @@ export const APIFOOTBALL_TEAM_NAME_MAP = {
     
     // --- V37 JAVÍTÁS (image_4b7982.png alapján) ---
     'lafc': 'Los Angeles FC',
-    'austin fc': 'Austin FC'
-    'ceará': 'Ceara SC'
-'atletico junior': 'Junior'
-'independiente santa fe': 'Santa Fe'
-'independiente medellin': 'Independiente Medellin'
+    'austin fc': 'Austin FC',
+    'ceará': 'Ceara SC',
+'atletico junior': 'Junior',
+'independiente santa fe': 'Santa Fe',
+'independiente medellin': 'Independiente Medellin',
 };
 
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
