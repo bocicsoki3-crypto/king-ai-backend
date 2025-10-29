@@ -1,4 +1,4 @@
-// --- VÉGLEGES config.js (v30.1-kompatibilis, név-hozzárendeléssel) ---
+// --- VÉGLEGES config.js (v30.2-javított, név-hozzárendeléssel) ---
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -8,6 +8,8 @@ dotenv.config();
 * KRITIKUS JAVÍTÁS: Hozzáadva a Hellas Verona, AS Roma és Como
 * név-hozzárendelések az API-Football és Odds API pontosabb
 * működéséhez a logok alapján.
+*
+* v30.2 JAVÍTÁS: SyntaxError javítva ("slug:g:" -> "slug:")
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
@@ -102,7 +104,8 @@ export const SPORT_CONFIG = {
             "UEFA European Championship": { slug: "uefa.euro", country: "World" },
             "UEFA Nations League": { slug: "uefa.nations", country: "World" },
             "CAF World Cup Qualifying": { slug: "fifa.worldq.caf", country: "World" },
-            "AFC World Cup Qualifying": { slug:g: "fifa.worldq.afc", country: "World" },
+            // *** ITT VOLT A HIBA, JAVÍTVA ***
+            "AFC World Cup Qualifying": { slug: "fifa.worldq.afc", country: "World" },
             "UEFA World Cup Qualifying": { slug: "fifa.worldq.uefa", country: "World" },
             "Brazil Serie A": { slug: "bra.1", country: "Brazil" },
             "Brazil Serie B": { slug: "bra.2", country: "Brazil" },
