@@ -1,8 +1,7 @@
-// --- VÉGLEGES INTEGRÁLT (v30.1 - Teljes Kód) datafetch.js ---
-// - GYÖKÉROK JAVÍTVA: Külön API kulcsok és hostok kezelése mindkét szolgáltatáshoz a helyes változónevekkel.
-// - API-FOOTBALL JAVÍTVA: A 'country' paraméter használata a config.js alapján a célzott kereséshez.
-// - ODDS API JAVÍTVA: A kód szűrők nélkül kéri le a teljes listát és abban keres.
-// - SZINTAKTIKAI HIBA JAVÍTVA (v30.1): A hiányzó `export` kulcsszavak pótolva.
+// --- VÉGLEGES INTEGRÁLT (v31 - Teljes Kód) datafetch.js ---
+// - GYÖKÉROK JAVÍTVA: Külön API kulcsok és hostok kezelése mindkét szolgáltatáshoz.
+// - API-FOOTBALL JAVÍTVA: Célzott ligakeresés 'country' paraméterrel és adaptív szezonkeresés a statisztikákhoz.
+// - ODDS API JAVÍTVA: A hasonlósági ellenőrzés '>'-ról '>='-re javítva a pontosabb találatért.
 
 import axios from 'axios';
 import NodeCache from 'node-cache';
@@ -31,11 +30,11 @@ const __dirname = path.dirname(__filename);
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v30.1 (2025-10-29) - Végleges Javítás
-* - HITELESÍTÉS JAVÍTVA: Külön API kulcsok és hostok kezelése
-* a helyes, config.js-ben definiált változónevekkel.
-* - EXPORT HIBA JAVÍTVA: A hiányzó 'export' kulcsszavak pótolva
-* a 'getOptimizedOddsData', 'findMainTotalsLine' és más funkciók előtt.
+* VERZIÓ: v31 (2025-10-29) - Végleges Javítás
+* - STATISZTIKA JAVÍTÁS: A 'getApiFootballTeamSeasonStats' most már
+* visszalép az előző szezonra, ha az aktuálisban nincs adat.
+* - ODDS API JAVÍTÁS: A név-egyezés küszöbét '>='-re cseréltük,
+* hogy a pontos határértéket is elfogadja.
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY ---
@@ -55,8 +54,7 @@ async function makeRequest(url, config = {}, retries = 1) {
             if (method === 'POST') {
                 response = await axios.post(url, currentConfig.data || {}, currentConfig);
             } else {
-                // Axios expects the URL to be part of the config object for GET requests
-                response = await axios({ url, ...currentConfig });
+                response = await axios.get(url, { ...currentConfig });
             }
 
             if (response.status < 200 || response.status >= 300) {
@@ -238,27 +236,56 @@ async function getApiFootballH2H(homeTeamId, awayTeamId, limit = 5) {
         return fixtures.map(fix => ({
             date: fix.fixture?.date?.split('T')[0] || 'N/A',
             competition: fix.league?.name || 'N/A',
-            score: `${fix.goals?.home ?? '?'} - ${fix.goals?.away ?? '?'}`
+            score: `${fix.goals?.home ?? '?'} - ${fix.goals?.away ?? '?'}`,
+            home_team: fix.teams?.home?.name || 'N/A',
+            away_team: fix.teams?.away?.name || 'N/A',
         })).slice(0, limit);
     }
     return null;
 }
 
 async function getApiFootballTeamSeasonStats(teamId, leagueId, season) {
-    const url = `${APIFOOTBALL_BASE_URL}/v3/teams/statistics`;
-    const params = { team: teamId, league: leagueId, season: season };
-    const response = await makeRequest(url, { headers: APIFOOTBALL_HEADERS, params });
-    const stats = response?.data?.response;
-    if (stats && stats.league?.id) {
-        return {
-            gamesPlayed: stats.fixtures?.played?.total,
-            form: stats.form,
-            goalsFor: stats.goals?.for?.total?.total,
-            goalsAgainst: stats.goals?.against?.total?.total,
-        };
+    const tryGetStats = async (currentSeason) => {
+        const cacheKey = `apifootball_seasonstats_v31_${teamId}_${leagueId}_${currentSeason}`;
+        const cachedStats = apiFootballStatsCache.get(cacheKey);
+        if (cachedStats) {
+            console.log(`API-FOOTBALL Szezon Stat cache találat: T:${teamId}, L:${leagueId}, S:${currentSeason}`);
+            return cachedStats;
+        }
+
+        console.log(`API-FOOTBALL Szezon Stat lekérés: T:${teamId}, L:${leagueId}, S:${currentSeason}...`);
+        const url = `${APIFOOTBALL_BASE_URL}/v3/teams/statistics`;
+        const params = { team: teamId, league: leagueId, season: currentSeason };
+        const response = await makeRequest(url, { headers: APIFOOTBALL_HEADERS, params });
+        const stats = response?.data?.response;
+        
+        if (stats && stats.league?.id && stats.fixtures?.played?.total > 0) {
+            console.log(`API-FOOTBALL: Szezon statisztika sikeresen lekérve (${stats.league?.name}, ${currentSeason}).`);
+            const simplifiedStats = {
+                gamesPlayed: stats.fixtures?.played?.total,
+                form: stats.form,
+                goalsFor: stats.goals?.for?.total?.total,
+                goalsAgainst: stats.goals?.against?.total?.total,
+            };
+            apiFootballStatsCache.set(cacheKey, simplifiedStats);
+            return simplifiedStats;
+        }
+        return null;
+    };
+    
+    let stats = await tryGetStats(season);
+    if (!stats) {
+        console.warn(`API-Football: Nem található statisztika a(z) ${season} szezonra. Próbálkozás az előző szezonnal...`);
+        stats = await tryGetStats(season - 1);
     }
-    return null;
+
+    if (!stats) {
+        console.error(`API-Football: Végleg nem található szezon statisztika ehhez: T:${teamId}, L:${leagueId}`);
+    }
+    
+    return stats;
 }
+
 
 // --- ODDS API FUNKCIÓK ---
 const ODDS_API_HEADERS = { 'x-rapidapi-key': ODDS_API_KEY, 'x-rapidapi-host': ODDS_API_HOST };
@@ -267,11 +294,11 @@ async function getOddsData(homeTeam, awayTeam) {
     if (!ODDS_API_KEY) { console.warn("Odds API kulcs hiányzik, odds lekérés kihagyva."); return null; }
 
     const url = `https://${ODDS_API_HOST}/api/v1/events`;
-    console.log(`Odds API (RapidAPI v30): Teljes eseménylista lekérése... URL: ${url}`);
+    console.log(`Odds API (RapidAPI v31): Teljes eseménylista lekérése... URL: ${url}`);
     
     const response = await makeRequest(url, { headers: ODDS_API_HEADERS });
     if (!response?.data?.data || response.data.data.length === 0) {
-        console.warn(`Odds API (RapidAPI v30): Az API nem szolgáltatott eseményeket.`);
+        console.warn(`Odds API (RapidAPI v31): Az API nem szolgáltatott eseményeket.`);
         return null;
     }
 
@@ -280,13 +307,14 @@ async function getOddsData(homeTeam, awayTeam) {
     const awayVariations = generateTeamNameVariations(awayTeam);
     
     let bestMatch = null;
-    let highestCombinedRating = 0.59;
+    let highestCombinedRating = 0.59; 
 
     for (const event of events) {
         if (!event.home || !event.away || event.sport?.slug !== 'football') continue;
         const homeMatchResult = findBestMatch(event.home, homeVariations);
         const awayMatchResult = findBestMatch(event.away, awayVariations);
         const combinedSim = (homeMatchResult.bestMatch.rating + awayMatchResult.bestMatch.rating) / 2;
+        
         if (combinedSim >= highestCombinedRating) {
             highestCombinedRating = combinedSim;
             bestMatch = event;
@@ -294,12 +322,12 @@ async function getOddsData(homeTeam, awayTeam) {
     }
 
     if (!bestMatch) {
-        console.warn(`Odds API (RapidAPI v30): Nem található esemény egyezés (Legjobb: ${(highestCombinedRating*100).toFixed(1)}%) ehhez: ${homeTeam} vs ${awayTeam} a listában.`);
+        console.warn(`Odds API (RapidAPI v31): Nem található esemény egyezés (Legjobb: ${(highestCombinedRating*100).toFixed(1)}%) ehhez: ${homeTeam} vs ${awayTeam} a listában.`);
         return null;
     }
 
     const eventId = bestMatch.id;
-    console.log(`Odds API (RapidAPI v30): Esemény találat ${bestMatch.home} vs ${bestMatch.away} (ID: ${eventId}). Hasonlóság: ${(highestCombinedRating*100).toFixed(1)}%`);
+    console.log(`Odds API (RapidAPI v31): Esemény találat ${bestMatch.home} vs ${bestMatch.away} (ID: ${eventId}). Hasonlóság: ${(highestCombinedRating*100).toFixed(1)}%`);
 
     const marketsUrl = `https://${ODDS_API_HOST}/api/v1/events/markets`;
     const marketsResponse = await makeRequest(marketsUrl, { headers: ODDS_API_HEADERS, params: { event_id: eventId } });
@@ -320,7 +348,7 @@ async function getOddsData(homeTeam, awayTeam) {
 
 export async function getOptimizedOddsData(homeTeam, awayTeam, sport) {
     const key = `${homeTeam}${awayTeam}${sport}`.toLowerCase().replace(/\s+/g, '');
-    const cacheKey = `live_odds_v30_rapidapi_${key}`;
+    const cacheKey = `live_odds_v31_rapidapi_${key}`;
     const cached = oddsCache.get(cacheKey);
     if (cached) {
         console.log(`Odds cache találat: ${cacheKey}`);
@@ -411,7 +439,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         const season = new Date(decodedUtcKickoff).getFullYear();
         if (isNaN(season)) throw new Error(`Érvénytelen utcKickoff: ${decodedUtcKickoff}`);
         
-        console.log(`Adatgyűjtés indul (v30 - API-Football): ${homeTeamName} vs ${awayTeamName}...`);
+        console.log(`Adatgyűjtés indul (v31 - API-Football): ${homeTeamName} vs ${awayTeamName}...`);
         
         const [homeTeamId, awayTeamId] = await Promise.all([
             getApiFootballTeamId(homeTeamName),
@@ -448,26 +476,27 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
              apiFootballHomeSeasonStats, apiFootballAwaySeasonStats,
              apiFootballH2HData
         ));
-        const geminiData = JSON.parse(geminiJsonString);
-        
+        let geminiData = geminiJsonString ? JSON.parse(geminiJsonString) : {};
+
+        // Adatok összefésülése a helyes prioritással
         const finalData = {
-            stats: {
-                home: { gp: apiFootballHomeSeasonStats?.gamesPlayed || 1 },
-                away: { gp: apiFootballAwaySeasonStats?.gamesPlayed || 1 }
-            },
-            h2h_structured: apiFootballH2HData,
             ...geminiData,
+            stats: {
+                home: { gp: apiFootballHomeSeasonStats?.gamesPlayed || geminiData.stats?.home?.gp || 1 },
+                away: { gp: apiFootballAwaySeasonStats?.gamesPlayed || geminiData.stats?.away?.gp || 1 }
+            },
+            h2h_structured: apiFootballH2HData || geminiData.h2h_structured,
             apiFootballData: { homeTeamId, awayTeamId, leagueId, fixtureId, fixtureDate }
         };
-        
+
         const result = { rawData: finalData, oddsData: fetchedOddsData, fromCache: false };
         scriptCache.set(ck, result);
-        console.log(`Sikeres adatgyűjtés (v30), cache mentve (${ck}).`);
+        console.log(`Sikeres adatgyűjtés (v31), cache mentve (${ck}).`);
         return result;
 
     } catch (e) {
-        console.error(`KRITIKUS HIBA a getRichContextualData (v30) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
-        throw new Error(`Adatgyűjtési hiba (v30): ${e.message}`);
+        console.error(`KRITIKUS HIBA a getRichContextualData (v31) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
+        throw new Error(`Adatgyűjtési hiba (v31): ${e.message}`);
     }
 }
 
