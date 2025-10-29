@@ -8,7 +8,7 @@
  * FEJLESZTÉS (2025-10-25): MASTER_AI_PROMPT_TEMPLATE módosítva, hogy a végső ajánlás
  * ('recommended_bet') ne legyen szöglet (corner) vagy lap (card) piac.
  */
-import { getRichContextualData, getOptimizedOddsData, _callGemini, _getFixturesFromEspn } from './DataFetch.js';
+import { getRichContextualData, _callGemini, _getFixturesFromEspn } from './DataFetch.js';
 import {
     generateProTip, simulateMatchProgress, estimateXG,
     estimateAdvancedMetrics, calculateModelConfidence, calculatePsychologicalProfile,
