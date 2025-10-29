@@ -1,23 +1,21 @@
-// --- VÉGLEGES config.js (v29-kompatibilis) ---
+// --- VÉGLEGES config.js (v30.1-kompatibilis, név-hozzárendeléssel) ---
 
 import dotenv from 'dotenv';
 dotenv.config();
 
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* KRITIKUS JAVÍTÁS (v29): Az `espn_leagues` struktúrája objektumokra
-* lett cserélve (`{ slug, country }`), hogy támogassa a datafetch.js
-* új, célzott és bombabiztos liga keresési logikáját.
+* KRITIKUS JAVÍTÁS: Hozzáadva a Hellas Verona, AS Roma és Como
+* név-hozzárendelések az API-Football és Odds API pontosabb
+* működéséhez a logok alapján.
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
 export const PORT = process.env.PORT || 3001;
 
-// --- API KULCSOK (v29 - Szétválasztva) ---
+// --- API KULCSOK (v30 - Szétválasztva) ---
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 export const GEMINI_MODEL_ID = 'gemini-2.5-pro';
-
-// --- v30.1 JAVÍTÁS: HIÁNYZÓ SOR VISSZAÁLLÍTVA ---
 export const SHEET_URL = process.env.SHEET_URL;
 
 // API-Football specifikus kulcsok
@@ -30,12 +28,38 @@ export const ODDS_API_HOST = process.env.ODDS_API_HOST;
 
 
 // --- CSAPATNÉV HOZZÁRENDELÉSEK ---
+
+// Bővítsd ezt a listát, ha további eltéréseket találsz az Odds API logokban!
 export const ODDS_TEAM_NAME_MAP = {
+    // Kulcs: Az ESPN/Frontend által használt név (kisbetűvel)
+    // Érték: A The Odds API által használt név
+    'schalke': 'FC Schalke 04',
+    'bremen': 'Werder Bremen',
     'manchester city': 'Man City',
     'manchester united': 'Man United',
     'spurs': 'Tottenham Hotspur',
     'tottenham': 'Tottenham Hotspur',
+    'real madrid': 'Real Madrid',
+    'atletico madrid': 'Atletico Madrid',
+    'bayern munich': 'Bayern Munich',
+    'as roma': 'Roma',
+    'hellas verona': 'Verona',
+    'como': 'Como',
 };
+
+// Bővítsd ezt a listát, ha az API-Football tévesen azonosít egy csapatot!
+export const APIFOOTBALL_TEAM_NAME_MAP = {
+    // Kulcs: A frontendről érkező név (kisbetűvel)
+    // Érték: A pontos, hivatalos csapatnév, amire az API-Football keresni fog
+    'spurs': 'Tottenham Hotspur',
+    'tottenham': 'Tottenham Hotspur',
+    'man utd': 'Manchester United',
+    'man city': 'Manchester City',
+    'inter': 'Inter Milan', // Gyakori rövidítés
+    'wolves': 'Wolverhampton Wanderers',
+    'hellas verona': 'Hellas Verona', // Megakadályozza, hogy az U20-as csapatot találja meg
+};
+
 
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
 export const SPORT_CONFIG = {
