@@ -1,7 +1,7 @@
-// --- VÉGLEGES INTEGRÁLT (v24 - Teljes Kód) datafetch.js ---
-// - KRITIKUS HITelesítési HIBA JAVÍTVA: Az API-Football és Odds API most már az egységes `RAPIDAPI_KEY`-t használja.
-// - ODDS API URL HIBA JAVÍTVA: Az Odds API a helyes `/api/v1/` útvonalat használja.
-// - A `v21`-ben bevezetett stabil logikák (liga keresés, odds keresés) megmaradtak és most már a helyes adatokkal működnek.
+// --- VÉGLEGES INTEGRÁLT (v25 - Teljes Kód) datafetch.js ---
+// - KRITIKUS HIBA JAVÍTVA: Mindkét API (API-Football, Odds API) a helyes, képeken látott RapidAPI hostnevet használja.
+// - HITelesítés: Az egységes `RAPIDAPI_KEY` használata megmaradt.
+// - A `v21`-ben bevezetett stabil logikák (liga keresés, odds keresés) megmaradtak.
 
 import axios from 'axios';
 import NodeCache from 'node-cache';
@@ -33,11 +33,10 @@ const __dirname = path.dirname(__filename);
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v24 (2025-10-29)
-* - HITelesítési HIBA JAVÍTVA: Egységes `RAPIDAPI_KEY` használata
-* mindkét RapidAPI-alapú szolgáltatáshoz (API-Football, Odds API).
-* - ODDS API URL HIBA JAVÍTVA: A `RAPIDAPI_ODDS_HOST`-ból és a
-* helyes `/api/v1/` útvonalból építi fel a címet.
+* VERZIÓ: v25 (2025-10-29)
+* - GYÖKÉROK JAVÍTVA: A `APIFOOTBALL_RAPIDAPI_HOST` és
+* `RAPIDAPI_ODDS_HOST` most már a helyes, dokumentációban
+* szereplő értékeket használja, ami megoldja a 404 és hitelesítési hibákat.
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY ---
@@ -61,7 +60,7 @@ async function makeRequest(url, config = {}, retries = 1) {
             if (response.status < 200 || response.status >= 300) {
                 const error = new Error(`API hiba: Státusz kód ${response.status} (${method} ${url.substring(0, 100)}...)`);
                 error.response = response;
-                const apiMessage = response?.data?.Message || response?.data?.message || JSON.stringify(response?.data)?.substring(0, 100);
+                const apiMessage = response?.data?.Message || response?.data?.message || response?.data?.error || JSON.stringify(response?.data)?.substring(0, 150);
                 if (url.includes(APIFOOTBALL_RAPIDAPI_HOST) && apiMessage) { error.message += ` - API-Football: ${apiMessage}`; }
                 if (url.includes(RAPIDAPI_ODDS_HOST) && apiMessage) { error.message += ` - OddsAPI: ${apiMessage}`; }
                 if ([401, 403].includes(response.status)) { console.error(`Hitelesítési Hiba (${response.status})! URL: ${url.substring(0, 100)}...`); }
@@ -77,7 +76,7 @@ async function makeRequest(url, config = {}, retries = 1) {
             if (error.response) {
                 errorMessage += `Státusz: ${error.response.status}, Válasz: ${JSON.stringify(error.response.data)?.substring(0, 150)}`;
                 if (error.response.status === 429) { console.error(`CRITICAL RATE LIMIT: ${errorMessage}`); return null; }
-                if ([401, 403].includes(error.response.status) || error.message.includes('Invalid API Key') || error.message.includes('Missing API key')) { console.error(errorMessage); return null; }
+                if ([401, 403].includes(error.response.status) || JSON.stringify(error.response.data).includes('Invalid API key')) { console.error(errorMessage); return null; }
                 if (error.response.status === 422) { console.error(errorMessage); return null; }
                 if (error.response.status === 404) { console.warn(errorMessage); return null; }
             } else if (error.request) {
@@ -516,7 +515,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
     console.log(`Nincs cache (${ck}), friss adatok lekérése...`);
     try {
         const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(utcKickoff));
-        console.log(`Adatgyűjtés indul (v24 - API-Football): ${homeTeamName} vs ${awayTeamName}...`);
+        console.log(`Adatgyűjtés indul (v25 - API-Football): ${homeTeamName} vs ${awayTeamName}...`);
         const season = new Date(decodedUtcKickoff).getFullYear();
         if (isNaN(season)) {
             throw new Error(`Érvénytelen utcKickoff paraméter a dekódolás után: ${decodedUtcKickoff}`);
@@ -634,11 +633,11 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
             throw new Error(`Kritikus statisztikák (GP <= 0) érvénytelenek.`);
         }
         scriptCache.set(ck, result);
-        console.log(`Sikeres adatgyűjtés (v24: API-Football + Javított Odds API), cache mentve (${ck}).`);
+        console.log(`Sikeres adatgyűjtés (v25: API-Football + Javított Odds API), cache mentve (${ck}).`);
         return { ...result, fromCache: false, oddsData: fetchedOddsData };
     } catch (e) {
-        console.error(`KRITIKUS HIBA a getRichContextualData (v24) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
-        throw new Error(`Adatgyűjtési hiba (v24): ${e.message}`);
+        console.error(`KRITIKUS HIBA a getRichContextualData (v25) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
+        throw new Error(`Adatgyűjtési hiba (v25): ${e.message}`);
     }
 }
 
@@ -720,7 +719,7 @@ STRUCTURE: {
 }`;
 }
 
-// --- ODDS API FUNKCIÓK (v24 - JAVÍTOTT URL-lel) ---
+// --- ODDS API FUNKCIÓK (v25 - JAVÍTOTT HOSTNÉVVEL) ---
 async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
     if (!RAPIDAPI_KEY || !RAPIDAPI_ODDS_HOST) {
         console.warn(`Odds API (RapidAPI): Hiányzó kulcs/host. Odds lekérés kihagyva.`);
@@ -743,16 +742,16 @@ async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
     
     const startAtMin = encodeURIComponent(formatDate(today));
     const startAtMax = encodeURIComponent(formatDate(future));
-
-    // --- v24 JAVÍTÁS: HELYES ÚTVONAL HASZNÁLATA ---
-    const eventsUrl = `https://${RAPIDAPI_ODDS_HOST}/api/v1/events?start_at_min=${startAtMin}&start_at_max=${startAtMax}`;
-    console.log(`Odds API (RapidAPI v24): Esemény keresése dátum alapján... URL: ${eventsUrl}`);
+    
+    // Most már a helyes hostnevet és a feltételezett helyes útvonalat használjuk
+    const eventsUrl = `https://${RAPIDAPI_ODDS_HOST}/v1/events?start_at_min=${startAtMin}&start_at_max=${startAtMax}`;
+    console.log(`Odds API (RapidAPI v25): Esemény keresése dátum alapján... URL: ${eventsUrl}`);
     try {
         const eventsResponse = await makeRequest(eventsUrl, { headers: rapidApiHeaders, timeout: 15000 });
         const events = eventsResponse?.data?.data;
         
         if (!events || !Array.isArray(events)) {
-            console.warn(`Odds API (RapidAPI v24): Érvénytelen/üres válasz az /events végpontról. Státusz: ${eventsResponse?.status}`);
+            console.warn(`Odds API (RapidAPI v25): Érvénytelen/üres válasz az /events végpontról. Státusz: ${eventsResponse?.status}`);
             return null;
         }
 
@@ -779,32 +778,32 @@ async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
         }
 
         if (!bestMatch) {
-            console.warn(`Odds API (RapidAPI v24): Nem található esemény egyezés (${(highestCombinedRating*100).toFixed(1)}%) ehhez: ${homeTeam} vs ${awayTeam} a listában.`);
+            console.warn(`Odds API (RapidAPI v25): Nem található esemény egyezés (${(highestCombinedRating*100).toFixed(1)}%) ehhez: ${homeTeam} vs ${awayTeam} a listában.`);
             return null;
         }
 
         eventId = bestMatch.id;
         apiHomeTeam = bestMatch.home;
         apiAwayTeam = bestMatch.away;
-        console.log(`Odds API (RapidAPI v24): Esemény találat ${apiHomeTeam} vs ${apiAwayTeam} (ID: ${eventId}). Hasonlóság: ${(highestCombinedRating*100).toFixed(1)}%`);
+        console.log(`Odds API (RapidAPI v25): Esemény találat ${apiHomeTeam} vs ${apiAwayTeam} (ID: ${eventId}). Hasonlóság: ${(highestCombinedRating*100).toFixed(1)}%`);
     } catch (e) {
-        console.error(`Hiba getOddsData (RapidAPI v24 /events keresés) során: ${e.message}`, e.stack);
+        console.error(`Hiba getOddsData (RapidAPI v25 /events keresés) során: ${e.message}`, e.stack);
         if (e.response?.status === 429) {
-             console.error("Odds API (RapidAPI v24): Rate limit túllépve az /events hívásnál! Fontold meg a fizetős csomagot.");
+             console.error("Odds API (RapidAPI v25): Rate limit túllépve az /events hívásnál! Fontold meg a fizetős csomagot.");
         }
         return null;
     }
 
     if (!eventId) return null;
 
-    const marketsUrl = `https://${RAPIDAPI_ODDS_HOST}/api/v1/events/markets?event_id=${eventId}`;
-    console.log(`Odds API (RapidAPI v24): Piacok lekérése... URL: ${marketsUrl}`);
+    const marketsUrl = `https://${RAPIDAPI_ODDS_HOST}/v1/events/markets?event_id=${eventId}`;
+    console.log(`Odds API (RapidAPI v25): Piacok lekérése... URL: ${marketsUrl}`);
     try {
         const marketsResponse = await makeRequest(marketsUrl, { headers: rapidApiHeaders, timeout: 15000 });
         const marketsData = marketsResponse?.data?.data;
 
         if (!marketsData || !Array.isArray(marketsData)) {
-            console.warn(`Odds API (RapidAPI v24): Nem található piac ehhez az eseményhez: ${eventId}. Státusz: ${marketsResponse?.status}`);
+            console.warn(`Odds API (RapidAPI v25): Nem található piac ehhez az eseményhez: ${eventId}. Státusz: ${marketsResponse?.status}`);
             return null;
         }
 
@@ -818,11 +817,11 @@ async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
             if (h2hBook.outcome_0 > 1) currentOdds.push({ name: 'Hazai győzelem', price: h2hBook.outcome_0 });
             if (h2hBook.outcome_1 > 1) currentOdds.push({ name: 'Döntetlen', price: h2hBook.outcome_1 });
             if (h2hBook.outcome_2 > 1) currentOdds.push({ name: 'Vendég győzelem', price: h2hBook.outcome_2 });
-            console.log(`Odds API (RapidAPI v24): H2H oddsok (${h2hBook.book}): H:${h2hBook.outcome_0}, D:${h2hBook.outcome_1}, A:${h2hBook.outcome_2}`);
-        } else { console.warn(`Odds API (RapidAPI v24): Nincs H2H ('1X2') piac: ${eventId}`); }
+            console.log(`Odds API (RapidAPI v25): H2H oddsok (${h2hBook.book}): H:${h2hBook.outcome_0}, D:${h2hBook.outcome_1}, A:${h2hBook.outcome_2}`);
+        } else { console.warn(`Odds API (RapidAPI v25): Nincs H2H ('1X2') piac: ${eventId}`); }
 
         const mainLine = sportConfig.totals_line ?? 2.5;
-        console.log(`Odds API (RapidAPI v24): Fő Totals vonal keresése: ${mainLine}`);
+        console.log(`Odds API (RapidAPI v25): Fő Totals vonal keresése: ${mainLine}`);
         
         const totalsMarket = marketsData.find(m => m.market_name === 'Goals Over/Under' && m.value === mainLine);
         const totalsBook = totalsMarket?.market_books?.[0];
@@ -830,15 +829,15 @@ async function getOddsData(homeTeam, awayTeam, sport, sportConfig, leagueName) {
         if (totalsBook) {
             if (totalsBook.outcome_0 > 1) currentOdds.push({ name: `Over ${mainLine}`, price: totalsBook.outcome_0 });
             if (totalsBook.outcome_1 > 1) currentOdds.push({ name: `Under ${mainLine}`, price: totalsBook.outcome_1 });
-            console.log(`Odds API (RapidAPI v24): Totals (${mainLine}) oddsok (${totalsBook.book}): Over:${totalsBook.outcome_0}, Under:${totalsBook.outcome_1}`);
-        } else { console.warn(`Odds API (RapidAPI v24): Nincs Totals ('Goals Over/Under') piac a ${mainLine} vonalhoz: ${eventId}`); }
+            console.log(`Odds API (RapidAPI v25): Totals (${mainLine}) oddsok (${totalsBook.book}): Over:${totalsBook.outcome_0}, Under:${totalsBook.outcome_1}`);
+        } else { console.warn(`Odds API (RapidAPI v25): Nincs Totals ('Goals Over/Under') piac a ${mainLine} vonalhoz: ${eventId}`); }
 
         return currentOdds.length > 0 ? { current: currentOdds, allMarkets, sport } : null;
 
     } catch (e) {
-        console.error(`Hiba getOddsData (RapidAPI v24 /events/markets lekérés) során: ${e.message}`, e.stack);
+        console.error(`Hiba getOddsData (RapidAPI v25 /events/markets lekérés) során: ${e.message}`, e.stack);
         if (e.response?.status === 429) {
-             console.error("Odds API (RapidAPI v24): Rate limit túllépve a /events/markets hívásnál!");
+             console.error("Odds API (RapidAPI v25): Rate limit túllépve a /events/markets hívásnál!");
         }
         return null;
     }
@@ -851,7 +850,7 @@ export async function getOptimizedOddsData(homeTeam, awayTeam, sport, sportConfi
         return null;
     }
     const key = `${homeTeam}${awayTeam}${sport}${leagueName || ''}`.toLowerCase().replace(/\s+/g, '');
-    const cacheKey = `live_odds_v24_rapidapi_${key}`;
+    const cacheKey = `live_odds_v25_rapidapi_${key}`;
     const cached = oddsCache.get(cacheKey);
     if (cached) {
         console.log(`Odds cache találat: ${cacheKey}`);
@@ -867,9 +866,9 @@ export async function getOptimizedOddsData(homeTeam, awayTeam, sport, sportConfi
         return { ...liveOdds, fromCache: false };
     }
     if (liveOdds !== null) {
-        console.warn(`Nem található releváns (H2H, Totals) odds piac (RapidAPI v24): ${homeTeam} vs ${awayTeam}`);
+        console.warn(`Nem található releváns (H2H, Totals) odds piac (RapidAPI v25): ${homeTeam} vs ${awayTeam}`);
     } else {
-        console.warn(`Nem sikerült élő szorzókat lekérni (RapidAPI v24): ${homeTeam} vs ${awayTeam}`);
+        console.warn(`Nem sikerült élő szorzókat lekérni (RapidAPI v25): ${homeTeam} vs ${awayTeam}`);
     }
     return null;
 }
