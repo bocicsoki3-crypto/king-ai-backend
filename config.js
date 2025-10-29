@@ -7,7 +7,7 @@ dotenv.config();
 * config.js - Központi Konfigurációs Fájl
 * v37 JAVÍTÁS: Hozzáadva az "LAFC" és "Austin FC" az
 * APIFOOTBALL_TEAM_NAME_MAP-hez, hogy megoldja a csapat ID
-* keresési hibát (log: image_417255.png).
+* keresési hibát (log: image_4b7982.png).
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
@@ -55,7 +55,7 @@ export const APIFOOTBALL_TEAM_NAME_MAP = {
     'wolves': 'Wolverhampton Wanderers',
     'hellas verona': 'Hellas Verona', // Megakadályozza, hogy az U20-as csapatot találja meg
     
-    // --- V37 JAVÍTÁS (image_417255.png alapján) ---
+    // --- V37 JAVÍTÁS (image_4b7982.png alapján) ---
     'lafc': 'Los Angeles FC',
     'austin fc': 'Austin FC'
 };
@@ -134,7 +134,7 @@ export const SPORT_CONFIG = {
         totals_line: 220.5,
         espn_leagues: {
             'NBA': { slug: 'nba', country: 'USA' },
-            'Euroleague': { slug: 'euroleague', country: 'World' }
+            'Euroleague': { slug: "euroleague", country: "World" }
         },
     },
 };
