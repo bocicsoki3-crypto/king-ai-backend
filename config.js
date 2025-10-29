@@ -15,7 +15,10 @@ export const PORT = process.env.PORT || 3001;
 
 // --- API KULCSOK (v29 - Szétválasztva) ---
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-export const GEMINI_MODEL_ID = 'gemini-1.5-pro-latest';
+export const GEMINI_MODEL_ID = 'gemini-2.5-pro';
+
+// --- v30.1 JAVÍTÁS: HIÁNYZÓ SOR VISSZAÁLLÍTVA ---
+export const SHEET_URL = process.env.SHEET_URL;
 
 // API-Football specifikus kulcsok
 export const APIFOOTBALL_KEY = process.env.APIFOOTBALL_KEY;
