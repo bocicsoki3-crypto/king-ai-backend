@@ -1,14 +1,16 @@
-// --- VÉGLEGES INTEGRÁLT (v34 - Bombabiztos GP Fix & Odds Sport Lister) datafetch.js ---
-// - V34 JAVÍTÁS: A 'getRichContextualData' most már bombabiztos módon ad értéket a 'GP' (nagybetűs), 'gp' (kisbetűs) és 'gamesPlayed' kulcsoknak.
-// - V34 JAVÍTÁS: Az 'Odds API Debugger' mostantól az első 20 esemény sportágát listázza, hogy kiderítsük, miért hiányzik a futball.
+// --- VÉGLEGES INTEGRÁLT (v35 - API-Football Odds) datafetch.js ---
+// - V35 VÁLTOZÁS: A hibás 'Odds-Feed' API teljes eltávolítása.
+// - V35 VÁLTOZÁS: Az 'getApiFootballOdds' függvény implementálása, amely a fixtureId alapján kéri le a szorzókat.
+// - V35 VÁLTOZÁS: A 'findMainTotalsLine' átírva az API-Football adatszerkezetére.
+// - V35 MEGTARTVA: A 'GP:undefined' elleni "bombabiztos" statisztika-egyesítés.
 
 import axios from 'axios';
 import NodeCache from 'node-cache';
 import {
     SPORT_CONFIG, GEMINI_API_KEY, GEMINI_MODEL_ID,
     APIFOOTBALL_KEY, APIFOOTBALL_HOST,
-    ODDS_API_KEY, ODDS_API_HOST,
-    ODDS_TEAM_NAME_MAP
+    // Az ODDS_API_KEY és ODDS_API_HOST már nem szükséges, de a MAP maradhat
+    ODDS_TEAM_NAME_MAP 
 } from './config.js';
 import pkg from 'string-similarity';
 const { findBestMatch } = pkg;
@@ -17,7 +19,8 @@ import path from 'path';
 
 // Cache inicializálás
 const scriptCache = new NodeCache({ stdTTL: 3600 * 2, checkperiod: 600, useClones: false });
-const oddsCache = new NodeCache({ stdTTL: 60 * 10, checkperiod: 60 * 2, useClones: false });
+// A régi oddsCache helyett új API-Football odds cache
+const apiFootballOddsCache = new NodeCache({ stdTTL: 60 * 10, checkperiod: 60 * 2, useClones: false }); 
 const apiFootballTeamIdCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
 const apiFootballLeagueIdCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
 const apiFootballStatsCache = new NodeCache({ stdTTL: 3600 * 24 * 3, checkperiod: 3600 * 6 });
@@ -28,10 +31,10 @@ const __dirname = path.dirname(__filename);
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v34 (2025-10-29) - GP Fix és Odds Sport Lister
-* - STATISZTIKA JAVÍTÁS: Bombabiztos 'GP' (nagybetűs) mező hozzáadása
-* a 'finalData' objektumhoz a GP:undefined hiba elhárítására.
-* - ODDS DEBUGGER: Az Odds API hívás most listázza a kapott események sportágát.
+* VERZIÓ: v35 (2025-10-29) - Átállás API-Football Odds-ra
+* - A hibás 'odds-feed' API eltávolítva.
+* - A szorzók mostantól az API-Football /v3/odds végpontjáról
+* érkeznek a fixtureId alapján.
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY ---
@@ -279,159 +282,148 @@ async function getApiFootballTeamSeasonStats(teamId, leagueId, season) {
 }
 
 
-// --- ODDS API FUNKCIÓK ---
-const ODDS_API_HEADERS = { 'x-rapidapi-key': ODDS_API_KEY, 'x-rapidapi-host': ODDS_API_HOST };
-
-async function getOddsData(homeTeam, awayTeam) {
-    if (!ODDS_API_KEY) { console.warn("Odds API kulcs hiányzik, odds lekérés kihagyva."); return null; }
-
-    const url = `https://${ODDS_API_HOST}/api/v1/events`;
-    console.log(`Odds API (RapidAPI v31): Teljes eseménylista lekérése... URL: ${url}`);
-    const response = await makeRequest(url, { headers: ODDS_API_HEADERS });
-    if (!response?.data?.data || response.data.data.length === 0) {
-        console.warn(`Odds API (RapidAPI v31): Az API nem szolgáltatott eseményeket.`);
+// --- *** ÚJ API-FOOTBALL ODDS FUNKCIÓ (v35) *** ---
+async function getApiFootballOdds(fixtureId) {
+    if (!fixtureId) {
+        console.warn("API-Football Odds: Hiányzó fixtureId, a szorzók lekérése kihagyva.");
         return null;
     }
-
-    const events = response.data.data;
-
-    // --- *** V34 DEBUGGER KÓD KEZDETE (Javított) *** ---
-    // Kiírja az első 20 esemény sportágát (slug), hogy lássuk, mit kapunk.
-    try {
-        const sportSlugs = events
-            .slice(0, 20)
-            .map(event => event.sport?.slug || 'NO_SLUG');
-        
-        console.log(`[ODDS DEBUG v34] Az API-tól kapott első 20 esemény SPORTÁG SLUG-ja:`);
-        if (sportSlugs.length > 0) {
-            console.log(sportSlugs);
-        } else {
-            console.log("Nem található egyetlen esemény sem a listában.");
-        }
-    } catch (e) {
-        console.warn(`[ODDS DEBUG v34] Hiba a debug sportágak gyűjtése során: ${e.message}`);
-    }
-    // --- *** V34 DEBUGGER KÓD VÉGE *** ---
-
-    const homeVariations = generateTeamNameVariations(homeTeam);
-    const awayVariations = generateTeamNameVariations(awayTeam);
-    let bestMatch = null;
-    let highestCombinedRating = 0.59; 
-
-    for (const event of events) {
-        if (!event.home || !event.away || event.sport?.slug !== 'football') continue;
-        const homeMatchResult = findBestMatch(event.home, homeVariations);
-        const awayMatchResult = findBestMatch(event.away, awayVariations);
-        const combinedSim = (homeMatchResult.bestMatch.rating + awayMatchResult.bestMatch.rating) / 2;
-        if (combinedSim >= highestCombinedRating) {
-            highestCombinedRating = combinedSim;
-            bestMatch = event;
-        }
-    }
-
-    if (!bestMatch) {
-        console.warn(`Odds API (RapidAPI v31): Nem található esemény egyezés (Legjobb: ${(highestCombinedRating*100).toFixed(1)}%) ehhez: ${homeTeam} vs ${awayTeam} a listában.`);
-        return null;
-    }
-
-    const eventId = bestMatch.id;
-    console.log(`Odds API (RapidAPI v31): Esemény találat ${bestMatch.home} vs ${bestMatch.away} (ID: ${eventId}). Hasonlóság: ${(highestCombinedRating*100).toFixed(1)}%`);
-
-    const marketsUrl = `https://${ODDS_API_HOST}/api/v1/events/markets`;
-    const marketsResponse = await makeRequest(marketsUrl, { headers: ODDS_API_HEADERS, params: { event_id: eventId } });
-    if (!marketsResponse?.data?.data) return { current: [] };
-
-    const marketsData = marketsResponse.data.data;
-    const currentOdds = [];
-    const h2hMarket = marketsData.find(m => m.market_name === '1X2');
-    if (h2hMarket?.market_books?.[0]) {
-        const book = h2hMarket.market_books[0];
-        if (book.outcome_0 > 1) currentOdds.push({ name: 'Hazai győzelem', price: book.outcome_0 });
-        if (book.outcome_1 > 1) currentOdds.push({ name: 'Döntetlen', price: book.outcome_1 });
-        if (book.outcome_2 > 1) currentOdds.push({ name: 'Vendég győzelem', price: book.outcome_2 });
-    }
-    return { current: currentOdds, allMarkets: marketsData };
-}
-
-export async function getOptimizedOddsData(homeTeam, awayTeam, sport) {
-    const key = `${homeTeam}${awayTeam}${sport}`.toLowerCase().replace(/\s+/g, '');
-    const cacheKey = `live_odds_v31_rapidapi_${key}`;
-    const cached = oddsCache.get(cacheKey);
+    
+    const cacheKey = `apifootball_odds_v35_${fixtureId}`;
+    const cached = apiFootballOddsCache.get(cacheKey);
     if (cached) {
-        console.log(`Odds cache találat: ${cacheKey}`);
+        console.log(`API-Football Odds cache találat: ${cacheKey}`);
         return { ...cached, fromCache: true };
     }
     
-    console.log(`Nincs odds cache: ${cacheKey}. Friss lekérés...`);
-    const liveOdds = await getOddsData(homeTeam, awayTeam);
-    if (liveOdds?.current?.length > 0) {
-        oddsCache.set(cacheKey, liveOdds);
-        console.log(`Odds adatok sikeresen lekérve és cache-elve: ${cacheKey}`);
-        return { ...liveOdds, fromCache: false };
+    console.log(`Nincs API-Football Odds cache (${cacheKey}). Friss lekérés...`);
+    const url = `${APIFOOTBALL_BASE_URL}/v3/odds`;
+    const params = { fixture: fixtureId };
+    
+    const response = await makeRequest(url, { headers: APIFOOTBALL_HEADERS, params });
+
+    if (!response?.data?.response || response.data.response.length === 0) {
+        console.warn(`API-Football Odds: Nem érkezett szorzó adat a ${fixtureId} fixture-höz.`);
+        return null;
     }
-    return null;
+
+    // Visszaadjuk a teljes szorzócsomagot (tartalmazza a meccset, ligát, bookmakereket)
+    const oddsData = response.data.response[0]; 
+    
+    // Alap 1X2 szorzók kinyerése a 'current' mezőhöz (opcionális, de hasznos)
+    const bookmaker = oddsData.bookmakers?.find(b => b.name === "Bet365") || oddsData.bookmakers?.[0];
+    const matchWinnerMarket = bookmaker?.bets?.find(b => b.name === "Match Winner");
+    
+    const currentOdds = [];
+    if (matchWinnerMarket) {
+        const homeOdd = matchWinnerMarket.values.find(v => v.value === "Home")?.odd;
+        const drawOdd = matchWinnerMarket.values.find(v => v.value === "Draw")?.odd;
+        const awayOdd = matchWinnerMarket.values.find(v => v.value === "Away")?.odd;
+        
+        if (homeOdd) currentOdds.push({ name: 'Hazai győzelem', price: parseFloat(homeOdd) });
+        if (drawOdd) currentOdds.push({ name: 'Döntetlen', price: parseFloat(drawOdd) });
+        if (awayOdd) currentOdds.push({ name: 'Vendég győzelem', price: parseFloat(awayOdd) });
+    }
+
+    const result = {
+        current: currentOdds, // Az egyszerű 1X2 szorzók
+        fullApiData: oddsData // A teljes adat (minden bookmaker, minden piac)
+    };
+
+    if (result.current.length > 0) {
+        apiFootballOddsCache.set(cacheKey, result);
+        console.log(`API-Football Odds adatok sikeresen lekérve és cache-elve: ${cacheKey}`);
+    } else {
+         console.warn(`API-Football Odds: Találat, de nem sikerült 'Match Winner' piacot találni.`);
+    }
+
+    return { ...result, fromCache: false };
 }
 
-function generateTeamNameVariations(teamName) {
-    const lowerName = teamName.toLowerCase().trim();
-    const variations = new Set([teamName, lowerName, ODDS_TEAM_NAME_MAP[lowerName] || teamName]);
-    variations.add(lowerName.replace(/^(fc|sc|cf|ac|as|krc|real|fk|nk|rc|cd|afc|1\.|us)\s+/i, '').trim());
-    return Array.from(variations);
-}
+// --- *** TÖRÖLVE (v35) *** ---
+// A régi 'getOddsData' és 'getOptimizedOddsData' függvények eltávolítva.
 
+// --- *** TÖRÖLVE (v35) *** ---
+// A 'generateTeamNameVariations' törölve, mivel már nincs rá szükség.
+
+// --- *** ÁTÍRVA (v35): Fő gólvonal kereső API-Football adatszerkezethez *** ---
 export function findMainTotalsLine(oddsData) {
     const defaultLine = 2.5;
-    if (!oddsData || !oddsData.allMarkets) {
-        return defaultLine;
-    }
-    const totalsMarket = oddsData.allMarkets.find(m => m.market_name === 'Goals Over/Under');
-    if (!totalsMarket?.market_books?.[0]) {
-        return defaultLine;
-    }
     
-    const linesAvailable = [...new Set(oddsData.allMarkets
-        .filter(m => m.market_name === 'Goals Over/Under')
-        .map(m => m.value)
-        .filter(v => typeof v === 'number' && !isNaN(v))
-    )];
-    if (linesAvailable.length === 0) {
+    // Az új oddsData struktúra a fullApiData-t tartalmazza
+    if (!oddsData?.fullApiData?.bookmakers || oddsData.fullApiData.bookmakers.length === 0) {
         return defaultLine;
     }
 
+    // Keressünk egy megbízható bookmakert, vagy vegyük az elsőt
+    const bookmaker = oddsData.fullApiData.bookmakers.find(b => b.name === "Bet365") || oddsData.fullApiData.bookmakers[0];
+    if (!bookmaker?.bets) return defaultLine;
+
+    // Keressük az "Over/Under" piacot (API-Footballban általában ez a neve)
+    const totalsMarket = bookmaker.bets.find(b => b.name.toLowerCase() === "over/under");
+    if (!totalsMarket?.values) {
+        console.warn("Nem található 'Over/Under' piac a szorzókban.");
+        return defaultLine;
+    }
+
+    // Gyűjtsük össze az elérhető vonalakat (pl. 1.5, 2.5, 3.5)
+    const linesAvailable = {}; // Struktúra: { "2.5": { over: 1.90, under: 1.90 }, "1.5": { ... } }
+
+    for (const val of totalsMarket.values) {
+        const lineMatch = val.value.match(/(\d\.\d)/);
+        if (!lineMatch || !lineMatch[1]) continue;
+        
+        const line = lineMatch[1]; // pl. "2.5"
+        if (!linesAvailable[line]) linesAvailable[line] = {};
+
+        if (val.value.toLowerCase().startsWith("over")) {
+            linesAvailable[line].over = parseFloat(val.odd);
+        } else if (val.value.toLowerCase().startsWith("under")) {
+            linesAvailable[line].under = parseFloat(val.odd);
+        }
+    }
+
+    if (Object.keys(linesAvailable).length === 0) {
+        return defaultLine;
+    }
+
+    // Keressük a legkiegyensúlyozottabb párt (ahol az over és under szorzó a legközelebb van egymáshoz)
     let closestPair = { diff: Infinity, line: defaultLine };
-    for (const line of linesAvailable) {
-        const marketForLine = oddsData.allMarkets.find(m => m.market_name === 'Goals Over/Under' && m.value === line);
-        const book = marketForLine?.market_books?.[0];
-        if (book) {
-            const overPrice = book.outcome_0;
-            const underPrice = book.outcome_1;
-            if (overPrice > 1 && underPrice > 1) {
-                const diff = Math.abs(overPrice - underPrice);
-                if (diff < closestPair.diff) {
-                    closestPair = { diff, line: line };
-                }
+
+    for (const line in linesAvailable) {
+        const pair = linesAvailable[line];
+        if (pair.over && pair.under) {
+            const diff = Math.abs(pair.over - pair.under);
+            if (diff < closestPair.diff) {
+                closestPair = { diff, line: parseFloat(line) };
             }
         }
     }
 
+    // Ha találtunk egy 0.5-nél kisebb eltérésű párt, az a fő vonal
     if (closestPair.diff < 0.5) {
         return closestPair.line;
     }
 
-    const numericDefaultLine = 2.5;
-    linesAvailable.sort((a, b) => Math.abs(a - numericDefaultLine) - Math.abs(b - numericDefaultLine));
-    return linesAvailable[0];
+    // Ha nincs kiegyensúlyozott pár, vegyük azt, ami a legközelebb van a 2.5-höz
+    const numericLines = Object.keys(linesAvailable).map(parseFloat);
+    numericLines.sort((a, b) => Math.abs(a - defaultLine) - Math.abs(b - defaultLine));
+    return numericLines[0];
 }
 
 
-// --- FŐ ADATGYŰJTŐ FUNKCIÓ ---
+// --- FŐ ADATGYŰJTŐ FUNKCIÓ (v35 - Átírva) ---
 export async function getRichContextualData(sport, homeTeamName, awayTeamName, leagueName, utcKickoff) {
     const teamNames = [homeTeamName, awayTeamName].sort();
     const ck = `rich_context_v43_apif_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
     const cached = scriptCache.get(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
-        const oddsResult = await getOptimizedOddsData(homeTeamName, awayTeamName, sport);
+        
+        // Gyorsítótárazott adatok esetén is ellenőrizzük az oddsokat, de már az ÚJ függvénnyel
+        const fixtureId = cached.rawData.apiFootballData.fixtureId;
+        const oddsResult = await getApiFootballOdds(fixtureId); 
+        
         if (oddsResult && !oddsResult.fromCache) {
              return { ...cached, fromCache: true, oddsData: oddsResult };
         }
@@ -444,7 +436,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         const season = new Date(decodedUtcKickoff).getFullYear();
         if (isNaN(season)) throw new Error(`Érvénytelen utcKickoff: ${decodedUtcKickoff}`);
         
-        console.log(`Adatgyűjtés indul (v31 - API-Football): ${homeTeamName} vs ${awayTeamName}...`);
+        console.log(`Adatgyűjtés indul (v35 - API-Football): ${homeTeamName} vs ${awayTeamName}...`);
         const [homeTeamId, awayTeamId] = await Promise.all([
             getApiFootballTeamId(homeTeamName),
             getApiFootballTeamId(awayTeamName),
@@ -459,18 +451,22 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         if (!leagueId) throw new Error(`Nem sikerült a 'leagueId' azonosítása.`);
         console.log(`API-Football: Végleges LeagueID: ${leagueId}`);
         
+        // Először meg kell szereznünk a fixtureId-t
         const { fixtureId, fixtureDate } = await findApiFootballFixture(homeTeamId, awayTeamId, season, leagueId, decodedUtcKickoff);
         
-        console.log(`API-Football: Adatok párhuzamos lekérése...`);
+        if (!fixtureId) {
+             console.warn(`API-Football: Nem található fixture, az odds lekérés és a H2H kihagyva.`);
+        }
+
+        console.log(`API-Football: Adatok párhuzamos lekérése... (FixtureID: ${fixtureId})`);
         const [
-            fetchedOddsData,
+            fetchedOddsData, // <-- ÚJ hívás
             apiFootballH2HData,
             apiFootballHomeSeasonStats,
             apiFootballAwaySeasonStats
         ] = await Promise.all([
-            getOptimizedOddsData(homeTeamName, awayTeamName, sport),
+            getApiFootballOdds(fixtureId), // <-- ÚJ hívás
             getApiFootballH2H(homeTeamId, awayTeamId, 5),
-            
             getApiFootballTeamSeasonStats(homeTeamId, leagueId, season),
             getApiFootballTeamSeasonStats(awayTeamId, leagueId, season)
         ]);
@@ -483,7 +479,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         ));
         let geminiData = geminiJsonString ? JSON.parse(geminiJsonString) : {};
 
-        // --- *** KRITIKUS JAVÍTÁS KEZDETE (v34 - GP Fix) *** ---
+        // --- *** KRITIKUS JAVÍTÁS KEZDETE (v34/v35 - GP Fix) *** ---
         // Bombabiztos adategyesítés a 'GP:undefined' hiba elhárítására.
         
         const finalHomeStats = {
@@ -515,16 +511,16 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
                 away: finalAwayStats
             }
         };
-        // --- *** KRITIKUS JAVÍTÁS VÉGE (v34) *** ---
+        // --- *** KRITIKUS JAVÍTÁS VÉGE *** ---
 
         const result = { rawData: finalData, oddsData: fetchedOddsData, fromCache: false };
         scriptCache.set(ck, result);
-        console.log(`Sikeres adatgyűjtés (v31), cache mentve (${ck}).`);
+        console.log(`Sikeres adatgyűjtés (v35), cache mentve (${ck}).`);
         return result;
 
     } catch (e) {
-        console.error(`KRITIKUS HIBA a getRichContextualData (v31) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
-        throw new Error(`Adatgyűjtési hiba (v31): ${e.message}`);
+        console.error(`KRITIKUS HIBA a getRichContextualData (v35) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
+        throw new Error(`Adatgyűjtési hiba (v35): ${e.message}`);
     }
 }
 
