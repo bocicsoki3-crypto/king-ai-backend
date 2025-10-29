@@ -26,7 +26,6 @@ export const APIFOOTBALL_HOST = process.env.APIFOOTBALL_HOST;
 export const ODDS_API_KEY = process.env.ODDS_API_KEY;
 export const ODDS_API_HOST = process.env.ODDS_API_HOST;
 
-
 // --- CSAPATNÉV HOZZÁRENDELÉSEK ---
 
 // Bővítsd ezt a listát, ha további eltéréseket találsz az Odds API logokban!
@@ -45,6 +44,10 @@ export const ODDS_TEAM_NAME_MAP = {
     'as roma': 'Roma',
     'hellas verona': 'Verona',
     'como': 'Como',
+
+    // --- JAVÍTVA: Hozzáadva a Bologna és Torino (PÉLDA nevek, ellenőrizni kell az API-ban!) ---
+    'bologna': 'Bologna FC',
+    'torino': 'Torino FC',
 };
 
 // Bővítsd ezt a listát, ha az API-Football tévesen azonosít egy csapatot!
@@ -59,7 +62,6 @@ export const APIFOOTBALL_TEAM_NAME_MAP = {
     'wolves': 'Wolverhampton Wanderers',
     'hellas verona': 'Hellas Verona', // Megakadályozza, hogy az U20-as csapatot találja meg
 };
-
 
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
 export const SPORT_CONFIG = {
@@ -81,33 +83,26 @@ export const SPORT_CONFIG = {
             "J1 League": { slug: "jpn.1", country: "Japan" },
             "Eredivisie": { slug: "ned.1", country: "Netherlands" },
             "Eliteserien": { slug: "nor.1", country: "Norway" },
-            "Ekstraklasa": { slug: "pol.1", country: "Poland" },
             "Liga Portugal": { slug: "por.1", country: "Portugal" },
             "Premiership": { slug: "sco.1", country: "Scotland" },
-            "K League 1": { slug: "kor.1", country: "South Korea" },
             "Allsvenskan": { slug: "swe.1", country: "Sweden" },
             "Super Lig": { slug: "tur.1", country: "Turkey" },
             "MLS": { slug: "usa.1", country: "USA" },
             "Liga MX": { slug: "mex.1", country: "Mexico" },
             "Jupiler Pro League": { slug: "bel.1", country: "Belgium" },
             "Serie A Betano": { slug: "rou.1", country: "Romania" },
-            "HNL": { slug: "cro.1", country: "Croatia" },
             "Superliga": { slug: "den.1", country: "Denmark" },
             "Chance Liga": { slug: "cze.1", country: "Czech Republic"},
-            "NB I.": { slug: "hun.1", country: "Hungary" },
-            "NB I": { slug: "hun.1", country: "Hungary" },
             "Premier Division": { slug: "irl.1", country: "Ireland" },
             "Primera A": { slug: "col.1", country: "Colombia" },
             "Champions League": { slug: "uefa.champions", country: "World" },
             "Europa League": { slug: "uefa.europa", country: "World" },
             "Conference League": { slug: "uefa.europa.conf", country: "World" },
             "FIFA World Cup": { slug: "fifa.world", country: "World" },
-            "World Cup Qualifier": { slug: "fifa.worldq", country: "World" },
             "UEFA European Championship": { slug: "uefa.euro", country: "World" },
             "UEFA Nations League": { slug: "uefa.nations", country: "World" },
             "CAF World Cup Qualifying": { slug: "fifa.worldq.caf", country: "World" },
-            "AFC World Cup Qualifying": { slug: "fifa.worldq.afc", country: "World" },
-            "CONCACAF World Cup Qualifying": { slug: "fifa.worldq.concaf", country: "World" },
+            "AFC World Cup Qualifying": { slug:g: "fifa.worldq.afc", country: "World" },
             "UEFA World Cup Qualifying": { slug: "fifa.worldq.uefa", country: "World" },
             "Brazil Serie A": { slug: "bra.1", country: "Brazil" },
             "Brazil Serie B": { slug: "bra.2", country: "Brazil" },
@@ -117,6 +112,15 @@ export const SPORT_CONFIG = {
             "Swiss Super League": { slug: "sui.1", country: "Switzerland" },
             "Greek Super League": { slug: "gre.1", country: "Greece" },
             'Czech First League': { slug: 'cze.1', country: 'Czech Republic' },
+
+            // --- JAVÍTVA: A logokban 400-as hibát okozó slugok ideiglenesen kikommentelve ---
+            // "Ekstraklasa": { slug: "pol.1", country: "Poland" },
+            // "K League 1": { slug: "kor.1", country: "South Korea" },
+            // "HNL": { slug: "cro.1", country: "Croatia" },
+            // "NB I.": { slug: "hun.1", country: "Hungary" },
+            // "NB I": { slug: "hun.1", country: "Hungary" },
+            // "World Cup Qualifier": { slug: "fifa.worldq", country: "World" },
+            // "CONCACAF World Cup Qualifying": { slug: "fifa.worldq.concaf", country: "World" },
         },
     },
     hockey: {
