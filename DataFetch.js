@@ -1,9 +1,6 @@
-// --- VÉGLEGES INTEGRÁLT (v32 - Debuggerrel) datafetch.js ---
-// - GYÖKÉROK JAVÍTVA: Külön API kulcsok és hostok kezelése mindkét szolgáltatáshoz.
-// - API-FOOTBALL JAVÍTVA: Célzott ligakeresés 'country' paraméterrel és adaptív szezonkeresés a statisztikákhoz.
-// - ODDS API JAVÍTVA: A hasonlósági ellenőrzés '>'-ról '>='-re javítva a pontosabb találatért.
-// - V32 JAVÍTÁS: Odds API Debugger hozzáadva a helyes nevek megtalálásához.
-// - V32 JAVÍTÁS: Stats "deep merge" (egyesítés) javítva a GP:undefined hiba ellen.
+// --- VÉGLEGES INTEGRÁLT (v33 - GP Fix & Odds Lister) datafetch.js ---
+// - V33 JAVÍTÁS: A 'getRichContextualData' most már explicit NAGYBETŰS 'GP' kulcsot is generál a modellező motor számára.
+// - V33 JAVÍTÁS: Az 'Odds API Debugger' most már nem keres, hanem listázza az első 15 futball eseményt, hogy lássuk, mit ad vissza az API.
 
 import axios from 'axios';
 import NodeCache from 'node-cache';
@@ -31,11 +28,10 @@ const __dirname = path.dirname(__filename);
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v32 (2025-10-29) - Debugger és Stats Merge Javítás
-* - STATISZTIKA JAVÍTÁS: A 'getApiFootballTeamSeasonStats' most már
-* visszalép az előző szezonra, ha az aktuálisban nincs adat.
-* - ODDS API JAVÍTÁS: A név-egyezés küszöbét '>='-re cseréltük.
-* - DEBUGGER: Odds API hívás most logolja a potenciális neveket.
+* VERZIÓ: v33 (2025-10-29) - GP Fix és Odds Lister
+* - STATISZTIKA JAVÍTÁS: Explicit 'GP' (nagybetűs) mező hozzáadása
+* a 'finalData' objektumhoz a modellező kompatibilitása érdekében.
+* - ODDS DEBUGGER: Az Odds API hívás most listázza a kapott eseményeket.
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY ---
@@ -299,25 +295,23 @@ async function getOddsData(homeTeam, awayTeam) {
 
     const events = response.data.data;
 
-    // --- *** ÚJ DEBUGGER KÓD KEZDETE *** ---
-    // Ez a rész segít megtalálni a helyes csapatneveket az Odds API-hoz.
+    // --- *** V33 DEBUGGER KÓD KEZDETE (Javított) *** ---
+    // Kiírja az első 15 futball eseményt, hogy lássuk, mit kapunk az API-tól.
     try {
-        const debugNames = new Set();
-        const lowerHome = homeTeam.toLowerCase();
-        const lowerAway = awayTeam.toLowerCase();
-        for (const event of events) {
-            if (event.home && (event.home.toLowerCase().includes(lowerHome.substring(0, 4)) || event.home.toLowerCase().includes(lowerAway.substring(0, 4)))) {
-                debugNames.add(event.home);
-            }
-            if (event.away && (event.away.toLowerCase().includes(lowerHome.substring(0, 4)) || event.away.toLowerCase().includes(lowerAway.substring(0, 4)))) {
-                debugNames.add(event.away);
-            }
+        const footballEvents = events
+            .filter(event => event.sport?.slug === 'football' && event.home && event.away)
+            .map(event => `${event.home} vs ${event.away} (Liga: ${event.league?.name || 'N/A'})`);
+        
+        console.log(`[ODDS DEBUG v33] Az API-tól kapott első 15 futball esemény:`);
+        if (footballEvents.length > 0) {
+            console.log(footballEvents.slice(0, 15));
+        } else {
+            console.log("Nem található 'football' esemény a listában.");
         }
-        console.log(`[ODDS DEBUG] Potenciális csapatnevek a '${homeTeam}'/'${awayTeam}' meccshez:`, Array.from(debugNames));
     } catch (e) {
-        console.warn(`[ODDS DEBUG] Hiba a debug nevek gyűjtése során: ${e.message}`);
+        console.warn(`[ODDS DEBUG v33] Hiba a debug nevek gyűjtése során: ${e.message}`);
     }
-    // --- *** ÚJ DEBUGGER KÓD VÉGE *** ---
+    // --- *** V33 DEBUGGER KÓD VÉGE *** ---
 
     const homeVariations = generateTeamNameVariations(homeTeam);
     const awayVariations = generateTeamNameVariations(awayTeam);
@@ -489,29 +483,33 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         ));
         let geminiData = geminiJsonString ? JSON.parse(geminiJsonString) : {};
 
-        // --- *** KRITIKUS JAVÍTÁS KEZDETE (v32) *** ---
-        // Adatok összefésülése a helyes prioritással (Deep Merge)
-        // Ez javítja a "GP:undefined" hibát.
+        // --- *** KRITIKUS JAVÍTÁS KEZDETE (v33 - GP Fix) *** ---
+        // Adatok összefésülése, explicit NAGYBETŰS 'GP' kulccsal.
+        
+        const finalHomeStats = {
+            ...(geminiData.stats?.home || {}),
+            ...(apiFootballHomeSeasonStats || {}),
+        };
+        // Explicit GP (nagybetűs) hozzáadása a modellező motor számára
+        finalHomeStats.GP = apiFootballHomeSeasonStats?.gamesPlayed || geminiData.stats?.home?.gp || 1;
+
+        const finalAwayStats = {
+            ...(geminiData.stats?.away || {}),
+            ...(apiFootballAwaySeasonStats || {}),
+        };
+        // Explicit GP (nagybetűs) hozzáadása a modellező motor számára
+        finalAwayStats.GP = apiFootballAwaySeasonStats?.gamesPlayed || geminiData.stats?.away?.gp || 1;
+
         const finalData = {
-            ...geminiData, // Gemini adatok betöltése
+            ...geminiData,
             apiFootballData: { homeTeamId, awayTeamId, leagueId, fixtureId, fixtureDate },
             h2h_structured: apiFootballH2HData || geminiData.h2h_structured,
-            
-            // A STATISZTIKÁK HELYES EGYESÍTÉSE (FELÜLÍRÁS HELYETT)
             stats: {
-                home: {
-                    ...(geminiData.stats?.home || {}), // Meglévő Gemini statisztikák (pl. xG)
-                    ...(apiFootballHomeSeasonStats || {}), // API-Football statisztikák (pl. goalsFor, form)
-                    gp: apiFootballHomeSeasonStats?.gamesPlayed || geminiData.stats?.home?.gp || 1 // GP felülírása/biztosítása
-                },
-                away: {
-                    ...(geminiData.stats?.away || {}), // Meglévő Gemini statisztikák
-                    ...(apiFootballAwaySeasonStats || {}), // API-Football statisztikák
-                    gp: apiFootballAwaySeasonStats?.gamesPlayed || geminiData.stats?.away?.gp || 1 // GP felülírása/biztosítása
-                }
+                home: finalHomeStats,
+                away: finalAwayStats
             }
         };
-        // --- *** KRITIKUS JAVÍTÁS VÉGE (v32) *** ---
+        // --- *** KRITIKUS JAVÍTÁS VÉGE (v33) *** ---
 
         const result = { rawData: finalData, oddsData: fetchedOddsData, fromCache: false };
         scriptCache.set(ck, result);
