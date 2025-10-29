@@ -1,12 +1,10 @@
-// htmlBuilder.js (v1.2 - Vizuális javítások: Sávos diagram, Fehér kiemelések)
+// htmlBuilder.js (v1.1 - Vizuális javításokkal)
 
 /**************************************************************
 * htmlBuilder.js - HTML Generátor Modul (Node.js Verzió)
-* VÁLTOZÁS (v1.2): UI Javítások:
-* - getRadialChartHtml lecserélve getProbabilityBarHtml-re (3 sávos diagram).
-* - 'Legvalószínűbb eredmény' és 'Fő Összesített Vonal' számai fehéren fénylenek.
-* - Gauge címkék eltávolítva.
-* - Fő ajánlás bizalmi száma fehér fénylést kapott.
+* VÁLTOZÁS (v1.1): UI Javítások:
+* - Fejléc boxokban a számok fehér fénylést kapnak (glowing-text-white).
+* - Százalékok a radiális diagram legendájában is fehéren fénylenek.
 **************************************************************/
 
 // Robusztus escapeHTML függvény
@@ -34,34 +32,52 @@ function escapeHTML(str) {
     return tempStr;
 }
 
-// === ÚJ FUNKCIÓ: Sávos Valószínűség Diagram ===
-function getProbabilityBarHtml(pHome, pDraw, pAway) {
+
+function getRadialChartHtml(pHome, pDraw, pAway) {
+    const r = 40;
+    const circumference = 2 * Math.PI * r;
     const pHomeSafe = parseFloat(pHome) || 0;
     const pDrawSafe = parseFloat(pDraw) || 0;
     const pAwaySafe = parseFloat(pAway) || 0;
+    const homeSegment = (pHomeSafe / 100) * circumference;
+    const drawSegment = (pDrawSafe / 100) * circumference;
+    const awaySegment = (pAwaySafe / 100) * circumference;
 
+    const homeOffset = 0;
+    const drawOffset = -homeSegment;
+    const awayOffset = -(homeSegment + drawSegment);
+
+    // JAVÍTÁS: Százalékok strong tagjei megkapják a glowing-text-white classt
     return `
-    <div class="probability-bar-container">
-        <div class="prob-bar-row">
-            <span class="prob-label">Hazai</span>
-            <div class="prob-bar-track">
-                <div class="prob-bar bar-home" style="width: ${pHomeSafe}%;"></div>
-            </div>
-            <span class="prob-value glowing-text-white">${pHomeSafe}%</span>
+    <div class="radial-chart-container">
+        <svg class="radial-chart" width="100%" height="100%" viewBox="0 0 100 100">
+            <circle class="track" cx="50" cy="50" r="${r}" ></circle>
+            <circle class="progress home" cx="50" cy="50" r="${r}"
+                    stroke-dasharray="${homeSegment} ${circumference}"
+                     style="stroke-dashoffset: ${homeOffset};">
+            </circle>
+            <circle class="progress draw" cx="50" cy="50" r="${r}"
+                    stroke-dasharray="${drawSegment} ${circumference}"
+                    style="stroke-dashoffset: ${drawOffset};">
+            </circle>
+             <circle class="progress away" cx="50" cy="50" r="${r}"
+                    stroke-dasharray="${awaySegment} ${circumference}"
+                    style="stroke-dashoffset: ${awayOffset};">
+            </circle>
+        </svg>
+    </div>
+    <div class="diagram-legend">
+        <div class="legend-item">
+            <span class="legend-color-box"></span>
+            <span>Hazai (<strong class="glowing-text-white">${pHome}%</strong>)</span>
         </div>
-        <div class="prob-bar-row">
-            <span class="prob-label">Döntetlen</span>
-            <div class="prob-bar-track">
-                <div class="prob-bar bar-draw" style="width: ${pDrawSafe}%;"></div>
-            </div>
-            <span class="prob-value glowing-text-white">${pDrawSafe}%</span>
+        <div class="legend-item">
+             <span class="legend-color-box"></span>
+            <span>Döntetlen (<strong class="glowing-text-white">${pDraw}%</strong>)</span>
         </div>
-        <div class="prob-bar-row">
-            <span class="prob-label">Vendég</span>
-            <div class="prob-bar-track">
-                <div class="prob-bar bar-away" style="width: ${pAwaySafe}%;"></div>
-            </div>
-            <span class="prob-value glowing-text-white">${pAwaySafe}%</span>
+        <div class="legend-item">
+             <span class="legend-color-box"></span>
+            <span>Vendég (<strong class="glowing-text-white">${pAway}%</strong>)</span>
         </div>
     </div>`;
 }
@@ -72,7 +88,6 @@ function getGaugeHtml(confidence, label = "") {
     const circumference = 235.6; // ~90% of circle for 180 degree arc
 
     // JAVÍTÁS: A gauge-text már alapból megkapja a glowing-text-white classt
-    // JAVÍTÁS: A 'label' paramétert már nem használjuk a hívásnál, de a funkcióban maradhat
     return `
     <div class="gauge-container">
         <svg class="gauge-svg" viewBox="0 0 100 85">
@@ -113,12 +128,16 @@ function getMicroAnalysesHtml(microAnalyses) {
     if (!microAnalyses || Object.keys(microAnalyses).length === 0) {
         return "<p>Nem futottak speciális modellek ehhez a sporthoz.</p>";
     }
+
     let html = '';
     Object.entries(microAnalyses).forEach(([key, text]) => {
         const title = key.toUpperCase().replace(/_/g, ' ');
+        // Szétválasztás a "Bizalom:" alapján
         const parts = (text || "Hiba.").split('Bizalom:');
         const analysisText = parts[0] || "Elemzés nem elérhető.";
+        // Ha van bizalmi rész, azt is kiemeljük
         const confidenceText = parts[1] ? `**Bizalom: ${parts[1].trim()}**` : "**Bizalom: N/A**";
+
         html += `
         <div class="micromodel-card">
             <h5><strong>${escapeHTML(title)} Specialista</strong></h5>
@@ -132,7 +151,9 @@ function getMicroAnalysesHtml(microAnalyses) {
 // Segédfüggvény AI szövegek feldolgozásához (escape + newline -> <br>)
 const processAiText = (text) => {
     if (!text || text.includes("Hiba")) return `<p>${escapeHTML(text || "Hiba.")}</p>`;
+    // **kiemelés** (strong tag) kezelése az escapeHTML-ben
     const escapedHtml = escapeHTML(text);
+    // Sortörések cseréje <br>-re
     return escapedHtml.replace(/\n/g, '<br>');
 };
 
@@ -145,10 +166,11 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
     const pOver = sim?.pOver?.toFixed(1) || 'N/A';
     const pUnder = sim?.pUnder?.toFixed(1) || 'N/A';
     const mainTotalsLine = sim?.mainTotalsLine || 'N/A';
-    // JAVÍTÁS: topScore már nem tartalmaz strong taget
-    const topScore = `${sim?.topScore?.gh ?? 'N/A'} - ${sim?.topScore?.ga ?? 'N/A'}`;
+    // JAVÍTÁS: A topScore már alapból strong taget tartalmaz
+    const topScore = `<strong>${sim?.topScore?.gh ?? 'N/A'} - ${sim?.topScore?.ga ?? 'N/A'}</strong>`;
     const modelConf = modelConfidence?.toFixed(1) || '1.0';
 
+    // Szakértői bizalom kinyerése
     const expertConfHtml = committeeResults?.expertConfidence || "**1.0/10** - Hiba.";
     let expertConfScore = 1.0;
     try {
@@ -156,42 +178,43 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
         if (match && match[1]) { expertConfScore = parseFloat(match[1]); }
     } catch(e) { /* Hiba figyelmen kívül hagyása */ }
 
+    // Fő ajánlás
     const finalRec = masterRecommendation || { recommended_bet: "Hiba", final_confidence: 1.0, brief_reasoning: "Hiba" };
     const finalReasoningHtml = processAiText(finalRec.brief_reasoning);
     const finalConfInterpretationHtml = getConfidenceInterpretationHtml(finalRec.final_confidence);
-    // JAVÍTÁS: Végső Bizalom is glowing-text-white classt kap
     const masterRecommendationHtml = `
     <div class="master-recommendation-card">
         <h5>👑 Fő Elemző Ajánlása 👑</h5>
         <div class="master-bet"><strong>${escapeHTML(finalRec.recommended_bet)}</strong></div>
         <div class="master-confidence">
-            Végső Bizalom: <strong class="glowing-text-white">${finalRec.final_confidence.toFixed(1)}/10</strong>
-        </div>
+    Végső Bizalom: <strong>${finalRec.final_confidence.toFixed(1)}/10</strong>
+</div>
         <div class="master-reasoning">${finalReasoningHtml}</div>
         ${finalConfInterpretationHtml}
     </div>`;
 
     // Fejléc boxok
+    // JAVÍTÁS: glowing-text-white class hozzáadva a számokhoz
     const atAGlanceHtml = `
     <div class="at-a-glance-grid">
         <div class="summary-card">
             <h5>Alap Valószínűségek</h5>
-            ${getProbabilityBarHtml(pHome, pDraw, pAway)}
+            ${getRadialChartHtml(pHome, pDraw, pAway)}
         </div>
         <div class="summary-card">
             <h5>Várható Eredmény (xG/Pont)</h5>
-             <div class="xg-value-container">
+            <div class="xg-value-container">
                 <div class="xg-team">
                     <div class="value glowing-text-white">${mu_h}</div>
                     <div class="details">${escapeHTML(matchData.home)}</div>
                 </div>
                 <div class="xg-separator">-</div>
-                 <div class="xg-team">
+                <div class="xg-team">
                     <div class="value glowing-text-white">${mu_a}</div>
                     <div class="details">${escapeHTML(matchData.away)}</div>
                 </div>
             </div>
-            <div class="details">Legvalószínűbb eredmény: <span class="glowing-text-white">${escapeHTML(topScore)}</span></div>
+            <div class="details">Legvalószínűbb eredmény: ${topScore}</div>
         </div>
 
         <div class="summary-card">
@@ -199,14 +222,14 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
             <div class="totals-breakdown">
                 <div class="total-line">
                     <span class="total-label">Over ${mainTotalsLine}</span>
-                    <span class="glowing-text-white">${pOver}%</span>
+                    <strong class="glowing-text-white">${pOver}%</strong>
                 </div>
                 <div class="total-line">
                     <span class="total-label">Under ${mainTotalsLine}</span>
-                    <span class="glowing-text-white">${pUnder}%</span>
+                    <strong class="glowing-text-white">${pUnder}%</strong>
                 </div>
             </div>
-            ${matchData.sport === 'soccer' ? `<div class="details">BTTS Igen: <span class="glowing-text-white">${sim?.pBTTS?.toFixed(1) ?? 'N/A'}%</span></div>` : ''}
+            ${matchData.sport === 'soccer' ? `<div class="details">BTTS Igen: <strong class="glowing-text-white">${sim?.pBTTS?.toFixed(1) ?? 'N/A'}%</strong></div>` : ''}
         </div>
         <div class="summary-card">
             <h5>Statisztikai Modell</h5>
@@ -225,7 +248,7 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
         <div class="details">${expertConfReasoning}</div>
     </div>`;
 
-    // Value Bets
+    // Value Bets (itt a strong már narancs lesz a CSS miatt)
     let marketCardsHtml = '';
     (valueBets || []).forEach(bet => {
         marketCardsHtml += `
@@ -244,18 +267,18 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
          <div class="market-card-grid">${marketCardsHtml}</div>
     </div>`;
 
-    // Kulcskérdések
+    // Kulcskérdések (strong narancs lesz)
     let keyQuestionsHtml = '<p>- Hiba.</p>';
     if (committeeResults?.keyQuestions && !committeeResults.keyQuestions.includes("Hiba")) {
         const questions = committeeResults.keyQuestions.split('- ').filter(q => q.trim() !== '');
         keyQuestionsHtml = '<ul class="key-questions">';
         questions.forEach(q => {
-            keyQuestionsHtml += `<li>${processAiText(q.trim())}</li>`;
+            keyQuestionsHtml += `<li>${processAiText(q.trim())}</li>`; // processAiText kezeli a strong tagot
         });
         keyQuestionsHtml += '</ul>';
     }
 
-    // Accordion
+    // Accordion (a processAiText kezeli a strong tagokat a bekezdésekben)
     const accordionHtml = `
     <div class="analysis-accordion">
         <details class="analysis-accordion-item" open>
@@ -295,7 +318,7 @@ export function buildAnalysisHtml(committeeResults, matchData, oddsData, valueBe
         </details>
 
         <div class="micromodel-section">
-             <h4>Piaci Mikromodellek</h4>
+            <h4>Piaci Mikromodellek</h4>
              <div class="micromodel-grid">
                 ${getMicroAnalysesHtml(committeeResults?.microAnalyses)}
             </div>
