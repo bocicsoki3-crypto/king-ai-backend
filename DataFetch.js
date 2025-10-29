@@ -1,7 +1,8 @@
-// --- VÉGLEGES INTEGRÁLT (v30 - Teljes Kód) datafetch.js ---
+// --- VÉGLEGES INTEGRÁLT (v30.1 - Teljes Kód) datafetch.js ---
 // - GYÖKÉROK JAVÍTVA: Külön API kulcsok és hostok kezelése mindkét szolgáltatáshoz a helyes változónevekkel.
 // - API-FOOTBALL JAVÍTVA: A 'country' paraméter használata a config.js alapján a célzott kereséshez.
-// - ODDS API JAVÍTVA: A kód szűrők nélkül kéri le a teljes listát és abban keres, a sikeres manuális teszt alapján.
+// - ODDS API JAVÍTVA: A kód szűrők nélkül kéri le a teljes listát és abban keres.
+// - SZINTAKTIKAI HIBA JAVÍTVA (v30.1): A hiányzó `export` kulcsszavak pótolva.
 
 import axios from 'axios';
 import NodeCache from 'node-cache';
@@ -30,11 +31,11 @@ const __dirname = path.dirname(__filename);
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v30 (2025-10-29) - Végleges Javítás
+* VERZIÓ: v30.1 (2025-10-29) - Végleges Javítás
 * - HITELESÍTÉS JAVÍTVA: Külön API kulcsok és hostok kezelése
 * a helyes, config.js-ben definiált változónevekkel.
-* - API-FOOTBALL JAVÍTVA: Célzott ligakeresés 'country' paraméterrel.
-* - ODDS API JAVÍTVA: Teljes lista lekérése és kliens-oldali keresés.
+* - EXPORT HIBA JAVÍTVA: A hiányzó 'export' kulcsszavak pótolva
+* a 'getOptimizedOddsData' és más funkciók előtt.
 **************************************************************/
 
 // --- HIBATŰRŐ API HÍVÓ SEGÉDFÜGGVÉNY ---
@@ -54,7 +55,7 @@ async function makeRequest(url, config = {}, retries = 1) {
             if (method === 'POST') {
                 response = await axios.post(url, currentConfig.data || {}, currentConfig);
             } else {
-                response = await axios.get(url, { ...currentConfig, url });
+                response = await axios.get(url, { ...currentConfig });
             }
 
             if (response.status < 200 || response.status >= 300) {
@@ -236,9 +237,7 @@ async function getApiFootballH2H(homeTeamId, awayTeamId, limit = 5) {
         return fixtures.map(fix => ({
             date: fix.fixture?.date?.split('T')[0] || 'N/A',
             competition: fix.league?.name || 'N/A',
-            score: `${fix.goals?.home ?? '?'} - ${fix.goals?.away ?? '?'}`,
-            home_team: fix.teams?.home?.name || 'N/A',
-            away_team: fix.teams?.away?.name || 'N/A',
+            score: `${fix.goals?.home ?? '?'} - ${fix.goals?.away ?? '?'}`
         })).slice(0, limit);
     }
     return null;
@@ -260,7 +259,6 @@ async function getApiFootballTeamSeasonStats(teamId, leagueId, season) {
     return null;
 }
 
-
 // --- ODDS API FUNKCIÓK ---
 const ODDS_API_HEADERS = { 'x-rapidapi-key': ODDS_API_KEY, 'x-rapidapi-host': ODDS_API_HOST };
 
@@ -268,7 +266,7 @@ async function getOddsData(homeTeam, awayTeam) {
     if (!ODDS_API_KEY) { console.warn("Odds API kulcs hiányzik, odds lekérés kihagyva."); return null; }
 
     const url = `https://${ODDS_API_HOST}/api/v1/events`;
-    console.log(`Odds API (RapidAPI v30): Szűrők nélküli, teljes eseménylista lekérése... URL: ${url}`);
+    console.log(`Odds API (RapidAPI v30): Teljes eseménylista lekérése... URL: ${url}`);
     
     const response = await makeRequest(url, { headers: ODDS_API_HEADERS });
     if (!response?.data?.data || response.data.data.length === 0) {
@@ -295,7 +293,7 @@ async function getOddsData(homeTeam, awayTeam) {
     }
 
     if (!bestMatch) {
-        console.warn(`Odds API (RapidAPI v30): Nem található esemény egyezés (Legjobb: ${(highestCombinedRating*100).toFixed(1)}%) ehhez: ${homeTeam} vs ${awayTeam} a teljes listában.`);
+        console.warn(`Odds API (RapidAPI v30): Nem található esemény egyezés (Legjobb: ${(highestCombinedRating*100).toFixed(1)}%) ehhez: ${homeTeam} vs ${awayTeam} a listában.`);
         return null;
     }
 
@@ -319,7 +317,8 @@ async function getOddsData(homeTeam, awayTeam) {
     return { current: currentOdds, allMarkets: marketsData };
 }
 
-async function getOptimizedOddsData(homeTeam, awayTeam, sport) {
+// v30.1 JAVÍTÁS: HIÁNYZÓ EXPORT PÓTOLVA
+export async function getOptimizedOddsData(homeTeam, awayTeam, sport) {
     const key = `${homeTeam}${awayTeam}${sport}`.toLowerCase().replace(/\s+/g, '');
     const cacheKey = `live_odds_v30_rapidapi_${key}`;
     const cached = oddsCache.get(cacheKey);
@@ -330,7 +329,6 @@ async function getOptimizedOddsData(homeTeam, awayTeam, sport) {
     
     console.log(`Nincs odds cache: ${cacheKey}. Friss lekérés...`);
     const liveOdds = await getOddsData(homeTeam, awayTeam);
-
     if (liveOdds?.current?.length > 0) {
         oddsCache.set(cacheKey, liveOdds);
         console.log(`Odds adatok sikeresen lekérve és cache-elve: ${cacheKey}`);
@@ -348,8 +346,7 @@ function generateTeamNameVariations(teamName) {
 
 // --- FŐ ADATGYŰJTŐ FUNKCIÓ ---
 export async function getRichContextualData(sport, homeTeamName, awayTeamName, leagueName, utcKickoff) {
-    const teamNames = [homeTeamName, awayTeamName].sort();
-    const ck = `rich_context_v43_apif_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
+    const ck = `rich_context_v43_apif_${sport}_${encodeURIComponent(homeTeamName)}_${encodeURIComponent(awayTeamName)}`;
     const cached = scriptCache.get(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
@@ -415,16 +412,17 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
             apiFootballData: { homeTeamId, awayTeamId, leagueId, fixtureId, fixtureDate }
         };
         
-        const result = { rawData: finalData, oddsData: fetchedOddsData };
+        const result = { rawData: finalData, oddsData: fetchedOddsData, fromCache: false };
         scriptCache.set(ck, result);
         console.log(`Sikeres adatgyűjtés (v30), cache mentve (${ck}).`);
-        return { ...result, fromCache: false };
+        return result;
 
     } catch (e) {
         console.error(`KRITIKUS HIBA a getRichContextualData (v30) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
         throw new Error(`Adatgyűjtési hiba (v30): ${e.message}`);
     }
 }
+
 
 // --- ESPN MECCSLEKÉRDEZÉS ---
 export async function _getFixturesFromEspn(sport, days) {
@@ -495,8 +493,8 @@ export async function _getFixturesFromEspn(sport, days) {
     }
 }
 
-// --- PROMPT (leegyszerűsítve) ---
-function PROMPT_V43(sport, homeTeamName, awayTeamName, apiFootballHomeSeasonStats, apiFootballAwaySeasonStats, apiFootballH2HData, apiFootballLineups) {
+// --- PROMPT ---
+function PROMPT_V43(sport, homeTeamName, awayTeamName, apiFootballHomeSeasonStats, apiFootballAwaySeasonStats, apiFootballH2HData) {
     return `Analyze the ${sport} match: "${homeTeamName}" vs "${awayTeamName}". Provide a single, valid JSON object.
     Home Stats: ${JSON.stringify(apiFootballHomeSeasonStats)}
     Away Stats: ${JSON.stringify(apiFootballAwaySeasonStats)}
