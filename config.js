@@ -1,67 +1,86 @@
-// --- VÉGLEGES config.js (v37 - API-Football Név Térképezés) ---
+// --- VÉGLEGES config.js (v40 - Több Sportág API Host) ---
 
 import dotenv from 'dotenv';
 dotenv.config();
 
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* v37 JAVÍTÁS: Hozzáadva az "LAFC" és "Austin FC" az
-* APIFOOTBALL_TEAM_NAME_MAP-hez, hogy megoldja a csapat ID
-* keresési hibát (log: image_4b7982.png).
+* v40 JAVÍTÁS: Hozzáadva az API_HOSTS objektum, hogy a rendszer
+* a 'hockey' és 'basketball' sportágakhoz a megfelelő
+* API végpontokat (api-hockey, api-basketball) használja.
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
 export const PORT = process.env.PORT || 3001;
 
-// --- API KULCSOK (v30 - Szétválasztva) ---
+// --- API KULCSOK ---
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 export const GEMINI_MODEL_ID = 'gemini-2.5-pro';
 export const SHEET_URL = process.env.SHEET_URL;
 
-// API-Football specifikus kulcsok
+// --- V40: API HOST TÉRKÉP (SPORTÁGANKÉNT) ---
+// Az API-Football (API-Sports) külön hostokat használ minden sportághoz.
+export const API_HOSTS = {
+    soccer: {
+        host: process.env.APIFOOTBALL_HOST || 'api-football-v1.p.rapidapi.com',
+        key: process.env.APIFOOTBALL_KEY
+    },
+    hockey: {
+        host: process.env.APIHOCKEY_HOST || 'api-hockey.p.rapidapi.com',
+        key: process.env.APIHOCKEY_KEY || process.env.APIFOOTBALL_KEY // Használhatja ugyanazt a kulcsot, ha a RapidAPI előfizetés megengedi
+    },
+    basketball: {
+        host: process.env.APIBASKETBALL_HOST || 'api-basketball.p.rapidapi.com',
+        key: process.env.APIBASKETBALL_KEY || process.env.APIFOOTBALL_KEY // Használhatja ugyanazt a kulcsot
+    }
+};
+
+// Régi, deprecated nevek (meghagyva a kompatibilitás miatt, de az API_HOSTS az új)
 export const APIFOOTBALL_KEY = process.env.APIFOOTBALL_KEY;
 export const APIFOOTBALL_HOST = process.env.APIFOOTBALL_HOST;
 
-// Odds API specifikus kulcsok (MÁR NINCSENEK HASZNÁLATBAN v35 ÓTA)
-export const ODDS_API_KEY = process.env.ODDS_API_KEY;
-export const ODDS_API_HOST = process.env.ODDS_API_HOST;
 
 // --- CSAPATNÉV HOZZÁRENDELÉSEK ---
 
-// Bővítsd ezt a listát, ha további eltéréseket találsz az Odds API logokban!
+// Odds API (Már nincs használatban)
 export const ODDS_TEAM_NAME_MAP = {
-    // Ez a térkép már nincs aktívan használatban a v35 óta,
-    // de itt hagyjuk jövőbeli referenciaként.
-    'schalke': 'FC Schalke 04',
-    'bremen': 'Werder Bremen',
-    'manchester city': 'Man City',
-    'manchester united': 'Man United',
     'spurs': 'Tottenham Hotspur',
-    'tottenham': 'Tottenham Hotspur',
     'as roma': 'Roma',
-    'hellas verona': 'Verona',
-    'como': 'Como',
+    'hellas verona': 'Verona'
 };
 
-// Bővítsd ezt a listát, ha az API-Football tévesen azonosít egy csapatot!
+// API-SPORTS NÉV TÉRKÉP (Minden sportághoz)
+// A 'v37'-es datafetch már ezt használja.
 export const APIFOOTBALL_TEAM_NAME_MAP = {
     // Kulcs: A frontendről/ESPN-ről érkező név (kisbetűvel)
-    // Érték: A pontos, hivatalos csapatnév, amire az API-Football keresni fog
+    // Érték: A pontos, hivatalos csapatnév, amire az API keresni fog
+
+    // Foci
     'spurs': 'Tottenham Hotspur',
     'tottenham': 'Tottenham Hotspur',
     'man utd': 'Manchester United',
     'man city': 'Manchester City',
-    'inter': 'Inter Milan', // Gyakori rövidítés
+    'inter': 'Inter Milan',
     'wolves': 'Wolverhampton Wanderers',
-    'hellas verona': 'Hellas Verona', // Megakadályozza, hogy az U20-as csapatot találja meg
-    
-    // --- V37 JAVÍTÁS (image_4b7982.png alapján) ---
+    'hellas verona': 'Hellas Verona',
     'lafc': 'Los Angeles FC',
     'austin fc': 'Austin FC',
     'ceará': 'Ceara SC',
-'atletico junior': 'Junior',
-'independiente santa fe': 'Santa Fe',
-'independiente medellin': 'Independiente Medellin',
+    'atletico junior': 'Junior',
+    'independiente santa fe': 'Santa Fe',
+    'independiente medellin': 'Independiente Medellin',
+
+    // Jégkorong (A logok alapján)
+    'senators': 'Ottawa Senators',
+    'flames': 'Calgary Flames',
+    'lightning': 'Tampa Bay Lightning',
+    'stars': 'Dallas Stars',
+    'flyers': 'Philadelphia Flyers',
+    'predators': 'Nashville Predators',
+    'hurricanes': 'Carolina Hurricanes',
+    'islanders': 'New York Islanders',
+    'wild': 'Minnesota Wild',
+    'penguins': 'Pittsburgh Penguins'
 };
 
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
@@ -71,6 +90,7 @@ export const SPORT_CONFIG = {
         espn_sport_path: 'soccer',
         totals_line: 2.5,
         espn_leagues: {
+            // ... (A teljes foci liga lista itt van)
             "Premier League": { slug: "eng.1", country: "England" },
             "Championship": { slug: "eng.2", country: "England" },
             "Ligue 1": { slug: "fra.1", country: "France" },
@@ -113,15 +133,6 @@ export const SPORT_CONFIG = {
             "Swiss Super League": { slug: "sui.1", country: "Switzerland" },
             "Greek Super League": { slug: "gre.1", country: "Greece" },
             'Czech First League': { slug: 'cze.1', country: 'Czech Republic' },
-
-            // --- JAVÍTVA: A logokban 400-as hibát okozó slugok ideiglenesen kikommentelve ---
-            // "Ekstraklasa": { slug: "pol.1", country: "Poland" },
-            // "K League 1": { slug: "kor.1", country: "South Korea" },
-            // "HNL": { slug: "cro.1", country: "Croatia" },
-            // "NB I.": { slug: "hun.1", country: "Hungary" },
-            // "NB I": { slug: "hun.1", country: "Hungary" },
-            // "World Cup Qualifier": { slug: "fifa.worldq", country: "World" },
-            // "CONCACAF World Cup Qualifying": { slug: "fifa.worldq.concaf", country: "World" },
         },
     },
     hockey: {
@@ -129,7 +140,9 @@ export const SPORT_CONFIG = {
         espn_sport_path: 'hockey',
         totals_line: 6.5,
         espn_leagues: {
-          'NHL': { slug: 'nhl', country: 'USA' }
+          // Az API-Hockey ligáknak más az 'country' és 'slug' (pl. a liga ID-ja)
+          // Ezt az API-Hockey dokumentációjából kellene pontosítani, de az 'USA' egy jó kezdet
+          'NHL': { slug: 'nhl', country: 'USA' } 
         },
     },
     basketball: {
@@ -138,7 +151,7 @@ export const SPORT_CONFIG = {
         totals_line: 220.5,
         espn_leagues: {
             'NBA': { slug: 'nba', country: 'USA' },
-            'Euroleague': { slug: "euroleague", country: "World" }
+            'Euroleague': { slug: 'euroleague', country: 'World' }
         },
     },
 };
