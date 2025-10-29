@@ -1,35 +1,35 @@
-// --- JAVÍTOTT config.js ---
+// --- VÉGLEGES config.js (v30.1-kompatibilis, név-hozzárendeléssel) ---
 
 import dotenv from 'dotenv';
 dotenv.config();
 
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* KRITIKUS JAVÍTÁS: Hozzáadva az `APIFOOTBALL_TEAM_NAME_MAP` a csapatnevek
-* pontosabb azonosításához, különösen a "Spurs" -> "Tottenham Hotspur"
-* és hasonló becenevek helyes kezelésére.
-* JAVÍTÁS (2025-10-25): 'Serie A' kulcs hozzáadva az odds_api_keys_by_league-hez.
+* KRITIKUS JAVÍTÁS: Hozzáadva a Hellas Verona, AS Roma és Como
+* név-hozzárendelések az API-Football és Odds API pontosabb
+* működéséhez a logok alapján.
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
-export const PORT = process.env.PORT || 3001; // Port, amin a szerver fut
+export const PORT = process.env.PORT || 3001;
 
-// --- API KULCSOK ---
-export const GEMINI_API_KEY = process.env.GEMINI_API_KEY; // Gemini API kulcs
-export const GEMINI_MODEL_ID = 'gemini-2.5-pro'; // Ajánlott modell a sebesség és költséghatékonyság miatt
-export const ODDS_API_KEY = process.env.ODDS_API_KEY; // Odds API kulcs
-export const THESPORTSDB_API_KEY = process.env.THESPORTSDB_API_KEY; // TheSportsDB API kulcs
-export const APIFOOTBALL_API_KEY = process.env.APIFOOTBALL_API_KEY; // API-Football kulcs
-export const SPORTMONKS_API_KEY = process.env.SPORTMONKS_API_KEY; // SportMonks API kulcs (opcionális)
-export const PLAYER_API_KEY = process.env.PLAYER_API_KEY; // Player API kulcs (opcionális, nem látszik használatban)
+// --- API KULCSOK (v30 - Szétválasztva) ---
+export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+export const GEMINI_MODEL_ID = 'gemini-2.5-pro';
+export const SHEET_URL = process.env.SHEET_URL;
 
+// API-Football specifikus kulcsok
+export const APIFOOTBALL_KEY = process.env.APIFOOTBALL_KEY;
+export const APIFOOTBALL_HOST = process.env.APIFOOTBALL_HOST;
 
-// --- GOOGLE SHEET BEÁLLÍTÁSOK ---
-export const SHEET_URL = process.env.SHEET_URL; // Google Sheet URL
+// Odds API specifikus kulcsok
+export const ODDS_API_KEY = process.env.ODDS_API_KEY;
+export const ODDS_API_HOST = process.env.ODDS_API_HOST;
+
 
 // --- CSAPATNÉV HOZZÁRENDELÉSEK ---
 
-// Bővítsd ezt a listát, ha további eltéréseket találsz a The Odds API logokban!
+// Bővítsd ezt a listát, ha további eltéréseket találsz az Odds API logokban!
 export const ODDS_TEAM_NAME_MAP = {
     // Kulcs: Az ESPN/Frontend által használt név (kisbetűvel)
     // Érték: A The Odds API által használt név
@@ -42,9 +42,11 @@ export const ODDS_TEAM_NAME_MAP = {
     'real madrid': 'Real Madrid',
     'atletico madrid': 'Atletico Madrid',
     'bayern munich': 'Bayern Munich',
+    'as roma': 'Roma',
+    'hellas verona': 'Verona',
+    'como': 'Como',
 };
 
-// --- JAVÍTÁS KEZDETE: ÚJ NÉVTÉRKÉP AZ API-FOOTBALLHOZ ---
 // Bővítsd ezt a listát, ha az API-Football tévesen azonosít egy csapatot!
 export const APIFOOTBALL_TEAM_NAME_MAP = {
     // Kulcs: A frontendről érkező név (kisbetűvel)
@@ -55,9 +57,8 @@ export const APIFOOTBALL_TEAM_NAME_MAP = {
     'man city': 'Manchester City',
     'inter': 'Inter Milan', // Gyakori rövidítés
     'wolves': 'Wolverhampton Wanderers',
-    // ... további csapatok, ha szükséges ...
+    'hellas verona': 'Hellas Verona', // Megakadályozza, hogy az U20-as csapatot találja meg
 };
-// --- JAVÍTÁS VÉGE ---
 
 
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
@@ -65,94 +66,74 @@ export const SPORT_CONFIG = {
     soccer: {
         name: 'labdarúgás',
         espn_sport_path: 'soccer',
-        total_minutes: 90,
-        home_advantage: { home: 1.08, away: 0.92 },
-        avg_goals: 1.35,
         totals_line: 2.5,
-        odds_api_sport_key: 'soccer_epl', // Alapértelmezett odds sport kulcs
-        odds_api_keys_by_league: { // Specifikus odds kulcsok ligákhoz
-            'UEFA Champions League': 'soccer_uefa_champs_league',
-            'Champions League': 'soccer_uefa_champs_league',
-            'UEFA Europa League': 'soccer_uefa_europa_league',
-            'Europa League': 'soccer_uefa_europa_league',
-            'UEFA Conference League': 'soccer_uefa_europa_conference_league',
-            'Conference League': 'soccer_uefa_europa_conference_league',
-            'English Premier League': 'soccer_epl',
-            'Premier League': 'soccer_epl',
-            'Spanish La Liga': 'soccer_spain_la_liga',
-            'LaLiga': 'soccer_spain_la_liga',
-            'German Bundesliga': 'soccer_germany_bundesliga',
-            'Bundesliga': 'soccer_germany_bundesliga',
-            'Italian Serie A': 'soccer_italy_serie_a',
-            'Serie A': 'soccer_italy_serie_a',
-            'French Ligue 1': 'soccer_france_ligue_one',
-            'Ligue 1': 'soccer_france_ligue_one',
-            'NB I': 'soccer_hungary_nb_i',
-            'Eredivisie': 'soccer_netherlands_eredivisie',
-            'Liga Portugal': 'soccer_portugal_primeira_liga',
-            'MLS': 'soccer_usa_mls',
-            'Brazil Serie A': 'soccer_brazil_campeonato',
-            'Argentinian Liga Profesional': 'soccer_argentina_primera_division'
-        },
         espn_leagues: {
-            "Premier League":"eng.1", "Championship":"eng.2", "Ligue 1":"fra.1", "Ligue 2":"fra.2", "Bundesliga":"ger.1", "2. Bundesliga":"ger.2", "Serie A":"ita.1", "Serie B":"ita.2", "LaLiga":"esp.1", "LaLiga2":"esp.2", "J1 League":"jpn.1", "Eredivisie":"ned.1", "Eliteserien":"nor.1", "Ekstraklasa":"pol.1", "Liga Portugal":"por.1", "Premiership":"sco.1", "K League 1":"kor.1", "Allsvenskan":"swe.1", "Super Lig":"tur.1", "MLS":"usa.1", "Liga MX":"mex.1", "Jupiler Pro League":"bel.1", "Serie A Betano":"rou.1", "HNL":"cro.1", "Superliga":"den.1", "Chance Liga":"cze.1", "NB I.":"hun.1", "NB I":"hun.1", "Premier Division":"irl.1", "Primera A":"col.1", "Champions League":"uefa.champions", "Europa League":"uefa.europa", "Conference League":"uefa.europa.conf", "FIFA World Cup": "fifa.world", "World Cup Qualifier": "fifa.worldq", "UEFA European Championship": "uefa.euro", "UEFA Nations League": "uefa.nations", "CAF World Cup Qualifying": "fifa.worldq.caf", "AFC World Cup Qualifying": "fifa.worldq.afc", "CONCACAF World Cup Qualifying": "fifa.worldq.concaf", "UEFA World Cup Qualifying": "fifa.worldq.uefa", "Brazil Serie A": "bra.1", "Brazil Serie B": "bra.2", "Argentinian Liga Profesional": "arg.1", "Australian A-League": "aus.1", "Austrian Bundesliga": "aut.1", "Swiss Super League": "sui.1", "Greek Super League": "gre.1", 'Czech First League': 'cze.1',
+            "Premier League": { slug: "eng.1", country: "England" },
+            "Championship": { slug: "eng.2", country: "England" },
+            "Ligue 1": { slug: "fra.1", country: "France" },
+            "Ligue 2": { slug: "fra.2", country: "France" },
+            "Bundesliga": { slug: "ger.1", country: "Germany" },
+            "2. Bundesliga": { slug: "ger.2", country: "Germany" },
+            "Serie A": { slug: "ita.1", country: "Italy" },
+            "Serie B": { slug: "ita.2", country: "Italy" },
+            "LaLiga": { slug: "esp.1", country: "Spain" },
+            "LaLiga2": { slug: "esp.2", country: "Spain" },
+            "J1 League": { slug: "jpn.1", country: "Japan" },
+            "Eredivisie": { slug: "ned.1", country: "Netherlands" },
+            "Eliteserien": { slug: "nor.1", country: "Norway" },
+            "Ekstraklasa": { slug: "pol.1", country: "Poland" },
+            "Liga Portugal": { slug: "por.1", country: "Portugal" },
+            "Premiership": { slug: "sco.1", country: "Scotland" },
+            "K League 1": { slug: "kor.1", country: "South Korea" },
+            "Allsvenskan": { slug: "swe.1", country: "Sweden" },
+            "Super Lig": { slug: "tur.1", country: "Turkey" },
+            "MLS": { slug: "usa.1", country: "USA" },
+            "Liga MX": { slug: "mex.1", country: "Mexico" },
+            "Jupiler Pro League": { slug: "bel.1", country: "Belgium" },
+            "Serie A Betano": { slug: "rou.1", country: "Romania" },
+            "HNL": { slug: "cro.1", country: "Croatia" },
+            "Superliga": { slug: "den.1", country: "Denmark" },
+            "Chance Liga": { slug: "cze.1", country: "Czech Republic"},
+            "NB I.": { slug: "hun.1", country: "Hungary" },
+            "NB I": { slug: "hun.1", country: "Hungary" },
+            "Premier Division": { slug: "irl.1", country: "Ireland" },
+            "Primera A": { slug: "col.1", country: "Colombia" },
+            "Champions League": { slug: "uefa.champions", country: "World" },
+            "Europa League": { slug: "uefa.europa", country: "World" },
+            "Conference League": { slug: "uefa.europa.conf", country: "World" },
+            "FIFA World Cup": { slug: "fifa.world", country: "World" },
+            "World Cup Qualifier": { slug: "fifa.worldq", country: "World" },
+            "UEFA European Championship": { slug: "uefa.euro", country: "World" },
+            "UEFA Nations League": { slug: "uefa.nations", country: "World" },
+            "CAF World Cup Qualifying": { slug: "fifa.worldq.caf", country: "World" },
+            "AFC World Cup Qualifying": { slug: "fifa.worldq.afc", country: "World" },
+            "CONCACAF World Cup Qualifying": { slug: "fifa.worldq.concaf", country: "World" },
+            "UEFA World Cup Qualifying": { slug: "fifa.worldq.uefa", country: "World" },
+            "Brazil Serie A": { slug: "bra.1", country: "Brazil" },
+            "Brazil Serie B": { slug: "bra.2", country: "Brazil" },
+            "Argentinian Liga Profesional": { slug: "arg.1", country: "Argentina" },
+            "Australian A-League": { slug: "aus.1", country: "Australia" },
+            "Austrian Bundesliga": { slug: "aut.1", country: "Austria" },
+            "Swiss Super League": { slug: "sui.1", country: "Switzerland" },
+            "Greek Super League": { slug: "gre.1", country: "Greece" },
+            'Czech First League': { slug: 'cze.1', country: 'Czech Republic' },
         },
     },
     hockey: {
         name: 'jégkorong',
         espn_sport_path: 'hockey',
-        total_minutes: 60,
-        home_advantage: { home: 1.05, away: 0.95 },
-        avg_goals: 3.0,
         totals_line: 6.5,
-        odds_api_sport_key: 'icehockey_nhl',
-        odds_api_keys_by_league: {
-            'NHL': 'icehockey_nhl',
-            'KHL': 'icehockey_khl',
-            'Sweden Hockey League': 'icehockey_sweden_hockey_league',
-            'Liiga': 'icehockey_finland_liiga',
-            'DEL': 'icehockey_germany_del',
-        },
         espn_leagues: {
-             'NHL': 'nhl'
+          'NHL': { slug: 'nhl', country: 'USA' }
         },
     },
     basketball: {
         name: 'kosárlabda',
         espn_sport_path: 'basketball',
-        total_minutes: 48,
-        home_advantage: { home: 1.02, away: 0.98 },
-        avg_goals: 110,
         totals_line: 220.5,
-        odds_api_sport_key: 'basketball_nba',
-        odds_api_keys_by_league: {
-            'NBA': 'basketball_nba',
-            'EuroLeague': 'basketball_euroleague',
-            'Liga ACB': 'basketball_spain_acb',
-        },
         espn_leagues: {
-            'NBA': 'nba',
-            'Euroleague': 'euroleague'
+            'NBA': { slug: 'nba', country: 'USA' },
+            'Euroleague': { slug: 'euroleague', country: 'World' }
         },
     },
 };
-
-/**
- * Visszaadja a megfelelő Odds API sportág kulcsot a liga neve alapján.
- */
-export function getOddsApiKeyForLeague(leagueName) {
-    if (!leagueName) return null;
-    const lowerLeagueName = leagueName.toLowerCase().trim();
-    for (const sport in SPORT_CONFIG) {
-        const config = SPORT_CONFIG[sport];
-        if (config.odds_api_keys_by_league) {
-            for (const key in config.odds_api_keys_by_league) {
-                if (key.toLowerCase() === lowerLeagueName) {
-                    return config.odds_api_keys_by_league[key];
-                }
-            }
-        }
-    }
-    console.warn(`getOddsApiKeyForLeague: Nem található direkt Odds API kulcs ehhez a ligához: "${leagueName}"`);
-    return null;
-}
