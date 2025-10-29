@@ -11,16 +11,19 @@ dotenv.config();
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
-export const PORT = process.env.PORT || 3001; // Port, amin a szerver fut
+export const PORT = process.env.PORT || 3001;
 
-// --- API KULCSOK ---
-export const GEMINI_API_KEY = process.env.GEMINI_API_KEY; // Gemini API kulcs
-export const GEMINI_MODEL_ID = 'gemini-2.5-pro';
-export const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
-export const APIFOOTBALL_RAPIDAPI_HOST = process.env.APIFOOTBALL_RAPIDAPI_HOST;
-export const RAPIDAPI_ODDS_HOST = process.env.RAPIDAPI_ODDS_HOST;
-export const SPORTMONKS_API_KEY = process.env.SPORTMONKS_API_KEY; // SportMonks API kulcs (opcionális)
-export const PLAYER_API_KEY = process.env.PLAYER_API_KEY; // Player API kulcs (opcionális, nem látszik használatban)
+// --- API KULCSOK (v30 - Szétválasztva) ---
+export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+export const GEMINI_MODEL_ID = 'gemini-1.5-pro-latest';
+
+// API-Football specifikus kulcsok
+export const APIFOOTBALL_KEY = process.env.APIFOOTBALL_KEY;
+export const APIFOOTBALL_HOST = process.env.APIFOOTBALL_HOST;
+
+// Odds API specifikus kulcsok
+export const ODDS_API_KEY = process.env.ODDS_API_KEY;
+export const ODDS_API_HOST = process.env.ODDS_API_HOST;
 
 
 // --- GOOGLE SHEET BEÁLLÍTÁSOK ---
