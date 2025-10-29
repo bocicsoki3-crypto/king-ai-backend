@@ -1,14 +1,13 @@
-// --- JAVÍTOTT config.js ---
+// --- JAVÍTOTT config.js (v28-kompatibilis) ---
 
 import dotenv from 'dotenv';
 dotenv.config();
 
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* KRITIKUS JAVÍTÁS: Hozzáadva az `APIFOOTBALL_TEAM_NAME_MAP` a csapatnevek
-* pontosabb azonosításához, különösen a "Spurs" -> "Tottenham Hotspur"
-* és hasonló becenevek helyes kezelésére.
-* JAVÍTÁS (2025-10-25): 'Serie A' kulcs hozzáadva az odds_api_keys_by_league-hez.
+* KRITIKUS JAVÍTÁS (v28): Az `espn_leagues` struktúrája objektumokra
+* lett cserélve (`{ slug, country }`), hogy támogassa a datafetch.js
+* új, célzott liga keresési logikáját.
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
@@ -16,7 +15,7 @@ export const PORT = process.env.PORT || 3001; // Port, amin a szerver fut
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY; // Gemini API kulcs
-export const GEMINI_MODEL_ID = 'gemini-2.5-pro'; // Ajánlott modell a sebesség és költséghatékonyság miatt
+export const GEMINI_MODEL_ID = 'gemini-2.5-pro';
 export const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 export const APIFOOTBALL_RAPIDAPI_HOST = process.env.APIFOOTBALL_RAPIDAPI_HOST;
 export const RAPIDAPI_ODDS_HOST = process.env.RAPIDAPI_ODDS_HOST;
@@ -31,8 +30,6 @@ export const SHEET_URL = process.env.SHEET_URL; // Google Sheet URL
 
 // Bővítsd ezt a listát, ha további eltéréseket találsz a The Odds API logokban!
 export const ODDS_TEAM_NAME_MAP = {
-    // Kulcs: Az ESPN/Frontend által használt név (kisbetűvel)
-    // Érték: A The Odds API által használt név
     'schalke': 'FC Schalke 04',
     'bremen': 'Werder Bremen',
     'manchester city': 'Man City',
@@ -44,20 +41,15 @@ export const ODDS_TEAM_NAME_MAP = {
     'bayern munich': 'Bayern Munich',
 };
 
-// --- JAVÍTÁS KEZDETE: ÚJ NÉVTÉRKÉP AZ API-FOOTBALLHOZ ---
 // Bővítsd ezt a listát, ha az API-Football tévesen azonosít egy csapatot!
 export const APIFOOTBALL_TEAM_NAME_MAP = {
-    // Kulcs: A frontendről érkező név (kisbetűvel)
-    // Érték: A pontos, hivatalos csapatnév, amire az API-Football keresni fog
     'spurs': 'Tottenham Hotspur',
     'tottenham': 'Tottenham Hotspur',
     'man utd': 'Manchester United',
     'man city': 'Manchester City',
     'inter': 'Inter Milan', // Gyakori rövidítés
     'wolves': 'Wolverhampton Wanderers',
-    // ... további csapatok, ha szükséges ...
 };
-// --- JAVÍTÁS VÉGE ---
 
 
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
@@ -69,8 +61,8 @@ export const SPORT_CONFIG = {
         home_advantage: { home: 1.08, away: 0.92 },
         avg_goals: 1.35,
         totals_line: 2.5,
-        odds_api_sport_key: 'soccer_epl', // Alapértelmezett odds sport kulcs
-        odds_api_keys_by_league: { // Specifikus odds kulcsok ligákhoz
+        odds_api_sport_key: 'soccer_epl',
+        odds_api_keys_by_league: { 
             'UEFA Champions League': 'soccer_uefa_champs_league',
             'Champions League': 'soccer_uefa_champs_league',
             'UEFA Europa League': 'soccer_uefa_europa_league',
@@ -94,8 +86,50 @@ export const SPORT_CONFIG = {
             'Brazil Serie A': 'soccer_brazil_campeonato',
             'Argentinian Liga Profesional': 'soccer_argentina_primera_division'
         },
+        // --- v28 JAVÍTÁS: STRUKTÚRA ÁTALAKÍTVA OBJEKTUMOKRA ---
         espn_leagues: {
-            "Premier League":"eng.1", "Championship":"eng.2", "Ligue 1":"fra.1", "Ligue 2":"fra.2", "Bundesliga":"ger.1", "2. Bundesliga":"ger.2", "Serie A":"ita.1", "Serie B":"ita.2", "LaLiga":"esp.1", "LaLiga2":"esp.2", "J1 League":"jpn.1", "Eredivisie":"ned.1", "Eliteserien":"nor.1", "Ekstraklasa":"pol.1", "Liga Portugal":"por.1", "Premiership":"sco.1", "K League 1":"kor.1", "Allsvenskan":"swe.1", "Super Lig":"tur.1", "MLS":"usa.1", "Liga MX":"mex.1", "Jupiler Pro League":"bel.1", "Serie A Betano":"rou.1", "HNL":"cro.1", "Superliga":"den.1", "Chance Liga":"cze.1", "NB I.":"hun.1", "NB I":"hun.1", "Premier Division":"irl.1", "Primera A":"col.1", "Champions League":"uefa.champions", "Europa League":"uefa.europa", "Conference League":"uefa.europa.conf", "FIFA World Cup": "fifa.world", "World Cup Qualifier": "fifa.worldq", "UEFA European Championship": "uefa.euro", "UEFA Nations League": "uefa.nations", "CAF World Cup Qualifying": "fifa.worldq.caf", "AFC World Cup Qualifying": "fifa.worldq.afc", "CONCACAF World Cup Qualifying": "fifa.worldq.concaf", "UEFA World Cup Qualifying": "fifa.worldq.uefa", "Brazil Serie A": "bra.1", "Brazil Serie B": "bra.2", "Argentinian Liga Profesional": "arg.1", "Australian A-League": "aus.1", "Austrian Bundesliga": "aut.1", "Swiss Super League": "sui.1", "Greek Super League": "gre.1", 'Czech First League': 'cze.1',
+            "Premier League": { slug: "eng.1", country: "England" },
+            "Championship": { slug: "eng.2", country: "England" },
+            "Ligue 1": { slug: "fra.1", country: "France" },
+            "Ligue 2": { slug: "fra.2", country: "France" },
+            "Bundesliga": { slug: "ger.1", country: "Germany" },
+            "2. Bundesliga": { slug: "ger.2", country: "Germany" },
+            "Serie A": { slug: "ita.1", country: "Italy" },
+            "Serie B": { slug: "ita.2", country: "Italy" },
+            "LaLiga": { slug: "esp.1", country: "Spain" },
+            "LaLiga2": { slug: "esp.2", country: "Spain" },
+            "J1 League": { slug: "jpn.1", country: "Japan" },
+            "Eredivisie": { slug: "ned.1", country: "Netherlands" },
+            "Eliteserien": { slug: "nor.1", country: "Norway" },
+            "Ekstraklasa": { slug: "pol.1", country: "Poland" },
+            "Liga Portugal": { slug: "por.1", country: "Portugal" },
+            "Premiership": { slug: "sco.1", country: "Scotland" },
+            "K League 1": { slug: "kor.1", country: "South Korea" },
+            "Allsvenskan": { slug: "swe.1", country: "Sweden" },
+            "Super Lig": { slug: "tur.1", country: "Turkey" },
+            "MLS": { slug: "usa.1", country: "USA" },
+            "Liga MX": { slug: "mex.1", country: "Mexico" },
+            "Jupiler Pro League": { slug: "bel.1", country: "Belgium" },
+            "Serie A Betano": { slug: "rou.1", country: "Romania" },
+            "HNL": { slug: "cro.1", country: "Croatia" },
+            "Superliga": { slug: "den.1", country: "Denmark" },
+            "NB I": { slug: "hun.1", country: "Hungary" },
+            "Premier Division": { slug: "irl.1", country: "Ireland" },
+            "Primera A": { slug: "col.1", country: "Colombia" },
+            "Champions League": { slug: "uefa.champions", country: "World" },
+            "Europa League": { slug: "uefa.europa", country: "World" },
+            "Conference League": { slug: "uefa.europa.conf", country: "World" },
+            "FIFA World Cup": { slug: "fifa.world", country: "World" },
+            "World Cup Qualifier": { slug: "fifa.worldq", country: "World" },
+            "UEFA European Championship": { slug: "uefa.euro", country: "World" },
+            "UEFA Nations League": { slug: "uefa.nations", country: "World" },
+            "Brazil Serie A": { slug: "bra.1", country: "Brazil" },
+            "Argentinian Liga Profesional": { slug: "arg.1", country: "Argentina" },
+            "Australian A-League": { slug: "aus.1", country: "Australia" },
+            "Austrian Bundesliga": { slug: "aut.1", country: "Austria" },
+            "Swiss Super League": { slug: "sui.1", country: "Switzerland" },
+            "Greek Super League": { slug: "gre.1", country: "Greece" },
+            "Czech First League": { slug: "cze.1", country: "Czech Republic" }
         },
     },
     hockey: {
@@ -114,7 +148,7 @@ export const SPORT_CONFIG = {
             'DEL': 'icehockey_germany_del',
         },
         espn_leagues: {
-             'NHL': 'nhl'
+          'NHL': { slug: 'nhl', country: 'USA' }
         },
     },
     basketball: {
@@ -131,8 +165,8 @@ export const SPORT_CONFIG = {
             'Liga ACB': 'basketball_spain_acb',
         },
         espn_leagues: {
-            'NBA': 'nba',
-            'Euroleague': 'euroleague'
+            'NBA': { slug: 'nba', country: 'USA' },
+            'Euroleague': { slug: 'euroleague', country: 'World' }
         },
     },
 };
