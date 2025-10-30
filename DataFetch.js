@@ -1,7 +1,8 @@
-// --- VÉGLEGES INTEGRÁLT (v43 - Ország-alapú Csapatkeresés) datafetch.js ---
-// - V43 JAVÍTÁS: A 'getApiSportsTeamId' most már megkapja az 'country'
-// paramétert is, és az API hívást erre szűkíti (/v3/teams?search=...&country=...).
-// - Ez megoldja a "Pisa" (olasz) és "Pisa" (finn) típusú ütközéseket.
+// --- VÉGLEGES INTEGRÁLT (v45 - Liga-alapú Csapatkeresés) datafetch.js ---
+// - V45 JAVÍTÁS: A 'getApiSportsTeamId' most már 'leagueId' paramétert is kap.
+// - A keresés most már a PONTOS ligára szűkít (/v3/teams?name=...&league=...).
+// - Ez megoldja a "Pisa" (olasz) vs "Pisa" (finn) ütközést.
+// - 'getRichContextualData' sorrendje megváltoztatva: Először Liga ID, utána Csapat ID.
 // - MEGTARTVA (v42): xG API Integráció.
 // - MEGTARTVA (v41): Kulcsrotációs logika.
 
@@ -40,7 +41,7 @@ const __dirname = path.dirname(__filename);
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v43 (2025-10-30) - Ország-alapú Csapatkeresés
+* VERZIÓ: v45 (2025-10-30) - Liga-alapú Csapatkeresés
 **************************************************************/
 
 // --- V41: API KONFIGURÁCIÓ KIVÁLASZTÓ ---
@@ -210,16 +211,16 @@ async function getStructuredWeatherData(stadiumLocation, utcKickoff) {
     };
 }
 
-// --- API-SPORTS FUNKCIÓK (v43 - Ország Szűkítéssel) ---
+// --- API-SPORTS FUNKCIÓK (v45 - Liga-alapú Kereséssel) ---
 
-// v43: A 'getApiSportsTeamId' most már 'country' paramétert is kap
-async function getApiSportsTeamId(teamName, sport, country) {
+// v45: A 'getApiSportsTeamId' most már 'leagueId'-t kap, nem 'countryCode'-ot
+async function getApiSportsTeamId(teamName, sport, leagueId, season) {
     const lowerName = teamName.toLowerCase().trim();
     const mappedName = APIFOOTBALL_TEAM_NAME_MAP[lowerName] || teamName;
     const searchName = mappedName;
     
-    // v43: A cache kulcsnak is tartalmaznia kell az országot a pontosság érdekében
-    const cacheKey = `apisports_teamid_v43_${sport}_${country}_${searchName.toLowerCase().replace(/\s+/g, '')}`;
+    // v45: A cache kulcsnak tartalmaznia kell a ligát és a szezont
+    const cacheKey = `apisports_teamid_v45_${sport}_${leagueId}_${season}_${searchName.toLowerCase().replace(/\s+/g, '')}`;
     
     const cachedId = apiSportsTeamIdCache.get(cacheKey);
     if (cachedId !== undefined) { 
@@ -230,43 +231,49 @@ async function getApiSportsTeamId(teamName, sport, country) {
         console.log(`API-SPORTS Név Térképezés (${sport}): "${teamName}" (ESPN) -> "${searchName}" (Keresés)`);
     }
 
-    // v43: Az endpoint kiegészítve az országgal
-    const endpoint = `/v3/teams?search=${encodeURIComponent(searchName)}&country=${encodeURIComponent(country)}`;
-    console.log(`API-SPORTS (${sport}): Csapatkeresés (Országgal): Név="${searchName}", Ország="${country}"`);
+    // v45: Az endpoint kiegészítve a ligával és szezonnal (ez a legpontosabb keresés)
+    // A 'name' paramétert használjuk 'search' helyett a pontosabb egyezésért
+    const endpoint = `/v3/teams?name=${encodeURIComponent(searchName)}&league=${leagueId}&season=${season}`;
+    
+    console.log(`API-SPORTS (${sport}): Csapatkeresés (Ligával): Név="${searchName}", LigaID="${leagueId}"`);
 
     const response = await makeRequestWithRotation(sport, endpoint, {}); 
 
     if (response?.data?.response?.length > 0) {
-        const teams = response.data.response;
-        
-        // Először TÖKÉLETES egyezést keresünk (pl. "Pisa" és "Pisa")
-        const perfectMatch = teams.find(t => t.team?.name.toLowerCase() === searchName.toLowerCase());
-        if (perfectMatch) {
-            const teamId = perfectMatch.team.id;
-            console.log(`API-SPORTS (${sport}): TÖKÉLETES ID találat "${searchName}" -> ${teamId}`);
-            apiSportsTeamIdCache.set(cacheKey, teamId);
-            return teamId;
+        // Mivel név, liga ÉS szezon alapján kerestünk, az első találatnak (ha van) pontosnak kell lennie.
+        const team = response.data.response[0].team;
+        if (team && team.id) {
+            console.log(`API-SPORTS (${sport}): TÖKÉLETES ID találat "${searchName}" -> ${team.id}`);
+            apiSportsTeamIdCache.set(cacheKey, team.id);
+            return team.id;
         }
-
-        // Ha nincs tökéletes, a legjobb hasonlót keressük (pl. "Pisa" és "Pisa U19" közül a "Pisa"-t)
+    }
+    
+    // Ha a PONTOS név+liga keresés nem sikerült, megpróbáljuk a 'search' paraméterrel, hátha elírás
+    console.warn(`API-SPORTS (${sport}): Pontos (name=) keresés sikertelen. Próbálkozás 'search=' paraméterrel...`);
+    const fallbackEndpoint = `/v3/teams?search=${encodeURIComponent(searchName)}&league=${leagueId}&season=${season}`;
+    const fallbackResponse = await makeRequestWithRotation(sport, fallbackEndpoint, {});
+    
+    if (fallbackResponse?.data?.response?.length > 0) {
+        const teams = fallbackResponse.data.response;
         const teamNames = teams.map(t => t.team?.name);
         const matchResult = findBestMatch(searchName, teamNames);
         
-        // Magasabb küszöb (0.85), mert az ország szűkítés miatt már csak releváns találatoknak kellene lenniük
-        if (matchResult.bestMatch.rating > 0.85) { 
+        // Itt már szigorúbbak vagyunk, mert a ligán belül vagyunk
+        if (matchResult.bestMatch.rating > 0.9) { 
             const teamId = teams[matchResult.bestMatchIndex].team.id;
-            console.log(`API-SPORTS (${sport}): Hasonló ID találat "${searchName}" -> "${teams[matchResult.bestMatchIndex].team.name}" -> ${teamId}`);
+            console.log(`API-SPORTS (${sport}): Hasonló ID találat (fallback) "${searchName}" -> "${teams[matchResult.bestMatchIndex].team.name}" -> ${teamId}`);
             apiSportsTeamIdCache.set(cacheKey, teamId);
             return teamId;
         }
     }
-    
-    console.warn(`API-SPORTS (${sport}): Nem található csapat ID ehhez: "${searchName}" (Ország: "${country}", Eredeti: "${teamName}").`);
+
+    console.warn(`API-SPORTS (${sport}): Nem található csapat ID ehhez: "${searchName}" (Liga: "${leagueId}", Eredeti: "${teamName}").`);
     apiSportsTeamIdCache.set(cacheKey, 'not_found');
     return null;
 }
 
-// (A többi API-Sports függvény (League, Fixture, H2H, Stats, Odds) nem változott a v41 óta)
+// (A többi API-Sports függvény (League, Fixture, H2H, Stats, Odds) nem változott a v41/v42 óta)
 async function getApiSportsLeagueId(leagueName, country, season, sport) {
     if (!leagueName || !country || !season) {
         console.warn(`API-SPORTS (${sport}): Liga név ('${leagueName}'), ország ('${country}') vagy szezon (${season}) hiányzik.`);
@@ -590,10 +597,10 @@ export function findMainTotalsLine(oddsData, sport) {
 }
 
 
-// --- FŐ ADATGYŰJTŐ FUNKCIÓ (v43 - Ország Szűkítéssel) ---
+// --- FŐ ADATGYŰJTŐ FUNKCIÓ (v45 - Liga-alapú Kereséssel) ---
 export async function getRichContextualData(sport, homeTeamName, awayTeamName, leagueName, utcKickoff) {
     const teamNames = [homeTeamName, awayTeamName].sort();
-    const ck = `rich_context_v43_apif_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
+    const ck = `rich_context_v45_apif_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
     const cached = scriptCache.get(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
@@ -615,27 +622,32 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         
         if (isNaN(season)) throw new Error(`Érvénytelen utcKickoff: ${decodedUtcKickoff}`);
         
-        console.log(`Adatgyűjtés indul (v43 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
+        console.log(`Adatgyűjtés indul (v45 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
         
-        // v43: Először lekérjük a ligaadatokat, hogy meglegyen az ORSZÁG
+        // --- v45: JAVÍTOTT SORREND ---
+        
+        // 1. LÉPÉS: Liga adatok lekérése (hogy meglegyen a 'country' és 'leagueId')
         const sportConfig = SPORT_CONFIG[sport];
         const leagueData = sportConfig.espn_leagues[leagueName];
         if (!leagueData?.country) throw new Error(`Hiányzó 'country' konfiguráció a(z) '${leagueName}' ligához a config.js-ben.`);
-        const country = leagueData.country; // <-- ITT AZ ORSZÁG (pl. "Italy")
+        
+        const country = leagueData.country; // pl. "Italy" (a Liga kereséshez kell)
+        
+        const leagueId = await getApiSportsLeagueId(leagueName, country, season, sport);
+        if (!leagueId) throw new Error(`Nem sikerült a 'leagueId' azonosítása.`);
+        console.log(`API-SPORTS (${sport}): Végleges LeagueID: ${leagueId}`);
 
-        // v43: Most már az országgal hívjuk a csapatkeresőt
+        // 2. LÉPÉS: Csapat ID-k lekérése (már a 'leagueId' birtokában)
         const [homeTeamId, awayTeamId] = await Promise.all([
-            getApiSportsTeamId(homeTeamName, sport, country),
-            getApiSportsTeamId(awayTeamName, sport, country),
+            getApiSportsTeamId(homeTeamName, sport, leagueId, season),
+            getApiSportsTeamId(awayTeamName, sport, leagueId, season),
         ]);
         
         if (!homeTeamId || !awayTeamId) { 
             throw new Error(`Alapvető API-Football csapat azonosítók hiányoznak.`); 
         }
+        // --- v45: JAVÍTOTT SORREND VÉGE ---
         
-        const leagueId = await getApiSportsLeagueId(leagueName, country, season, sport);
-        if (!leagueId) throw new Error(`Nem sikerült a 'leagueId' azonosítása.`);
-        console.log(`API-SPORTS (${sport}): Végleges LeagueID: ${leagueId}`);
         
         const { fixtureId, fixtureDate } = await findApiSportsFixture(homeTeamId, awayTeamId, season, leagueId, decodedUtcKickoff, sport);
         
@@ -678,7 +690,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
              console.warn("Gemini válasz hibás vagy üres, default struktúra használva.");
         }
 
-        // --- *** VÉGLEGES ADAT EGYESÍTÉS (v42/v43) *** ---
+        // --- *** VÉGLEGES ADAT EGYESÍTÉS (v45) *** ---
         
         const finalData = { ...geminiData }; 
         const finalHomeStats = {
@@ -736,7 +748,7 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
              (finalData.team_news?.home && finalData.team_news.home !== "N/A") || (finalData.team_news?.away && finalData.team_news.away !== "N/A") && `- Hírek: H:${finalData.team_news?.home||'-'}, V:${finalData.team_news?.away||'-'}`,
              (finalData.absentees?.home?.length > 0 || finalData.absentees?.away?.length > 0) && `- Hiányzók: H:${finalData.absentees?.home?.map(p=>p?.name).join(', ')||'-'}, V:${finalData.absentees?.away?.map(p=>p?.name).join(', ')||'-'}`,
              finalData.absentee_impact_analysis && finalData.absentee_impact_analysis !== "N/A" && `- Hiányzók Hatása: ${finalData.absentee_impact_analysis}`,
-             (finalData.form?.home_overall && finalData.form.home_overall !== "N/A") || (finalData.form?.away_overall && finalData.form.away_overall !== "N/A") && `- Forma: H:${finalData.form?.home_overall||'N/A'}, V:${finalData.form?.away_overall||'N/A'}`,
+             (finalData.form?.home_overall && finalData.form.home_overall !== "N/A") || (finalData.form?.away_overall && finalData.form.away_overall !== "N/T") && `- Forma: H:${finalData.form?.home_overall||'N/A'}, V:${finalData.form?.away_overall||'N/A'}`,
              (finalData.tactics?.home?.style && finalData.tactics.home.style !== "N/A") || (finalData.tactics?.away?.style && finalData.tactics.away.style !== "N/A") && `- Taktika: H:${finalData.tactics?.home?.style||'?'}(${finalData.tactics?.home?.formation||'?'}), V:${finalData.tactics?.away?.style||'?'}(${finalData.tactics?.away?.formation||'?'})`,
              structuredWeather && structuredWeather.description !== "N/A" ? `- Időjárás: ${structuredWeather.description}, ${structuredWeather.temperature_celsius ?? '?'}°C` : `- Időjárás: N/A`,
              finalData.contextual_factors?.pitch_condition && finalData.contextual_factors.pitch_condition !== "N/A" && `- Pálya: ${finalData.contextual_factors.pitch_condition}`
@@ -765,12 +777,12 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         }
         
         scriptCache.set(ck, result);
-        console.log(`Sikeres adatgyűjtés (v43), cache mentve (${ck}).`);
+        console.log(`Sikeres adatgyűjtés (v45), cache mentve (${ck}).`);
         return result;
 
     } catch (e) {
-        console.error(`KRITIKUS HIBA a getRichContextualData (v43) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
-        throw new Error(`Adatgyűjtési hiba (v43): ${e.message}`);
+        console.error(`KRITIKUS HIBA a getRichContextualData (v45) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
+        throw new Error(`Adatgyűjtési hiba (v45): ${e.message}`);
     }
 }
 
@@ -800,7 +812,6 @@ export async function _getFixturesFromEspn(sport, days) {
                 continue;
             }
             const url = `https://site.api.espn.com/apis/site/v2/sports/${sportConfig.espn_sport_path}/${slug}/scoreboard?dates=${dateString}&limit=200`;
-            // V41: Az ESPN hívásnak nem kell rotáció, ez egy ingyenes, kulcs nélküli végpont
             promises.push(makeRequest(url, { timeout: 8000 }).then(response => {
                 if (!response?.data?.events) return [];
                 return response.data.events
