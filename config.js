@@ -1,13 +1,12 @@
-// --- VÉGLEGES config.js (v41 - Kulcsrotáció) ---
+// --- VÉGLEGES config.js (v42 - xG API Integráció) ---
 
 import dotenv from 'dotenv';
 dotenv.config();
 
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* v41 JAVÍTÁS: Bevezetve az API_HOSTS objektum kulcs-tömbökkel
-* (keys: []), hogy támogassa az automatikus kulcsrotációt
-* a kvóta kimerülése esetén.
+* v42 JAVÍTÁS: Hozzáadva az XG_API_KEY és XG_API_HOST
+* az "Football xG Statistics" API integrálásához.
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
@@ -18,17 +17,19 @@ export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 export const GEMINI_MODEL_ID = 'gemini-2.5-pro';
 export const SHEET_URL = process.env.SHEET_URL;
 
+// --- V42: ÚJ xG API KONFIGURÁCIÓ ---
+export const XG_API_KEY = process.env.XG_API_KEY;
+export const XG_API_HOST = process.env.XG_API_HOST || 'football-xg-statistics.p.rapidapi.com';
+
 // --- V41: API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
-// Az API-Sports külön hostokat használ minden sportághoz.
-// A .env fájlban vagy a Render 'Environment' fülén add meg a kulcsokat.
+// Az API-Sports (API-Football) kulcsai
 export const API_HOSTS = {
     soccer: {
         host: process.env.APIFOOTBALL_HOST || 'api-football-v1.p.rapidapi.com',
         keys: [
             process.env.APIFOOTBALL_KEY_1,
-            process.env.APIFOOTBALL_KEY_2,
-            process.env.APIFOOTBALL_KEY_3 // Hozzáadhatsz többet is
-        ].filter(Boolean) // Kiszűri az üres/undefined kulcsokat
+            process.env.APIFOOTBALL_KEY_2
+        ].filter(Boolean) 
     },
     hockey: {
         host: process.env.APIHOCKEY_HOST || 'api-hockey.p.rapidapi.com',
@@ -46,19 +47,15 @@ export const API_HOSTS = {
     }
 };
 
-// Régi, deprecated nevek (meghagyva a kompatibilitás miatt)
-export const APIFOOTBALL_KEY = process.env.APIFOOTBALL_KEY_1; // Alapértelmezett az első kulcs
+// Régi, deprecated nevek
+export const APIFOOTBALL_KEY = process.env.APIFOOTBALL_KEY_1;
 export const APIFOOTBALL_HOST = 'api-football-v1.p.rapidapi.com';
 
-
 // --- CSAPATNÉV HOZZÁRENDELÉSEK ---
-
-// Odds API (Már nincs használatban)
 export const ODDS_TEAM_NAME_MAP = {
-    // ... (meghagyható)
+    // ... (nincs használatban)
 };
 
-// API-SPORTS NÉV TÉRKÉP (Minden sportághoz)
 export const APIFOOTBALL_TEAM_NAME_MAP = {
     // Foci
     'spurs': 'Tottenham Hotspur',
@@ -95,7 +92,6 @@ export const SPORT_CONFIG = {
         espn_sport_path: 'soccer',
         totals_line: 2.5,
         espn_leagues: {
-            // ... (A teljes foci liga lista itt van)
             "Premier League": { slug: "eng.1", country: "England" },
             "Championship": { slug: "eng.2", country: "England" },
             "Ligue 1": { slug: "fra.1", country: "France" },
