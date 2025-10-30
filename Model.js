@@ -1201,7 +1201,7 @@ export function calculatePsychologicalProfile(teamName, opponentName, rawData = 
     }
 
     // Korlátozzuk az indexeket, pl.
-    0.8 és 1.2 közé
+   // 0.8 és 1.2 közé
     moraleIndex = Math.max(0.8, Math.min(1.2, moraleIndex));
     pressureIndex = Math.max(0.8, Math.min(1.2, pressureIndex));
     return { moraleIndex, pressureIndex };
