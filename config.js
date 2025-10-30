@@ -23,26 +23,31 @@ export const XG_API_HOST = process.env.XG_API_HOST || 'football-xg-statistics.p.
 
 // --- V41: API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
 // Az API-Sports (API-Football) kulcsai
+// --- V41: API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
+// Az API-Sports (API-Football) kulcsai
 export const API_HOSTS = {
     soccer: {
         host: process.env.APIFOOTBALL_HOST || 'api-football-v1.p.rapidapi.com',
         keys: [
             process.env.APIFOOTBALL_KEY_1,
-            process.env.APIFOOTBALL_KEY_2
-        ].filter(Boolean) 
+            process.env.APIFOOTBALL_KEY_2,
+            process.env.APIFOOTBALL_KEY_3 // <-- ITT AZ ÚJ KULCS
+        ].filter(Boolean) // Kiszűri az üres/undefined kulcsokat
     },
     hockey: {
         host: process.env.APIHOCKEY_HOST || 'api-hockey.p.rapidapi.com',
         keys: [
             process.env.APIHOCKEY_KEY_1 || process.env.APIFOOTBALL_KEY_1,
-            process.env.APIHOCKEY_KEY_2 || process.env.APIFOOTBALL_KEY_2
+            process.env.APIHOCKEY_KEY_2 || process.env.APIFOOTBALL_KEY_2,
+            process.env.APIHOCKEY_KEY_3 || process.env.APIFOOTBALL_KEY_3 // <-- ITT AZ ÚJ KULCS
         ].filter(Boolean)
     },
     basketball: {
         host: process.env.APIBASKETBALL_HOST || 'api-basketball.p.rapidapi.com',
         keys: [
             process.env.APIBASKETBALL_KEY_1 || process.env.APIFOOTBALL_KEY_1,
-            process.env.APIBASKETBALL_KEY_2 || process.env.APIFOOTBALL_KEY_2
+            process.env.APIBASKETBALL_KEY_2 || process.env.APIFOOTBALL_KEY_2,
+            process.env.APIBASKETBALL_KEY_3 || process.env.APIFOOTBALL_KEY_3 // <-- ITT AZ ÚJ KULCS
         ].filter(Boolean)
     }
 };
