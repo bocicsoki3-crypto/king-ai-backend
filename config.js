@@ -1,13 +1,13 @@
-// --- VÉGLEGES config.js (v40 - Több Sportág API Host) ---
+// --- VÉGLEGES config.js (v41 - Kulcsrotáció) ---
 
 import dotenv from 'dotenv';
 dotenv.config();
 
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* v40 JAVÍTÁS: Hozzáadva az API_HOSTS objektum, hogy a rendszer
-* a 'hockey' és 'basketball' sportágakhoz a megfelelő
-* API végpontokat (api-hockey, api-basketball) használja.
+* v41 JAVÍTÁS: Bevezetve az API_HOSTS objektum kulcs-tömbökkel
+* (keys: []), hogy támogassa az automatikus kulcsrotációt
+* a kvóta kimerülése esetén.
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
@@ -18,43 +18,48 @@ export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 export const GEMINI_MODEL_ID = 'gemini-2.5-pro';
 export const SHEET_URL = process.env.SHEET_URL;
 
-// --- V40: API HOST TÉRKÉP (SPORTÁGANKÉNT) ---
-// Az API-Football (API-Sports) külön hostokat használ minden sportághoz.
+// --- V41: API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
+// Az API-Sports külön hostokat használ minden sportághoz.
+// A .env fájlban vagy a Render 'Environment' fülén add meg a kulcsokat.
 export const API_HOSTS = {
     soccer: {
         host: process.env.APIFOOTBALL_HOST || 'api-football-v1.p.rapidapi.com',
-        key: process.env.APIFOOTBALL_KEY
+        keys: [
+            process.env.APIFOOTBALL_KEY_1,
+            process.env.APIFOOTBALL_KEY_2,
+            process.env.APIFOOTBALL_KEY_3 // Hozzáadhatsz többet is
+        ].filter(Boolean) // Kiszűri az üres/undefined kulcsokat
     },
     hockey: {
         host: process.env.APIHOCKEY_HOST || 'api-hockey.p.rapidapi.com',
-        key: process.env.APIHOCKEY_KEY || process.env.APIFOOTBALL_KEY // Használhatja ugyanazt a kulcsot, ha a RapidAPI előfizetés megengedi
+        keys: [
+            process.env.APIHOCKEY_KEY_1 || process.env.APIFOOTBALL_KEY_1,
+            process.env.APIHOCKEY_KEY_2 || process.env.APIFOOTBALL_KEY_2
+        ].filter(Boolean)
     },
     basketball: {
         host: process.env.APIBASKETBALL_HOST || 'api-basketball.p.rapidapi.com',
-        key: process.env.APIBASKETBALL_KEY || process.env.APIFOOTBALL_KEY // Használhatja ugyanazt a kulcsot
+        keys: [
+            process.env.APIBASKETBALL_KEY_1 || process.env.APIFOOTBALL_KEY_1,
+            process.env.APIBASKETBALL_KEY_2 || process.env.APIFOOTBALL_KEY_2
+        ].filter(Boolean)
     }
 };
 
-// Régi, deprecated nevek (meghagyva a kompatibilitás miatt, de az API_HOSTS az új)
-export const APIFOOTBALL_KEY = process.env.APIFOOTBALL_KEY;
-export const APIFOOTBALL_HOST = process.env.APIFOOTBALL_HOST;
+// Régi, deprecated nevek (meghagyva a kompatibilitás miatt)
+export const APIFOOTBALL_KEY = process.env.APIFOOTBALL_KEY_1; // Alapértelmezett az első kulcs
+export const APIFOOTBALL_HOST = 'api-football-v1.p.rapidapi.com';
 
 
 // --- CSAPATNÉV HOZZÁRENDELÉSEK ---
 
 // Odds API (Már nincs használatban)
 export const ODDS_TEAM_NAME_MAP = {
-    'spurs': 'Tottenham Hotspur',
-    'as roma': 'Roma',
-    'hellas verona': 'Verona'
+    // ... (meghagyható)
 };
 
 // API-SPORTS NÉV TÉRKÉP (Minden sportághoz)
-// A 'v37'-es datafetch már ezt használja.
 export const APIFOOTBALL_TEAM_NAME_MAP = {
-    // Kulcs: A frontendről/ESPN-ről érkező név (kisbetűvel)
-    // Érték: A pontos, hivatalos csapatnév, amire az API keresni fog
-
     // Foci
     'spurs': 'Tottenham Hotspur',
     'tottenham': 'Tottenham Hotspur',
@@ -70,7 +75,7 @@ export const APIFOOTBALL_TEAM_NAME_MAP = {
     'independiente santa fe': 'Santa Fe',
     'independiente medellin': 'Independiente Medellin',
 
-    // Jégkorong (A logok alapján)
+    // Jégkorong
     'senators': 'Ottawa Senators',
     'flames': 'Calgary Flames',
     'lightning': 'Tampa Bay Lightning',
@@ -140,8 +145,6 @@ export const SPORT_CONFIG = {
         espn_sport_path: 'hockey',
         totals_line: 6.5,
         espn_leagues: {
-          // Az API-Hockey ligáknak más az 'country' és 'slug' (pl. a liga ID-ja)
-          // Ezt az API-Hockey dokumentációjából kellene pontosítani, de az 'USA' egy jó kezdet
           'NHL': { slug: 'nhl', country: 'USA' } 
         },
     },
