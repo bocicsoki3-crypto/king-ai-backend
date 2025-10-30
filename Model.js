@@ -954,8 +954,6 @@ export function simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, sims, sp
             if ((gh + ga) > safe_mainTotalsLine) over_main++;
         }
     } else { // Foci, 
- Hoki stb.
-        (Poisson)
         for (let i = 0; i < safeSims; i++) {
             const { gh, ga } = sampleGoals(safe_mu_h, safe_mu_a);
             // Biztonságos mu értékek használata
