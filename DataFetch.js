@@ -95,7 +95,7 @@ async function makeRequest(url, config = {}, retries = 1) {
             if (method === 'POST') {
                 response = await axios.post(url, currentConfig.data || {}, currentConfig);
             } else {
-                response = await axios.get(url, { ...currentConfig });
+                response = await axios.get(url, currentConfig);
             }
 
             if (response.status < 200 || response.status >= 300) {
