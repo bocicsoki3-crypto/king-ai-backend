@@ -278,3 +278,74 @@ export async function _getFixturesFromEspn(sport, days) {
         return [];
     }
 }
+// providers/common/utils.js (A FÁJL VÉGÉRE ILLESZD BE)
+
+// A 'SPORT_CONFIG' importot már tartalmaznia kell a fájl tetejének.
+// Ha mégsem, írd a többi import alá: 
+// import { SPORT_CONFIG } from '../../config.js';
+
+/**
+ * Meghatározza a fő gól/pont vonalat az odds adatokból.
+ * Az AnalysisFlow.js hívja meg.
+ */
+export function findMainTotalsLine(oddsData, sport) {
+    const defaultConfigLine = SPORT_CONFIG[sport]?.totals_line || (sport === 'soccer' ? 2.5 : 6.5);
+    
+    if (!oddsData?.fullApiData?.bookmakers || oddsData.fullApiData.bookmakers.length === 0) {
+        return defaultConfigLine;
+    }
+
+    const bookmaker = oddsData.fullApiData.bookmakers.find(b => b.name === "Bet365") || oddsData.fullApiData.bookmakers[0];
+    if (!bookmaker?.bets) return defaultConfigLine;
+
+    let marketName;
+    if (sport === 'soccer') marketName = "over/under";
+    else if (sport === 'hockey') marketName = "total";
+    else if (sport === 'basketball') marketName = "total points";
+    else marketName = "over/under";
+
+    const totalsMarket = bookmaker.bets.find(b => b.name.toLowerCase() === marketName);
+    if (!totalsMarket?.values) {
+        console.warn(`Nem található '${marketName}' piac a szorzókban (${sport}).`);
+        return defaultConfigLine;
+    }
+
+    const linesAvailable = {};
+    for (const val of totalsMarket.values) {
+        const lineMatch = val.value.match(/(\d+\.\d)/);
+        const line = lineMatch ? lineMatch[1] : val.value; 
+
+        if (isNaN(parseFloat(line))) continue; 
+
+        if (!linesAvailable[line]) linesAvailable[line] = {};
+        if (val.value.toLowerCase().startsWith("over")) {
+            linesAvailable[line].over = parseFloat(val.odd);
+        } else if (val.value.toLowerCase().startsWith("under")) {
+            linesAvailable[line].under = parseFloat(val.odd);
+        }
+    }
+
+    if (Object.keys(linesAvailable).length === 0) {
+        return defaultConfigLine;
+    }
+
+    let closestPair = { diff: Infinity, line: defaultConfigLine };
+    for (const line in linesAvailable) {
+        const pair = linesAvailable[line];
+        if (pair.over && pair.under) {
+            const diff = Math.abs(pair.over - pair.under);
+            if (diff < closestPair.diff) {
+                closestPair = { diff, line: parseFloat(line) };
+            }
+        }
+    }
+
+    if (closestPair.diff < 0.5) {
+        return closestPair.line;
+    }
+
+    const numericDefaultLine = defaultConfigLine;
+    const numericLines = Object.keys(linesAvailable).map(parseFloat);
+    numericLines.sort((a, b) => Math.abs(a - numericDefaultLine) - Math.abs(b - numericDefaultLine));
+    return numericLines[0];
+}
