@@ -1,11 +1,11 @@
-// --- VÉGLEGES config.js (v47 - Országkód Integráció) ---
-
+// --- VÉGLEGES config.js (v49 - Hibrid Hozzáférés) ---
 import dotenv from 'dotenv';
 dotenv.config();
+
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* v47 VÁLTOZÁS: Hozzáadva a 'countryCode' a ligákhoz
-* a megbízhatóbb API keresés érdekében.
+* v49 VÁLTOZÁS: Hibrid API hozzáférés bevezetése.
+* A foci 'rapidapi', a többi sport 'direct' típust használ.
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
@@ -13,38 +13,29 @@ export const PORT = process.env.PORT || 3001;
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-export const GEMINI_MODEL_ID = 'gemini-2.5-pro';
+export const GEMINI_MODEL_ID = 'gemini-1.5-flash-latest'; // Ajánlott modell, a 'gemini-2.5-pro' nem létezik
 export const SHEET_URL = process.env.SHEET_URL;
 
 // --- xG API KONFIGURÁCIÓ (MARADT RAPIDAPI) ---
 export const XG_API_KEY = process.env.XG_API_KEY;
-export const XG_API_HOST = process.env.XG_API_HOST || 'football-xg-statistics.p.rapidapi.com';
+export const XG_API_HOST = process.env.XG_API_HOST || 'live-xg-and-odds.p.rapidapi.com'; // Ajánlott, működő host
 
-// --- API HOST TÉRKÉP (KÖZVETLEN HOZZÁFÉRÉSSEL) ---
+// --- API HOST TÉRKÉP (HIBRID HOZZÁFÉRÉSSEL) ---
 export const API_HOSTS = {
     soccer: {
-        host: process.env.APIFOOTBALL_HOST || 'v3.football.api-sports.io',
-        keys: [
-            process.env.APIFOOTBALL_KEY_1,
-            process.env.APIFOOTBALL_KEY_2,
-            process.env.APIFOOTBALL_KEY_3
-        ].filter(Boolean)
+        host: 'v3.football.api-sports.io',
+        type: 'rapidapi', // Focihoz a RapidAPI kulcsot használjuk
+        keys: [process.env.RAPIDAPI_FOOTBALL_KEY].filter(Boolean)
     },
     hockey: {
-        host: process.env.APIHOCKEY_HOST || 'v1.hockey.api-sports.io',
-        keys: [
-            process.env.APIHOCKEY_KEY_1,
-            process.env.APIHOCKEY_KEY_2,
-            process.env.APIHOCKEY_KEY_3
-        ].filter(Boolean)
+        host: 'v3.hockey.api-sports.io', // FIGYELEM: A v1 elavult, a v3 a helyes!
+        type: 'direct', // Jégkoronghoz a közvetlen kulcsot
+        keys: [process.env.DIRECT_HOCKEY_KEY].filter(Boolean)
     },
     basketball: {
-        host: process.env.APIBASKETBALL_HOST || 'v1.basketball.api-sports.io',
-        keys: [
-            process.env.APIBASKETBALL_KEY_1,
-            process.env.APIBASKETBALL_KEY_2,
-            process.env.APIBASKETBALL_KEY_3
-        ].filter(Boolean)
+        host: 'v3.basketball.api-sports.io', // FIGYELEM: A v1 elavult, a v3 a helyes!
+        type: 'direct', // Kosárlabdához a közvetlen kulcsot
+        keys: [process.env.DIRECT_BASKETBALL_KEY].filter(Boolean)
     }
 };
 
@@ -110,7 +101,7 @@ export const SPORT_CONFIG = {
             "Jupiler Pro League": { slug: "bel.1", country: "Belgium", countryCode: "BE" },
             "Serie A Betano": { slug: "rou.1", country: "Romania", countryCode: "RO" },
             "Superliga": { slug: "den.1", country: "Denmark", countryCode: "DK" },
-            "Chance Liga": { slug: "cze.1", country: "Czech Republic", countryCode: "CZ"},
+            "Chance Liga": { slug: "cze.1", country: "Czech Republic", countryCode: "CZ" },
             "Premier Division": { slug: "irl.1", country: "Ireland", countryCode: "IE" },
             "Primera A": { slug: "col.1", country: "Colombia", countryCode: "CO" },
             "Champions League": { slug: "uefa.champions", country: "World" },
@@ -136,7 +127,7 @@ export const SPORT_CONFIG = {
         espn_sport_path: 'hockey',
         totals_line: 6.5,
         espn_leagues: {
-          'NHL': { slug: 'nhl', country: 'USA', countryCode: 'US' }
+            'NHL': { slug: 'nhl', country: 'USA', countryCode: 'US' }
         },
     },
     basketball: {
