@@ -96,11 +96,10 @@ export const APIFOOTBALL_TEAM_NAME_MAP = {
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
 export const SPORT_CONFIG = {
     soccer: {
-        name: 'labdarúgás',
+        name: 'labdarúgás', // EZT FOGJUK HASZNÁLNI VERZIÓKÉNT
         espn_sport_path: 'soccer',
         totals_line: 2.5,
         
-        // === JAVÍTÁS: A kulcsok most már a HIVATALOS API-SPORTS neveket használják ===
         espn_leagues: {
             "Premier League": { slug: "eng.1", country: "England" },
             "Championship": { slug: "eng.2", country: "England" },
@@ -109,7 +108,6 @@ export const SPORT_CONFIG = {
             "Bundesliga": { slug: "ger.1", country: "Germany" },
             "2. Bundesliga": { slug: "ger.2", country: "Germany" },
             "Serie A": { slug: "ita.1", country: "Italy" },
-            // "Serie B": { slug: "ita.2", country: "Italy" }, // Kétértelmű, kivéve
             "LaLiga": { slug: "esp.1", country: "Spain" },
             "LaLiga2": { slug: "esp.2", country: "Spain" },
             "J1 League": { slug: "jpn.1", country: "Japan" },
@@ -135,13 +133,9 @@ export const SPORT_CONFIG = {
             "UEFA Nations League": { slug: "uefa.nations", country: "World" },
             "CAF World Cup Qualifying": { slug: "fifa.worldq.caf", country: "World" },
             "AFC World Cup Qualifying": { slug: "fifa.worldq.afc", country: "World" },
-            "UEFA World Cup Qualifying": { slug: "fifa.worldq.uefa", country: "World" },
-            
-            // --- A HIBÁK JAVÍTÁSA ---
-            // "Serie A": { slug: "bra.1", country: "Brazil" }, // Duplikált, az olasz "Serie A" felülírja
-            "Serie B": { slug: "bra.2", country: "Brazil" }, // Brazil Serie B
-            "Liga Profesional de Fútbol": { slug: "arg.1", country: "Argentina" }, // Argentin liga
-            
+            "UEFA World Cup Qualifying": { slug:g: "fifa.worldq.uefa", country: "World" },
+            "Serie B": { slug: "bra.2", country: "Brazil" }, 
+            "Liga Profesional de Fútbol": { slug: "arg.1", country: "Argentina" }, 
             "Australian A-League": { slug: "aus.1", country: "Australia" },
             "Austrian Bundesliga": { slug: "aut.1", country: "Austria" },
             "Swiss Super League": { slug: "sui.1", country: "Switzerland" },
@@ -166,4 +160,10 @@ export const SPORT_CONFIG = {
             'Euroleague': { slug: 'euroleague', country: 'World' }
         },
     },
+    default: { // Hozzáadtam egy default-t a biztonság kedvéért
+        name: 'default',
+        espn_sport_path: '',
+        totals_line: 0,
+        espn_leagues: {},
+    }
 };
