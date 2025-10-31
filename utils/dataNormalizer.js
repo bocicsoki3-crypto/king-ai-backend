@@ -1,23 +1,23 @@
 // /src/utils/dataNormalizer.js
 
 /**
- * Ez a térkép lefedi azokat az ismert eltéréseket,
- * amelyek a frontend és a backend (API-Sports) elnevezései között vannak.
- * A KULCSOK mindig kisbetűsek legyenek a könnyebb keresés érdekében.
+ * === JAVÍTÁS: A leagueAliasMap most már objektumokat tárol ===
+ * A kétértelmű ("Serie B") nevek feloldásához
+ * most már a nevet ÉS az országot is tároljuk.
  */
-
-// === Generált leagueAliasMap ===
-// (Ez térképezi át a frontend neveket a hivatalos API nevekre)
 const leagueAliasMap = new Map([
-    ['argentinian liga profesional', 'Liga Profesional de Fútbol'],
-    ['2. bundesliga', '2. Bundesliga'],
-    ['super lig', 'Süper Lig'],
-    ['brazil serie b', 'Serie B'], // <-- EZ AZ ÚJ SOR
+    // Kulcs: Frontend név (kisbetűvel)
+    // Érték: { officialName: string, country: string }
+    ['argentinian liga profesional', { officialName: 'Liga Profesional de Fútbol', country: 'Argentina' }],
+    ['2. bundesliga', { officialName: '2. Bundesliga', country: 'Germany' }],
+    ['super lig', { officialName: 'Süper Lig', country: 'Turkey' }],
+    ['brazil serie b', { officialName: 'Serie B', country: 'Brazil' }], // <-- JAVÍTVA
     // TODO: Ide add hozzá a többi ligát, ahogy felmerülnek
 ]);
 
-// === Generált teamAliasMap ===
-// (Ez térképezi át a kisbetűs csapatneveket a hivatalos API nevekre)
+/**
+ * A csapatnevek térképe (ez maradhat egyszerű string-string)
+ */
 const teamAliasMap = new Map([
     // 2. Bundesliga
     ['sv 07 elversberg', 'SV Elversberg'],
@@ -29,25 +29,35 @@ const teamAliasMap = new Map([
     ['istanbul basaksehir', 'Istanbul Basaksehir'],
     ['kocaelispor', 'Kocaelispor'],
     // Brazil Serie B
-    ['ferroviária', 'Ferroviária'], // <-- ÚJ SOR
-    ['criciúma', 'Criciúma'],       // <-- ÚJ SOR
+    ['ferroviária', 'Ferroviária'],
+    ['criciúma', 'Criciúma'],
     // TODO: Ide add hozzá a többi csapatot, ahogy felmerülnek
 ]);
 
 
 /**
- * Normalizálja a liga nevét az API hívás előtt.
+ * === JAVÍTÁS: A függvény neve 'normalizeLeague'-re változott ===
+ * Most már egy objektumot ad vissza { officialName, country }
  * @param {string} inputName A frontendről érkező liganev
- * @returns {string} A hivatalos, API-kompatibilis liganev
+ * @returns {{officialName: string, country: string | null}}
  */
-export const normalizeLeagueName = (inputName) => {
-    if (!inputName) return inputName;
+export const normalizeLeague = (inputName) => {
+    if (!inputName) return { officialName: inputName, country: null };
+    
     const lowerCaseName = inputName.trim().toLowerCase();
-    return leagueAliasMap.get(lowerCaseName) || inputName; // Visszaadja a mappelt nevet, vagy az eredetit
+    const mapping = leagueAliasMap.get(lowerCaseName);
+
+    if (mapping) {
+        return mapping; // Visszaadja az objektumot, pl. { officialName: 'Serie B', country: 'Brazil' }
+    }
+    
+    // Visszalépés (Fallback): Ha nincs a térképen, az eredeti nevet adja vissza
+    // és null országot (az API-provider majd próbálja kitalálni)
+    return { officialName: inputName, country: null };
 };
 
 /**
- * Normalizálja a csapat nevét az API hívás előtt.
+ * Normalizálja a csapat nevét az API hívás előtt. (VÁLTOZATLAN)
  * @param {string} inputName A frontendről érkező csapatnév
  * @returns {string} A hivatalos, API-kompatibilis csapatnév
  */
