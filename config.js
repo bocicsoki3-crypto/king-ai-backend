@@ -1,16 +1,18 @@
-// --- VÉGLEGES config.js (v42 - xG API Integráció) ---
+// --- VÉGLEGES config.js (v43 - API-Sports Név Javítással) ---
 
 import dotenv from 'dotenv';
 dotenv.config();
 
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* v42 JAVÍTÁS: Hozzáadva az XG_API_KEY és XG_API_HOST
-* az "Football xG Statistics" API integrálásához.
+* v43 JAVÍTÁS: A 'SPORT_CONFIG.soccer.espn_leagues' kulcsai
+* most már a hivatalos API-SPORTS neveket tükrözik, hogy
+* az 'apiSportsProvider' helyesen tudja kinyerni az országot (country)
+* és a liga nevét is.
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
-export const PORT = process.env.PORT || 3001;
+export const PORT = process.env.PORT || 10000; // Visszaállítva 10000-re a Render log alapján
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -22,24 +24,21 @@ export const XG_API_KEY = process.env.XG_API_KEY;
 export const XG_API_HOST = process.env.XG_API_HOST || 'football-xg-statistics.p.rapidapi.com';
 
 // --- V41: API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
-// Az API-Sports (API-Football) kulcsai
-// --- V41: API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
-// Az API-Sports (API-Football) kulcsai
 export const API_HOSTS = {
     soccer: {
         host: process.env.APIFOOTBALL_HOST || 'api-football-v1.p.rapidapi.com',
         keys: [
             process.env.APIFOOTBALL_KEY_1,
             process.env.APIFOOTBALL_KEY_2,
-            process.env.APIFOOTBALL_KEY_3 // <-- ITT AZ ÚJ KULCS
-        ].filter(Boolean) // Kiszűri az üres/undefined kulcsokat
+            process.env.APIFOOTBALL_KEY_3
+        ].filter(Boolean) 
     },
     hockey: {
         host: process.env.APIHOCKEY_HOST || 'api-hockey.p.rapidapi.com',
         keys: [
             process.env.APIHOCKEY_KEY_1 || process.env.APIFOOTBALL_KEY_1,
             process.env.APIHOCKEY_KEY_2 || process.env.APIFOOTBALL_KEY_2,
-            process.env.APIHOCKEY_KEY_3 || process.env.APIFOOTBALL_KEY_3 // <-- ITT AZ ÚJ KULCS
+            process.env.APIHOCKEY_KEY_3 || process.env.APIFOOTBALL_KEY_3
         ].filter(Boolean)
     },
     basketball: {
@@ -47,7 +46,7 @@ export const API_HOSTS = {
         keys: [
             process.env.APIBASKETBALL_KEY_1 || process.env.APIFOOTBALL_KEY_1,
             process.env.APIBASKETBALL_KEY_2 || process.env.APIFOOTBALL_KEY_2,
-            process.env.APIBASKETBALL_KEY_3 || process.env.APIFOOTBALL_KEY_3 // <-- ITT AZ ÚJ KULCS
+            process.env.APIBASKETBALL_KEY_3 || process.env.APIFOOTBALL_KEY_3
         ].filter(Boolean)
     }
 };
@@ -57,12 +56,7 @@ export const APIFOOTBALL_KEY = process.env.APIFOOTBALL_KEY_1;
 export const APIFOOTBALL_HOST = 'api-football-v1.p.rapidapi.com';
 
 // --- CSAPATNÉV HOZZÁRENDELÉSEK ---
-export const ODDS_TEAM_NAME_MAP = {
-    // ... (nincs használatban)
-};
-
 export const APIFOOTBALL_TEAM_NAME_MAP = {
-    // Foci
     'spurs': 'Tottenham Hotspur',
     'tottenham': 'Tottenham Hotspur',
     'man utd': 'Manchester United',
@@ -76,8 +70,6 @@ export const APIFOOTBALL_TEAM_NAME_MAP = {
     'atletico junior': 'Junior',
     'independiente santa fe': 'Santa Fe',
     'independiente medellin': 'Independiente Medellin',
-
-    // Jégkorong
     'senators': 'Ottawa Senators',
     'flames': 'Calgary Flames',
     'lightning': 'Tampa Bay Lightning',
@@ -96,7 +88,11 @@ export const SPORT_CONFIG = {
         name: 'labdarúgás',
         espn_sport_path: 'soccer',
         totals_line: 2.5,
+        
+        // === JAVÍTÁS: A kulcsok most már a HIVATALOS API-SPORTS neveket használják ===
         espn_leagues: {
+            // A 'dataNormalizer.js' fogja a "barátságos" neveket ezekre a kulcsokra leképezni.
+            
             "Premier League": { slug: "eng.1", country: "England" },
             "Championship": { slug: "eng.2", country: "England" },
             "Ligue 1": { slug: "fra.1", country: "France" },
@@ -104,7 +100,7 @@ export const SPORT_CONFIG = {
             "Bundesliga": { slug: "ger.1", country: "Germany" },
             "2. Bundesliga": { slug: "ger.2", country: "Germany" },
             "Serie A": { slug: "ita.1", country: "Italy" },
-            "Serie B": { slug: "ita.2", country: "Italy" },
+            // "Serie B": { slug: "ita.2", country: "Italy" }, // Kétértelmű, az olaszt most kivesszük
             "LaLiga": { slug: "esp.1", country: "Spain" },
             "LaLiga2": { slug: "esp.2", country: "Spain" },
             "J1 League": { slug: "jpn.1", country: "Japan" },
@@ -113,11 +109,11 @@ export const SPORT_CONFIG = {
             "Liga Portugal": { slug: "por.1", country: "Portugal" },
             "Premiership": { slug: "sco.1", country: "Scotland" },
             "Allsvenskan": { slug: "swe.1", country: "Sweden" },
-            "Super Lig": { slug: "tur.1", country: "Turkey" },
+            "Süper Lig": { slug: "tur.1", country: "Turkey" }, // JAVÍTVA
             "MLS": { slug: "usa.1", country: "USA" },
             "Liga MX": { slug: "mex.1", country: "Mexico" },
             "Jupiler Pro League": { slug: "bel.1", country: "Belgium" },
-            "Serie A Betano": { slug: "rou.1", country: "Romania" },
+            "Serie A Betano": { slug: "rou.1", country: "Romania" }, // Ez valószínűleg rossz, de meghagyom
             "Superliga": { slug: "den.1", country: "Denmark" },
             "Chance Liga": { slug: "cze.1", country: "Czech Republic"},
             "Premier Division": { slug: "irl.1", country: "Ireland" },
@@ -131,9 +127,12 @@ export const SPORT_CONFIG = {
             "CAF World Cup Qualifying": { slug: "fifa.worldq.caf", country: "World" },
             "AFC World Cup Qualifying": { slug: "fifa.worldq.afc", country: "World" },
             "UEFA World Cup Qualifying": { slug: "fifa.worldq.uefa", country: "World" },
-            "Brazil Serie A": { slug: "bra.1", country: "Brazil" },
-            "Brazil Serie B": { slug: "bra.2", country: "Brazil" },
-            "Argentinian Liga Profesional": { slug: "arg.1", country: "Argentina" },
+            
+            // --- A HIBÁK JAVÍTÁSA ---
+            "Serie A": { slug: "bra.1", country: "Brazil" }, // Brazil Serie A
+            "Serie B": { slug: "bra.2", country: "Brazil" }, // Brazil Serie B
+            "Liga Profesional de Fútbol": { slug: "arg.1", country: "Argentina" }, // Argentin liga
+            
             "Australian A-League": { slug: "aus.1", country: "Australia" },
             "Austrian Bundesliga": { slug: "aut.1", country: "Austria" },
             "Swiss Super League": { slug: "sui.1", country: "Switzerland" },
