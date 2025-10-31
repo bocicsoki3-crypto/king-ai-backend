@@ -9,7 +9,7 @@ import {
     calculateModelConfidence, 
     calculateValue,
     analyzeLineMovement,
-    calculatePsychologicalProfile // <-- JAVÍTÁS: EZ AZ IMPORT HIÁNYZOTT
+    calculatePsychologicalProfile
 } from './Model.js';
 import { 
     getTacticalBriefing, 
@@ -46,7 +46,12 @@ export async function runFullAnalysis(params, sport, openingOdds) {
 
     const config = SPORT_CONFIG[sport] || SPORT_CONFIG['default'];
     
-    const analysisId = `analysis_${config.version}_${sport}_${normalizedHome.toLowerCase().replace(/ /g, '')}_vs_${normalizedAway.toLowerCase().replace(/ /g, '')}`;
+    // === JAVÍTÁS: 'config.version' helyett 'config.name'-et használunk ===
+    // A te config.js-ed 'name' kulcsot használ ('labdarúgás'), nem 'version'-t.
+    const configVersion = config.name || 'unknown_version'; 
+    const analysisId = `analysis_${configVersion}_${sport}_${normalizedHome.toLowerCase().replace(/ /g, '')}_vs_${normalizedAway.toLowerCase().replace(/ /g, '')}`;
+    // === JAVÍTÁS VÉGE ===
+
     console.log(`Elemzés indítása...`);
 
     const forceReAnalysis = force === 'true';
@@ -70,18 +75,20 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             forceReAnalysis
         );
 
-        if (!richData || richData.error) {
-            const errorMsg = `Adatgyűjtési hiba (${richData?.version || 'N/A'}): ${richData?.error || 'Ismeretlen hiba'}`;
-            console.error(errorMsg, new Error(errorMsg));
-            throw new Error(errorMsg);
+        // Defenzív ellenőrzés (az előző javításból)
+        if (!richData || !richData.home || !richData.away) {
+            console.error(`SÚLYOS HIBA: A 'getRichContextualData' (DataFetch.js) nem adott vissza érvényes adatobjektumot.`);
+            console.error(`Kapott richData: ${JSON.stringify(richData)}`);
+            throw new Error("Adatgyűjtési hiba: A DataFetch.js nem adta vissza a feldolgozott adatokat.");
         }
-        console.log(`Adatgyűjtés kész (${richData.version}): ${richData.home} vs ${richData.away}.`);
+
+
+        console.log(`Adatgyűjtés kész (${richData.version || 'v46'}): ${richData.home} vs ${richData.away}.`);
 
         // 3. Modellezés és Szimuláció
         console.log(`Modellezés indul: ${richData.home} vs ${richData.away}...`);
-        const mainTotalsLine = richData.mainTotalsLine || config.defaultTotalsLine;
+        const mainTotalsLine = richData.mainTotalsLine || config.totals_line; // javítva config.defaultTotalsLine-ről
         
-        // === JAVÍTÁS: Ez a hívás most már működni fog ===
         const psyProfileHome = calculatePsychologicalProfile(richData.home, richData.away, richData);
         const psyProfileAway = calculatePsychologicalProfile(richData.away, richData.home, richData);
 
@@ -207,7 +214,7 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         // 6. Végeredmény összeállítása
         const finalResult = {
             id: analysisId,
-            version: config.version,
+            version: configVersion, // JAVÍTVA
             sport: sport,
             home: richData.home,
             away: richData.away,
