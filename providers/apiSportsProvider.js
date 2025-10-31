@@ -333,7 +333,7 @@ async function getXgData(fixtureId) {
     }
     
     const cacheKey = `xg_api_v42_${fixtureId}`;
-    const cached = xGapiCache.get(cacheKey);
+    const cached = xgApiCache.get(cacheKey);
     if (cached) {
         console.log(`xG API cache találat: ${cacheKey}`);
         return cached;
