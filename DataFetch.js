@@ -865,3 +865,4 @@ STRUCTURE: {
   "defensive_style":{ "home":"...", "away":"..." }, 
   "league_averages": { /* Optional: avg_goals_per_game, etc. */ }
 }`;
+}
