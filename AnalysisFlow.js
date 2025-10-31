@@ -8,7 +8,8 @@ import {
     buildPropheticTimeline, 
     calculateModelConfidence, 
     calculateValue,
-    analyzeLineMovement
+    analyzeLineMovement,
+    calculatePsychologicalProfile // <-- JAVÍTÁS: EZ AZ IMPORT HIÁNYZOTT
 } from './Model.js';
 import { 
     getTacticalBriefing, 
@@ -30,8 +31,6 @@ import {
 } from './AI_Service.js';
 import { saveAnalysisToSheet } from './sheets.js';
 import { SPORT_CONFIG } from './config.js';
-
-// === JAVÍTÁS: Visszaálltunk 'normalizeLeagueName'-re ===
 import { normalizeLeagueName, normalizeTeamName } from './utils/dataNormalizer.js';
 
 
@@ -39,15 +38,11 @@ import { normalizeLeagueName, normalizeTeamName } from './utils/dataNormalizer.j
  * A teljes elemzési folyamatot vezérli.
  */
 export async function runFullAnalysis(params, sport, openingOdds) {
-    // 1. Paraméterek és normalizálás
     const { home, away, leagueName, utcKickoff, force, sheetUrl } = params;
 
-    // === JAVÍTÁS: Visszaálltunk az egyszerűbb (string) normalizálásra ===
     const normalizedHome = normalizeTeamName(home);
     const normalizedAway = normalizeTeamName(away);
-    // Az új 'dataNormalizer' "Brazil: Serie B" stringet ad vissza
-    const normalizedLeagueName = normalizeLeagueName(leagueName); 
-    // === JAVÍTÁS VÉGE ===
+    const normalizedLeagueName = normalizeLeagueName(leagueName);
 
     const config = SPORT_CONFIG[sport] || SPORT_CONFIG['default'];
     
@@ -65,18 +60,15 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         // 2. Adatgyűjtés
         console.log(`Adatgyűjtés indul: ${normalizedHome} vs ${normalizedAway}...`);
         
-        // === JAVÍTÁS: Visszaálltunk az eredeti hívási sorrendre ===
-        // A 'normalizedCountry' paramétert (ami a hibát okozta) eltávolítottuk.
         const richData = await getRichContextualData(
             sport,
             normalizedHome,
             normalizedAway,
-            normalizedLeagueName, // Ez most már az egyértelműsített string, pl. "Brazil: Serie B"
+            normalizedLeagueName,
             utcKickoff,
             openingOdds,
             forceReAnalysis
         );
-        // === JAVÍTÁS VÉGE ===
 
         if (!richData || richData.error) {
             const errorMsg = `Adatgyűjtési hiba (${richData?.version || 'N/A'}): ${richData?.error || 'Ismeretlen hiba'}`;
@@ -89,6 +81,7 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         console.log(`Modellezés indul: ${richData.home} vs ${richData.away}...`);
         const mainTotalsLine = richData.mainTotalsLine || config.defaultTotalsLine;
         
+        // === JAVÍTÁS: Ez a hívás most már működni fog ===
         const psyProfileHome = calculatePsychologicalProfile(richData.home, richData.away, richData);
         const psyProfileAway = calculatePsychologicalProfile(richData.away, richData.home, richData);
 
