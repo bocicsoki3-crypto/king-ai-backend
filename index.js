@@ -26,7 +26,7 @@ app.use(express.json()); // JSON body parser
 const allowedOrigins = [
     'http://localhost:3000', // Helyi fejlesztéshez
     'http://localhost:5173', // Helyi fejlesztéshez (pl. Vite)
-    'https://a-te-frontend-domain-ed.com'
+    'https://king-ai-backend.onrender.com'
 ];
 
 app.use(cors({
