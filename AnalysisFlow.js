@@ -37,20 +37,18 @@ import { normalizeLeagueName, normalizeTeamName } from './utils/dataNormalizer.j
  * A teljes elemzési folyamatot vezérli.
  */
 export async function runFullAnalysis(params, sport, openingOdds) {
+    // 1. Paraméterek és normalizálás
+    // A 'params' objektum (ami a req.query-ből jön) tartalmaz mindent
     const { home, away, leagueName, utcKickoff, force, sheetUrl } = params;
 
-    const normalizedParams = {
-        home: normalizeTeamName(home),
-        away: normalizeTeamName(away),
-        leagueName: normalizeLeagueName(leagueName),
-        utcKickoff,
-        force,
-        sheetUrl
-    };
+    const normalizedHome = normalizeTeamName(home);
+    const normalizedAway = normalizeTeamName(away);
+    const normalizedLeagueName = normalizeLeagueName(leagueName);
 
     const config = SPORT_CONFIG[sport] || SPORT_CONFIG['default'];
     
-    const analysisId = `analysis_${config.version}_${sport}_${normalizedParams.home.toLowerCase().replace(/ /g, '')}_vs_${normalizedParams.away.toLowerCase().replace(/ /g, '')}`;
+    // Az 'analysisId'-t már a normalizált nevekkel hozzuk létre
+    const analysisId = `analysis_${config.version}_${sport}_${normalizedHome.toLowerCase().replace(/ /g, '')}_vs_${normalizedAway.toLowerCase().replace(/ /g, '')}`;
     console.log(`Elemzés indítása...`);
 
     const forceReAnalysis = force === 'true';
@@ -61,15 +59,19 @@ export async function runFullAnalysis(params, sport, openingOdds) {
     try {
         // Gyorsítótár-kezelés (getAnalysisFromCache) már ki van kapcsolva
 
-        // 2. Adatgyűjtés (Már a normalizált adatokkal)
-        console.log(`Adatgyűjtés indul: ${normalizedParams.home} vs ${normalizedParams.away}...`);
+        // 2. Adatgyűjtés
+        console.log(`Adatgyűjtés indul: ${normalizedHome} vs ${normalizedAway}...`);
         
-        // === JAVÍTÁS: Argumentumok sorrendje felcserélve ===
-        // A 'sport' stringet küldjük elsőnek, a 'params' objektumot másodikként,
-        // hogy megfeleljen a DataFetch.js elvárásainak.
+        // === JAVÍTÁS: Argumentumok átadása egyesével ===
+        // Nem 'params' objektumot küldünk, hanem az összes adatot külön-külön,
+        // mivel a DataFetch.js valószínűleg így várja.
         const richData = await getRichContextualData(
-            sport,            // 1. argumentum: 'soccer'
-            normalizedParams, // 2. argumentum: { home: '...', away: '...' }
+            sport,
+            normalizedHome,
+            normalizedAway,
+            normalizedLeagueName,
+            utcKickoff,
+            sheetUrl, // Ez lehet, hogy nem kell, de ártani nem árt
             openingOdds,
             forceReAnalysis
         );
