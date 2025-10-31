@@ -67,7 +67,6 @@ export const APIFOOTBALL_KEY = process.env.APIFOOTBALL_KEY_1;
 export const APIFOOTBALL_HOST = 'api-football-v1.p.rapidapi.com';
 
 // --- CSAPATNÉV HOZZÁRENDELÉSEK ---
-// (Ezt a dataNormalizer.js már kezeli, de a kódodban még itt van)
 export const APIFOOTBALL_TEAM_NAME_MAP = {
     'spurs': 'Tottenham Hotspur',
     'tottenham': 'Tottenham Hotspur',
@@ -102,7 +101,6 @@ export const SPORT_CONFIG = {
         totals_line: 2.5,
         
         // === JAVÍTÁS: A kulcsok most már a HIVATALOS API-SPORTS neveket használják ===
-        // (Ahogy azt a 'dataNormalizer.js' javításnál megbeszéltük)
         espn_leagues: {
             "Premier League": { slug: "eng.1", country: "England" },
             "Championship": { slug: "eng.2", country: "England" },
