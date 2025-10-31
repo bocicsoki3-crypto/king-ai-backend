@@ -30,7 +30,9 @@ import {
 } from './AI_Service.js';
 import { saveAnalysisToSheet } from './sheets.js';
 import { SPORT_CONFIG } from './config.js';
-import { normalizeLeagueName, normalizeTeamName } from './utils/dataNormalizer.js';
+
+// === JAVÍTÁS: 'normalizeLeague'-t importálunk 'normalizeLeagueName' helyett ===
+import { normalizeLeague, normalizeTeamName } from './utils/dataNormalizer.js';
 
 
 /**
@@ -38,16 +40,20 @@ import { normalizeLeagueName, normalizeTeamName } from './utils/dataNormalizer.j
  */
 export async function runFullAnalysis(params, sport, openingOdds) {
     // 1. Paraméterek és normalizálás
-    // A 'params' objektum (ami a req.query-ből jön) tartalmaz mindent
     const { home, away, leagueName, utcKickoff, force, sheetUrl } = params;
 
+    // === JAVÍTÁS: Az új normalizálási logika ===
     const normalizedHome = normalizeTeamName(home);
     const normalizedAway = normalizeTeamName(away);
-    const normalizedLeagueName = normalizeLeagueName(leagueName);
+
+    // Az új függvény egy objektumot ad vissza: { officialName, country }
+    const leagueInfo = normalizeLeague(leagueName);
+    const normalizedLeagueName = leagueInfo.officialName;
+    const normalizedCountry = leagueInfo.country; // Ez a kulcsfontosságú új adat!
+    // === JAVÍTÁS VÉGE ===
 
     const config = SPORT_CONFIG[sport] || SPORT_CONFIG['default'];
     
-    // Az 'analysisId'-t már a normalizált nevekkel hozzuk létre
     const analysisId = `analysis_${config.version}_${sport}_${normalizedHome.toLowerCase().replace(/ /g, '')}_vs_${normalizedAway.toLowerCase().replace(/ /g, '')}`;
     console.log(`Elemzés indítása...`);
 
@@ -62,16 +68,16 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         // 2. Adatgyűjtés
         console.log(`Adatgyűjtés indul: ${normalizedHome} vs ${normalizedAway}...`);
         
-        // === JAVÍTÁS: Argumentumok átadása egyesével ===
-        // Nem 'params' objektumot küldünk, hanem az összes adatot külön-külön,
-        // mivel a DataFetch.js valószínűleg így várja.
+        // === JAVÍTÁS: Az új 'normalizedCountry' argumentum hozzáadása ===
+        // Most már átadjuk az országot is, hogy az API-provider
+        // fel tudja oldani a "Serie B" kétértelműséget.
         const richData = await getRichContextualData(
             sport,
             normalizedHome,
             normalizedAway,
             normalizedLeagueName,
+            normalizedCountry, // <-- AZ ÚJ, MEGOLDÁST JELENTŐ PARAMÉTER
             utcKickoff,
-            sheetUrl, // Ez lehet, hogy nem kell, de ártani nem árt
             openingOdds,
             forceReAnalysis
         );
