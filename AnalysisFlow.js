@@ -2,15 +2,13 @@
 
 import { getRichContextualData, _callGemini } from './DataFetch.js';
 import { 
-    // === JAVÍTÁS: Helyes importok a Model.js-ből ===
-    simulateMatchProgress,      // 'runSimulation' HELYETT
-    estimateXG,                 // HIÁNYZÓ IMPORT HOZZÁADVA
-    estimateAdvancedMetrics,    // HIÁNYZÓ IMPORT HOZZÁADVA
+    simulateMatchProgress,
+    estimateXG,
+    estimateAdvancedMetrics,
     buildPropheticTimeline, 
     calculateModelConfidence, 
-    calculateValue,             // 'calculateValueBets' HELYETT
-    analyzeLineMovement         // Visszakapcsolva, Model.js-ben LÉTEZIK
-    // 'getMarketIntel' továbbra sem létezik a Model.js-ben, ezért kihagyva
+    calculateValue,
+    analyzeLineMovement
 } from './Model.js';
 import { 
     getTacticalBriefing, 
@@ -66,12 +64,16 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         // 2. Adatgyűjtés (Már a normalizált adatokkal)
         console.log(`Adatgyűjtés indul: ${normalizedParams.home} vs ${normalizedParams.away}...`);
         
+        // === JAVÍTÁS: Argumentumok sorrendje felcserélve ===
+        // A 'sport' stringet küldjük elsőnek, a 'params' objektumot másodikként,
+        // hogy megfeleljen a DataFetch.js elvárásainak.
         const richData = await getRichContextualData(
-            normalizedParams, 
-            sport,
+            sport,            // 1. argumentum: 'soccer'
+            normalizedParams, // 2. argumentum: { home: '...', away: '...' }
             openingOdds,
             forceReAnalysis
         );
+        // === JAVÍTÁS VÉGE ===
 
         if (!richData || richData.error) {
             const errorMsg = `Adatgyűjtési hiba (${richData?.version || 'N/A'}): ${richData?.error || 'Ismeretlen hiba'}`;
@@ -83,15 +85,10 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         // 3. Modellezés és Szimuláció
         console.log(`Modellezés indul: ${richData.home} vs ${richData.away}...`);
         const mainTotalsLine = richData.mainTotalsLine || config.defaultTotalsLine;
-
-        // === JAVÍTÁS: A Model.js-nek megfelelő hívási sorrend ===
         
-        // 1. Lépés: Pszichológiai profil (mivel az estimateXG kéri)
         const psyProfileHome = calculatePsychologicalProfile(richData.home, richData.away, richData);
         const psyProfileAway = calculatePsychologicalProfile(richData.away, richData.home, richData);
 
-        // 2. Lépés: xG becslése (a Model.js 'estimateXG' függvényével)
-        // 
         const { mu_h, mu_a } = estimateXG(
             richData.home, 
             richData.away,
@@ -101,39 +98,31 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             richData.league_averages,
             richData.advancedData, 
             richData, 
-            psyProfileHome, // Átadjuk a profilt
-            psyProfileAway, // Átadjuk a profilt
-            null  // currentSimProbs (első körben null)
+            psyProfileHome,
+            psyProfileAway,
+            null
         );
         
-        // 3. Lépés: Szöglet/Lap becslése (a Model.js 'estimateAdvancedMetrics' függvényével)
-        // 
         const { mu_corners, mu_cards } = estimateAdvancedMetrics(
             richData, 
             sport, 
             richData.league_averages
         );
 
-        // 4. Lépés: Szimuláció futtatása a becsült 'mu' értékekkel
-        // 
-        const sim = await simulateMatchProgress( // 'runSimulation' HELYETT
+        const sim = await simulateMatchProgress(
             mu_h,
             mu_a,
             mu_corners,
             mu_cards,
-            config.simulations || 10000, // sims
+            config.simulations || 10000,
             sport,
-            null, // liveScenario
+            null, 
             mainTotalsLine,
             richData
         );
-        // === JAVÍTÁS VÉGE ===
+        
+        const marketIntel = "N/A";
 
-        // A 'sim' objektum most már létezik
-        const marketIntel = "N/A"; // (getMarketIntel továbbra sem létezik)
-
-        // 5. Lépés: Modell bizalom számítása (a Model.js 'calculateModelConfidence' alapján)
-        // 
         const modelConfidence = calculateModelConfidence(
             sport, 
             richData.home, 
@@ -141,12 +130,10 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             richData, 
             richData.form, 
             sim, 
-            marketIntel // Átadjuk az "N/A"-t
+            marketIntel
         );
 
-        // 6. Lépés: Érték (Value) számítása (a Model.js 'calculateValue' alapján)
-        // 
-        const valueBets = calculateValue( // 'calculateValueBets' HELYETT
+        const valueBets = calculateValue(
             sim, 
             richData.odds, 
             sport, 
@@ -154,8 +141,6 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             richData.away
         );
 
-        // 7. Lépés: Prófétai idővonal (a Model.js 'buildPropheticTimeline' alapján)
-        // 
         const propheticTimeline = buildPropheticTimeline(
             mu_h, 
             mu_a,
@@ -165,8 +150,6 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             richData.away
         );
         
-        // 8. Lépés: Vonalmozgás elemzése (a Model.js 'analyzeLineMovement' alapján)
-        // 
         const lineMovement = analyzeLineMovement(
             richData.odds, 
             openingOdds, 
