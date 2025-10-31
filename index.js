@@ -1,262 +1,158 @@
-import express from 'express';
-import cors from 'cors';
-import { PORT } from './config.js';
-import { _getFixturesFromEspn } from './DataFetch.js';
-import { runFullAnalysis } from './AnalysisFlow.js';
-import { getHistoryFromSheet, getAnalysisDetailFromSheet, deleteHistoryItemFromSheet } from './sheets.js';
+// --- JAVÍTOTT config.js ---
 
-// === JAVÍTÁS: Helyes ES Modul import (nincs default export) ===
-// A 'aiService' default import helyett közvetlenül a nevesített függvényeket importáljuk
-import { 
-    getChatResponse,
-    // Itt importálhatnánk a többi AI funkciót is, ha közvetlenül hívnánk őket,
-    // de jelenleg csak a getChatResponse van itt használva.
-} from './AI_Service.js';
-// === JAVÍTÁS VÉGE ===
+import dotenv from 'dotenv';
+dotenv.config();
 
-import { updatePowerRatings, runConfidenceCalibration } from './LearningService.js';
+/**************************************************************
+* config.js - Központi Konfigurációs Fájl
+* KRITIKUS JAVÍTÁS: Hozzáadva az `APIFOOTBALL_TEAM_NAME_MAP` a csapatnevek
+* pontosabb azonosításához, különösen a "Spurs" -> "Tottenham Hotspur"
+* és hasonló becenevek helyes kezelésére.
+* JAVÍTÁS (2025-10-25): 'Serie A' kulcs hozzáadva az odds_api_keys_by_league-hez.
+**************************************************************/
 
-const app = express();
-app.use(express.json()); // JSON body parser
+// --- SZERVER BEÁLLÍTÁSOK ---
+export const PORT = process.env.PORT || 3001; // Port, amin a szerver fut
 
-// === JAVÍTÁS: Biztonságos CORS beállítás ===
-// Az 'app.use(cors())' helyett egy biztonságos, whitelist alapú beállítás
-// TODO: Cseréld le a 'https://a-te-frontend-domain-ed.com' címet
-// a saját éles frontend domain(ek)re.
-const allowedOrigins = [
-    'http://localhost:3000', // Helyi fejlesztéshez
-    'http://localhost:5173', // Helyi fejlesztéshez (pl. Vite)
-    'https://bocicsoki3-crypto.github.io/sport-elemzo/'
-];
+// --- API KULCSOK ---
+export const GEMINI_API_KEY = process.env.GEMINI_API_KEY; // Gemini API kulcs
+export const GEMINI_MODEL_ID = 'gemini-2.5-pro'; // Ajánlott modell a sebesség és költséghatékonyság miatt
+export const ODDS_API_KEY = process.env.ODDS_API_KEY; // Odds API kulcs
+export const THESPORTSDB_API_KEY = process.env.THESPORTSDB_API_KEY; // TheSportsDB API kulcs
+export const APIFOOTBALL_API_KEY = process.env.APIFOOTBALL_API_KEY; // API-Football kulcs
+export const SPORTMONKS_API_KEY = process.env.SPORTMONKS_API_KEY; // SportMonks API kulcs (opcionális)
+export const PLAYER_API_KEY = process.env.PLAYER_API_KEY; // Player API kulcs (opcionális, nem látszik használatban)
 
-app.use(cors({
-    origin: function (origin, callback) {
-        // Engedélyezzük a 'origin' nélküli kéréseket (pl. Postman, mobil appok)
-        if (!origin) return callback(null, true);
-        
-        if (allowedOrigins.indexOf(origin) === -1) {
-            const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-            return callback(new Error(msg), false);
+
+// --- GOOGLE SHEET BEÁLLÍTÁSOK ---
+export const SHEET_URL = process.env.SHEET_URL; // Google Sheet URL
+
+// --- CSAPATNÉV HOZZÁRENDELÉSEK ---
+
+// Bővítsd ezt a listát, ha további eltéréseket találsz a The Odds API logokban!
+export const ODDS_TEAM_NAME_MAP = {
+    // Kulcs: Az ESPN/Frontend által használt név (kisbetűvel)
+    // Érték: A The Odds API által használt név
+    'schalke': 'FC Schalke 04',
+    'bremen': 'Werder Bremen',
+    'manchester city': 'Man City',
+    'manchester united': 'Man United',
+    'spurs': 'Tottenham Hotspur',
+    'tottenham': 'Tottenham Hotspur',
+    'real madrid': 'Real Madrid',
+    'atletico madrid': 'Atletico Madrid',
+    'bayern munich': 'Bayern Munich',
+};
+
+// --- JAVÍTÁS KEZDETE: ÚJ NÉVTÉRKÉP AZ API-FOOTBALLHOZ ---
+// Bővítsd ezt a listát, ha az API-Football tévesen azonosít egy csapatot!
+export const APIFOOTBALL_TEAM_NAME_MAP = {
+    // Kulcs: A frontendről érkező név (kisbetűvel)
+    // Érték: A pontos, hivatalos csapatnév, amire az API-Football keresni fog
+    'spurs': 'Tottenham Hotspur',
+    'tottenham': 'Tottenham Hotspur',
+    'man utd': 'Manchester United',
+    'man city': 'Manchester City',
+    'inter': 'Inter Milan', // Gyakori rövidítés
+    'wolves': 'Wolverhampton Wanderers',
+    // ... további csapatok, ha szükséges ...
+};
+// --- JAVÍTÁS VÉGE ---
+
+
+// --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
+export const SPORT_CONFIG = {
+    soccer: {
+        name: 'labdarúgás',
+        espn_sport_path: 'soccer',
+        total_minutes: 90,
+        home_advantage: { home: 1.08, away: 0.92 },
+        avg_goals: 1.35,
+        totals_line: 2.5,
+        odds_api_sport_key: 'soccer_epl', // Alapértelmezett odds sport kulcs
+        odds_api_keys_by_league: { // Specifikus odds kulcsok ligákhoz
+            'UEFA Champions League': 'soccer_uefa_champs_league',
+            'Champions League': 'soccer_uefa_champs_league',
+            'UEFA Europa League': 'soccer_uefa_europa_league',
+            'Europa League': 'soccer_uefa_europa_league',
+            'UEFA Conference League': 'soccer_uefa_europa_conference_league',
+            'Conference League': 'soccer_uefa_europa_conference_league',
+            'English Premier League': 'soccer_epl',
+            'Premier League': 'soccer_epl',
+            'Spanish La Liga': 'soccer_spain_la_liga',
+            'LaLiga': 'soccer_spain_la_liga',
+            'German Bundesliga': 'soccer_germany_bundesliga',
+            'Bundesliga': 'soccer_germany_bundesliga',
+            'Italian Serie A': 'soccer_italy_serie_a',
+            'Serie A': 'soccer_italy_serie_a',
+            'French Ligue 1': 'soccer_france_ligue_one',
+            'Ligue 1': 'soccer_france_ligue_one',
+            'NB I': 'soccer_hungary_nb_i',
+            'Eredivisie': 'soccer_netherlands_eredivisie',
+            'Liga Portugal': 'soccer_portugal_primeira_liga',
+            'MLS': 'soccer_usa_mls',
+            'Brazil Serie A': 'soccer_brazil_campeonato',
+            'Argentinian Liga Profesional': 'soccer_argentina_primera_division'
+        },
+        espn_leagues: {
+            "Premier League":"eng.1", "Championship":"eng.2", "Ligue 1":"fra.1", "Ligue 2":"fra.2", "Bundesliga":"ger.1", "2. Bundesliga":"ger.2", "Serie A":"ita.1", "Serie B":"ita.2", "LaLiga":"esp.1", "LaLiga2":"esp.2", "J1 League":"jpn.1", "Eredivisie":"ned.1", "Eliteserien":"nor.1", "Ekstraklasa":"pol.1", "Liga Portugal":"por.1", "Premiership":"sco.1", "K League 1":"kor.1", "Allsvenskan":"swe.1", "Super Lig":"tur.1", "MLS":"usa.1", "Liga MX":"mex.1", "Jupiler Pro League":"bel.1", "Serie A Betano":"rou.1", "HNL":"cro.1", "Superliga":"den.1", "Chance Liga":"cze.1", "NB I.":"hun.1", "NB I":"hun.1", "Premier Division":"irl.1", "Primera A":"col.1", "Champions League":"uefa.champions", "Europa League":"uefa.europa", "Conference League":"uefa.europa.conf", "FIFA World Cup": "fifa.world", "World Cup Qualifier": "fifa.worldq", "UEFA European Championship": "uefa.euro", "UEFA Nations League": "uefa.nations", "CAF World Cup Qualifying": "fifa.worldq.caf", "AFC World Cup Qualifying": "fifa.worldq.afc", "CONCACAF World Cup Qualifying": "fifa.worldq.concaf", "UEFA World Cup Qualifying": "fifa.worldq.uefa", "Brazil Serie A": "bra.1", "Brazil Serie B": "bra.2", "Argentinian Liga Profesional": "arg.1", "Australian A-League": "aus.1", "Austrian Bundesliga": "aut.1", "Swiss Super League": "sui.1", "Greek Super League": "gre.1", 'Czech First League': 'cze.1',
+        },
+    },
+    hockey: {
+        name: 'jégkorong',
+        espn_sport_path: 'hockey',
+        total_minutes: 60,
+        home_advantage: { home: 1.05, away: 0.95 },
+        avg_goals: 3.0,
+        totals_line: 6.5,
+        odds_api_sport_key: 'icehockey_nhl',
+        odds_api_keys_by_league: {
+            'NHL': 'icehockey_nhl',
+            'KHL': 'icehockey_khl',
+            'Sweden Hockey League': 'icehockey_sweden_hockey_league',
+            'Liiga': 'icehockey_finland_liiga',
+            'DEL': 'icehockey_germany_del',
+        },
+        espn_leagues: {
+             'NHL': 'nhl'
+        },
+    },
+    basketball: {
+        name: 'kosárlabda',
+        espn_sport_path: 'basketball',
+        total_minutes: 48,
+        home_advantage: { home: 1.02, away: 0.98 },
+        avg_goals: 110,
+        totals_line: 220.5,
+        odds_api_sport_key: 'basketball_nba',
+        odds_api_keys_by_league: {
+            'NBA': 'basketball_nba',
+            'EuroLeague': 'basketball_euroleague',
+            'Liga ACB': 'basketball_spain_acb',
+        },
+        espn_leagues: {
+            'NBA': 'nba',
+            'Euroleague': 'euroleague'
+        },
+    },
+};
+
+/**
+ * Visszaadja a megfelelő Odds API sportág kulcsot a liga neve alapján.
+ */
+export function getOddsApiKeyForLeague(leagueName) {
+    if (!leagueName) return null;
+    const lowerLeagueName = leagueName.toLowerCase().trim();
+    for (const sport in SPORT_CONFIG) {
+        const config = SPORT_CONFIG[sport];
+        if (config.odds_api_keys_by_league) {
+            for (const key in config.odds_api_keys_by_league) {
+                if (key.toLowerCase() === lowerLeagueName) {
+                    return config.odds_api_keys_by_league[key];
+                }
+            }
         }
-        return callback(null, true);
     }
-}));
-// === JAVÍTÁS VÉGE ===
-
-
-app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] Kérés érkezett: ${req.method} ${req.originalUrl}`);
-    next();
-});
-
-// --- API Útvonalak (Routes) ---
-
-// Meccsek lekérése ESPN-ből
-app.get('/getFixtures', async (req, res) => {
-    try {
-        const sport = req.query.sport;
-        const days = req.query.days;
-        if (!sport || !days) {
-            return res.status(400).json({ error: "Hiányzó 'sport' vagy 'days' paraméter." });
-        }
-        const fixtures = await _getFixturesFromEspn(sport, days);
-         res.status(200).json({
-            fixtures: fixtures,
-            odds: {} 
-        });
-    } catch (e) {
-        console.error(`Hiba a /getFixtures végponton: ${e.message}`, e.stack);
-        res.status(500).json({ error: `Szerver hiba (getFixtures): ${e.message}` });
-    }
-});
-
-// Elemzés futtatása
-// === REFAKTORÁLÁS: POST /runAnalysis ===
-// A paramétereket a 'req.body'-ból olvassuk, nem a 'req.query'-ból.
-// FIGYELEM: A frontend hívást is frissíteni kell!
-app.post('/runAnalysis', async (req, res) => {
-    
-    // === DEBUG SOR ===
-    console.log('--- /runAnalysis Kérés BODY Paraméterei: ---');
-    console.log(req.body); // Kiírja a kérés törzsét
-    console.log('--- DEBUG VÉGE ---');
-
-    try {
-        // Adatok olvasása a req.body-ból
-        const { 
-            home, 
-            away, 
-            force, 
-            sheetUrl, 
-            utcKickoff, 
-            leagueName, 
-            sport, 
-            openingOdds 
-        } = req.body;
-
-        const params = {
-            home,
-            away,
-            force,
-            sheetUrl,
-            utcKickoff,
-            leagueName
-        };
-
-        // Ellenőrzés a body alapján
-        if (!params.home || !params.away || !sport || !params.utcKickoff) {
-            console.error('!!! HIBA: Hiányzó paraméter(ek) a KÉRÉS BODY-JÁBAN! Ellenőrzés:', {
-                home: params.home,
-                away: params.away,
-                sport: sport,
-                utcKickoff: params.utcKickoff
-            });
-            return res.status(400).json({ error: "Hiányzó 'sport', 'home', 'away' vagy 'utcKickoff' paraméter a kérés body-jában." });
-        }
-
-        console.log(`Elemzés indítása...`);
-        const result = await runFullAnalysis(params, sport, openingOdds || {});
-        
-        if (result.error) {
-            console.error(`Elemzési hiba (AnalysisFlow): ${result.error}`);
-            return res.status(500).json({ error: result.error });
-        }
-
-        console.log("Elemzés sikeresen befejezve, válasz elküldve.");
-        res.status(200).json(result);
-    } catch (e) {
-        console.error(`Hiba a /runAnalysis végponton: ${e.message}`, e.stack);
-        res.status(500).json({ error: `Szerver hiba (runAnalysis): ${e.message}` });
-    }
-});
-// === REFAKTORÁLÁS VÉGE ===
-
-// Előzmények lekérése a Google Sheet-ből
-app.get('/getHistory', async (req, res) => {
-    try {
-        const historyData = await getHistoryFromSheet();
-        if (historyData.error) {
-            return res.status(500).json(historyData);
-        }
-        res.status(200).json(historyData);
-    } catch (e) {
-        console.error(`Hiba a /getHistory végponton: ${e.message}`, e.stack);
-        res.status(500).json({ error: `Szerver hiba (getHistory): ${e.message}` });
-    }
-});
-
-// Egy konkrét elemzés részleteinek lekérése ID alapján
-app.get('/getAnalysisDetail', async (req, res) => {
-    try {
-        const id = req.query.id;
-        if (!id) {
-            return res.status(400).json({ error: "Hiányzó 'id' paraméter." });
-        }
-        const detailData = await getAnalysisDetailFromSheet(id);
-        if (detailData.error) {
-            return res.status(500).json(detailData);
-        }
-        res.status(200).json(detailData);
-    } catch (e) {
-        console.error(`Hiba a /getAnalysisDetail végponton: ${e.message}`, e.stack);
-        res.status(500).json({ error: `Szerver hiba (getAnalysisDetail): ${e.message}` });
-    }
-});
-
-// Előzmény elem törlése ID alapján
-app.post('/deleteHistoryItem', async (req, res) => {
-    try {
-        const id = req.body.id;
-        if (!id) {
-            return res.status(400).json({ error: "Hiányzó 'id' a kérés body-jában." });
-        }
-        const deleteData = await deleteHistoryItemFromSheet(id);
-        if (deleteData.error) {
-            return res.status(500).json(deleteData);
-        }
-        res.status(200).json(deleteData);
-    } catch (e) {
-        console.error(`Hiba a /deleteHistoryItem végponton: ${e.message}`, e.stack);
-        res.status(500).json({ error: `Szerver hiba (deleteHistoryItem): ${e.message}` });
-    }
-});
-
-// Chat funkció
-app.post('/askChat', async (req, res) => {
-    try {
-        const { context, history, question } = req.body;
-        if (!context || !question) {
-            return res.status(400).json({ error: "Hiányzó 'context' vagy 'question' a kérés body-jában." });
-        }
-        // Itt már a helyesen importált getChatResponse hívódik meg
-        const chatData = await getChatResponse(context, history, question);
-
-        if (chatData.error) {
-           return res.status(500).json(chatData);
-        }
-        res.status(200).json(chatData);
-    } catch (e) {
-        console.error(`Hiba a /askChat végponton: ${e.message}`, e.stack);
-        res.status(500).json({ error: `Szerver hiba (askChat): ${e.message}` });
-    }
-});
-
-// === JAVÍTÁS: Öntanuló végpont aszinkron kezelése ===
-app.post('/runLearning', async (req, res) => {
-    try {
-        console.log("Öntanulási folyamat indítása (Power Ratings & Bizalmi Kalibráció)...");
-
-        // FELTÉTELEZÉS: 'updatePowerRatings' és 'runConfidenceCalibration'
-        // a 'LearningService.js'-ben 'async' függvények, és Promise-t adnak vissza.
-        
-        // A hibás 'Promise.resolve()' burkolás eltávolítva
-        const results = await Promise.allSettled([
-            updatePowerRatings(),
-            runConfidenceCalibration()
-        ]);
-
-        const powerRatingResult = results[0].status === 'fulfilled' ? 
-            results[0].value : 
-            { error: results[0].reason?.message || "Ismeretlen hiba (PowerRatings)" };
-            
-        const calibrationResult = results[1].status === 'fulfilled' ?
-            results[1].value :
-            { error: results[1].reason?.message || "Ismeretlen hiba (Kalibráció)" };
-
-        // Robusztusabb hibajelentés
-        if (results.some(r => r.status === 'rejected')) {
-             console.error("Hiba az öntanuló modulok futtatása során:", {
-                 powerRatingError: results[0].reason,
-                 calibrationError: results[1].reason
-             });
-        }
-
-        const learningResult = {
-            message: "Öntanuló modulok futtatása befejeződött.",
-            power_ratings: powerRatingResult || { updated: false, message: "Nem volt adat a frissítéshez." },
-            confidence_calibration: calibrationResult || { error: "Ismeretlen hiba a kalibráció során." }
-        };
-
-        res.status(200).json(learningResult);
-    } catch (e) {
-        console.error(`Hiba a /runLearning végponton: ${e.message}`, e.stack);
-        res.status(500).json({ error: `Szerver hiba (runLearning): ${e.message}` });
-    }
-});
-// === JAVÍTÁS VÉGE ===
-
-// --- Szerver Indítása ---
-async function startServer() {
-    try {
-        console.log("Szerver indítása...");
-        app.listen(PORT, () => {
-            console.log(`🎉 King AI Backend sikeresen elindult!`);
-            console.log(`A szerver itt fut: http://localhost:${PORT}`);
-            console.log("A frontend most már ehhez a címhez tud csatlakozni.");
-        });
-    } catch (e) {
-        console.error("KRITIKUS HIBA a szerver indítása során:", e.message, e.stack);
-    }
+    console.warn(`getOddsApiKeyForLeague: Nem található direkt Odds API kulcs ehhez a ligához: "${leagueName}"`);
+    return null;
 }
-
-startServer();
