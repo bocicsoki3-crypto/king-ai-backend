@@ -1,18 +1,14 @@
-// --- VÉGLEGES config.js (v44 - Production ENV Fix) ---
+// --- VÉGLEGES config.js (v45 - Syntax Fix) ---
 
 import dotenv from 'dotenv';
 
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* v44 JAVÍTÁS: A dotenv.config() hívást letiltjuk éles (production)
-* környezetben, hogy a Render által beállított API kulcsok 
-* (pl. XG_API_KEY) érvényesüljenek, és ne írja felül őket egy 
-* helyi, üres .env fájl.
+* v45 JAVÍTÁS: Szintaktikai hiba ('slug:g:') javítva 'slug:'-ra.
 **************************************************************/
 
 // === JAVÍTÁS KEZDETE ===
 // Csak akkor töltjük be a .env fájlt, ha NEM éles környezetben (pl. Render) futunk
-// A Render automatikusan 'production'-re állítja a NODE_ENV-et.
 if (process.env.NODE_ENV !== 'production') {
     console.log('Fejlesztői környezet (NODE_ENV != production), .env fájl betöltése...');
     dotenv.config();
@@ -23,7 +19,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 
 // --- SZERVER BEÁLLÍTÁSOK ---
-export const PORT = process.env.PORT || 10000; // A Render logok alapján 10000
+export const PORT = process.env.PORT || 10000;
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -96,7 +92,7 @@ export const APIFOOTBALL_TEAM_NAME_MAP = {
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
 export const SPORT_CONFIG = {
     soccer: {
-        name: 'labdarúgás', // EZT FOGJUK HASZNÁLNI VERZIÓKÉNT
+        name: 'labdarúgás',
         espn_sport_path: 'soccer',
         totals_line: 2.5,
         
@@ -133,7 +129,10 @@ export const SPORT_CONFIG = {
             "UEFA Nations League": { slug: "uefa.nations", country: "World" },
             "CAF World Cup Qualifying": { slug: "fifa.worldq.caf", country: "World" },
             "AFC World Cup Qualifying": { slug: "fifa.worldq.afc", country: "World" },
-            "UEFA World Cup Qualifying": { slug:g: "fifa.worldq.uefa", country: "World" },
+            
+            // === JAVÍTÁS: 'slug:g:' javítva 'slug:'-ra ===
+            "UEFA World Cup Qualifying": { slug: "fifa.worldq.uefa", country: "World" },
+            
             "Serie B": { slug: "bra.2", country: "Brazil" }, 
             "Liga Profesional de Fútbol": { slug: "arg.1", country: "Argentina" }, 
             "Australian A-League": { slug: "aus.1", country: "Australia" },
@@ -160,7 +159,7 @@ export const SPORT_CONFIG = {
             'Euroleague': { slug: 'euroleague', country: 'World' }
         },
     },
-    default: { // Hozzáadtam egy default-t a biztonság kedvéért
+    default: {
         name: 'default',
         espn_sport_path: '',
         totals_line: 0,
