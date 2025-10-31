@@ -31,8 +31,8 @@ import {
 import { saveAnalysisToSheet } from './sheets.js';
 import { SPORT_CONFIG } from './config.js';
 
-// === JAVÍTÁS: 'normalizeLeague'-t importálunk 'normalizeLeagueName' helyett ===
-import { normalizeLeague, normalizeTeamName } from './utils/dataNormalizer.js';
+// === JAVÍTÁS: Visszaálltunk 'normalizeLeagueName'-re ===
+import { normalizeLeagueName, normalizeTeamName } from './utils/dataNormalizer.js';
 
 
 /**
@@ -42,14 +42,11 @@ export async function runFullAnalysis(params, sport, openingOdds) {
     // 1. Paraméterek és normalizálás
     const { home, away, leagueName, utcKickoff, force, sheetUrl } = params;
 
-    // === JAVÍTÁS: Az új normalizálási logika ===
+    // === JAVÍTÁS: Visszaálltunk az egyszerűbb (string) normalizálásra ===
     const normalizedHome = normalizeTeamName(home);
     const normalizedAway = normalizeTeamName(away);
-
-    // Az új függvény egy objektumot ad vissza: { officialName, country }
-    const leagueInfo = normalizeLeague(leagueName);
-    const normalizedLeagueName = leagueInfo.officialName;
-    const normalizedCountry = leagueInfo.country; // Ez a kulcsfontosságú új adat!
+    // Az új 'dataNormalizer' "Brazil: Serie B" stringet ad vissza
+    const normalizedLeagueName = normalizeLeagueName(leagueName); 
     // === JAVÍTÁS VÉGE ===
 
     const config = SPORT_CONFIG[sport] || SPORT_CONFIG['default'];
@@ -68,15 +65,13 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         // 2. Adatgyűjtés
         console.log(`Adatgyűjtés indul: ${normalizedHome} vs ${normalizedAway}...`);
         
-        // === JAVÍTÁS: Az új 'normalizedCountry' argumentum hozzáadása ===
-        // Most már átadjuk az országot is, hogy az API-provider
-        // fel tudja oldani a "Serie B" kétértelműséget.
+        // === JAVÍTÁS: Visszaálltunk az eredeti hívási sorrendre ===
+        // A 'normalizedCountry' paramétert (ami a hibát okozta) eltávolítottuk.
         const richData = await getRichContextualData(
             sport,
             normalizedHome,
             normalizedAway,
-            normalizedLeagueName,
-            normalizedCountry, // <-- AZ ÚJ, MEGOLDÁST JELENTŐ PARAMÉTER
+            normalizedLeagueName, // Ez most már az egyértelműsített string, pl. "Brazil: Serie B"
             utcKickoff,
             openingOdds,
             forceReAnalysis
