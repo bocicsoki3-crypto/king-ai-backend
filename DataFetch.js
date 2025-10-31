@@ -261,7 +261,7 @@ async function getApiSportsTeamId(teamName, sport, leagueId, season) {
 async function getApiSportsLeagueId(leagueName, countryIdentifier, season, sport) {
     if (!leagueName || !season) {
         console.warn(`API-SPORTS (${sport}): Liga név ('${leagueName}') vagy szezon (${season}) hiányzik.`);
-        [cite_start]return null; [cite: 79]
+        return null;
     }
     
     const tryGetLeague = async (currentSeason) => {
