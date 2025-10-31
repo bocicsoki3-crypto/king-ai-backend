@@ -137,7 +137,7 @@ async function getApiSportsTeamId(teamName, sport, leagueId, season) {
         const teams = fallbackResponse.data.response;
         const teamNames = teams.map(t => t.team?.name);
         const matchResult = findBestMatch(searchName, teamNames);
-        if (matchResult.bestMatch.rating > 0.9) { 
+        if (matchResult.bestMatch.rating > 0.7) { 
             const teamId = teams[matchResult.bestMatchIndex].team.id;
             console.log(`API-SPORTS (${sport}): Hasonló ID találat (fallback) "${searchName}" -> "${teams[matchResult.bestMatchIndex].team.name}" -> ${teamId}`);
             apiSportsTeamIdCache.set(cacheKey, teamId);
