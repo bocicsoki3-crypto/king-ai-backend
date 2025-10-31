@@ -1,22 +1,25 @@
 // /src/utils/dataNormalizer.js
 
 /**
- * === JAVÍTÁS: A leagueAliasMap most már objektumokat tárol ===
- * A kétértelmű ("Serie B") nevek feloldásához
- * most már a nevet ÉS az országot is tároljuk.
+ * === JAVÍTÁS: Visszaállás a string-alapú fordításra ===
+ * Ahelyett, hogy új paramétert (country) adnánk át, 
+ * magát a liga nevét tesszük egyértelműbbé az API keresője számára.
  */
 const leagueAliasMap = new Map([
     // Kulcs: Frontend név (kisbetűvel)
-    // Érték: { officialName: string, country: string }
-    ['argentinian liga profesional', { officialName: 'Liga Profesional de Fútbol', country: 'Argentina' }],
-    ['2. bundesliga', { officialName: '2. Bundesliga', country: 'Germany' }],
-    ['super lig', { officialName: 'Süper Lig', country: 'Turkey' }],
-    ['brazil serie b', { officialName: 'Serie B', country: 'Brazil' }], // <-- JAVÍTVA
+    // Érték: Hivatalos (vagy egyértelműsített) API keresőnév
+    ['argentinian liga profesional', 'Liga Profesional de Fútbol'],
+    ['2. bundesliga', '2. Bundesliga'],
+    ['super lig', 'Süper Lig'],
+    
+    // JAVÍTÁS: "Serie B" helyett egyértelmű keresőszót adunk meg, 
+    // amit az API-provider országgal együtt tud keresni.
+    ['brazil serie b', 'Brazil: Serie B'], 
     // TODO: Ide add hozzá a többi ligát, ahogy felmerülnek
 ]);
 
 /**
- * A csapatnevek térképe (ez maradhat egyszerű string-string)
+ * A csapatnevek térképe (VÁLTOZATLAN)
  */
 const teamAliasMap = new Map([
     // 2. Bundesliga
@@ -36,24 +39,15 @@ const teamAliasMap = new Map([
 
 
 /**
- * === JAVÍTÁS: A függvény neve 'normalizeLeague'-re változott ===
- * Most már egy objektumot ad vissza { officialName, country }
+ * === JAVÍTÁS: Visszaálltunk 'normalizeLeagueName'-re ===
+ * A függvény újra csak egy stringet ad vissza, nem objektumot.
  * @param {string} inputName A frontendről érkező liganev
- * @returns {{officialName: string, country: string | null}}
+ * @returns {string} A hivatalos vagy egyértelműsített liganev
  */
-export const normalizeLeague = (inputName) => {
-    if (!inputName) return { officialName: inputName, country: null };
-    
+export const normalizeLeagueName = (inputName) => {
+    if (!inputName) return inputName;
     const lowerCaseName = inputName.trim().toLowerCase();
-    const mapping = leagueAliasMap.get(lowerCaseName);
-
-    if (mapping) {
-        return mapping; // Visszaadja az objektumot, pl. { officialName: 'Serie B', country: 'Brazil' }
-    }
-    
-    // Visszalépés (Fallback): Ha nincs a térképen, az eredeti nevet adja vissza
-    // és null országot (az API-provider majd próbálja kitalálni)
-    return { officialName: inputName, country: null };
+    return leagueAliasMap.get(lowerCaseName) || inputName; // Visszaadja a mappelt nevet, vagy az eredetit
 };
 
 /**
