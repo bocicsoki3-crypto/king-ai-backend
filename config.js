@@ -133,7 +133,7 @@ export const SPORT_CONFIG = {
             "Brazil Serie A": { slug: "bra.1", country: "Brazil" },
             "Brazil Serie B": { slug: "bra.2", country: "Brazil" },
             "Argentinian Liga Profesional": { slug: "arg.1", country: "Argentina" },
-            "Australian A-League": { slug: "aus.1", country: "Australia" },
+            "A-League": { slug: "aus.1", country: "Australia" },
             "Austrian Bundesliga": { slug: "aut.1", country: "Austria" },
             "Swiss Super League": { slug: "sui.1", country: "Switzerland" },
             "Greek Super League": { slug: "gre.1", country: "Greece" },
