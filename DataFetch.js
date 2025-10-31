@@ -267,7 +267,7 @@ async function getApiSportsLeagueId(leagueName, countryIdentifier, season, sport
     const tryGetLeague = async (currentSeason) => {
         const cacheKey = `apisports_leagueid_v48_FIXED_${sport}_${leagueName.toLowerCase().replace(/\s/g, '')}_${currentSeason}`;
         const cachedId = apiSportsLeagueIdCache.get(cacheKey);
-        [cite_start]if (cachedId) return cachedId === 'not_found' ? null : cachedId; [cite: 82]
+        [cite_start]if (cachedId) return cachedId === 'not_found' ? return null;
 
         const endpoint = `/v3/leagues`;
         const params = {
