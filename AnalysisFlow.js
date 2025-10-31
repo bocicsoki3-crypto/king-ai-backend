@@ -5,10 +5,9 @@ import {
     runSimulation, 
     buildPropheticTimeline, 
     calculateModelConfidence, 
-    // === JAVÍTÁS: A HIBÁS 'calculateValueBets' IMPORT ELTÁVOLÍTVA ===
-    // calculateValueBets, 
+    // calculateValueBets, // Ez már ki van kapcsolva
     getMarketIntel,
-    analyzeLineMovement // Feltételezve, hogy ez a Model.js-ből jön
+    analyzeLineMovement 
 } from './Model.js';
 import { 
     getTacticalBriefing, 
@@ -28,7 +27,9 @@ import {
     getStrategicClosingThoughts, 
     getMasterRecommendation 
 } from './AI_Service.js';
-import { saveAnalysisToSheet, getAnalysisFromCache, saveAnalysisToCache } from './sheets.js';
+
+// === JAVÍTÁS: Csak a 'saveAnalysisToSheet'-et importáljuk, a cache függvényeket nem ===
+import { saveAnalysisToSheet } from './sheets.js';
 import { SPORT_CONFIG } from './config.js';
 
 // === JAVÍTÁS: Importáld az új normalizálókat ===
@@ -63,14 +64,17 @@ export async function runFullAnalysis(params, sport, openingOdds) {
     }
 
     try {
-        // 1. Gyorsítótár ellenőrzése
-        if (!forceReAnalysis) {
-            const cachedAnalysis = await getAnalysisFromCache(analysisId);
-            if (cachedAnalysis) {
-                console.log(`Elemzés (${analysisId}) sikeresen betöltve a cache-ből.`);
-                return cachedAnalysis;
-            }
-        }
+        // === JAVÍTÁS: A 'getAnalysisFromCache' hívás eltávolítva ===
+        // 1. Gyorsítótár ellenőrzése (KIkapcsolva a hiba miatt)
+        // if (!forceReAnalysis) {
+        //     const cachedAnalysis = await getAnalysisFromCache(analysisId); 
+        //     if (cachedAnalysis) {
+        //         console.log(`Elemzés (${analysisId}) sikeresen betöltve a cache-ből.`);
+        //         return cachedAnalysis; 
+        //     }
+        // }
+        // === JAVÍTÁS VÉGE ===
+
 
         // 2. Adatgyűjtés (Már a normalizált adatokkal)
         console.log(`Adatgyűjtés indul: ${normalizedParams.home} vs ${normalizedParams.away}...`);
@@ -95,11 +99,9 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         const sim = await runSimulation(richData, sport, mainTotalsLine);
         const modelConfidence = calculateModelConfidence(sim, richData.contextual_factors, sport);
         
-        // === JAVÍTÁS: A 'calculateValueBets' hívás ideiglenesen letiltva ===
-        // const valueBets = calculateValueBets(sim, richData.odds, config.valueThreshold);
-        const valueBets = []; // Helyette egy üres tömböt használunk, hogy a kód lefusson
-        // === JAVÍTÁS VÉGE ===
-
+        // A 'calculateValueBets' hívás ideiglenesen letiltva
+        const valueBets = []; 
+        
         const propheticTimeline = buildPropheticTimeline(richData, sim, sport);
         const marketIntel = getMarketIntel(richData.odds); 
         const lineMovement = analyzeLineMovement(richData.oddsHistory); 
@@ -178,7 +180,7 @@ export async function runFullAnalysis(params, sport, openingOdds) {
                 model_confidence: modelConfidence,
                 expert_confidence: expertConfidenceObj.report,
                 simulation: sim,
-                value_bets: valueBets, // Ez most már az üres tömb lesz
+                value_bets: valueBets,
                 market_intel: marketIntel,
                 line_movement: lineMovement
             },
@@ -191,9 +193,11 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             }
         };
 
+        // === JAVÍTÁS: A 'saveAnalysisToCache' hívás eltávolítva ===
         // 7. Mentés Cache-be és Google Sheet-be
-        await saveAnalysisToCache(analysisId, finalResult);
-        console.log(`Elemzés befejezve és cache mentve (${analysisId})`);
+        // await saveAnalysisToCache(analysisId, finalResult);
+        // console.log(`Elemzés befejezve és cache mentve (${analysisId})`);
+        // === JAVÍTÁS VÉGE ===
         
         if (sheetUrl) {
             await saveAnalysisToSheet(finalResult, sheetUrl);
