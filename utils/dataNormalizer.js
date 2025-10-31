@@ -1,21 +1,18 @@
 // /src/utils/dataNormalizer.js
 
 /**
- * === JAVÍTÁS: Visszaállás a string-alapú fordításra ===
- * Ahelyett, hogy új paramétert (country) adnánk át, 
- * magát a liga nevét tesszük egyértelműbbé az API keresője számára.
+ * Ez a térkép "lefordítja" a frontendről érkező neveket
+ * azokra az egyedi KULCSOKRA, amiket a config.js-ben definiáltunk.
  */
 const leagueAliasMap = new Map([
     // Kulcs: Frontend név (kisbetűvel)
-    // Érték: Hivatalos (vagy egyértelműsített) API keresőnév
+    // Érték: A config.js-ben használt hivatalos API-Sports kulcs
+    
     ['argentinian liga profesional', 'Liga Profesional de Fútbol'],
     ['2. bundesliga', '2. Bundesliga'],
     ['super lig', 'Süper Lig'],
-    
-    // JAVÍTÁS: "Serie B" helyett egyértelmű keresőszót adunk meg, 
-    // amit az API-provider országgal együtt tud keresni.
-    ['brazil serie b', 'Brazil: Serie B'], 
-    // TODO: Ide add hozzá a többi ligát, ahogy felmerülnek
+    ['brazil serie b', 'Serie B'], // <-- JAVÍTVA
+    ['brazil serie a', 'Serie A'], // <-- Hozzáadva a biztonság kedvéért
 ]);
 
 /**
@@ -34,15 +31,13 @@ const teamAliasMap = new Map([
     // Brazil Serie B
     ['ferroviária', 'Ferroviária'],
     ['criciúma', 'Criciúma'],
-    // TODO: Ide add hozzá a többi csapatot, ahogy felmerülnek
 ]);
 
 
 /**
- * === JAVÍTÁS: Visszaálltunk 'normalizeLeagueName'-re ===
- * A függvény újra csak egy stringet ad vissza, nem objektumot.
+ * Normalizálja a liga nevét az API hívás előtt.
  * @param {string} inputName A frontendről érkező liganev
- * @returns {string} A hivatalos vagy egyértelműsített liganev
+ * @returns {string} A config.js-ben definiált egyedi kulcs
  */
 export const normalizeLeagueName = (inputName) => {
     if (!inputName) return inputName;
