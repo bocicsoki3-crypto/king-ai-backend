@@ -12,6 +12,7 @@ const leagueAliasMap = new Map([
     ['argentinian liga profesional', 'Liga Profesional de Fútbol'],
     ['2. bundesliga', '2. Bundesliga'],
     ['super lig', 'Süper Lig'],
+    ['brazil serie b', 'Serie B'], // <-- EZ AZ ÚJ SOR
     // TODO: Ide add hozzá a többi ligát, ahogy felmerülnek
 ]);
 
@@ -27,6 +28,9 @@ const teamAliasMap = new Map([
     // Super Lig
     ['istanbul basaksehir', 'Istanbul Basaksehir'],
     ['kocaelispor', 'Kocaelispor'],
+    // Brazil Serie B
+    ['ferroviária', 'Ferroviária'], // <-- ÚJ SOR
+    ['criciúma', 'Criciúma'],       // <-- ÚJ SOR
     // TODO: Ide add hozzá a többi csapatot, ahogy felmerülnek
 ]);
 
