@@ -1,11 +1,11 @@
-// --- VÉGLEGES config.js (v46 - Közvetlen API-SPORTS Hozzáférés) ---
+// --- VÉGLEGES config.js (v47 - Országkód Integráció) ---
 
 import dotenv from 'dotenv';
 dotenv.config();
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* v46 VÁLTOZÁS: Átállás a RapidAPI-ról a közvetlen 
-* API-Sports hozzáférésre (v3.football.api-sports.io).
+* v47 VÁLTOZÁS: Hozzáadva a 'countryCode' a ligákhoz
+* a megbízhatóbb API keresés érdekében.
 **************************************************************/
 
 // --- SZERVER BEÁLLÍTÁSOK ---
@@ -20,34 +20,27 @@ export const SHEET_URL = process.env.SHEET_URL;
 export const XG_API_KEY = process.env.XG_API_KEY;
 export const XG_API_HOST = process.env.XG_API_HOST || 'football-xg-statistics.p.rapidapi.com';
 
-// --- V46: API HOST TÉRKÉP (KÖZVETLEN HOZZÁFÉRÉSSEL) ---
+// --- API HOST TÉRKÉP (KÖZVETLEN HOZZÁFÉRÉSSEL) ---
 export const API_HOSTS = {
     soccer: {
-        // <-- VÁLTOZÁS: A host most már a közvetlen API-Sports végpontra mutat.
         host: process.env.APIFOOTBALL_HOST || 'v3.football.api-sports.io',
         keys: [
-            // <-- VÁLTOZÁS: Ide másold be az új kulcsodat a dashboard.api-football.com oldalról.
-            // A környezeti változó neve maradhat, csak az értéke változzon a .env fájlban.
             process.env.APIFOOTBALL_KEY_1,
             process.env.APIFOOTBALL_KEY_2,
             process.env.APIFOOTBALL_KEY_3
-        ].filter(Boolean) // Kiszűri az üres/undefined kulcsokat
+        ].filter(Boolean)
     },
     hockey: {
-        // <-- VÁLTOZÁS: A host most már a közvetlen API-Sports végpontra mutat.
         host: process.env.APIHOCKEY_HOST || 'v1.hockey.api-sports.io',
         keys: [
-            // <-- VÁLTOZÁS: Ha van külön jégkorong kulcsod, azt használd.
             process.env.APIHOCKEY_KEY_1,
             process.env.APIHOCKEY_KEY_2,
             process.env.APIHOCKEY_KEY_3
         ].filter(Boolean)
     },
     basketball: {
-        // <-- VÁLTOZÁS: A host most már a közvetlen API-Sports végpontra mutat.
         host: process.env.APIBASKETBALL_HOST || 'v1.basketball.api-sports.io',
         keys: [
-            // <-- VÁLTOZÁS: Ha van külön kosárlabda kulcsod, azt használd.
             process.env.APIBASKETBALL_KEY_1,
             process.env.APIBASKETBALL_KEY_2,
             process.env.APIBASKETBALL_KEY_3
@@ -56,9 +49,7 @@ export const API_HOSTS = {
 };
 
 // --- CSAPATNÉV HOZZÁRENDELÉSEK ---
-export const ODDS_TEAM_NAME_MAP = {
-    // ... (nincs használatban)
-};
+export const ODDS_TEAM_NAME_MAP = {};
 
 export const APIFOOTBALL_TEAM_NAME_MAP = {
     // Foci
@@ -96,31 +87,33 @@ export const SPORT_CONFIG = {
         espn_sport_path: 'soccer',
         totals_line: 2.5,
         espn_leagues: {
-            "Premier League": { slug: "eng.1", country: "England" },
-            "Championship": { slug: "eng.2", country: "England" },
-            "Ligue 1": { slug: "fra.1", country: "France" },
-            "Ligue 2": { slug: "fra.2", country: "France" },
-            "Bundesliga": { slug: "ger.1", country: "Germany" },
-            "2. Bundesliga": { slug: "ger.2", country: "Germany" },
-            "Serie A": { slug: "ita.1", country: "Italy" },
-            "Serie B": { slug: "ita.2", country: "Italy" },
-            "LaLiga": { slug: "esp.1", country: "Spain" },
-            "LaLiga2": { slug: "esp.2", country: "Spain" },
-            "J1 League": { slug: "jpn.1", country: "Japan" },
-            "Eredivisie": { slug: "ned.1", country: "Netherlands" },
-            "Eliteserien": { slug: "nor.1", country: "Norway" },
-            "Liga Portugal": { slug: "por.1", country: "Portugal" },
-            "Premiership": { slug: "sco.1", country: "Scotland" },
-            "Allsvenskan": { slug: "swe.1", country: "Sweden" },
-            "Super Lig": { slug: "tur.1", country: "Turkey" },
-            "MLS": { slug: "usa.1", country: "USA" },
-            "Liga MX": { slug: "mex.1", country: "Mexico" },
-            "Jupiler Pro League": { slug: "bel.1", country: "Belgium" },
-            "Serie A Betano": { slug: "rou.1", country: "Romania" },
-            "Superliga": { slug: "den.1", country: "Denmark" },
-            "Chance Liga": { slug: "cze.1", country: "Czech Republic"},
-            "Premier Division": { slug: "irl.1", country: "Ireland" },
-            "Primera A": { slug: "col.1", country: "Colombia" },
+            // <-- VÁLTOZTATÁS: Hozzáadtuk az országkódot.
+            "A-League": { slug: "aus.1", country: "Australia", countryCode: "AU" },
+            "Premier League": { slug: "eng.1", country: "England", countryCode: "GB" },
+            "Championship": { slug: "eng.2", country: "England", countryCode: "GB" },
+            "Ligue 1": { slug: "fra.1", country: "France", countryCode: "FR" },
+            "Ligue 2": { slug: "fra.2", country: "France", countryCode: "FR" },
+            "Bundesliga": { slug: "ger.1", country: "Germany", countryCode: "DE" },
+            "2. Bundesliga": { slug: "ger.2", country: "Germany", countryCode: "DE" },
+            "Serie A": { slug: "ita.1", country: "Italy", countryCode: "IT" },
+            "Serie B": { slug: "ita.2", country: "Italy", countryCode: "IT" },
+            "LaLiga": { slug: "esp.1", country: "Spain", countryCode: "ES" },
+            "LaLiga2": { slug: "esp.2", country: "Spain", countryCode: "ES" },
+            "J1 League": { slug: "jpn.1", country: "Japan", countryCode: "JP" },
+            "Eredivisie": { slug: "ned.1", country: "Netherlands", countryCode: "NL" },
+            "Eliteserien": { slug: "nor.1", country: "Norway", countryCode: "NO" },
+            "Liga Portugal": { slug: "por.1", country: "Portugal", countryCode: "PT" },
+            "Premiership": { slug: "sco.1", country: "Scotland", countryCode: "GB" },
+            "Allsvenskan": { slug: "swe.1", country: "Sweden", countryCode: "SE" },
+            "Super Lig": { slug: "tur.1", country: "Turkey", countryCode: "TR" },
+            "MLS": { slug: "usa.1", country: "USA", countryCode: "US" },
+            "Liga MX": { slug: "mex.1", country: "Mexico", countryCode: "MX" },
+            "Jupiler Pro League": { slug: "bel.1", country: "Belgium", countryCode: "BE" },
+            "Serie A Betano": { slug: "rou.1", country: "Romania", countryCode: "RO" },
+            "Superliga": { slug: "den.1", country: "Denmark", countryCode: "DK" },
+            "Chance Liga": { slug: "cze.1", country: "Czech Republic", countryCode: "CZ"},
+            "Premier Division": { slug: "irl.1", country: "Ireland", countryCode: "IE" },
+            "Primera A": { slug: "col.1", country: "Colombia", countryCode: "CO" },
             "Champions League": { slug: "uefa.champions", country: "World" },
             "Europa League": { slug: "uefa.europa", country: "World" },
             "Conference League": { slug: "uefa.europa.conf", country: "World" },
@@ -130,14 +123,13 @@ export const SPORT_CONFIG = {
             "CAF World Cup Qualifying": { slug: "fifa.worldq.caf", country: "World" },
             "AFC World Cup Qualifying": { slug: "fifa.worldq.afc", country: "World" },
             "UEFA World Cup Qualifying": { slug: "fifa.worldq.uefa", country: "World" },
-            "Brazil Serie A": { slug: "bra.1", country: "Brazil" },
-            "Brazil Serie B": { slug: "bra.2", country: "Brazil" },
-            "Argentinian Liga Profesional": { slug: "arg.1", country: "Argentina" },
-            "A-League": { slug: "aus.1", country: "Australia" },
-            "Austrian Bundesliga": { slug: "aut.1", country: "Austria" },
-            "Swiss Super League": { slug: "sui.1", country: "Switzerland" },
-            "Greek Super League": { slug: "gre.1", country: "Greece" },
-            'Czech First League': { slug: 'cze.1', country: 'Czech Republic' },
+            "Brazil Serie A": { slug: "bra.1", country: "Brazil", countryCode: "BR" },
+            "Brazil Serie B": { slug: "bra.2", country: "Brazil", countryCode: "BR" },
+            "Argentinian Liga Profesional": { slug: "arg.1", country: "Argentina", countryCode: "AR" },
+            "Austrian Bundesliga": { slug: "aut.1", country: "Austria", countryCode: "AT" },
+            "Swiss Super League": { slug: "sui.1", country: "Switzerland", countryCode: "CH" },
+            "Greek Super League": { slug: "gre.1", country: "Greece", countryCode: "GR" },
+            'Czech First League': { slug: 'cze.1', country: 'Czech Republic', countryCode: 'CZ' },
         },
     },
     hockey: {
@@ -145,7 +137,7 @@ export const SPORT_CONFIG = {
         espn_sport_path: 'hockey',
         totals_line: 6.5,
         espn_leagues: {
-          'NHL': { slug: 'nhl', country: 'USA' }
+          'NHL': { slug: 'nhl', country: 'USA', countryCode: 'US' }
         },
     },
     basketball: {
@@ -153,7 +145,7 @@ export const SPORT_CONFIG = {
         espn_sport_path: 'basketball',
         totals_line: 220.5,
         espn_leagues: {
-            'NBA': { slug: 'nba', country: 'USA' },
+            'NBA': { slug: 'nba', country: 'USA', countryCode: 'US' },
             'Euroleague': { slug: 'euroleague', country: 'World' }
         },
     },
