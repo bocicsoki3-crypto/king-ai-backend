@@ -1,3 +1,4 @@
+
 // --- JAVÍTOTT AI_service.txt ---
 
 /**

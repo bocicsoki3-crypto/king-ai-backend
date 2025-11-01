@@ -1,7 +1,16 @@
+// --- JAVÍTOTT AnalysisFlow.js (v46 - Provider Fix) ---
+
 import NodeCache from 'node-cache'; // CacheService helyett
 import { SPORT_CONFIG } from './config.js';
 // Konfiguráció importálása
-import { findMainTotalsLine, getRichContextualData } from './DataFetch.js';
+
+// --- JAVÍTÁS KEZDETE (v46) ---
+// A 'findMainTotalsLine'-t kivettük a DataFetch-ből, mert az már csak egy 'Factory'
+import { getRichContextualData } from './DataFetch.js';
+// Helyette a központi 'utils' fájlból importáljuk, ahova áthelyeztük
+import { findMainTotalsLine } from './providers/common/utils.js';
+// --- JAVÍTÁS VÉGE ---
+
 // Adatgyűjtő funkciók
 import {
     estimateXG,
@@ -14,12 +23,11 @@ import {
     analyzeLineMovement,
     analyzePlayerDuels
 } from './Model.js';
-// --- MÓDOSÍTÁS KEZDETE: Helyes, teljes lista az AI_Service.js exportjaiból ---
 import {
     getRiskAssessment,
     getTacticalBriefing,
     getPropheticScenario,
-    getAiKeyQuestions, // <<< --- Ez a funkció volt a hiba forrása
+    getAiKeyQuestions,
     getPlayerMarkets,
     getFinalGeneralAnalysis,
     getExpertConfidence,
@@ -34,7 +42,6 @@ import {
     getMasterRecommendation,
     getStrategicClosingThoughts
 } from './AI_Service.js';
-// --- MÓDOSÍTÁS VÉGE ---
 import { saveAnalysisToSheet } from './sheets.js'; // Mentés funkció
 import { buildAnalysisHtml } from './htmlBuilder.js';
 // HTML építő funkció
@@ -43,10 +50,10 @@ import { buildAnalysisHtml } from './htmlBuilder.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.js - Fő Elemzési Munkafolyamat
-* VÁLTOZÁS: Import hiba (getAiKeyQuestions, _getContradictionAnalysis) javítva.
-* VÁLTOZÁS (v36): A 'runFullAnalysis' logikai sorrendje javítva,
-* hogy a 'getRichContextualData' fusson le először és adja vissza
-* az 'oddsData'-t, mielőtt azt felhasználnánk.
+* VÁLTOZÁS (v45): A 'findMainTotalsLine' hívása most már
+* átadja a 'sport' paramétert, hogy elkerülje a 6.5-ös
+* gólvonal hibát focimeccseknél.
+* VÁLTOZÁS (v46): Import útvonal javítva a refaktorálás után.
 **************************************************************/
 
 export async function runFullAnalysis(params, sport, openingOdds) {
@@ -77,9 +84,8 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             console.log(`Újraelemzés kényszerítve (${analysisCacheKey})`);
         }
 
-        // --- *** JAVÍTOTT BLOKK KEZDETE (v36) *** ---
-        // A logikai sorrend javítva, hogy az oddsData definiálva legyen.
-
+        // --- JAVÍTOTT BLOKK KEZDETE (v45 logika) ---
+        
         // --- 1. Alapkonfiguráció ---
         const sportConfig = SPORT_CONFIG[sport];
         if (!sportConfig) {
@@ -95,44 +101,47 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             form, 
             rawData, 
             leagueAverages = {}, 
-            oddsData // <-- Az 'oddsData' itt jön létre
+            oddsData // <-- Az 'oddsData' itt 
         } = await getRichContextualData(sport, home, away, leagueName, utcKickoff);
         console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
 
         // --- 3. Odds és kontextus függő elemzések (Most már biztonságos) ---
         
-        // Hozzunk létre egy 'mutableOddsData' változót, hogy a régi hibakezelés működjön
-        let mutableOddsData = oddsData; 
+        let mutableOddsData = oddsData;
         if (!mutableOddsData) {
             console.warn(`Figyelmeztetés: Nem sikerült szorzó adatokat lekérni ${home} vs ${away} meccshez (API-Football).`);
-            // Default üres objektum létrehozása, hogy a kód többi része ne haljon el
-            mutableOddsData = { current: [], allMarkets: [], fromCache: false, sport: sport, fullApiData: null }; 
+            mutableOddsData = { current: [], allMarkets: [], fromCache: false, sport: sport, fullApiData: null };
         }
 
-        // Ezek a hívások [cite: 75, 78] most már az 'oddsData' LÉTREHOZÁSA UTÁN vannak:
         const marketIntel = analyzeLineMovement(mutableOddsData, openingOdds, sport, home);
-        const mainTotalsLine = findMainTotalsLine(mutableOddsData) || sportConfig.totals_line;
+        // --- v45 JAVÍTÁS ITT ---
+        // Átadjuk a 'sport' paramétert, hogy a helyes (2.5) alapértelmezett vonalat használja
+        // Ez a hívás most már a 'utils.js'-ből importált függvényt használja.
+        const mainTotalsLine = findMainTotalsLine(mutableOddsData, sport) ||
+            sportConfig.totals_line;
         console.log(`Meghatározott fő gól/pont vonal: ${mainTotalsLine}`);
+        // --- v45 JAVÍTÁS VÉGE ---
 
-        // A többi elemzés, ami nem függ az oddsData-tól (ezek már helyesen voltak)
         const duelAnalysis = analyzePlayerDuels(rawData?.key_players, sport);
         const psyProfileHome = calculatePsychologicalProfile(home, away, rawData);
         const psyProfileAway = calculatePsychologicalProfile(away, home, rawData);
-        
-        // --- *** JAVÍTOTT BLOKK VÉGE (v36) *** ---
+        // --- JAVÍTOTT BLOKK VÉGE ---
 
 
         // --- 2. Statisztikai Modellezés ---
         console.log(`Modellezés indul: ${home} vs ${away}...`);
         const { mu_h, mu_a } = estimateXG(home, away, rawStats, sport, form, leagueAverages, advancedData, rawData, psyProfileHome, psyProfileAway);
         const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
+        
+        // Ez az a hívás, ami a 'Poisson' hibát dobta.
         const sim = simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData);
-        sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a; sim.mu_corners_sim = mu_corners;
+        
+        sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a;
+        sim.mu_corners_sim = mu_corners;
         sim.mu_cards_sim = mu_cards; sim.mainTotalsLine = mainTotalsLine;
         const modelConfidence = calculateModelConfidence(sport, home, away, rawData, form, sim, marketIntel);
         const valueBets = calculateValue(sim, mutableOddsData, sport, home, away); // 'mutableOddsData' használata
         console.log(`Modellezés kész: ${home} vs ${away}.`);
-
         // --- 3. ÁLTALÁNOS AI BIZOTTSÁG (SZAKÉRTŐI LÁNC) ---
         console.log(`AI Bizottság (Kritikus Lánc / Vitázó) indul: ${home} vs ${away}...`);
         const safeRichContext = typeof richContext === 'string' ? richContext : "Kontextus adatok hiányosak.";
@@ -157,8 +166,8 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         // LÉPÉS 3: Szakértői Bizalom
         console.log("Kritikus Lánc 3/6: Szakértői Bizalom...");
         try { committeeResults.expertConfidence = await getExpertConfidence(modelConfidence, richContextWithDuels, rawData); }
-        catch (e) { console.error(`AI Hiba (ExpertConf): ${e.message}`);
-        committeeResults.expertConfidence = "**1.0/10** - Hiba."; }
+         catch (e) { console.error(`AI Hiba (ExpertConf): ${e.message}`);
+         committeeResults.expertConfidence = "**1.0/10** - Hiba."; }
 
         // LÉPÉS 4: Párhuzamos Ág (Prophetic Event, Key Questions itt fut)
         console.log("AI Bizottság (Párhuzamos ág) indul...");
@@ -210,7 +219,8 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         console.log("Kritikus Lánc 6/6: Stratégiai Zárógondolatok...");
         try { committeeResults.strategicClosingThoughts = await getStrategicClosingThoughts(sim, rawData, richContextWithDuels, marketIntel, committeeResults.microAnalyses, committeeResults.riskAssessment, committeeResults.tacticalBriefing, committeeResults.propheticScenario, valueBets, modelConfidence, committeeResults.expertConfidence);
         }
-        catch (e) { console.error(`AI Hiba (Strategic): ${e.message}`); committeeResults.strategicClosingThoughts = "Stratégiai elemzési hiba.";
+         catch (e) { console.error(`AI Hiba (Strategic): ${e.message}`);
+         committeeResults.strategicClosingThoughts = "Stratégiai elemzési hiba.";
         }
 
         // Ellentmondás Elemzés (Kikapcsolva)
@@ -236,19 +246,18 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             valueBets,
             modelConfidence,
             sim,
+            
             masterRecommendation
-   
          );
         console.log(`HTML generálás kész: ${home} vs ${away}.`);
         // --- 8. Válasz Elküldése és Naplózás ---
         const debugInfo = {
              // ... (Debug infók)
-             playerDataFetched: rawData?.key_players && (rawData.key_players.home?.some(p => p.stats && typeof p.stats === 'string' && p.stats !== 'N/A') || rawData.key_players.away?.some(p => p.stats && typeof p.stats === 'string' && p.stats !== 'N/A')) ?
+            playerDataFetched: rawData?.key_players && (rawData.key_players.home?.some(p => p.stats && typeof p.stats === 'string' && p.stats !== 'N/A') || rawData.key_players.away?.some(p => p.stats && typeof p.stats === 'string' && p.stats !== 'N/A')) ?
             `Igen, ${(rawData.key_players.home?.length || 0) + (rawData.key_players.away?.length || 0)} játékosra` : "Nem (vagy nem talált adatot)",
              sportMonksUsedInXG: (sport === 'soccer' && advancedData?.home?.xg != null) ?
             "Igen (valós xG)" : (sport === 'hockey' && rawData?.advanced_stats_team?.home?.High_Danger_Chances_For_Pct != null) ?
             "Igen (HDCF%)" : (sport === 'basketball' && rawData?.advanced_data?.home?.pace != null) ?
-            // Javítva a data path-ja
             "Igen (Pace/Rating)" : "Nem (becsült adatok)",
             fromCache_RichContext: rawData?.fromCache ??
             'Ismeretlen'
