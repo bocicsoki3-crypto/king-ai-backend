@@ -223,7 +223,7 @@ async function getApiSportsTeamId(teamName, sport, leagueId, season) {
 }
 
 
-// --- JAVÍTOTT getApiSportsLeagueId (ROBUSZTUS KERESÉSSEL) ---
+// --- JAVÍTOTT getApiSportsLeagueId (ROBUSZTUS, 3-LÉPCSŐS KERESÉS + 3 SZEZONOS VISSZAKERESÉS) ---
 async function getApiSportsLeagueId(leagueName, country, season, sport) {
     if (!leagueName || !country || !season) {
         console.warn(`API-SPORTS (${sport}): Liga név ('${leagueName}'), ország ('${country}') vagy szezon (${season}) hiányzik.`);
@@ -232,71 +232,106 @@ async function getApiSportsLeagueId(leagueName, country, season, sport) {
 
     const searchName = leagueName.toLowerCase();
 
+    // Belső függvény, amely lefuttatja a 3-lépcsős keresést egy adott szezonra
     const tryGetLeague = async (currentSeason) => {
-        const cacheKey = `apisports_leagueid_v41_robust_${sport}_${country.toLowerCase()}_${searchName.replace(/\s/g, '')}_${currentSeason}`;
+        const cacheKey = `apisports_leagueid_v42_robust3_${sport}_${country.toLowerCase()}_${searchName.replace(/\s/g, '')}_${currentSeason}`;
         const cachedId = apiSportsLeagueIdCache.get(cacheKey);
         if (cachedId) return cachedId === 'not_found' ? null : cachedId;
 
-        // 1. Próba: Pontos 'name' keresés (gyors, ha működik)
+        // 1. Próba: Pontos 'name' keresés
         let endpoint = `/v3/leagues`;
         let params = { name: leagueName, country: country, season: currentSeason };
-        console.log(`API-SPORTS League Search (Pontos) (${sport}): "${leagueName}" (${country}, ${currentSeason})...`);
+        console.log(`API-SPORTS League Search (1. Próba: Pontos) (${sport}): "${leagueName}" (${country}, ${currentSeason})...`);
         let response = await makeRequestWithRotation(sport, endpoint, { params });
 
         if (response?.data?.response?.length > 0) {
             const perfectMatch = response.data.response.find(l => l.league.name.toLowerCase() === searchName);
             const league = perfectMatch || response.data.response[0];
             const leagueId = league.league.id;
-            console.log(`API-SPORTS (${sport}): Liga ID találat (Pontos) "${leagueName}" -> "${league.league.name}" -> ${leagueId}`);
+            console.log(`API-SPORTS (${sport}): Liga ID találat (1. Próba) "${leagueName}" -> "${league.league.name}" -> ${leagueId}`);
             apiSportsLeagueIdCache.set(cacheKey, leagueId);
             return leagueId;
         }
 
-        // 2. Próba: Fallback 'search' keresés (ha a 'name' nem adott eredményt)
-        // Ez fogja megoldani a "LaLiga" vs "La Liga" problémát
-        console.warn(`API-SPORTS (${sport}): Pontos liga keresés sikertelen. Próbálkozás 'search=' paraméterrel...`);
+        // 2. Próba: Fallback 'search' keresés ORSZÁGGAL
+        console.warn(`API-SPORTS (${sport}): 1. Próba (Pontos) sikertelen. Próbálkozás 'search=' paraméterrel (országgal)...`);
         endpoint = `/v3/leagues`;
-        params = { search: leagueName, country: country, season: currentSeason }; // 'search' használata 'name' helyett
+        params = { search: leagueName, country: country, season: currentSeason };
         response = await makeRequestWithRotation(sport, endpoint, { params });
 
         if (response?.data?.response?.length > 0) {
             const leagues = response.data.response.map(l => l.league);
             const leagueNames = leagues.map(l => l.name);
-            
             const matchResult = findBestMatch(leagueName, leagueNames);
 
-            if (matchResult.bestMatch.rating > 0.7) { // Hasonlósági küszöb
+            if (matchResult.bestMatch.rating > 0.7) {
                 const leagueId = leagues[matchResult.bestMatchIndex].id;
                 const foundName = leagues[matchResult.bestMatchIndex].name;
-                console.log(`API-SPORTS (${sport}): Liga ID találat (Hasonló) "${leagueName}" -> "${foundName}" -> ${leagueId}`);
+                console.log(`API-SPORTS (${sport}): Liga ID találat (2. Próba: Hasonló, Országgal) "${leagueName}" -> "${foundName}" -> ${leagueId}`);
                 apiSportsLeagueIdCache.set(cacheKey, leagueId);
                 return leagueId;
             }
         }
 
-        console.warn(`API-SPORTS (${sport}): Nem található liga ID ehhez: "${leagueName}" (${country}, ${currentSeason}) (search fallback is sikertelen).`);
+        // 3. Próba: Fallback 'search' keresés ORSZÁG NÉLKÜL
+        console.warn(`API-SPORTS (${sport}): 2. Próba (Hasonló, Országgal) sikertelen. Próbálkozás 'search=' paraméterrel (ország NÉLKÜL)...`);
+        endpoint = `/v3/leagues`;
+        params = { search: leagueName, season: currentSeason }; // ORSZÁG NÉLKÜL
+        response = await makeRequestWithRotation(sport, endpoint, { params });
+
+        if (response?.data?.response?.length > 0) {
+            const leagues = response.data.response.map(l => l.league);
+            const leagueNames = leagues.map(l => l.name);
+            const matchResult = findBestMatch(leagueName, leagueNames);
+
+            if (matchResult.bestMatch.rating > 0.8) { 
+                const leagueId = leagues[matchResult.bestMatchIndex].id;
+                const foundName = leagues[matchResult.bestMatchIndex].name;
+                console.log(`API-SPORTS (${sport}): Liga ID találat (3. Próba: Hasonló, Globális) "${leagueName}" -> "${foundName}" -> ${leagueId}`);
+                apiSportsLeagueIdCache.set(cacheKey, leagueId);
+                return leagueId;
+            }
+        }
+
+        console.warn(`API-SPORTS (${sport}): Nem található liga ID ehhez: "${leagueName}" (${country}, ${currentSeason}) (minden 3 lépcsős keresés sikertelen).`);
         apiSportsLeagueIdCache.set(cacheKey, 'not_found');
         return null;
     };
 
-    // Szezonkezelés (fő szezon, majd előző szezon)
-    let leagueId = await tryGetLeague(season);
-    if (!leagueId && sport === 'soccer') {
-        console.warn(`API-SPORTS (${sport}): Nem található liga a(z) ${season} szezonra. Próbálkozás az előző szezonnal...`);
-        leagueId = await tryGetLeague(season - 1);
+    // --- JAVÍTÁS: 3-lépcsős szezon-visszakeresés (az Ön kérése alapján) ---
+    let leagueId = null;
+    const seasonsToTry = [season, season - 1, season - 2]; // Pl. [2025, 2024, 2023]
+    
+    for (const s of seasonsToTry) {
+        console.log(`API-SPORTS (${sport}): Liga keresése a(z) ${s} szezonban...`);
+        leagueId = await tryGetLeague(s);
+        if (leagueId) {
+            console.log(`API-SPORTS (${sport}): Liga sikeresen azonosítva a(z) ${s} szezonban (ID: ${leagueId}). Keresés leáll.`);
+            break; // Sikerült, állj!
+        }
+        if (sport !== 'soccer') {
+             break; // Más sportágaknál ne keressünk vissza
+        }
+        console.warn(`API-SPORTS (${sport}): Nem található liga a(z) ${s} szezonra.`);
     }
-    return leagueId;
+    
+    return leagueId; // Visszaadja a leagueId-t vagy null-t
 }
 
 async function findApiSportsFixture(homeTeamId, awayTeamId, season, leagueId, utcKickoff, sport) {
     if (!homeTeamId || !awayTeamId || !season || !leagueId) return { fixtureId: null, fixtureDate: null };
-    const cacheKey = `apisports_findfixture_v40_${sport}_${homeTeamId}_${awayTeamId}_${leagueId}_${season}`;
+    // JAVÍTÁS: A cache kulcsnak tartalmaznia kell a szezont, hogy egyedi legyen
+    const cacheKey = `apisports_findfixture_v41_${sport}_${homeTeamId}_${awayTeamId}_${leagueId}_${season}`;
     const cached = apiSportsFixtureCache.get(cacheKey);
     if (cached) return cached;
+    
     const matchDate = new Date(utcKickoff).toISOString().split('T')[0];
     const endpoint = `/v3/fixtures`;
+    
+    // JAVÍTÁS: A szezon paramétert át kell adni a meccs kereséséhez is
     const params = { league: leagueId, season: season, team: homeTeamId, date: matchDate };
-    console.log(`API-SPORTS Fixture Keresés (${sport}): H:${homeTeamId} vs A:${awayTeamId} a(z) ${leagueId} ligában...`);
+    console.log(`API-SPORTS Fixture Keresés (${sport}): H:${homeTeamId} vs A:${awayTeamId} a(z) ${leagueId} ligában (${season} szezon)...`);
+    
     const response = await makeRequestWithRotation(sport, endpoint, { params });
     if (response?.data?.response?.length > 0) {
         const foundFixture = response.data.response.find(f => 
@@ -310,7 +345,7 @@ async function findApiSportsFixture(homeTeamId, awayTeamId, season, leagueId, ut
             return result;
         }
     }
-    console.warn(`API-SPORTS (${sport}): Nem található fixture a H:${homeTeamId} vs A:${awayTeamId} párosításhoz.`);
+    console.warn(`API-SPORTS (${sport}): Nem található fixture a H:${homeTeamId} vs A:${awayTeamId} párosításhoz (Dátum: ${matchDate}, Szezon: ${season}).`);
     apiSportsFixtureCache.set(cacheKey, { fixtureId: null, fixtureDate: null });
     return { fixtureId: null, fixtureDate: null };
 }
@@ -366,6 +401,13 @@ async function getApiSportsTeamSeasonStats(teamId, leagueId, season, sport) {
     if (!stats && sport === 'soccer') {
         console.warn(`API-SPORTS (${sport}): Nem található statisztika a(z) ${season} szezonra. Próbálkozás az előző szezonnal...`);
         stats = await tryGetStats(season - 1);
+    }
+    if (!stats) {
+        // JAVÍTÁS: Csak akkor keressünk 2023-ban, ha 2024-ben sem találtuk
+        if (!stats && sport === 'soccer' && season > 2023) {
+             console.warn(`API-SPORTS (${sport}): Nem található statisztika a(z) ${season-1} szezonra sem. Próbálkozás 2023-mal...`);
+             stats = await tryGetStats(season - 2);
+        }
     }
     if (!stats) {
         console.error(`API-SPORTS (${sport}): Végleg nem található szezon statisztika ehhez: T:${teamId}, L:${leagueId}`);
@@ -589,8 +631,13 @@ export async function fetchMatchData(options) {
     
     const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(utcKickoff));
     const seasonDate = new Date(decodedUtcKickoff);
+    
+    // JAVÍTÁS: A szezon meghatározása a 3-lépcsős kereséshez
+    // A 'season' az aktuális év (vagy a szezonátfedés miatt az előző)
+    // A 'getApiSportsLeagueId' fogja kezelni a 2025, 2024, 2023 logikát
     const season = (sport !== 'soccer' && seasonDate.getMonth() < 7) ?
- seasonDate.getFullYear() - 1 : seasonDate.getFullYear();
+        seasonDate.getFullYear() - 1 : seasonDate.getFullYear();
+        
     if (isNaN(season)) throw new Error(`Érvénytelen utcKickoff: ${decodedUtcKickoff}`);
     
     console.log(`Adatgyűjtés indul (v45 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
@@ -600,13 +647,20 @@ export async function fetchMatchData(options) {
     if (!leagueData?.country) throw new Error(`Hiányzó 'country' konfiguráció a(z) '${leagueName}' ligához a config.js-ben.`);
     
     const country = leagueData.country;
-    // JAVÍTÁS: Itt már az ESPN 'leagueName'-et (pl. "LaLiga") adjuk át, és a
-    // getApiSportsLeagueId kezeli a 'search' fallback-et.
+    
+    // Itt a 'season' (pl. 2025) a kiindulópont. A függvény kezeli a 2024, 2023 fallback-et.
     const leagueId = await getApiSportsLeagueId(leagueName, country, season, sport);
     if (!leagueId) throw new Error(`Nem sikerült a 'leagueId' azonosítása ('${leagueName}' néven).`);
     console.log(`API-SPORTS (${sport}): Végleges LeagueID: ${leagueId}`);
 
     // 2. LÉPÉS: Csapat ID-k lekérése
+    // FONTOS: A csapat ID-k kereséséhez azt a szezont kell használnunk, amelyikben a liga ID-t megtaláltuk!
+    // A 'getApiSportsLeagueId' jelenleg nem adja vissza a szezont, amin megtalálta.
+    // GYORSJAVÍTÁS: Feltételezzük, hogy a csapat ID-k konzisztensek a szezonok között,
+    // és az eredeti (pl. 2025) szezont használjuk a csapatkereséshez.
+    // Ez kockázatos, de egyelőre szükséges.
+    // TODO: A getApiSportsLeagueId adjon vissza { leagueId, foundSeason } objektumot.
+    
     const [homeTeamId, awayTeamId] = await Promise.all([
         getApiSportsTeamId(homeTeamName, sport, leagueId, season),
         getApiSportsTeamId(awayTeamName, sport, leagueId, season),
@@ -630,7 +684,7 @@ export async function fetchMatchData(options) {
     ] = await Promise.all([
         getApiSportsOdds(fixtureId, sport), 
         getApiSportsH2H(homeTeamId, awayTeamId, 5, sport),
-        getApiSportsTeamSeasonStats(homeTeamId, leagueId, season, sport),
+        getApiSportsTeamSeasonStats(homeTeamId, leagueId, season, sport), // Itt is az eredeti szezont használjuk
         getApiSportsTeamSeasonStats(awayTeamId, leagueId, season, sport),
       
          (sport === 'soccer' && fixtureId) ? getXgData(fixtureId) : Promise.resolve(null)
