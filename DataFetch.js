@@ -1,9 +1,11 @@
-// DataFetch.js (Refaktorált v46.1 - Helyes Return Fix)
+
+// DataFetch.js (Refaktorált v46 - Provider/Factory Pattern)
 // Ez a modul most már "Factory"-ként működik.
-// v46.1 JAVÍTÁS: A getRichContextualData return ága most már
-// helyesen építi fel a richData objektumot, hozzáadva
-// a hiányzó top-level kulcsokat (home, away, stb.),
-// amiket az AnalysisFlow.js elvár.
+// Felelőssége:
+// 1. A fő 'rich_context' cache kezelése.
+// 2. A 'sport' paraméter alapján a megfelelő provider kiválasztása.
+// 3. A feladat delegálása a provider-nek.
+// 4. Általános (nem provider-specifikus) funkciók exportálása (pl. _getFixturesFromEspn).
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -21,6 +23,7 @@ import {
 } from './providers/common/utils.js';
 
 // --- FŐ CACHE INICIALIZÁLÁS ---
+// (Minden más cache a provider-specifikus fájlokba került)
 const scriptCache = new NodeCache({ stdTTL: 3600 * 2, checkperiod: 600, useClones: false });
 
 const __filename = fileURLToPath(import.meta.url);
@@ -28,7 +31,7 @@ const __dirname = path.dirname(__filename);
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v46.1 (2025-11-01) - Helyes Return Fix
+* VERZIÓ: v46 (2025-10-31) - Provider/Factory Pattern
 **************************************************************/
 
 /**
@@ -44,28 +47,37 @@ function getProvider(sport) {
     case 'basketball':
       return basketballProvider;
     default:
+      // Robusztus hibakezelés: ha olyan sport jön, amit nem ismerünk,
+      // azonnal dobjunk egyértelmű hibát.
       throw new Error(`Nem támogatott sportág: '${sport}'. Nincs implementált provider.`);
   }
 }
 
 /**
- * FŐ ADATGYŰJTŐ FUNKCIÓ (v46.1 - Helyes Return Fix)
+ * FŐ ADATGYŰJTŐ FUNKCIÓ (v46 - Factory)
  * Ez a függvény kezeli a fő gyorsítótárat és delegálja a
  * feladatot a megfelelő sport-providernek.
  */
-export async function getRichContextualData(sport, homeTeamName, awayTeamName, leagueName, utcKickoff, openingOdds, forceReAnalysis) {
+export async function getRichContextualData(sport, homeTeamName, awayTeamName, leagueName, utcKickoff) {
     const teamNames = [homeTeamName, awayTeamName].sort();
+    // A cache kulcs verzióját v46-ra emeljük, hogy a refaktorálás után friss adatokat kapjunk
     const ck = `rich_context_v46_apif_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
     
-    // === JAVÍTÁS: A 'forceReAnalysis' paraméter használata a cache ellenőrzésnél ===
-    if (!forceReAnalysis) {
-        const cached = scriptCache.get(ck);
-        if (cached) {
-            console.log(`Cache találat (${ck})`);
-            return { ...cached, fromCache: true };
-        }
+    const cached = scriptCache.get(ck);
+    if (cached) {
+        console.log(`Cache találat (${ck})`);
+        
+        // Odds-frissítési logika (opcionális, de hasznos)
+        // Mivel az 'getApiSportsOdds' az 'apiSportsProvider'-be került,
+        // ezt a logikát egyszerűsíthetjük, vagy a providerre bízhatjuk.
+        // Egyelőre a teljes cache-t adjuk vissza.
+        // TODO: Odds-frissítés implementálása, ha szükséges.
+        
+        // const fixtureId = cached.rawData.apiFootballData.fixtureId;
+        // const oddsResult = await getApiSportsOdds(fixtureId, sport); // EZT MÁR NEM ÉRJÜK EL INNEN
+        
+        return { ...cached, fromCache: true };
     }
-    // === JAVÍTÁS VÉGE ===
     
     console.log(`Nincs cache (${ck}), friss adatok lekérése...`);
     
@@ -76,41 +88,22 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         console.log(`Adatgyűjtés indul (Provider: ${provider.providerName || sport}): ${homeTeamName} vs ${awayTeamName}...`);
 
         // 2. Hívd meg a provider specifikus adatlekérőjét
+        // Átadjuk az összes opciót egy objektumban
         const options = {
             sport,
             homeTeamName,
             awayTeamName,
             leagueName,
-            utcKickoff,
-            openingOdds // Átadjuk az openingOdds-ot is
+            utcKickoff
         };
         
-        // A 'result' tartalmazza a provider által gyűjtött összes adatot
-        // (pl. apiFootballData, stats, odds, h2h_summary, stb.)
         const result = await provider.fetchMatchData(options);
         
-        // === JAVÍTÁS KEZDETE: Helyes 'richData' objektum felépítése ===
-        // A 'result' önmagában nem tartalmazza a 'home', 'away' kulcsokat.
-        // Ezeket nekünk kell hozzáadni, hogy az AnalysisFlow.js megkapja.
-        const finalRichData = {
-            ...result, // Beletesszük az összes adatot, amit a provider adott
-            
-            // Hozzáadjuk a hiányzó top-level kulcsokat, amiket az AnalysisFlow vár
-            home: result.home || homeTeamName, // Használja a provider által visszaadott nevet, vagy a normalizált nevet
-            away: result.away || awayTeamName,
-            leagueName: result.leagueName || leagueName,
-            utcKickoff: result.utcKickoff || utcKickoff,
-            sport: sport,
-            version: 'v46' // Verziószám hozzáadása, amit a log is vár
-        };
-        // === JAVÍTÁS VÉGE ===
-
-        // 3. Mentsd az egységesített eredményt (a finalRichData-t) a fő cache-be
-        scriptCache.set(ck, finalRichData);
+        // 3. Mentsd az egységesített eredményt a fő cache-be
+        scriptCache.set(ck, result);
         console.log(`Sikeres adatgyűjtés (v46), cache mentve (${ck}).`);
         
-        // A TELJES objektumot adjuk vissza
-        return { ...finalRichData, fromCache: false };
+        return { ...result, fromCache: false };
 
     } catch (e) {
         console.error(`KRITIKUS HIBA a getRichContextualData (v46 - Factory) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
