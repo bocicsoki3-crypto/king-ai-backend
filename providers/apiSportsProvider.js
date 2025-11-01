@@ -130,7 +130,7 @@ async function _getLeagueRoster(leagueId, season, sport) {
     return roster;
 }
 
-// --- JAVÍTOTT getApiSportsTeamId (ROBUSZTUS, TÖBBLÉPCSŐS EGYEZTETÉS) ---
+// --- JAVÍTOTT getApiSportsTeamId (ROBUSZTUS, 5-LÉPCSŐS EGYEZTETÉS) ---
 async function getApiSportsTeamId(teamName, sport, leagueId, season) {
     const lowerName = teamName.toLowerCase().trim();
     
@@ -139,7 +139,7 @@ async function getApiSportsTeamId(teamName, sport, leagueId, season) {
     const searchName = mappedName.toLowerCase(); // Mindig kisbetűs keresés
 
     // 2. LÉPÉS: Dinamikus NÉV-CACHE ellenőrzése (leggyorsabb)
-    const nameCacheKey = `apisports_name_map_v4_${sport}_${leagueId}_${season}_${searchName.replace(/\s+/g, '')}`;
+    const nameCacheKey = `apisports_name_map_v5_robust_${sport}_${leagueId}_${season}_${searchName.replace(/\s+/g, '')}`;
     const cachedMappedId = apiSportsNameMappingCache.get(nameCacheKey);
     if (cachedMappedId !== undefined) {
         if (cachedMappedId === 'not_found') {
@@ -166,6 +166,7 @@ async function getApiSportsTeamId(teamName, sport, leagueId, season) {
 
     // 4. LÉPÉS: TÖBBLÉPCSŐS EGYEZTETÉS
     let foundTeam = null;
+    const lowerTeamNames = teamObjects.map(t => t.name.toLowerCase());
 
     // 4a. Próba: Tökéletes egyezés (kisbetűs)
     foundTeam = teamObjects.find(t => t.name.toLowerCase() === searchName);
@@ -173,11 +174,29 @@ async function getApiSportsTeamId(teamName, sport, leagueId, season) {
         console.log(`API-SPORTS (${sport}): HELYI TALÁLAT (Tökéletes): "${searchName}" -> "${foundTeam.name}" (ID: ${foundTeam.id})`);
     }
 
-    // 4b. Próba: Hasonlósági keresés (Engedékenyebb) a NYERS neveken
+    // 4b. Próba: 'Includes' ellenőrzés (pl. "Ajax Amsterdam" tartalmazza "Ajax")
+    // Ez a "Hertha Berlin" vs "Hertha BSC" problémát NEM oldja meg, de az "Ajax"-ot igen.
+    if (!foundTeam) {
+        foundTeam = teamObjects.find(t => searchName.includes(t.name.toLowerCase()));
+        if (foundTeam) {
+            console.log(`API-SPORTS (${sport}): HELYI TALÁLAT (Tartalmazza): Az ESPN név "${searchName}" tartalmazza az API nevet "${foundTeam.name}" (ID: ${foundTeam.id})`);
+        }
+    }
+    // 4c. Próba: Fordított 'Includes' ellenőrzés (pl. "Wolverhampton" tartalmazza "Wolves")
+    if (!foundTeam) {
+        // A 'Wolves'-hoz hasonló rövidítések kezelése (a config mapból)
+        const simplifiedSearchName = APIFOOTBALL_TEAM_NAME_MAP[searchName] || searchName;
+        foundTeam = teamObjects.find(t => t.name.toLowerCase().includes(simplifiedSearchName));
+        if (foundTeam) {
+             console.log(`API-SPORTS (${sport}): HELYI TALÁLAT (Fordítva tartalmazza): Az API név "${foundTeam.name}" tartalmazza az ESPN nevet "${simplifiedSearchName}" (ID: ${foundTeam.id})`);
+        }
+    }
+
+
+    // 4d. Próba: Hasonlósági keresés (Engedékenyebb) a NYERS neveken
     // Ez elkapja a "Hertha Berlin" vs "Hertha BSC" típusú hibákat
     if (!foundTeam) {
-        const teamNames = teamObjects.map(t => t.name);
-        const matchResult = findBestMatch(searchName, teamNames);
+        const matchResult = findBestMatch(searchName, lowerTeamNames);
         
         // Alacsonyabb, de ésszerű küszöb (0.6) a közeli egyezésekhez
         if (matchResult.bestMatch.rating > 0.6) {
@@ -186,11 +205,12 @@ async function getApiSportsTeamId(teamName, sport, leagueId, season) {
         }
     }
 
-    // 4c. Próba: Agresszív tisztítás + Hasonlósági keresés (Magas küszöb)
+    // 4e. Próba: Agresszív tisztítás + Hasonlósági keresés (Magas küszöb)
     // Ez elkapja a "TSV Eintracht Braunschweig" vs "Eintracht Braunschweig" típusú hibákat
     if (!foundTeam) {
-        const cleanSearchName = searchName.replace(/^(1\.\s*FC|TSV|SC|FC)\s/i, '').trim();
-        const cleanTeamNames = teamObjects.map(t => t.name.replace(/^(1\.\s*FC|TSV|SC|FC)\s/i, '').trim());
+        // Agresszívebb tisztítás: eltávolítjuk a városneveket is, ha a név már tartalmazza
+        const cleanSearchName = searchName.replace(/^(1\.\s*FC|TSV|SC|FC)\s/i, '').replace(/\s(city|wanderers|berlin)/i, '').trim();
+        const cleanTeamNames = lowerTeamNames.map(t => t.replace(/^(1\.\s*FC|TSV|SC|FC)\s/i, '').replace(/\s(bsc)/i, '').trim());
         
         const cleanMatchResult = findBestMatch(cleanSearchName, cleanTeamNames);
 
@@ -333,6 +353,7 @@ async function getApiSportsTeamSeasonStats(teamId, leagueId, season, sport) {
     return stats;
 }
 
+// --- JAVÍTOTT getApiSportsOdds (ReferenceError javítva) ---
 async function getApiSportsOdds(fixtureId, sport) {
     if (!fixtureId) {
         console.warn(`API-SPORTS Odds (${sport}): Hiányzó fixtureId, a szorzók lekérése kihagyva.`);
@@ -365,6 +386,30 @@ async function getApiSportsOdds(fixtureId, sport) {
         if (drawOdd) currentOdds.push({ name: 'Döntetlen', price: parseFloat(drawOdd) });
         if (awayOdd) currentOdds.push({ name: 'Vendég győzelem', price: parseFloat(awayOdd) });
     }
+    
+    // --- JAVÍTÁS: Odds piacok kinyerése (a Value Bettinghez) ---
+    const allMarkets = []; // <-- KRITIKUS JAVÍTÁS: Hiányzó inicializálás
+    if (bookmaker?.bets) {
+        for (const bet of bookmaker.bets) {
+            const marketKey = bet.name?.toLowerCase().replace(/\s/g, '_');
+            const outcomes = (bet.values || []).map(v => ({
+                name: v.value,
+                price: parseFloat(v.odd),
+                point: v.value.match(/(\d+\.\d)/) ? parseFloat(v.value.match(/(\d+\.\d)/)[1]) : null
+            }));
+            
+            if (marketKey === 'match_winner') allMarkets.push({ key: 'h2h', outcomes });
+            if (marketKey === 'moneyline') allMarkets.push({ key: 'h2h', outcomes }); // Kosár/Hoki
+            if (marketKey === 'over/under') allMarkets.push({ key: 'totals', outcomes });
+            if (marketKey === 'total') allMarkets.push({ key: 'totals', outcomes }); // Hoki
+            if (marketKey === 'total_points') allMarkets.push({ key: 'totals', outcomes }); // Kosár
+            if (marketKey === 'both_teams_to_score') allMarkets.push({ key: 'btts', outcomes });
+            if (marketKey === 'corners_over/under') allMarkets.push({ key: 'corners_over_under', outcomes });
+            if (marketKey === 'cards_over/under') allMarkets.push({ key: 'cards_over_under', outcomes });
+        }
+    }
+    // --- JAVÍTÁS VÉGE ---
+
     const result = {
         current: currentOdds, 
         fullApiData: oddsData,
@@ -634,7 +679,7 @@ export async function fetchMatchData(options) {
     ].filter(Boolean);
     const richContext = richContextParts.length > 0 ? richContextParts.join('\n') : "N/A";
     const advancedData = realXgData ?
- { home: { xg: realXgData.home }, away: { xg: realXgData.away } } :
+ { home: { xG: realXgData.home }, away: { xG: realXgData.away } } : // JAVÍTÁS: xG-t xG néven adjuk át
         (geminiData.advancedData || { home: { xg: null }, away: { xg: null } });
     const result = {
          rawStats: finalData.stats,
