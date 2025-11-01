@@ -13,7 +13,7 @@ export const PORT = process.env.PORT || 3001;
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-export const GEMINI_MODEL_ID = 'gemini-2.5-pro'; // JAVÍTÁS: 'gemini-1.5-pro'-ra cserélve (ahogy a check_models.txt javasolta)
+export const GEMINI_MODEL_ID = 'gemini-2.5-pro'; // JAVÍTÁS: 'gemini-1.5-pro'-ra cserélve
 export const SHEET_URL = process.env.SHEET_URL;
 // --- V42: ÚJ xG API KONFIGURÁCIÓ ---
 export const XG_API_KEY = process.env.XG_API_KEY;
@@ -83,10 +83,11 @@ export const APIFOOTBALL_TEAM_NAME_MAP = {
     'independiente medellin': 'Independiente Medellin',
 
     // 
-Jégkorong
+// JAVÍTÁS: A 'Jégkorong' szöveg most már komment
+    // Jégkorong
     'senators': 'Ottawa Senators',
     'flames': 'Calgary Flames',
-    'lightning': 'Tampa Bay Lightning',
+'lightning': 'Tampa Bay Lightning',
     'stars': 'Dallas Stars',
     'flyers': 'Philadelphia Flyers',
     'predators': 'Nashville Predators',
@@ -125,7 +126,7 @@ export const SPORT_CONFIG = {
             "Premiership": { slug: "sco.1", country: "Scotland" },
             "Allsvenskan": { slug: "swe.1", country: "Sweden" },
             "Super Lig": { slug: "tur.1", country: "Turkey" },
-            "MLS": { slug:G: "usa.1", country: "USA" },
+            "MLS": { slug: "usa.1", country: "USA" },
             "Liga MX": { slug: "mex.1", country: 
 "Mexico" },
             "Jupiler Pro League": { slug: "bel.1", country: "Belgium" },
