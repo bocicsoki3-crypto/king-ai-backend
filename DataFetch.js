@@ -1,4 +1,4 @@
-// DataFetch.js (Refaktorált v47 - Helyes Provider Routing)
+// DataFetch.js (Refaktorált v48 - Helyes Provider Routing JAVÍTVA)
 // Ez a modul most már "Factory"-ként működik.
 // Felelőssége:
 // 1. A fő 'rich_context' cache kezelése.
@@ -10,10 +10,13 @@ import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
-// --- JAVÍTÁS (v47): Provider Konszolidáció ---
-// Az 'apiSportsProvider' az EGYETLEN, univerzális providerünk minden RapidAPI adathoz.
-// A hibás, elavult 'newHockeyProvider' és 'newBasketballProvider' importok eltávolítva.
+// --- JAVÍTÁS (v48): Visszaállítás a dedikált providerekre ---
+// Az 'apiSportsProvider' csak a fociért felel.
+// A 'hockeyProvider' (newHockeyProvider) felel a jégkorongért (az ice-hockey-data API-val).
+// A 'basketballProvider' (newBasketballProvider) felel a kosárlabdáért.
 import * as apiSportsProvider from './providers/apiSportsProvider.js';
+import * as hockeyProvider from './providers/newHockeyProvider.js';
+import * as basketballProvider from './providers/newBasketballProvider.js';
 // --- JAVÍTÁS VÉGE ---
 
 // Importáljuk a megosztott segédfüggvényeket
@@ -23,30 +26,29 @@ import {
 } from './providers/common/utils.js';
 
 // --- FŐ CACHE INICIALIZÁLÁS ---
-// (Minden más cache a provider-specifikus fájlokba került)
 const scriptCache = new NodeCache({ stdTTL: 3600 * 2, checkperiod: 600, useClones: false });
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v47 (2025-11-01) - Helyes Provider Routing
+* VERZIÓ: v48 (2025-11-01) - Provider Mismatch Javítása
 **************************************************************/
 
 /**
  * A "Factory" (gyár) funkció, ami kiválasztja a megfelelő
  * adatlekérő "stratégiát" (provider) a sportág alapján.
- * (JAVÍTVA v47)
+ * (JAVÍTVA v48)
  */
 function getProvider(sport) {
   switch (sport.toLowerCase()) {
-    // --- JAVÍTÁS (v47): MINDEN sportág az univerzális providert használja ---
+    // --- JAVÍTÁS (v48): Minden sport a SAJÁT, dedikált providerét használja ---
     case 'soccer':
-      return apiSportsProvider;
+      return apiSportsProvider; // apiSportsProvider kezeli a focit
     case 'hockey':
-      return apiSportsProvider; // JAVÍTVA: A 'newHockeyProvider' helyett
+      return hockeyProvider; // newHockeyProvider kezeli a jégkorongot (ice-hockey-data)
     case 'basketball':
-      return apiSportsProvider; // JAVÍTVA: A 'newBasketballProvider' helyett
+      return basketballProvider; // newBasketballProvider kezeli a kosárlabdát
     // --- JAVÍTÁS VÉGE ---
     default:
       // Robusztus hibakezelés: ha olyan sport jön, amit nem ismerünk,
@@ -67,14 +69,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
     const cached = scriptCache.get(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
-        // Odds-frissítési logika (opcionális, de hasznos)
-        // Mivel az 'getApiSportsOdds' az 'apiSportsProvider'-be került,
-        // ezt a logikát egyszerűsíthetjük, vagy a providerre bízhatjuk.
-        // Egyelőre a teljes cache-t adjuk vissza.
-        
-        // const fixtureId = cached.rawData.apiFootballData.fixtureId;
-        // const oddsResult = await getApiSportsOdds(fixtureId, sport); // EZT MÁR NEM ÉRJÜK EL INNEN
-        
         return { ...cached, fromCache: true };
     }
     
@@ -97,12 +91,12 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         
         // 3. Mentsd az egységesített eredményt a fő cache-be
         scriptCache.set(ck, result);
-        console.log(`Sikeres adatgyűjtés (v47), cache mentve (${ck}).`);
+        console.log(`Sikeres adatgyűjtés (v48), cache mentve (${ck}).`);
         
         return { ...result, fromCache: false };
     } catch (e) {
-        console.error(`KRITIKUS HIBA a getRichContextualData (v47 - Factory) során (${homeTeamName} vs ${awayTeam}): ${e.message}`, e.stack);
-        throw new Error(`Adatgyűjtési hiba (v47): ${e.message}`);
+        console.error(`KRITIKUS HIBA a getRichContextualData (v48 - Factory) során (${homeTeamName} vs ${awayTeam}): ${e.message}`, e.stack);
+        throw new Error(`Adatgyűjtési hiba (v48): ${e.message}`);
     }
 }
 
