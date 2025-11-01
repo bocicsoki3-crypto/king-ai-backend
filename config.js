@@ -1,25 +1,16 @@
-// --- VÉGLEGES config.js (v45 - Syntax Fix) ---
+// --- VÉGLEGES config.js (v42 - xG API Integráció) ---
 
 import dotenv from 'dotenv';
+dotenv.config();
 
 /**************************************************************
 * config.js - Központi Konfigurációs Fájl
-* v45 JAVÍTÁS: Szintaktikai hiba ('slug:g:') javítva 'slug:'-ra.
+* v42 JAVÍTÁS: Hozzáadva az XG_API_KEY és XG_API_HOST
+* az "Football xG Statistics" API integrálásához.
 **************************************************************/
 
-// === JAVÍTÁS KEZDETE ===
-// Csak akkor töltjük be a .env fájlt, ha NEM éles környezetben (pl. Render) futunk
-if (process.env.NODE_ENV !== 'production') {
-    console.log('Fejlesztői környezet (NODE_ENV != production), .env fájl betöltése...');
-    dotenv.config();
-} else {
-    console.log('Éles környezet (production) detektálva, .env fájl betöltése KIHAGYVA.');
-}
-// === JAVÍTÁS VÉGE ===
-
-
 // --- SZERVER BEÁLLÍTÁSOK ---
-export const PORT = process.env.PORT || 10000;
+export const PORT = process.env.PORT || 3001;
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -31,21 +22,24 @@ export const XG_API_KEY = process.env.XG_API_KEY;
 export const XG_API_HOST = process.env.XG_API_HOST || 'football-xg-statistics.p.rapidapi.com';
 
 // --- V41: API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
+// Az API-Sports (API-Football) kulcsai
+// --- V41: API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
+// Az API-Sports (API-Football) kulcsai
 export const API_HOSTS = {
     soccer: {
         host: process.env.APIFOOTBALL_HOST || 'api-football-v1.p.rapidapi.com',
         keys: [
             process.env.APIFOOTBALL_KEY_1,
             process.env.APIFOOTBALL_KEY_2,
-            process.env.APIFOOTBALL_KEY_3
-        ].filter(Boolean) 
+            process.env.APIFOOTBALL_KEY_3 // <-- ITT AZ ÚJ KULCS
+        ].filter(Boolean) // Kiszűri az üres/undefined kulcsokat
     },
     hockey: {
         host: process.env.APIHOCKEY_HOST || 'api-hockey.p.rapidapi.com',
         keys: [
             process.env.APIHOCKEY_KEY_1 || process.env.APIFOOTBALL_KEY_1,
             process.env.APIHOCKEY_KEY_2 || process.env.APIFOOTBALL_KEY_2,
-            process.env.APIHOCKEY_KEY_3 || process.env.APIFOOTBALL_KEY_3
+            process.env.APIHOCKEY_KEY_3 || process.env.APIFOOTBALL_KEY_3 // <-- ITT AZ ÚJ KULCS
         ].filter(Boolean)
     },
     basketball: {
@@ -53,7 +47,7 @@ export const API_HOSTS = {
         keys: [
             process.env.APIBASKETBALL_KEY_1 || process.env.APIFOOTBALL_KEY_1,
             process.env.APIBASKETBALL_KEY_2 || process.env.APIFOOTBALL_KEY_2,
-            process.env.APIBASKETBALL_KEY_3 || process.env.APIFOOTBALL_KEY_3
+            process.env.APIBASKETBALL_KEY_3 || process.env.APIFOOTBALL_KEY_3 // <-- ITT AZ ÚJ KULCS
         ].filter(Boolean)
     }
 };
@@ -63,7 +57,12 @@ export const APIFOOTBALL_KEY = process.env.APIFOOTBALL_KEY_1;
 export const APIFOOTBALL_HOST = 'api-football-v1.p.rapidapi.com';
 
 // --- CSAPATNÉV HOZZÁRENDELÉSEK ---
+export const ODDS_TEAM_NAME_MAP = {
+    // ... (nincs használatban)
+};
+
 export const APIFOOTBALL_TEAM_NAME_MAP = {
+    // Foci
     'spurs': 'Tottenham Hotspur',
     'tottenham': 'Tottenham Hotspur',
     'man utd': 'Manchester United',
@@ -77,6 +76,8 @@ export const APIFOOTBALL_TEAM_NAME_MAP = {
     'atletico junior': 'Junior',
     'independiente santa fe': 'Santa Fe',
     'independiente medellin': 'Independiente Medellin',
+
+    // Jégkorong
     'senators': 'Ottawa Senators',
     'flames': 'Calgary Flames',
     'lightning': 'Tampa Bay Lightning',
@@ -95,7 +96,6 @@ export const SPORT_CONFIG = {
         name: 'labdarúgás',
         espn_sport_path: 'soccer',
         totals_line: 2.5,
-        
         espn_leagues: {
             "Premier League": { slug: "eng.1", country: "England" },
             "Championship": { slug: "eng.2", country: "England" },
@@ -104,6 +104,7 @@ export const SPORT_CONFIG = {
             "Bundesliga": { slug: "ger.1", country: "Germany" },
             "2. Bundesliga": { slug: "ger.2", country: "Germany" },
             "Serie A": { slug: "ita.1", country: "Italy" },
+            "Serie B": { slug: "ita.2", country: "Italy" },
             "LaLiga": { slug: "esp.1", country: "Spain" },
             "LaLiga2": { slug: "esp.2", country: "Spain" },
             "J1 League": { slug: "jpn.1", country: "Japan" },
@@ -112,11 +113,11 @@ export const SPORT_CONFIG = {
             "Liga Portugal": { slug: "por.1", country: "Portugal" },
             "Premiership": { slug: "sco.1", country: "Scotland" },
             "Allsvenskan": { slug: "swe.1", country: "Sweden" },
-            "Süper Lig": { slug: "tur.1", country: "Turkey" }, 
+            "Super Lig": { slug: "tur.1", country: "Turkey" },
             "MLS": { slug: "usa.1", country: "USA" },
             "Liga MX": { slug: "mex.1", country: "Mexico" },
             "Jupiler Pro League": { slug: "bel.1", country: "Belgium" },
-            "Serie A Betano": { slug: "rou.1", country: "Romania" }, 
+            "Serie A Betano": { slug: "rou.1", country: "Romania" },
             "Superliga": { slug: "den.1", country: "Denmark" },
             "Chance Liga": { slug: "cze.1", country: "Czech Republic"},
             "Premier Division": { slug: "irl.1", country: "Ireland" },
@@ -129,12 +130,10 @@ export const SPORT_CONFIG = {
             "UEFA Nations League": { slug: "uefa.nations", country: "World" },
             "CAF World Cup Qualifying": { slug: "fifa.worldq.caf", country: "World" },
             "AFC World Cup Qualifying": { slug: "fifa.worldq.afc", country: "World" },
-            
-            // === JAVÍTÁS: 'slug:g:' javítva 'slug:'-ra ===
             "UEFA World Cup Qualifying": { slug: "fifa.worldq.uefa", country: "World" },
-            
-            "Serie B": { slug: "bra.2", country: "Brazil" }, 
-            "Liga Profesional de Fútbol": { slug: "arg.1", country: "Argentina" }, 
+            "Brazil Serie A": { slug: "bra.1", country: "Brazil" },
+            "Brazil Serie B": { slug: "bra.2", country: "Brazil" },
+            "Argentinian Liga Profesional": { slug: "arg.1", country: "Argentina" },
             "Australian A-League": { slug: "aus.1", country: "Australia" },
             "Austrian Bundesliga": { slug: "aut.1", country: "Austria" },
             "Swiss Super League": { slug: "sui.1", country: "Switzerland" },
@@ -159,10 +158,4 @@ export const SPORT_CONFIG = {
             'Euroleague': { slug: 'euroleague', country: 'World' }
         },
     },
-    default: {
-        name: 'default',
-        espn_sport_path: '',
-        totals_line: 0,
-        espn_leagues: {},
-    }
 };
