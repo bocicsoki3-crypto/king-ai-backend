@@ -175,7 +175,6 @@ async function getApiSportsTeamId(teamName, sport, leagueId, season) {
     }
 
     // 4b. Próba: 'Includes' ellenőrzés (pl. "Ajax Amsterdam" tartalmazza "Ajax")
-    // Ez a "Hertha Berlin" vs "Hertha BSC" problémát NEM oldja meg, de az "Ajax"-ot igen.
     if (!foundTeam) {
         foundTeam = teamObjects.find(t => searchName.includes(t.name.toLowerCase()));
         if (foundTeam) {
@@ -184,7 +183,6 @@ async function getApiSportsTeamId(teamName, sport, leagueId, season) {
     }
     // 4c. Próba: Fordított 'Includes' ellenőrzés (pl. "Wolverhampton" tartalmazza "Wolves")
     if (!foundTeam) {
-        // A 'Wolves'-hoz hasonló rövidítések kezelése (a config mapból)
         const simplifiedSearchName = APIFOOTBALL_TEAM_NAME_MAP[searchName] || searchName;
         foundTeam = teamObjects.find(t => t.name.toLowerCase().includes(simplifiedSearchName));
         if (foundTeam) {
@@ -194,11 +192,9 @@ async function getApiSportsTeamId(teamName, sport, leagueId, season) {
 
 
     // 4d. Próba: Hasonlósági keresés (Engedékenyebb) a NYERS neveken
-    // Ez elkapja a "Hertha Berlin" vs "Hertha BSC" típusú hibákat
     if (!foundTeam) {
         const matchResult = findBestMatch(searchName, lowerTeamNames);
         
-        // Alacsonyabb, de ésszerű küszöb (0.6) a közeli egyezésekhez
         if (matchResult.bestMatch.rating > 0.6) {
             foundTeam = teamObjects[matchResult.bestMatchIndex];
             console.log(`API-SPORTS (${sport}): HELYI TALÁLAT (Hasonló): "${searchName}" -> "${foundTeam.name}" (ID: ${foundTeam.id}, Rating: ${matchResult.bestMatch.rating.toFixed(2)})`);
@@ -206,15 +202,13 @@ async function getApiSportsTeamId(teamName, sport, leagueId, season) {
     }
 
     // 4e. Próba: Agresszív tisztítás + Hasonlósági keresés (Magas küszöb)
-    // Ez elkapja a "TSV Eintracht Braunschweig" vs "Eintracht Braunschweig" típusú hibákat
     if (!foundTeam) {
-        // Agresszívebb tisztítás: eltávolítjuk a városneveket is, ha a név már tartalmazza
         const cleanSearchName = searchName.replace(/^(1\.\s*FC|TSV|SC|FC)\s/i, '').replace(/\s(city|wanderers|berlin)/i, '').trim();
         const cleanTeamNames = lowerTeamNames.map(t => t.replace(/^(1\.\s*FC|TSV|SC|FC)\s/i, '').replace(/\s(bsc)/i, '').trim());
         
         const cleanMatchResult = findBestMatch(cleanSearchName, cleanTeamNames);
 
-        if (cleanMatchResult.bestMatch.rating > 0.7) { // Magasabb küszöb a tisztított neveknél
+        if (cleanMatchResult.bestMatch.rating > 0.7) {
             foundTeam = teamObjects[cleanMatchResult.bestMatchIndex];
             console.log(`API-SPORTS (${sport}): HELYI TALÁLAT (Tisztított): "${searchName}" (keresve: "${cleanSearchName}") -> "${foundTeam.name}" (ID: ${foundTeam.id}, Rating: ${cleanMatchResult.bestMatch.rating.toFixed(2)})`);
         }
@@ -222,7 +216,6 @@ async function getApiSportsTeamId(teamName, sport, leagueId, season) {
 
     // 5. LÉPÉS: Eredmény feldolgozása
     if (foundTeam && foundTeam.id) {
-        // MENTÉS AZ ÚJ NÉV-CACHE-BE (ÖNGYÓGYÍTÁS)
         apiSportsNameMappingCache.set(nameCacheKey, foundTeam.id);
         return foundTeam.id;
     }
@@ -353,7 +346,7 @@ async function getApiSportsTeamSeasonStats(teamId, leagueId, season, sport) {
     return stats;
 }
 
-// --- JAVÍTOTT getApiSportsOdds (ReferenceError javítva) ---
+// --- JAVÍTOTT getApiSportsOdds (TypeError javítva) ---
 async function getApiSportsOdds(fixtureId, sport) {
     if (!fixtureId) {
         console.warn(`API-SPORTS Odds (${sport}): Hiányzó fixtureId, a szorzók lekérése kihagyva.`);
@@ -387,33 +380,34 @@ async function getApiSportsOdds(fixtureId, sport) {
         if (awayOdd) currentOdds.push({ name: 'Vendég győzelem', price: parseFloat(awayOdd) });
     }
     
-    // --- JAVÍTÁS: Odds piacok kinyerése (a Value Bettinghez) ---
-    const allMarkets = []; // <-- KRITIKUS JAVÍTÁS: Hiányzó inicializálás
+    // --- Odds piacok kinyerése (a Value Bettinghez) ---
+    const allMarkets = []; // Inicializálás
     if (bookmaker?.bets) {
         for (const bet of bookmaker.bets) {
             const marketKey = bet.name?.toLowerCase().replace(/\s/g, '_');
+            // JAVÍTÁS: A 'v.value.match' hibát okoz, ha 'v.value' nem string.
             const outcomes = (bet.values || []).map(v => ({
                 name: v.value,
                 price: parseFloat(v.odd),
-                point: v.value.match(/(\d+\.\d)/) ? parseFloat(v.value.match(/(\d+\.\d)/)[1]) : null
+                // KRITIKUS JAVÍTÁS: Ellenőrizzük, hogy 'v.value' string-e, mielőtt a .match()-t hívnánk
+                point: (typeof v.value === 'string') ? (v.value.match(/(\d+\.\d)/) ? parseFloat(v.value.match(/(\d+\.\d)/)[1]) : null) : null
             }));
             
             if (marketKey === 'match_winner') allMarkets.push({ key: 'h2h', outcomes });
-            if (marketKey === 'moneyline') allMarkets.push({ key: 'h2h', outcomes }); // Kosár/Hoki
+            if (marketKey === 'moneyline') allMarkets.push({ key: 'h2h', outcomes });
             if (marketKey === 'over/under') allMarkets.push({ key: 'totals', outcomes });
-            if (marketKey === 'total') allMarkets.push({ key: 'totals', outcomes }); // Hoki
-            if (marketKey === 'total_points') allMarkets.push({ key: 'totals', outcomes }); // Kosár
+            if (marketKey === 'total') allMarkets.push({ key: 'totals', outcomes });
+            if (marketKey === 'total_points') allMarkets.push({ key: 'totals', outcomes });
             if (marketKey === 'both_teams_to_score') allMarkets.push({ key: 'btts', outcomes });
             if (marketKey === 'corners_over/under') allMarkets.push({ key: 'corners_over_under', outcomes });
             if (marketKey === 'cards_over/under') allMarkets.push({ key: 'cards_over_under', outcomes });
         }
     }
-    // --- JAVÍTÁS VÉGE ---
 
     const result = {
         current: currentOdds, 
         fullApiData: oddsData,
-        allMarkets: allMarkets // Hozzáadva az egységesített piacok
+        allMarkets: allMarkets 
     };
     if (result.current.length > 0) {
         apiSportsOddsCache.set(cacheKey, result);
@@ -531,14 +525,17 @@ function findMainTotalsLine(oddsData, sport) {
     
     const linesAvailable = {};
     for (const val of totalsMarket.values) {
-        const lineMatch = val.value.match(/(\d+\.\d)/);
-        const line = lineMatch ? lineMatch[1] : val.value; 
-        if (isNaN(parseFloat(line))) continue; 
-        if (!linesAvailable[line]) linesAvailable[line] = {};
-        if (val.value.toLowerCase().startsWith("over")) {
-            linesAvailable[line].over = parseFloat(val.odd);
-        } else if (val.value.toLowerCase().startsWith("under")) {
-            linesAvailable[line].under = parseFloat(val.odd);
+        // JAVÍTÁS: Itt is ellenőrizzük, hogy 'val.value' string-e
+        if (typeof val.value === 'string') {
+            const lineMatch = val.value.match(/(\d+\.\d)/);
+            const line = lineMatch ? lineMatch[1] : val.value; 
+            if (isNaN(parseFloat(line))) continue; 
+            if (!linesAvailable[line]) linesAvailable[line] = {};
+            if (val.value.toLowerCase().startsWith("over")) {
+                linesAvailable[line].over = parseFloat(val.odd);
+            } else if (val.value.toLowerCase().startsWith("under")) {
+                linesAvailable[line].under = parseFloat(val.odd);
+            }
         }
     }
     if (Object.keys(linesAvailable).length === 0) {
@@ -678,9 +675,12 @@ export async function fetchMatchData(options) {
          structuredWeather.description !== "N/A" && `- Időjárás: ${structuredWeather.description}`
     ].filter(Boolean);
     const richContext = richContextParts.length > 0 ? richContextParts.join('\n') : "N/A";
+    
+    // JAVÍTÁS: xG-t xG néven adjuk át (nem xG)
     const advancedData = realXgData ?
- { home: { xG: realXgData.home }, away: { xG: realXgData.away } } : // JAVÍTÁS: xG-t xG néven adjuk át
+        { home: { xg: realXgData.home }, away: { xg: realXgData.away } } :
         (geminiData.advancedData || { home: { xg: null }, away: { xg: null } });
+        
     const result = {
          rawStats: finalData.stats,
          leagueAverages: finalData.league_averages ||
