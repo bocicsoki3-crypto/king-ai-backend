@@ -32,7 +32,6 @@ const xgApiCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 3600 });
 const apiSportsNameMappingCache = new NodeCache({ stdTTL: 3600 * 24 * 30, checkperiod: 3600 * 12 }); // 30 napos cache
 
 // --- ÚJ ROSTER CACHE ---
-// Ez tárolja a liga teljes csapatlistáját (ahogy a felhasználó javasolta)
 const apiSportsRosterCache = new NodeCache({ stdTTL: 3600 * 24, checkperiod: 3600 * 6 }); // 1 napos cache
 
 
@@ -366,30 +365,6 @@ async function getApiSportsOdds(fixtureId, sport) {
         if (drawOdd) currentOdds.push({ name: 'Döntetlen', price: parseFloat(drawOdd) });
         if (awayOdd) currentOdds.push({ name: 'Vendég győzelem', price: parseFloat(awayOdd) });
     }
-    
-    // --- JAVÍTÁS: Odds piacok kinyerése (a Value Bettinghez) ---
-    const allMarkets = [];
-    if (bookmaker?.bets) {
-        for (const bet of bookmaker.bets) {
-            const marketKey = bet.name?.toLowerCase().replace(/\s/g, '_');
-            const outcomes = (bet.values || []).map(v => ({
-                name: v.value,
-                price: parseFloat(v.odd),
-                point: v.value.match(/(\d+\.\d)/) ? parseFloat(v.value.match(/(\d+\.\d)/)[1]) : null
-            }));
-            
-            if (marketKey === 'match_winner') allMarkets.push({ key: 'h2h', outcomes });
-            if (marketKey === 'moneyline') allMarkets.push({ key: 'h2h', outcomes }); // Kosár/Hoki
-            if (marketKey === 'over/under') allMarkets.push({ key: 'totals', outcomes });
-            if (marketKey === 'total') allMarkets.push({ key: 'totals', outcomes }); // Hoki
-            if (marketKey === 'total_points') allMarkets.push({ key: 'totals', outcomes }); // Kosár
-            if (marketKey === 'both_teams_to_score') allMarkets.push({ key: 'btts', outcomes });
-            if (marketKey === 'corners_over/under') allMarkets.push({ key: 'corners_over_under', outcomes });
-            if (marketKey === 'cards_over/under') allMarkets.push({ key: 'cards_over_under', outcomes });
-        }
-    }
-    // --- JAVÍTÁS VÉGE ---
-
     const result = {
         current: currentOdds, 
         fullApiData: oddsData,
