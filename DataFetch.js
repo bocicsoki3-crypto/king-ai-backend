@@ -58,7 +58,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
     const ck = `rich_context_v46_apif_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
     
     // === JAVÍTÁS: A 'forceReAnalysis' paraméter használata a cache ellenőrzésnél ===
-    // (A runFullAnalysis-ból érkező 'forceReAnalysis' boolean-t használjuk)
     if (!forceReAnalysis) {
         const cached = scriptCache.get(ck);
         if (cached) {
