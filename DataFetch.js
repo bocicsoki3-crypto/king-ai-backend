@@ -1,4 +1,4 @@
-// DataFetch.js (Refaktorált v46 - Provider/Factory Pattern)
+// DataFetch.js (Refaktorált v47 - Helyes Provider Routing)
 // Ez a modul most már "Factory"-ként működik.
 // Felelőssége:
 // 1. A fő 'rich_context' cache kezelése.
@@ -9,16 +9,19 @@
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
 import path from 'path';
-// Importáljuk az új, specifikus providereket
+
+// --- JAVÍTÁS (v47): Provider Konszolidáció ---
+// Az 'apiSportsProvider' az EGYETLEN, univerzális providerünk minden RapidAPI adathoz.
+// A hibás, elavult 'newHockeyProvider' és 'newBasketballProvider' importok eltávolítva.
 import * as apiSportsProvider from './providers/apiSportsProvider.js';
-import * as hockeyProvider from './providers/newHockeyProvider.js';
-import * as basketballProvider from './providers/newBasketballProvider.js';
+// --- JAVÍTÁS VÉGE ---
 
 // Importáljuk a megosztott segédfüggvényeket
 import {
     _callGemini as commonCallGemini,
     _getFixturesFromEspn as commonGetFixtures
 } from './providers/common/utils.js';
+
 // --- FŐ CACHE INICIALIZÁLÁS ---
 // (Minden más cache a provider-specifikus fájlokba került)
 const scriptCache = new NodeCache({ stdTTL: 3600 * 2, checkperiod: 600, useClones: false });
@@ -27,21 +30,24 @@ const __dirname = path.dirname(__filename);
 
 /**************************************************************
 * DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v46 (2025-10-31) - Provider/Factory Pattern
+* VERZIÓ: v47 (2025-11-01) - Helyes Provider Routing
 **************************************************************/
 
 /**
  * A "Factory" (gyár) funkció, ami kiválasztja a megfelelő
  * adatlekérő "stratégiát" (provider) a sportág alapján.
+ * (JAVÍTVA v47)
  */
 function getProvider(sport) {
   switch (sport.toLowerCase()) {
+    // --- JAVÍTÁS (v47): MINDEN sportág az univerzális providert használja ---
     case 'soccer':
       return apiSportsProvider;
     case 'hockey':
-      return hockeyProvider;
+      return apiSportsProvider; // JAVÍTVA: A 'newHockeyProvider' helyett
     case 'basketball':
-      return basketballProvider;
+      return apiSportsProvider; // JAVÍTVA: A 'newBasketballProvider' helyett
+    // --- JAVÍTÁS VÉGE ---
     default:
       // Robusztus hibakezelés: ha olyan sport jön, amit nem ismerünk,
       // azonnal dobjunk egyértelmű hibát.
@@ -65,7 +71,6 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
         // Mivel az 'getApiSportsOdds' az 'apiSportsProvider'-be került,
         // ezt a logikát egyszerűsíthetjük, vagy a providerre bízhatjuk.
         // Egyelőre a teljes cache-t adjuk vissza.
-        // TODO: Odds-frissítés implementálása, ha szükséges.
         
         // const fixtureId = cached.rawData.apiFootballData.fixtureId;
         // const oddsResult = await getApiSportsOdds(fixtureId, sport); // EZT MÁR NEM ÉRJÜK EL INNEN
@@ -86,19 +91,18 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
             homeTeamName,
             awayTeamName,
             leagueName,
-           
-             utcKickoff
+            utcKickoff
         };
-        
         const result = await provider.fetchMatchData(options);
+        
         // 3. Mentsd az egységesített eredményt a fő cache-be
         scriptCache.set(ck, result);
-        console.log(`Sikeres adatgyűjtés (v46), cache mentve (${ck}).`);
+        console.log(`Sikeres adatgyűjtés (v47), cache mentve (${ck}).`);
         
         return { ...result, fromCache: false };
     } catch (e) {
-        console.error(`KRITIKUS HIBA a getRichContextualData (v46 - Factory) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
-        throw new Error(`Adatgyűjtési hiba (v46): ${e.message}`);
+        console.error(`KRITIKUS HIBA a getRichContextualData (v47 - Factory) során (${homeTeamName} vs ${awayTeam}): ${e.message}`, e.stack);
+        throw new Error(`Adatgyűjtési hiba (v47): ${e.message}`);
     }
 }
 
