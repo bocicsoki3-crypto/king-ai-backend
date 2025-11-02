@@ -324,14 +324,14 @@ export async function fetchSofascoreData(
             return result; // Visszatérés üres adatokkal
         }
 
-        // 2. Meccs ID lekérése
+        // 2. Meccs ID lekérése (A javított végponttal)
         const eventId = await getSofascoreEventId(homeTeamId, awayTeamId);
         if (!eventId) {
             console.warn(`[Sofascore Provider] Event ID nem található (${homeTeamId} vs ${awayTeamId}). A Sofascore kérés leáll.`);
             return result; // Visszatérés üres adatokkal
         }
 
-        // 3. xG és Felállások lekérése párhuzamosan
+        // 3. xG és Felállások lekérése párhuzamosan (A javított végpontokkal)
         const [xgData, lineupsData] = await Promise.all([
             getSofascoreXg(eventId),
             getSofascoreLineups(eventId)
