@@ -6,9 +6,10 @@ import { runFullAnalysis } from './AnalysisFlow.js';
 import { getHistoryFromSheet, getAnalysisDetailFromSheet, deleteHistoryItemFromSheet } from './sheets.js';
 import aiService, { getChatResponse } from './AI_Service.js';
 
-// === MÓDOSÍTÁS: Az öntanuló modulok VALÓDI importálása ===
+// === MÓDOSÍTÁS (v50.1): Az öntanuló modulok importálása ===
 import { updatePowerRatings, runConfidenceCalibration } from './LearningService.js';
-// A 'runPostMatchLearning' egy magasabb szintű vezérlő lehet, de most direktben hívjuk a modulokat
+// ÚJ (v50.1): Az eredmény-elszámoló importálása
+import { runSettlementProcess } from './settlementService.js'; 
 
 const app = express();
 // --- Middleware Beállítások ---
@@ -33,7 +34,8 @@ app.get('/getFixtures', async (req, res) => {
         if (!sport || !days) {
             return res.status(400).json({ error: "Hiányzó 'sport' vagy 'days' paraméter." });
         }
-        const fixtures = await _getFixturesFromEspn(sport, days);
+      
+     const fixtures = await _getFixturesFromEspn(sport, days);
 
        
   // Az ESPN válaszát közvetlenül adjuk vissza, amely tartalmazza a utcKickoff-ot
@@ -42,7 +44,8 @@ app.get('/getFixtures', async (req, res) => {
             odds: {} // Odds adatokat külön kezeljük, itt üres marad
         });
     } catch (e) {
-        console.error(`Hiba a /getFixtures végponton: ${e.message}`, e.stack);
+        console.error(`Hiba a 
+/getFixtures végponton: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver 
 hiba (getFixtures): ${e.message}` });
     }
@@ -59,6 +62,7 @@ app.post('/runAnalysis', async (req, res) => {
         // --- MÓDOSÍTÁS: Paraméterek kinyerése a req.body-ból ---
         const {
             home,
+    
             away,
             force,
             sheetUrl,
@@ -68,13 +72,15 @@ app.post('/runAnalysis', async (req, res) => {
             openingOdds = {} // Alapértelmezett érték, ha hiányzik
         } = req.body;
 
-        // === JAVÍTOTT ELLENŐRZÉS: A req.body alapján ===
+   
+         // === JAVÍTOTT ELLENŐRZÉS: A req.body alapján ===
         if (!home || !away || !sport || !utcKickoff || !leagueName) { 
             console.error('!!! HIBA: Hiányzó body paraméter(ek)! Ellenőrzés:', {
                 home,
                 away,
                 sport,
-                utcKickoff,
+   
+                 utcKickoff,
                 leagueName
             });
             // Részletesebb logolás hiba esetén
@@ -89,21 +95,22 @@ app.post('/runAnalysis', async (req, res) => {
             force,
             sheetUrl,
             utcKickoff,
-            leagueName
+   
+             leagueName
         };
 
         console.log(`Elemzés indítása...`);
         const result = await runFullAnalysis(params, sport, openingOdds);
 if (result.error) {
             console.error(`Elemzési hiba (AnalysisFlow): ${result.error}`);
-return res.status(500).json({ error: result.error });
+            return res.status(500).json({ error: result.error });
         }
 
         console.log("Elemzés sikeresen befejezve, válasz elküldve.");
         res.status(200).json(result);
-} catch (e) {
+    } catch (e) {
         console.error(`Hiba a /runAnalysis végponton: ${e.message}`, e.stack);
-res.status(500).json({ error: `Szerver hiba (runAnalysis): ${e.message}` });
+        res.status(500).json({ error: `Szerver hiba (runAnalysis): ${e.message}` });
     }
 });
 
@@ -118,6 +125,7 @@ app.get('/getHistory', async (req, res) => {
     } catch (e) {
         console.error(`Hiba a /getHistory végponton: ${e.message}`, e.stack);
       
+  
   res.status(500).json({ error: `Szerver hiba (getHistory): ${e.message}` });
     }
 });
@@ -130,7 +138,8 @@ app.get('/getAnalysisDetail', async (req, res) => {
         }
         const detailData = await getAnalysisDetailFromSheet(id);
         if (detailData.error) {
-            return res.status(500).json(detailData);
+         
+           return res.status(500).json(detailData);
  
        }
         res.status(200).json(detailData);
@@ -148,7 +157,8 @@ app.post('/deleteHistoryItem', async (req, res) => {
         }
         const deleteData = await deleteHistoryItemFromSheet(id);
         if (deleteData.error) {
-            return res.status(500).json(deleteData);
+         
+           return res.status(500).json(deleteData);
  
        }
         res.status(200).json(deleteData);
@@ -167,7 +177,8 @@ app.post('/askChat', async (req, res) => {
         const chatData = await getChatResponse(context, history, question);
 
         if (chatData.error) {
-       
+  
+      
       return res.status(500).json(chatData);
         }
         res.status(200).json(chatData);
@@ -176,37 +187,56 @@ app.post('/askChat', async (req, res) => {
         res.status(500).json({ error: `Szerver hiba (askChat): ${e.message}` });
     }
 });
-// === MÓDOSÍTÁS: Az öntanuló végpont élesítése ===
+
+// === MÓDOSÍTÁS (v50.1): Az öntanuló végpont átalakítása és levédése ===
 app.post('/runLearning', async (req, res) => {
     try {
-        console.log("Öntanulási folyamat indítása (Power Ratings & Bizalmi Kalibráció)...");
+        // --- BIZTONSÁGI ELLENŐRZÉS (KÖTELEZŐ) ---
+        // Ez a végpont módosítja az adatbázist és tanulást végez.
+        // Védeni KELL egy titkos kulccsal, amit a .env fájlban kell tárolni.
+        // Futtatáshoz küldj egy 'key' attribútumot a JSON body-ban, vagy 'x-admin-key' fejlécet.
+        const providedKey = req.body.key || req.headers['x-admin-key'];
+        
+        // ÁLLÍTS BE EGY 'ADMIN_API_KEY' VÁLTOZÓT A .ENV FÁJLBAN (pl. egy erős, véletlenszerű string)
+        if (!process.env.ADMIN_API_KEY || providedKey !== process.env.ADMIN_API_KEY) {
+            console.warn("Sikertelen ÖNTANULÁSI kísérlet (hibás admin kulcs).");
+            return res.status(401).json({ error: "Hitelesítés sikertelen. Admin kulcs szükséges." });
+        }
+        // --- BIZTONSÁGI ELLENŐRZÉS VÉGE ---
 
-        // Elindítjuk a két öntanuló folyamatot párhuzamosan (vagy szekvenciálisan, ha a kalibráció függ a friss ratingektől - itt most párhuzamos)
-        // Fontos: a runConfidenceCalibration Promise-t ad vissza, az updatePowerRatings jelenleg nem, de a biztonság kedvéért Promise.all-ba tesszük
+        console.log("Öntanulási folyamat indítása (1. Lépés: Eredmény-elszámolás)...");
+        
+        // 1. LÉPÉS: Eredmények elszámolása (W/L/P státuszok frissítése a Sheet-ben)
+        const settlementResult = await runSettlementProcess();
+        if (settlementResult.error) {
+             console.error("Hiba az eredmény-elszámolás során, a tanulás leáll:", settlementResult.error);
+             return res.status(500).json({ error: "Hiba az eredmény-elszámolás során.", details: settlementResult.error });
+        }
+        console.log(`Eredmény-elszámolás kész. Frissítve: ${settlementResult.updated} sor.`);
+
+        console.log("Öntanulási folyamat (2. Lépés: Kalibráció és Rating frissítés) indul...");
+
+        // 2. LÉPÉS: Párhuzamosan futtatjuk a kalibrációt (ami a friss W/L/P-t olvassa) és a rating frissítést
         const [powerRatingResult, calibrationResult] = await Promise.all([
-    
-        Promise.resolve(updatePowerRatings()), // Becsomagoljuk Promise-ba
-            runConfidenceCalibration() // Ez már Promise-t ad vissza
+            Promise.resolve(updatePowerRatings()), // Becsomagoljuk Promise-ba
+            runConfidenceCalibration() // Ez már Promise-t ad vissza (a frissített Sheet alapján)
         ]);
 
         const learningResult = {
             message: "Öntanuló modulok sikeresen lefutottak.",
-            power_ratings: powerRatingResult || { updated: false, message:"Nem volt elég adat a frissítéshez." }, // Jobb visszajelzés
-         
-   confidence_calibration: calibrationResult || { error: "Ismeretlen hiba a kalibráció során."
-} // Jobb hibakezelés
+            settlement: settlementResult, // Eredmény-elszámolás riportja
+            power_ratings: powerRatingResult || { updated: false, message:"Nem volt elég adat a frissítéshez." },
+            confidence_calibration: calibrationResult || { error: "Ismeretlen hiba a kalibráció során." }
         };
-// Ellenőrizzük a kalibráció hibáját expliciten
+
         if (learningResult.confidence_calibration.error) {
              console.error("Hiba a bizalmi kalibráció során:", learningResult.confidence_calibration.error);
-// Dönthetünk úgy, hogy itt 500-as hibát adunk, vagy csak logoljuk és megyünk tovább
-             // Most csak logoljuk, és 200 OK választ adunk a többi eredménnyel
         }
 
         res.status(200).json(learningResult);
-} catch (e) {
+    } catch (e) {
         console.error(`Hiba a /runLearning végponton: ${e.message}`, e.stack);
-res.status(500).json({ error: `Szerver hiba (runLearning): ${e.message}` });
+        res.status(500).json({ error: `Szerver hiba (runLearning): ${e.message}` });
     }
 });
 // === MÓDOSÍTÁS VÉGE ===
@@ -215,14 +245,14 @@ res.status(500).json({ error: `Szerver hiba (runLearning): ${e.message}` });
 async function startServer() {
     try {
         console.log("Szerver indítása...");
-app.listen(PORT, () => {
+        app.listen(PORT, () => {
             console.log(`🎉 King AI Backend sikeresen elindult!`);
             console.log(`A szerver itt fut: http://localhost:${PORT}`);
             console.log("A frontend most már ehhez a címhez tud csatlakozni.");
         });
-} catch (e) {
+    } catch (e) {
         console.error("KRITIKUS HIBA a szerver indítása során:", e.message, e.stack);
-// Korábbi hibakereső logok itt voltak, szükség esetén visszaállíthatók
+        // Korábbi hibakereső logok itt voltak, szükség esetén visszaállíthatók
         // if (!process.env.GOOGLE_CREDENTIALS) { ... }
     }
 }
