@@ -1,30 +1,36 @@
-// providers/common/utils.js
+// providers/common/utils.ts
 // Ez a fájl tartalmazza az összes megosztott, általános segédfüggvényt.
+// MÓDOSÍTÁS (v52 - TS): Átállás TypeScript-re.
 
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 import {
     GEMINI_API_KEY, GEMINI_MODEL_ID,
     SPORT_CONFIG, API_HOSTS // ESPN és Gemini hívásokhoz szükségesek
 } from '../../config.js';
 // Figyelj a relatív elérési útra!
 
+// Kanonikus típusok importálása
+import { ICanonicalOdds, ICanonicalStats } from '../../src/types/canonical.d.ts';
+
+
 /**
  * Általános, hibatűrő API hívó segédfüggvény (az eredeti DataFetch.js-ből)
  * Ezt minden provider használhatja, amelyiknek nincs szüksége egyedi kulcsrotációra.
  */
-export async function makeRequest(url, config = {}, retries = 1) {
+export async function makeRequest(url: string, config: AxiosRequestConfig = {}, retries: number = 1): Promise<any> {
     let attempts = 0;
     const method = config.method?.toUpperCase() || 'GET';
+    
     while (attempts <= retries) {
         try {
-            const baseConfig = {
+            const baseConfig: AxiosRequestConfig = {
                 timeout: 25000,
                 validateStatus: (status) => status >= 200 && status < 500,
                 headers: {}
-           };
-            const currentConfig = { ...baseConfig, ...config, headers: { ...baseConfig.headers, ...config?.headers } };
+            };
+            const currentConfig: AxiosRequestConfig = { ...baseConfig, ...config, headers: { ...baseConfig.headers, ...config?.headers } };
             
-            let response;
+            let response: any;
             if (method === 'POST') {
                 response = await axios.post(url, currentConfig.data || {}, currentConfig);
             } else {
@@ -32,24 +38,28 @@ export async function makeRequest(url, config = {}, retries = 1) {
             }
 
             if (response.status < 200 || response.status >= 300) {
-                const error = new Error(`API hiba: Státusz kód ${response.status} (${method} ${url.substring(0, 100)}...)`);
+                const error: any = new Error(`API hiba: Státusz kód ${response.status} (${method} ${url.substring(0, 100)}...)`);
                 error.response = response;
                 throw error;
             }
             return response;
-        } catch (error) {
+
+        } catch (error: any) {
             attempts++;
             let errorMessage = `API (${method}) hívás hiba (${attempts}/${retries + 1}): ${url.substring(0, 150)}... - `;
+            
             if (error.response) {
                 errorMessage += `Státusz: ${error.response.status}, Válasz: ${JSON.stringify(error.response.data)?.substring(0, 150)}`;
                 if (error.response.status === 429) {
-                    const quotaError = new Error(errorMessage);
+                    const quotaError: any = new Error(errorMessage);
                     quotaError.response = error.response;
                     quotaError.isQuotaError = true;
                     throw quotaError; 
                 }
-                if ([401, 403].includes(error.response.status)) { console.error(`HITELESÍTÉSI HIBA: ${errorMessage}`);
-                    return null; 
+                if ([401, 403].includes(error.response.status)) { 
+                    console.error(`HITELESÍTÉSI HIBA: ${errorMessage}`);
+                    // Dobjuk tovább a hibát, hogy a JWT-kezelő elkapja
+                    throw error; 
                 }
             } else if (error.request) {
                 errorMessage += `Timeout (${config.timeout || 25000}ms) vagy nincs válasz.`;
@@ -65,41 +75,58 @@ export async function makeRequest(url, config = {}, retries = 1) {
             await new Promise(resolve => setTimeout(resolve, 1500 * attempts));
         }
     }
-    return null;
+    // Ez az ág elméletileg elérhetetlen, de a TS fordító megköveteli a visszatérési értéket
+    throw new Error("API hívás váratlanul befejeződött.");
 }
 
 /**
  * Gemini API Hívó (az eredeti DataFetch.js-ből)
  */
-export async function _callGemini(prompt) {
-    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') { throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY.");
-    }
-    if (!GEMINI_MODEL_ID) { throw new Error("Hiányzó GEMINI_MODEL_ID.");
-    }
+export async function _callGemini(prompt: string): Promise<string> {
+    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') { throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY."); }
+    if (!GEMINI_MODEL_ID) { throw new Error("Hiányzó GEMINI_MODEL_ID."); }
+    
     const finalPrompt = `${prompt}\n\nCRITICAL OUTPUT INSTRUCTION: Your entire response must be ONLY a single, valid JSON object.\nDo not add any text, explanation, or introductory phrases outside of the JSON structure itself.\nEnsure the JSON is complete and well-formed.`;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent?key=${GEMINI_API_KEY}`;
-    const payload = { contents: [{ role: "user", parts: [{ text: finalPrompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 8192, responseMimeType: "application/json", }, };
+    
+    const payload = { 
+        contents: [{ role: "user", parts: [{ text: finalPrompt }] }], 
+        generationConfig: { 
+            temperature: 0.2, 
+            maxOutputTokens: 8192, 
+            responseMimeType: "application/json", 
+        }, 
+    };
+    
     console.log(`Gemini API hívás indul a '${GEMINI_MODEL_ID}' modellel... (Prompt hossza: ${finalPrompt.length})`);
+    
     try {
-        const response = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 120000, validateStatus: () => true });
+        const response = await axios.post(url, payload, { 
+            headers: { 'Content-Type': 'application/json' }, 
+            timeout: 120000, 
+            validateStatus: () => true // Minden státuszkódot elfogadunk, hogy kézzel kezelhessük
+        });
+        
         if (response.status !== 200) {
             console.error('--- RAW GEMINI ERROR RESPONSE ---');
             console.error(JSON.stringify(response.data, null, 2));
             throw new Error(`Gemini API hiba: Státusz ${response.status} - ${JSON.stringify(response.data?.error?.message || response.data)}`);
         }
+        
         const responseText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        
         if (!responseText) {
             const finishReason = response.data?.candidates?.[0]?.finishReason || 'Ismeretlen';
+            console.warn('--- GEMINI BLOCK RESPONSE ---', JSON.stringify(response.data, null, 2));
             throw new Error(`Gemini nem adott vissza szöveges tartalmat. Ok: ${finishReason}`);
         }
-        let potentialJson = responseText.trim();
-        const jsonMatch = potentialJson.match(/```json\n([\s\S]*?)\n```/);
-        if (jsonMatch && jsonMatch[1]) {
-            potentialJson = jsonMatch[1].trim();
-        }
-        JSON.parse(potentialJson); // Validálás
-        return potentialJson;
-    } catch (e) {
+        
+        // A 'responseMimeType: "application/json"' miatt a válasz már tiszta JSON string
+        // Nincs szükség a '```json' csupaszításra
+        JSON.parse(responseText); // Validálás
+        return responseText;
+
+    } catch (e: any) {
         console.error(`Végleges hiba a Gemini API hívás (_callGemini) során: ${e.message}`, e.stack);
         throw e;
     }
@@ -107,22 +134,32 @@ export async function _callGemini(prompt) {
 
 /**
  * Gemini Prompt Generátor (az eredeti DataFetch.js-ből)
+ * Megjegyzés: Ez a prompt most már kevésbé kritikus a CoT (Chain-of-Thought)
+ * architektúra miatt, de a "stub" providerek (hockey, basketball) még használják.
  */
-export function PROMPT_V43(sport, homeTeamName, awayTeamName, apiSportsHomeSeasonStats, apiSportsAwaySeasonStats, apiSportsH2HData, apiSportsLineups) {
+export function PROMPT_V43(
+    sport: string, 
+    homeTeamName: string, 
+    awayTeamName: string, 
+    apiSportsHomeSeasonStats: ICanonicalStats | null, // TÍPUSOSÍTVA
+    apiSportsAwaySeasonStats: ICanonicalStats | null, // TÍPUSOSÍTVA
+    apiSportsH2HData: any[] | null, 
+    apiSportsLineups: any[] | null
+): string {
     
-    // --- v50.5 JAVÍTÁS: A hibás [source] címkék eltávolítva a stringekből ---
-
     let calculatedStatsInfo = "NOTE ON STATS: No reliable API-Sports season stats available. Please use your best knowledge for the CURRENT SEASON/COMPETITION stats.\n";
     if (apiSportsHomeSeasonStats || apiSportsAwaySeasonStats) {
         calculatedStatsInfo = `CRITICAL NOTE ON STATS: The following basic stats have been PRE-CALCULATED from API-Sports.
 Use these exact numbers; do not rely on your internal knowledge for these specific stats.\n`;
         if (apiSportsHomeSeasonStats) {
-            calculatedStatsInfo += `Home Calculated (GP=${apiSportsHomeSeasonStats.gamesPlayed ?? 'N/A'}, Form=${apiSportsHomeSeasonStats.form ?? 'N/A'})\n`;
+            // Típusbiztos 'gp' és 'form' használata
+            calculatedStatsInfo += `Home Calculated (GP=${apiSportsHomeSeasonStats.gp ?? 'N/A'}, Form=${apiSportsHomeSeasonStats.form ?? 'N/A'})\n`;
         } else { calculatedStatsInfo += `Home Calculated: N/A\n`; }
         if (apiSportsAwaySeasonStats) {
-            calculatedStatsInfo += `Away Calculated (GP=${apiSportsAwaySeasonStats.gamesPlayed ?? 'N/A'}, Form=${apiSportsAwaySeasonStats.form ?? 'N/A'})\n`;
+            calculatedStatsInfo += `Away Calculated (GP=${apiSportsAwaySeasonStats.gp ?? 'N/A'}, Form=${apiSportsAwaySeasonStats.form ?? 'N/A'})\n`;
         } else { calculatedStatsInfo += `Away Calculated: N/A\n`; }
     }
+
     let h2hInfo = "NOTE ON H2H: No reliable H2H data available from API-Sports. Use your general knowledge for H2H summary and potentially older structured data.\n";
     if (apiSportsH2HData && Array.isArray(apiSportsH2HData) && apiSportsH2HData.length > 0) {
         const h2hString = apiSportsH2HData.map(m => `${m.date} (${m.competition}): ${m.home_team} ${m.score} ${m.away_team}`).join('; ');
@@ -130,17 +167,19 @@ Use these exact numbers; do not rely on your internal knowledge for these specif
 Do not use your internal knowledge for H2H.\n`;
         h2hInfo += `Structured H2H (for JSON output): ${JSON.stringify(apiSportsH2HData)}\n`;
     }
+
     let lineupInfo = "NOTE ON LINEUPS: No API-Sports lineup data available (this is normal if the match is far away). Analyze absentees and formation based on your general knowledge and recent news.\n";
     if (apiSportsLineups && apiSportsLineups.length > 0) {
-        const relevantLineupData = apiSportsLineups.map(t => ({
+        const relevantLineupData = apiSportsLineups.map((t: any) => ({
              team: t.team?.name,
              formation: t.formation,
-             startXI: t.startXI?.map(p => p.player?.name),
-             substitutes: t.substitutes?.map(p => p.player?.name)
+             startXI: t.startXI?.map((p: any) => p.player?.name),
+             substitutes: t.substitutes?.map((p: any) => p.player?.name)
         }));
         lineupInfo = `CRITICAL LINEUP DATA (from API-Sports): ${JSON.stringify(relevantLineupData)}\nUse THIS data *first* to determine absentees, key players, and formation.
 This is more reliable than general knowledge.\n`;
     }
+
     return `CRITICAL TASK: Analyze the ${sport} match: "${homeTeamName}" (Home) vs "${awayTeamName}" (Away).
 Provide a single, valid JSON object. Focus ONLY on the requested fields.
 **CRITICAL: You MUST use the latest factual data provided below (API-Sports) over your general knowledge.**
@@ -199,8 +238,9 @@ STRUCTURE: {
 /**
  * Időjárás (az eredeti DataFetch.js-ből)
  */
-export async function getStructuredWeatherData(stadiumLocation, utcKickoff) {
+export async function getStructuredWeatherData(stadiumLocation: string, utcKickoff: string): Promise<{ temperature_celsius: number | null, description: string }> {
     console.log(`Időjárás lekérés (placeholder): Helyszín=${stadiumLocation}, Időpont=${utcKickoff}`);
+    // TODO: Implementáljon egy valós időjárás API hívást itt (pl. OpenWeatherMap)
     return {
         temperature_celsius: null,
         description: "N/A"
@@ -209,13 +249,8 @@ export async function getStructuredWeatherData(stadiumLocation, utcKickoff) {
 
 /**
  * ESPN Meccslekérdező (az eredeti DataFetch.js-ből)
- * Ezt a fő DataFetch.js hívja, nem a providerek.
- *
- * JAVÍTÁS (v50.4 - Kötegelés): A 80+ kérés párhuzamos futtatása (v50.2)
- * vagy szekvenciális futtatása (v50.3) helyett 5-ös csomagokban (batch)
- * futtatjuk, hogy elkerüljük a rate limitet, de gyorsabbak maradjunk.
  */
-export async function _getFixturesFromEspn(sport, days) {
+export async function _getFixturesFromEspn(sport: string, days: string): Promise<any[]> {
     const sportConfig = SPORT_CONFIG[sport];
     if (!sportConfig?.espn_sport_path || !sportConfig.espn_leagues) return [];
     
@@ -227,15 +262,14 @@ export async function _getFixturesFromEspn(sport, days) {
         date.setUTCDate(date.getUTCDate() + d);
         return date.toISOString().split('T')[0].replace(/-/g, '');
     });
-
-    const allFixtures = []; // Egy tömb a gyűjtött meccseknek
+    
+    const allFixtures: any[] = [];
     const leagueCount = Object.keys(sportConfig.espn_leagues).length;
     console.log(`ESPN: Kötegelt lekérés indul: ${daysInt} nap, ${leagueCount} liga...`);
 
     // --- v50.4 JAVÍTÁS: Kötegelő (Batching) logika ---
     
-    // 1. Készítünk egy listát az összes URL-ről, amit le kell kérni
-    const allUrlsToFetch = [];
+    const allUrlsToFetch: { url: string; leagueName: string; slug: string }[] = [];
     for (const dateString of datesToFetch) {
         for (const [leagueName, leagueData] of Object.entries(sportConfig.espn_leagues)) {
             const slug = leagueData.slug;
@@ -248,27 +282,26 @@ export async function _getFixturesFromEspn(sport, days) {
         }
     }
 
-    // 2. Definiáljuk a köteg méretét és a várakozási időt
-    const BATCH_SIZE = 5; // Egyszerre 5 kérést küldünk
-    const DELAY_BETWEEN_BATCHES = 500; // 500ms várakozás a csomagok között
+    const BATCH_SIZE = 5;
+    const DELAY_BETWEEN_BATCHES = 500;
 
     console.log(`ESPN: Összesen ${allUrlsToFetch.length} kérés indítása ${BATCH_SIZE}-ös kötegekben...`);
-
+    
     for (let i = 0; i < allUrlsToFetch.length; i += BATCH_SIZE) {
         const batchUrls = allUrlsToFetch.slice(i, i + BATCH_SIZE);
         console.log(`ESPN: Köteg futtatása (${i + 1}-${i + batchUrls.length} / ${allUrlsToFetch.length})...`);
-
+        
         const promises = batchUrls.map(req => 
             makeRequest(req.url, { timeout: 8000 })
                 .then(response => {
                     if (!response?.data?.events) return [];
                     return response.data.events
-                        .filter(event => event?.status?.type?.state?.toLowerCase() === 'pre')
-                        .map(event => {
+                        .filter((event: any) => event?.status?.type?.state?.toLowerCase() === 'pre')
+                        .map((event: any) => {
                             const competition = event.competitions?.[0];
                             if (!competition) return null;
-                            const homeTeam = competition.competitors?.find(c => c.homeAway === 'home')?.team;
-                            const awayTeam = competition.competitors?.find(c => c.homeAway === 'away')?.team;
+                            const homeTeam = competition.competitors?.find((c: any) => c.homeAway === 'home')?.team;
+                            const awayTeam = competition.competitors?.find((c: any) => c.homeAway === 'away')?.team;
                             if (event.id && homeTeam?.name && awayTeam?.name && event.date) {
                                 return {
                                     id: String(event.id),
@@ -279,25 +312,21 @@ export async function _getFixturesFromEspn(sport, days) {
                                 };
                             }
                             return null;
-                        }).filter(Boolean);
+                        }).filter(Boolean); // Kiszűri a null értékeket
                 })
-                .catch(error => {
+                .catch((error: any) => {
                     if (error.response?.status === 400) {
                         console.warn(`ESPN Hiba (400): Valószínűleg rossz slug '${req.slug}' (${req.leagueName})?`);
                     } else {
                         console.error(`ESPN Hiba (${req.leagueName}): ${error.message}`);
                     }
-                    return []; // Hiba esetén üres tömböt adunk vissza, hogy a Promise.all ne szakadjon meg
+                    return []; // Hiba esetén üres tömböt adunk vissza
                 })
         );
 
-        // A köteg futtatása
         const batchResults = await Promise.all(promises);
-        
-        // Eredmények hozzáadása a fő listához
         allFixtures.push(...batchResults.flat());
-
-        // Várakozás a következő köteg előtt (ha még van hátra)
+        
         if (i + BATCH_SIZE < allUrlsToFetch.length) {
             await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
         }
@@ -305,56 +334,53 @@ export async function _getFixturesFromEspn(sport, days) {
     // --- v50.4 JAVÍTÁS VÉGE ---
 
     try {
-        // A 'results.flat()' helyett már az 'allFixtures' listát használjuk
         const uniqueFixtures = Array.from(new Map(allFixtures.map(f => [`${f.home}-${f.away}-${f.utcKickoff}`, f])).values());
-        uniqueFixtures.sort((a, b) => new Date(a.utcKickoff) - new Date(b.utcKickoff));
+        uniqueFixtures.sort((a, b) => new Date(a.utcKickoff).getTime() - new Date(b.utcKickoff).getTime());
         console.log(`ESPN: ${uniqueFixtures.length} egyedi meccs lekérve (kötegelve) a következő ${daysInt} napra.`);
         return uniqueFixtures;
-    } catch (e) {
+    } catch (e: any) {
         console.error(`ESPN feldolgozási hiba: ${e.message}`, e.stack);
         return [];
     }
 }
-// providers/common/utils.js (A FÁJL VÉGÉRE ILLESZD BE)
 
-// A 'SPORT_CONFIG' importot már tartalmaznia kell a fájl tetejének.
-// Ha mégsem, írd a többi import alá: 
-// import { SPORT_CONFIG } from '../../config.js';
 /**
  * Meghatározza a fő gól/pont vonalat az odds adatokból.
- * Az AnalysisFlow.js hívja meg.
+ * Az AnalysisFlow.ts hívja meg. Típusosítva.
  */
-export function findMainTotalsLine(oddsData, sport) {
+export function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: string): number {
     const defaultConfigLine = SPORT_CONFIG[sport]?.totals_line || (sport === 'soccer' ? 2.5 : 6.5);
     if (!oddsData?.fullApiData?.bookmakers || oddsData.fullApiData.bookmakers.length === 0) {
         return defaultConfigLine;
     }
 
-    const bookmaker = oddsData.fullApiData.bookmakers.find(b => b.name === "Bet365") || oddsData.fullApiData.bookmakers[0];
+    const bookmaker = oddsData.fullApiData.bookmakers.find((b: any) => b.name === "Bet365") || oddsData.fullApiData.bookmakers[0];
     if (!bookmaker?.bets) return defaultConfigLine;
 
-    let marketName;
-    if (sport === 'soccer') marketName = "over/under";
-    else if (sport === 'hockey') marketName = "total";
-    else if (sport === 'basketball') marketName = "total points";
-    else marketName = "over/under";
-    
-    // v50.3 JAVÍTÁS: Alternatív piacnév keresése
-    let totalsMarket = bookmaker.bets.find(b => b.name.toLowerCase() === marketName);
-    if (!totalsMarket) {
-        const alternativeMarketName = (sport === 'soccer') ? "totals" : null;
-        if (alternativeMarketName) {
-            totalsMarket = bookmaker.bets.find(b => b.name.toLowerCase() === alternativeMarketName);
-        }
+    let marketName: string;
+    let alternativeMarketName: string | null = null;
+    if (sport === 'soccer') {
+        marketName = "over/under";
+        alternativeMarketName = "totals";
+    } else if (sport === 'hockey') {
+        marketName = "total";
+    } else if (sport === 'basketball') {
+        marketName = "total points";
+    } else {
+        marketName = "over/under";
     }
-    // v50.3 JAVÍTÁS VÉGE
+
+    let totalsMarket = bookmaker.bets.find((b: any) => b.name.toLowerCase() === marketName);
+    if (!totalsMarket && alternativeMarketName) {
+        totalsMarket = bookmaker.bets.find((b: any) => b.name.toLowerCase() === alternativeMarketName);
+    }
 
     if (!totalsMarket?.values) {
         console.warn(`Nem található '${marketName}' piac a szorzókban (${sport}).`);
         return defaultConfigLine;
     }
 
-    const linesAvailable = {};
+    const linesAvailable: { [key: string]: { over?: number, under?: number } } = {};
     for (const val of totalsMarket.values) {
         const lineMatch = val.value.match(/(\d+\.\d)/);
         const line = lineMatch ? lineMatch[1] : val.value; 

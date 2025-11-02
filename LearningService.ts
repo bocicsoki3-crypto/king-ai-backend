@@ -1,32 +1,69 @@
-// --- MÓDOSÍTÁS KEZDETE ---
+// LearningService.ts (v52 - TypeScript)
+// MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
+
 import NodeCache from 'node-cache';
 // Szükségünk van a Google Sheet olvasó funkcióra
 import { getHistorySheet } from './sheets.js';
-// --- MÓDOSÍTÁS VÉGE ---
+import { GoogleSpreadsheetRow } from 'google-spreadsheet';
 
-// Globális gyorsítótárak a ratingeknek (Apps Script PropertiesService helyett)
-// stdTTL: 0 azt jelenti, hogy soha nem jár le automatikusan
+// --- Típusdefiníciók a Cache-ben tárolt adatokhoz ---
+
+interface IPowerRating {
+    atk: number;
+    def: number;
+    matches: number;
+}
+
+interface IMatchLogEntry {
+    date: string;
+    sport: string;
+    home: string;
+    away: string;
+    predicted: { h: number; a: number };
+    actual: { h: number; a: number };
+    confidence: number;
+    xg_diff: number;
+}
+
+interface INarrativeRating {
+    [ratingName: string]: number;
+}
+
+interface IConfidenceBucket {
+    wins: number;
+    losses: number;
+    pushes: number;
+    total: number; // W+L
+}
+
+// Globális gyorsítótárak a ratingeknek
 const ratingCache = new NodeCache({ stdTTL: 0 });
-// --- MÓDOSÍTÁS KEZDETE ---
-const confidenceCache = new NodeCache({ stdTTL: 0 }); // <<< --- ÚJ CACHE A KALIBRÁCIÓHOZ
-// --- MÓDOSÍTÁS VÉGE ---
+const confidenceCache = new NodeCache({ stdTTL: 0 });
 
 const POWER_RATING_KEY = 'power_ratings_v2';
 const MATCH_LOG_KEY = 'match_log_v2';
 const NARRATIVE_RATINGS_KEY = 'narrative_ratings_v2';
-// --- MÓDOSÍTÁS KEZDETE ---
-const CONFIDENCE_CALIBRATION_KEY = 'confidence_calibration_v1'; // <<< --- ÚJ KULCS
-// --- MÓDOSÍTÁS VÉGE ---
+const CONFIDENCE_CALIBRATION_KEY = 'confidence_calibration_v1';
 
 // --- ÖNTANULÓ ÉS ÉRTÉKELŐ MODULOK (Cache alapú) ---
 
 /**
  * Naplózza a meccs eredményét a ratingek frissítéséhez (Cache-be).
  */
-export function logMatchResult(sport, home, away, mu_h, mu_a, actual_gh, actual_ga, confidence, xg_diff) {
+export function logMatchResult(
+    sport: string, 
+    home: string, 
+    away: string, 
+    mu_h: number, 
+    mu_a: number, 
+    actual_gh: number, 
+    actual_ga: number, 
+    confidence: number, 
+    xg_diff: number
+): void {
     try {
-        const log = ratingCache.get(MATCH_LOG_KEY) || [];
-        const newEntry = {
+        const log = ratingCache.get<IMatchLogEntry[]>(MATCH_LOG_KEY) || [];
+        const newEntry: IMatchLogEntry = {
             date: new Date().toISOString(), sport, home, away,
             predicted: { h: mu_h, a: mu_a },
             actual: { h: actual_gh, a: actual_ga },
@@ -35,7 +72,7 @@ export function logMatchResult(sport, home, away, mu_h, mu_a, actual_gh, actual_
         log.push(newEntry);
         if (log.length > 300) log.shift(); // Limitáljuk a log méretét
         ratingCache.set(MATCH_LOG_KEY, log);
-    } catch (e) {
+    } catch (e: any) {
         console.error(`Hiba a meccs naplózása közben: ${e.message}`);
     }
 }
@@ -43,22 +80,22 @@ export function logMatchResult(sport, home, away, mu_h, mu_a, actual_gh, actual_
 /**
  * Frissíti a Power Ratingeket a naplózott meccsek alapján (Cache-ben).
  */
-export function updatePowerRatings() {
-    const log = ratingCache.get(MATCH_LOG_KEY) || [];
+export function updatePowerRatings(): { updated: boolean; matches_processed: number; valid_updates: number } | null {
+    const log = ratingCache.get<IMatchLogEntry[]>(MATCH_LOG_KEY) || [];
     if (log.length < 20) { // Csak akkor frissítünk, ha elég új adat gyűlt össze
         console.log(`Power Rating frissítés kihagyva, túl kevés új meccs (${log.length}/20).`);
         return null; // Visszaadjuk, hogy nem történt frissítés
     }
 
-    const powerRatings = ratingCache.get(POWER_RATING_KEY) || {};
+    const powerRatings = ratingCache.get<{ [teamName: string]: IPowerRating }>(POWER_RATING_KEY) || {};
     const learningRate = 0.008; // Óvatos tanulási ráta
     let updatedCount = 0;
-
+    
     log.forEach(match => {
         // Ellenőrzések, hogy csak valid adatokkal tanuljunk
         if (!match.actual || typeof match.actual.h !== 'number' || typeof match.actual.a !== 'number' ||
             !match.predicted || typeof match.predicted.h !== 'number' || typeof match.predicted.a !== 'number' ||
-            match.predicted.h <= 0 || match.predicted.a <= 0) { // Várható érték nem lehet nulla vagy negatív
+            match.predicted.h <= 0 || match.predicted.a <= 0) {
             console.warn(`Power Rating: Hibás adat kihagyva a tanulásból: ${match.home} vs ${match.away}`);
             return;
         }
@@ -74,18 +111,18 @@ export function updatePowerRatings() {
         const homeAtkError = match.actual.h - match.predicted.h;
         const awayAtkError = match.actual.a - match.predicted.a;
         // A védekezési hiba az ellenfél támadó hibája (fordított előjellel a korrekcióhoz)
-        const homeDefError = match.actual.a - match.predicted.a; // Mennyivel lőtt többet a vendég, mint a hazai becsült?
-        const awayDefError = match.actual.h - match.predicted.h; // Mennyivel lőtt többet a hazai, mint a vendég becsült?
-
+        const homeDefError = match.actual.a - match.predicted.a;
+        const awayDefError = match.actual.h - match.predicted.h;
+        
         // Súlyozás a bizalom alapján (magasabb bizalom = nagyobb hatás)
-        const confidenceWeight = Math.max(0.1, (match.confidence || 5) / 10); // Minimum súly
-
+        const confidenceWeight = Math.max(0.1, (match.confidence || 5) / 10);
+        
         // Ratingek frissítése a hibával és a tanulási rátával
         powerRatings[homeTeam].atk += learningRate * homeAtkError * confidenceWeight;
         powerRatings[awayTeam].atk += learningRate * awayAtkError * confidenceWeight;
         // A védekezési ratinget fordítva módosítjuk: ha sokat kaptunk (pozitív hiba), rontjuk a def ratinget (csökkentjük a szorzót)
-        powerRatings[homeTeam].def -= learningRate * homeDefError * confidenceWeight; // homeDefError pozitív, ha a vendég a vártnál többet lőtt
-        powerRatings[awayTeam].def -= learningRate * awayDefError * confidenceWeight; // awayDefError pozitív, ha a hazai a vártnál többet lőtt
+        powerRatings[homeTeam].def -= learningRate * homeDefError * confidenceWeight;
+        powerRatings[awayTeam].def -= learningRate * awayDefError * confidenceWeight;
 
         // Ratingek korlátozása (hogy ne szálljanak el)
         const MIN_RATING = 0.7;
@@ -100,9 +137,9 @@ export function updatePowerRatings() {
         powerRatings[awayTeam].matches++;
         updatedCount++;
     });
-
+    
     if (updatedCount > 0) {
-        ratingCache.set(POWER_RATING_KEY, powerRatings); // Elmentjük a frissített ratingeket
+        ratingCache.set(POWER_RATING_KEY, powerRatings);
         ratingCache.set(MATCH_LOG_KEY, []); // Ürítjük a logot, mert feldolgoztuk
         console.log(`Power ratingek sikeresen frissítve ${log.length} meccs alapján (${updatedCount} valid feldolgozva) (Cache-ben).`);
         return { updated: true, matches_processed: log.length, valid_updates: updatedCount };
@@ -118,23 +155,29 @@ export function updatePowerRatings() {
  * Lekéri az aktuális Power Ratingeket (Cache-ből).
  * @returns {object} A csapatok Power Ratingjeit tartalmazó objektum.
  */
-export function getAdjustedRatings() {
-    return ratingCache.get(POWER_RATING_KEY) || {};
+export function getAdjustedRatings(): { [teamName: string]: IPowerRating } {
+    return ratingCache.get<{ [teamName: string]: IPowerRating }>(POWER_RATING_KEY) || {};
 }
 
 /**
  * Lekéri az aktuális Narratív Ratingeket (Cache-ből).
  * @returns {object} A csapatok Narratív Ratingjeit tartalmazó objektum.
  */
-export function getNarrativeRatings() {
-    return ratingCache.get(NARRATIVE_RATINGS_KEY) || {};
+export function getNarrativeRatings(): { [teamName: string]: INarrativeRating } {
+    return ratingCache.get<{ [teamName: string]: INarrativeRating }>(NARRATIVE_RATINGS_KEY) || {};
+}
+
+interface ILearning {
+    team: string;
+    rating: string;
+    adjustment: number;
 }
 
 /**
  * Frissíti a Narratív Ratingeket a kapott tanulságok alapján (Cache-be).
- * @param {Array<object>} learnings Tanulság objektumok tömbje ({team, rating, adjustment}).
+ * @param {Array<ILearning>} learnings Tanulság objektumok tömbje.
  */
-export function updateNarrativeRatings(learnings) {
+export function updateNarrativeRatings(learnings: ILearning[]): void {
     if (!learnings || learnings.length === 0) return;
 
     const narrativeRatings = getNarrativeRatings();
@@ -149,6 +192,7 @@ export function updateNarrativeRatings(learnings) {
         const team = learning.team.toLowerCase();
         if (!narrativeRatings[team]) narrativeRatings[team] = {}; // Inicializálás, ha új csapat
 
+ 
         const ratingName = learning.rating;
         // Ha még nincs ilyen rating a csapatnál, 0-ról indul
         if (!narrativeRatings[team][ratingName]) narrativeRatings[team][ratingName] = 0;
@@ -169,14 +213,26 @@ export function updateNarrativeRatings(learnings) {
 
 
 // --- MÓDOSÍTÁS KEZDETE ---
-// --- ÚJ FUNKCIÓK: BIZALMI KALIBRÁCIÓ ---
+// --- ÚJ FUNKCIÓK: BIZALMI KALIBRÁCIÓ (Típusosítva) ---
+
+type CalibrationResult = {
+    message: string;
+    processed_relevant_rows: number;
+    significant_buckets: number;
+    error?: undefined;
+} | {
+    error: string;
+    message?: undefined;
+};
+
+type ConfidenceBuckets = { [key: string]: IConfidenceBucket };
 
 /**
  * Elindítja a bizalmi szintek újra-kalibrálását a "History" sheet alapján.
  * Ezt a '/runLearning' végpont hívja meg.
  * @returns {Promise<object>} A kalibráció eredménye.
  */
-export async function runConfidenceCalibration() {
+export async function runConfidenceCalibration(): Promise<CalibrationResult> {
     console.log("Meta-tanulás: Bizalmi kalibráció indítása a 'History' alapján...");
     try {
         const sheet = await getHistorySheet();
@@ -184,51 +240,47 @@ export async function runConfidenceCalibration() {
         
         if (rows.length < 10) {
             console.warn(`Bizalmi kalibráció kihagyva: Túl kevés minta (${rows.length}).`);
-            return { message: "Kalibráció kihagyva (kevés minta)", buckets: 0 };
+            return { message: "Kalibráció kihagyva (kevés minta)", processed_relevant_rows: 0, significant_buckets: 0 };
         }
 
-        const buckets = {};
+        const buckets: ConfidenceBuckets = {};
         // Bucket-ek inicializálása 1.0-tól 9.9-ig (10-esével)
         for (let i = 1; i < 10; i++) {
-            // Kulcs formátum: "alsó_határ-felső_határ", pl. "7.0-7.9"
             const lowerBound = i.toFixed(1);
             const upperBound = (i + 0.9).toFixed(1);
-            const key = `${lowerBound}-${upperBound}`; 
+            const key = `${lowerBound}-${upperBound}`;
             buckets[key] = { wins: 0, losses: 0, pushes: 0, total: 0 };
         }
         // Külön bucket a 10.0-nak
         buckets["10.0-10.0"] = { wins: 0, losses: 0, pushes: 0, total: 0 };
-
-
+        
         let processed = 0;
         for (const row of rows) {
-            const confidenceStr = row.get("Bizalom");
-            const result = row.get("Helyes (W/L/P)")?.toUpperCase(); // Feltételezzük, hogy ez az oszlop létezik és töltve van
+            const confidenceStr = row.get("Bizalom") as string;
+            const result = row.get("Helyes (W/L/P)")?.toUpperCase() as string | undefined;
             
             // Csak akkor dolgozzuk fel, ha van bizalom és érvényes eredmény (W, L, vagy P)
             if (confidenceStr && result && ['W', 'L', 'P'].includes(result)) {
                 const confidence = parseFloat(confidenceStr);
-                // Érvénytelen bizalmi érték kihagyása
+                
                 if (isNaN(confidence) || confidence < 1.0 || confidence > 10.0) continue;
-
-                let bucketKey;
+                
+                let bucketKey: string;
                 if (confidence === 10.0) {
                     bucketKey = "10.0-10.0";
                 } else {
-                    // Melyik bucket-be tartozik? Pl. 7.8 -> floor(7.8) = 7 -> "7.0-7.9"
-                    const confFloor = Math.floor(confidence); 
+                    const confFloor = Math.floor(confidence);
                     bucketKey = `${confFloor.toFixed(1)}-${(confFloor + 0.9).toFixed(1)}`; 
                 }
-
 
                 if (buckets[bucketKey]) {
                     if (result === 'W') buckets[bucketKey].wins++;
                     else if (result === 'L') buckets[bucketKey].losses++;
                     else if (result === 'P') buckets[bucketKey].pushes++;
                     
-                    // A 'total'-ba csak a W és L számít bele, a P nem befolyásolja a nyerési arányt
+                    // A 'total'-ba csak a W és L számít bele
                     if (result === 'W' || result === 'L') {
-                        buckets[bucketKey].total++; 
+                        buckets[bucketKey].total++;
                     }
                     processed++;
                 } else {
@@ -239,11 +291,9 @@ export async function runConfidenceCalibration() {
 
         // Eredmények mentése a cache-be
         confidenceCache.set(CONFIDENCE_CALIBRATION_KEY, buckets);
-        
         console.log(`Bizalmi kalibráció sikeresen lefutott. Feldolgozott releváns sorok: ${processed}.`);
         
-        // Opcionális: Logoljuk azokat a bucket-eket, ahol van legalább 5 minta (W+L)
-        const significantBuckets = {};
+        const significantBuckets: any = {};
         for(const [key, value] of Object.entries(buckets)) {
             if (value.total >= 5) { // Csak ha van elég minta
                 significantBuckets[key] = { 
@@ -252,6 +302,7 @@ export async function runConfidenceCalibration() {
                 };
             }
         }
+        
         if (Object.keys(significantBuckets).length > 0) {
             console.log("Jelentős Kalibrációs Eredmények (min 5 minta):", JSON.stringify(significantBuckets, null, 2));
         } else {
@@ -259,20 +310,19 @@ export async function runConfidenceCalibration() {
         }
 
         return { message: "Kalibráció sikeres.", processed_relevant_rows: processed, significant_buckets: Object.keys(significantBuckets).length };
-
-    } catch (e) {
+    
+    } catch (e: any) {
         console.error(`Hiba a bizalmi kalibráció során: ${e.message}`, e.stack);
-        // Hiba esetén is próbáljuk meg üríteni a cache-t? Vagy hagyjuk a régit? Maradjon a régi.
         return { error: `Kalibrációs hiba: ${e.message}` };
     }
 }
 
 /**
  * Lekéri a kalibrációs térképet a cache-ből.
- * (Az AI_Service hívja meg a getMasterRecommendation során)
+ * (Az AI_Service hívja meg a runStep3_GetStrategy során)
  * @returns {object} A kalibrációs bucket-eket tartalmazó objektum.
  */
-export function getConfidenceCalibrationMap() {
-    return confidenceCache.get(CONFIDENCE_CALIBRATION_KEY) || {};
+export function getConfidenceCalibrationMap(): ConfidenceBuckets {
+    return confidenceCache.get<ConfidenceBuckets>(CONFIDENCE_CALIBRATION_KEY) || {};
 }
 // --- MÓDOSÍTÁS VÉGE ---

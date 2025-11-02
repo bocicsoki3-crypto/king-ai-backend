@@ -1,28 +1,43 @@
-// providers/newBasketballProvider.js (v50 - Egységesített Konfiguráció JAVÍTVA)
+// providers/newBasketballProvider.ts (v52 - TypeScript & Kanonikus Adatmodell)
+// MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
+// A 'fetchMatchData' most már a 'IDataProvider' interfésznek megfelelően
+// Promise<ICanonicalRichContext> típust ad vissza.
+// FIGYELEM: Ez a provider továbbra is "stub" (csonk), de most már
+// típusbiztos és a kanonikus modellt használja.
+
 import axios from 'axios';
 import { makeRequest } from './common/utils.js';
-// --- JAVÍTÁS (v50): Helyes Konfiguráció Importálása ---
-// Az 'API_HOSTS' helyett a dedikált KOSÁRLABDA kulcsokat importáljuk.
+
+// Kanonikus típusok importálása
+import {
+    ICanonicalRichContext,
+    ICanonicalStats,
+    ICanonicalPlayerStats,
+    ICanonicalRawData,
+    ICanonicalOdds
+} from '../src/types/canonical.d.ts';
+
 import {
     BASKETBALL_API_KEY,
     BASKETBALL_API_HOST
 } from '../config.js';
-// --- JAVÍTÁS VÉGE ---
 
-// Importáljuk a megosztott segédfüggvényeket (ha szükségesek)
+// Importáljuk a megosztott segédfüggvényeket
 import {
     _callGemini,
     PROMPT_V43,
     getStructuredWeatherData
 } from './common/utils.js';
+
 /**
  * 🏀 Kosárlabda Adatlekérő Függvény
  * FIGYELEM: Ez a provider jelenleg egy "stub" (csonk).
- * Csak a konfigurációs hibát javítja, de nem kér le valós adatokat.
  * A valós API hívásokat (pl. makeBasketballRequest) implementálni kell.
+ * Most már az ICanonicalRichContext szerződést teljesíti.
  */
-export async function fetchMatchData(options) {
+export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
   const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
+  
   // --- JAVÍTÁS (v50): Konfiguráció ellenőrzése a helyes változókkal ---
   if (!BASKETBALL_API_KEY || !BASKETBALL_API_HOST) {
     throw new Error('[Basketball API] Kritikus konfigurációs hiba: Hiányzó BASKETBALL_API_KEY vagy BASKETBALL_API_HOST a config.js-ben.');
@@ -30,49 +45,110 @@ export async function fetchMatchData(options) {
   
   console.log(`[Basketball Provider]: Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
   console.log(`[Basketball Provider]: FIGYELEM: Ez a provider jelenleg egy "stub" (csonk), és placeholder adatokat ad vissza.`);
+  
   // 1. API HÍVÁSOK
   // TODO: Implementáld a kosárlabda API hívásaidat a 'BASKETBALL_API_HOST' és 'BASKETBALL_API_KEY' felhasználásával.
   // Példa egy (még nem létező) hívófüggvényre:
   // const leagueId = await getBasketballLeagueId(leagueName, BASKETBALL_API_HOST, BASKETBALL_API_KEY);
   // const homeTeamId = await getBasketballTeamId(homeTeamName, leagueId, ...);
   
-  // 2. GEMINI HÍVÁS (opcionális, a placeholder adatokkal)
+  // --- 2. STATISZTIKÁK EGYSÉGESÍTÉSE (KANONIKUS MODELL) ---
+  // Mivel ez egy "stub", szimulált adatokat hozunk létre, hogy megfeleljünk az interfésznek
+  // KRITIKUS LÉPÉS: A 'gp' (Games Played) értékét 1-re állítjuk,
+  // hogy a 'Model.ts' ne dobjon hibát (GP > 0 ellenőrzés).
+  const unifiedHomeStats: ICanonicalStats = {
+      gp: 1, // Kötelező > 0
+      gf: 110, // Placeholder
+      ga: 110, // Placeholder
+      form: null
+  };
+  const unifiedAwayStats: ICanonicalStats = {
+      gp: 1, // Kötelező > 0
+      gf: 110, // Placeholder
+      ga: 110, // Placeholder
+      form: null
+  };
+
+
+  // --- 3. GEMINI HÍVÁS (opcionális, a placeholder adatokkal) ---
   const geminiJsonString = await _callGemini(PROMPT_V43(
        sport, homeTeamName, awayTeamName,
-       null, // Nincs szezon statisztika
+       unifiedHomeStats, // Már a kanonikus statokat adjuk át
+       unifiedAwayStats,
        null, // Nincs H2H
        null // Nincs Lineup
   ));
-  let geminiData = {};
+  
+  let geminiData: any = {};
   try { 
       geminiData = geminiJsonString ? JSON.parse(geminiJsonString) : {};
-  } catch (e) { 
+  } catch (e: any) { 
       console.error(`[Basketball API] Gemini JSON parse hiba: ${e.message}`);
   }
 
-  // 3. ADAT EGYSÉGESÍTÉS (NORMALIZÁLÁS)
-  // KRITIKUS LÉPÉS: Mivel nincsenek API adataink, a 'GP' (Games Played) értéket
-  // 1-re állítjuk, hogy a 'Model.js'  ne dobjon hibát (GP > 0 ellenőrzés).
-  const finalHomeStats = { ...(geminiData.stats?.home || {}), GP: geminiData.stats?.home?.gp || 1 };
-  const finalAwayStats = { ...(geminiData.stats?.away || {}), GP: geminiData.stats?.away?.gp || 1 };
-  const unifiedResult = {
-    rawStats: { home: finalHomeStats, away: finalAwayStats },
-    leagueAverages: geminiData.league_averages || {},
-    richContext: geminiData.h2h_summary || "Kosárlabda specifikus kontextus (Gemini alapján)...",
-    advancedData: geminiData.advanced_data || { home: {}, away: {} },
-    form: geminiData.form || { home_overall: "N/A", away_overall: "N/A" },
-    rawData: { ...geminiData }, // A Gemini válaszát adjuk át nyers adatként
-    oddsData: null,
-    fromCache: false
+  // --- 4. VÉGLEGES ADAT EGYESÍTÉS (KANONIKUS MODELL) ---
+  
+  // Hozzuk létre az alap ICanonicalRawData struktúrát
+  const finalData: ICanonicalRawData = {
+      stats: {
+          home: { ...unifiedHomeStats, ...(geminiData.stats?.home || {}) },
+          away: { ...unifiedAwayStats, ...(geminiData.stats?.away || {}) }
+      },
+      form: {
+          home_overall: unifiedHomeStats.form,
+          away_overall: unifiedAwayStats.form,
+          ...geminiData.form
+      },
+      // Szimulált PlayerStats, mivel ez az API nem támogatja
+      detailedPlayerStats: { 
+          home_absentees: [], 
+          away_absentees: [], 
+          key_players_ratings: { home: {}, away: {} } 
+      },
+      absentees: { home: [], away: [] }, // Szintén a 'detailedPlayerStats'-ból származna
+      h2h_structured: geminiData.h2h_structured || null,
+      ...geminiData // Minden egyéb AI által generált adat (pl. tactics)
   };
-  // Ellenőrzés
-  if (unifiedResult.rawStats.home.GP <= 0 || unifiedResult.rawStats.away.GP <= 0) {
+  
+  // GP felülírása a biztonság kedvéért (az ICanonicalStats-nak megfelelően)
+  finalData.stats.home.gp = unifiedHomeStats.gp;
+  finalData.stats.away.gp = unifiedAwayStats.gp;
+
+  console.log(`[Basketball API] Végleges stats használatban: Home(GP:${finalData.stats.home.gp}), Away(GP:${finalData.stats.away.gp})`);
+
+  const stadiumLocation = geminiData?.contextual_factors?.stadium_location || "N/A";
+  const structuredWeather = await getStructuredWeatherData(stadiumLocation, utcKickoff);
+  if (!finalData.contextual_factors) finalData.contextual_factors = {};
+  finalData.contextual_factors.structured_weather = structuredWeather;
+
+  const richContext = [
+       geminiData.h2h_summary && `- H2H: ${geminiData.h2h_summary}`,
+       geminiData.team_news?.home && `- Hírek: H:${geminiData.team_news.home}`,
+       geminiData.team_news?.away && `- Hírek: V:${geminiData.team_news.away}`,
+       structuredWeather.description !== "N/A" && `- Időjárás: ${structuredWeather.description}`
+  ].filter(Boolean).join('\n') || "N/A";
+
+
+  // A végső ICanonicalRichContext objektum összeállítása
+  const result: ICanonicalRichContext = {
+       rawStats: finalData.stats,
+       leagueAverages: geminiData.league_averages || {},
+       richContext,
+       advancedData: geminiData.advancedData || { home: {}, away: {} },
+       form: finalData.form,
+       rawData: finalData,
+       oddsData: null, // Ez az API nem szolgáltat odds-okat
+       fromCache: false
+  };
+
+  // Kritikus ellenőrzés (A 'gp' kulcsra, ahogy az interfész diktálja)
+  if (result.rawStats.home.gp <= 0 || result.rawStats.away.gp <= 0) {
      console.warn("[Basketball API] Figyelmeztetés: A Gemini nem adott meg GP-t, 1-re állítva.");
-     unifiedResult.rawStats.home.GP = 1;
-     unifiedResult.rawStats.away.GP = 1;
+     result.rawStats.home.gp = 1;
+     result.rawStats.away.gp = 1;
   }
 
-  return unifiedResult;
+  return result;
 }
 
-export const providerName = 'new-basketball-api';
+export const providerName = 'new-basketball-api-stub';

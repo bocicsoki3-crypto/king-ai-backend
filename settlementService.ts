@@ -1,8 +1,39 @@
-// --- settlementService.js (v50.1 - Új Modul) ---
+// --- settlementService.ts (v52 - TypeScript) ---
 // Ez a modul felelős a "Post-Match Settlement" (Utólagos Eredmény-elszámolás) futtatásáért.
+// MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
 
 import { getHistorySheet } from './sheets.js';
 import { getApiSportsFixtureResult } from './providers/apiSportsProvider.js';
+import { GoogleSpreadsheetRow } from 'google-spreadsheet';
+
+// --- Típusdefiníciók ---
+
+// Az 'getApiSportsFixtureResult' által visszaadott típus
+type FixtureResult = {
+    home: number;
+    away: number;
+    status: 'FT';
+} | {
+    status: string; // Pl. 'HT', 'NS', stb.
+    home?: undefined;
+    away?: undefined;
+} | null;
+
+// Az elszámolási folyamat eredményének típusa
+type SettlementResult = {
+    message: string;
+    processed: number;
+    updated: number;
+    errors: number;
+    error?: undefined;
+} | {
+    error: string;
+    processed: number;
+    updated: number;
+    errors: number;
+    message?: undefined;
+};
+
 
 /**
  * Összehasonlítja a tárolt tippet a valós végeredménnyel és visszaadja a W/L/P státuszt.
@@ -10,15 +41,15 @@ import { getApiSportsFixtureResult } from './providers/apiSportsProvider.js';
  * @param {object} result A valós eredmény (pl. { home: 2, away: 1, status: 'FT' }).
  * @returns {string} "W" (Win), "L" (Loss), vagy "P" (Push/Void).
  */
-function checkPredictionCorrectness(prediction, result) {
-    if (!prediction || prediction === 'N/A' || !result || result.status !== 'FT') {
+function checkPredictionCorrectness(prediction: string, result: Extract<FixtureResult, { status: 'FT' }>): "W" | "L" | "P" | "N/A" {
+    if (!prediction || prediction === 'N/A' || !result) {
         return "N/A"; // Nem lehet kiértékelni
     }
 
     const { home, away } = result;
     const totalGoals = home + away;
     const lowerPred = prediction.toLowerCase();
-
+    
     try {
         // 1X2 piacok
         if (lowerPred.includes('hazai győzelem') || lowerPred.includes('home')) {
@@ -72,7 +103,7 @@ function checkPredictionCorrectness(prediction, result) {
         console.warn(`[Settlement] Ismeretlen tipp formátum, nem lehet kiértékelni: "${prediction}"`);
         return "N/A";
 
-    } catch (e) {
+    } catch (e: any) {
         console.error(`[Settlement] Hiba a tipp kiértékelésekor (${prediction}): ${e.message}`);
         return "N/A";
     }
@@ -83,7 +114,7 @@ function checkPredictionCorrectness(prediction, result) {
  * Fő elszámolási folyamat.
  * Végigmegy a "History" lapon, lekéri a hiányzó eredményeket és frissíti a W/L/P státuszt.
  */
-export async function runSettlementProcess() {
+export async function runSettlementProcess(): Promise<SettlementResult> {
     console.log("[Settlement] Eredmény-elszámolási folyamat indítása...");
     let processedCount = 0;
     let updatedCount = 0;
@@ -91,37 +122,37 @@ export async function runSettlementProcess() {
 
     try {
         const sheet = await getHistorySheet();
-        const rows = await sheet.getRows();
+        const rows: GoogleSpreadsheetRow<any>[] = await sheet.getRows();
 
         const unsettledRows = rows.filter(row => {
-            const status = row.get("Helyes (W/L/P)");
-            const fixtureId = row.get("FixtureID");
+            const status = row.get("Helyes (W/L/P)") as string | undefined;
+            const fixtureId = row.get("FixtureID") as string | undefined;
             // Csak azokat, amik még nincsenek kitöltve ÉS van FixtureID-juk
             return (!status || status === "N/A" || status === "") && (fixtureId && fixtureId !== "null");
         });
-
+        
         if (unsettledRows.length === 0) {
             console.log("[Settlement] Befejezve. Nem található új, elszámolandó sor.");
-            return { message: "Nincs elszámolandó sor.", processed: 0, updated: 0 };
+            return { message: "Nincs elszámolandó sor.", processed: 0, updated: 0, errors: 0 };
         }
 
         console.log(`[Settlement] ${unsettledRows.length} elszámolatlan sor található. Feldolgozás indul...`);
-
+        
         // A sorok egyenkénti feldolgozása (elkerülve az API rate limitet)
         for (const row of unsettledRows) {
-            const fixtureId = row.get("FixtureID");
-            const sport = row.get("Sport");
-            const prediction = row.get("Tipp");
-            const analysisId = row.get("ID");
+            const fixtureId = row.get("FixtureID") as string;
+            const sport = row.get("Sport") as string;
+            const prediction = row.get("Tipp") as string;
+            const analysisId = row.get("ID") as string;
             
             try {
                 // 1. Valós eredmény lekérése (sport jelenleg 'soccer'-re van korlátozva a providerben)
-                const result = await getApiSportsFixtureResult(fixtureId, sport);
+                const result: FixtureResult = await getApiSportsFixtureResult(fixtureId, sport);
                 processedCount++;
 
-                if (result && result.status === 'FT') {
-                    // 2. Eredmény kiértékelése
-                    const wlp_status = checkPredictionCorrectness(prediction, result);
+                if (result && result.status === 'FT' && result.home !== undefined) {
+                    // 2. Eredmény kiértékelése (result típusa itt már szűkítve van 'FT'-re)
+                    const wlp_status = checkPredictionCorrectness(prediction, result as Extract<FixtureResult, { status: 'FT' }>);
                     const finalScore = `${result.home}-${result.away}`;
 
                     // 3. Sor frissítése a Google Sheet-ben
@@ -142,7 +173,7 @@ export async function runSettlementProcess() {
                 // Várakozás a Rate Limiting elkerülése érdekében (RapidAPI limit)
                 await new Promise(resolve => setTimeout(resolve, 500)); // Fél másodperc várakozás
 
-            } catch (e) {
+            } catch (e: any) {
                 errorCount++;
                 console.error(`[Settlement] Hiba a sor feldolgozása közben (ID: ${analysisId}): ${e.message}`);
             }
@@ -155,8 +186,8 @@ export async function runSettlementProcess() {
             updated: updatedCount,
             errors: errorCount
         };
-
-    } catch (e) {
+        
+    } catch (e: any) {
         console.error(`[Settlement] KRITIKUS HIBA az elszámolási folyamat során: ${e.message}`, e.stack);
         return { error: `Kritikus hiba: ${e.message}`, processed: processedCount, updated: updatedCount, errors: errorCount };
     }
