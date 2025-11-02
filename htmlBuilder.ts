@@ -1,20 +1,14 @@
-// htmlBuilder.ts (v52.2 - 'import type' javítás)
-// MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
-// A 'buildAnalysisHtml' függvény most már a CoT (Chain-of-Thought)
-// által generált 'fullAnalysisReport' objektum típusosított
-// (bár 'any' szinten) kezelésére van felkészítve.
+// htmlBuilder.ts (v52.3 - TS2339 hibajavítás)
+// JAVÍTÁS: TS2339 (TypeError: .split is not a function) javítva
+// a 'keyQuestionsHtml' generátor robusztusabbá tételével.
 
-// === JAVÍTÁS (TS2846) ===
-// A 'import' helyett 'import type'-ot használunk, mivel a .d.ts fájlok
-// nem tartalmaznak futásidejű kódot, csak típus-deklarációkat.
-import type { ICanonicalOdds } from './src/types/canonical.d.ts';
-// === JAVÍTÁS VÉGE ===
+import type { ICanonicalOdds } from './src/types/canonical.d.ts'; 
 
 /**************************************************************
 * htmlBuilder.ts - HTML Generátor Modul (Node.js Verzió)
-* VÁLTOZÁS (v52.2 - TS):
-* - Javítva a TS2846 hiba: Az 'import' ki lett cserélve 'import type'-ra
-* a canonical.d.ts típusdefiníciós fájl importálásakor.
+* VÁLTOZÁS (v52.3 - TS):
+* - Javítva a 'key_questions' feldolgozása, hogy kezelje a 'null'
+* vagy 'undefined' értékeket, megelőzve a .split() hibát.
 **************************************************************/
 
 /**
@@ -34,12 +28,9 @@ function escapeHTML(str: string | null | undefined): string {
         '"': '&quot;',
         "'": '&#39;'
     };
-    // Kicseréljük az összes HTML-re veszélyes karaktert a biztonságos megfelelőjére.
     tempStr = tempStr.replace(/[&<>"']/g, (match) => escapeMap[match]);
     
     // 2. lépés: A **kiemelés** cseréje <strong> tag-re.
-    // Mivel a '*' karakter nem lett escape-elve, ez biztonságosan futtatható
-    // az escape-elt stringen.
     tempStr = tempStr.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     
     return tempStr;
@@ -47,16 +38,12 @@ function escapeHTML(str: string | null | undefined): string {
 
 /**
  * Segédfüggvény AI szövegek feldgozásához (escape + newline -> <br>)
- * @param text A bemeneti AI szöveg
- * @returns {string} A formázott HTML string
  */
 const processAiText = (text: string | null | undefined): string => {
     if (!text || text.includes("Hiba") || text.trim() === 'N/A') {
-        return `<p>${escapeHTML(text || "Hiba.")}</p>`;
+        return `<p>${escapeHTML(text || "N/A.")}</p>`; // N/A-t adunk vissza hiba esetén
     }
-    // A **kiemelés** (strong tag) kezelése az escapeHTML-ben
     const escapedHtml = escapeHTML(text);
-    // Sortörések cseréje <br>-re
     return escapedHtml.replace(/\n/g, '<br>');
 };
 
@@ -75,7 +62,6 @@ function getRadialChartHtml(pHome: string | number, pDraw: string | number, pAwa
     const drawOffset = -homeSegment;
     const awayOffset = -(homeSegment + drawSegment);
     
-    // JAVÍTÁS: Százalékok strong tagjei megkapják a glowing-text-white classt
     return `
     <div class="radial-chart-container">
         <svg class="radial-chart" width="100%" height="100%" viewBox="0 0 100 100">
@@ -113,9 +99,8 @@ function getRadialChartHtml(pHome: string | number, pDraw: string | number, pAwa
 function getGaugeHtml(confidence: number | string, label: string = ""): string {
     const safeConf = Math.max(0, Math.min(10, parseFloat(String(confidence)) || 0));
     const percentage = safeConf * 10;
-    const circumference = 235.6; // ~90% of circle for 180 degree arc
+    const circumference = 235.6; 
 
-    // JAVÍTÁS: A gauge-text már alapból megkapja a glowing-text-white classt
     return `
     <div class="gauge-container">
         <svg class="gauge-svg" viewBox="0 0 100 85">
@@ -159,7 +144,6 @@ function getMicroAnalysesHtml(microAnalyses: any): string {
     }
 
     let html = '';
-    // Kulcsnevek ellenőrzése (pl. btts_analysis)
     const analyses: { [key: string]: string | undefined } = {
         'BTTS': microAnalyses.btts_analysis,
         'GÓL O/U': microAnalyses.goals_ou_analysis,
@@ -168,10 +152,9 @@ function getMicroAnalysesHtml(microAnalyses: any): string {
     };
     
     Object.entries(analyses).forEach(([key, text]) => {
-        if (!text) return; // Kihagyja, ha az adott elemzés hiányzik
+        if (!text) return; 
         
         const title = key.toUpperCase().replace(/_/g, ' ');
-        // Szétválasztás a "Bizalom:" alapján
         const parts = (text || "Hiba.").split('Bizalom:');
         const analysisText = parts[0] || "Elemzés nem elérhető.";
         const confidenceText = parts[1] ? `**Bizalom: ${parts[1].trim()}**` : "**Bizalom: N/A**";
@@ -192,16 +175,9 @@ function getMicroAnalysesHtml(microAnalyses: any): string {
 
 /**
  * Fő HTML építő függvény.
- * @param fullAnalysisReport A CoT (Chain-of-Thought) 3 lépésének egyesített eredménye.
- * @param matchData Alapvető meccs adatok.
- * @param oddsData Kanonikus odds adatok.
- * @param valueBets Számított érték fogadások.
- * @param modelConfidence A modell statisztikai bizalma.
- * @param sim A szimuláció eredménye.
- * @param masterRecommendation A végső ajánlás (már része a fullAnalysisReport-nak).
  */
 export function buildAnalysisHtml(
-    fullAnalysisReport: any, // Az egyesített CoT eredmény (Step1 + Step2 + Step3)
+    fullAnalysisReport: any, 
     matchData: { home: string; away: string; sport: string; mainTotalsLine: number | string; mu_h: number | string; mu_a: number | string; propheticTimeline: null }, 
     oddsData: ICanonicalOdds | null, 
     valueBets: any[], 
@@ -319,16 +295,20 @@ export function buildAnalysisHtml(
          <div class="market-card-grid">${marketCardsHtml}</div>
     </div>`;
     
-    // Kulcskérdések
-    let keyQuestionsHtml = '<p>- Hiba.</p>';
-    if (fullAnalysisReport?.key_questions && !fullAnalysisReport.key_questions.includes("Hiba")) {
+    // === JAVÍTÁS (TS2339 / ) ===
+    // Ellenőrizzük, hogy a 'key_questions' string-e, mielőtt a .split()-et hívnánk.
+    let keyQuestionsHtml = '<p>- Nincsenek kulcskérdések azonosítva.</p>';
+    if (fullAnalysisReport?.key_questions && typeof fullAnalysisReport.key_questions === 'string') {
         const questions = fullAnalysisReport.key_questions.split('- ').filter((q: string) => q.trim() !== '');
-        keyQuestionsHtml = '<ul class="key-questions">';
-        questions.forEach((q: string) => {
-            keyQuestionsHtml += `<li>${processAiText(q.trim())}</li>`;
-        });
-        keyQuestionsHtml += '</ul>';
+        if (questions.length > 0) {
+            keyQuestionsHtml = '<ul class="key-questions">';
+            questions.forEach((q: string) => {
+                keyQuestionsHtml += `<li>${processAiText(q.trim())}</li>`;
+            });
+            keyQuestionsHtml += '</ul>';
+        }
     }
+    // === JAVÍTÁS VÉGE ===
 
     // Accordion
     const accordionHtml = `
@@ -373,7 +353,7 @@ export function buildAnalysisHtml(
             </summary>
             <div class="accordion-content">
                 <h4>Stratégiai Kulcskérdések</h4>
-                ${keyQuestionsHtml}
+                ${keyQuestionsHtml} 
                 <br>
                 <h4>Kockázatkezelői Jelentés</h4>
                 <p>${processAiText(fullAnalysisReport?.risk_analysis)}</p>
