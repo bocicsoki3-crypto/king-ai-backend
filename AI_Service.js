@@ -1,48 +1,85 @@
-// --- JAVÍTOTT AI_service.js (v50 - Konszolidált Architektúra) ---
+// --- JAVÍTOTT AI_service.js (v51 - Chain-of-Thought) ---
 
 /**
  * AI_Service.js (Node.js Verzió)
- * VÁLTOZÁS (v50): Az összes egyedi AI funkció (getTacticalBriefing, getRiskAssessment,
- * getPropheticScenario, getMasterRecommendation stb.) ELTÁVOLÍTVA.
- * Helyettük egyetlen, konszolidált 'getConsolidatedAnalysis' funkció lép
- * egy robusztus, magas kontextusú prompttal.
- * OK: A 'Prófétai Forgatókönyv' (propheticScenario) modul logikai hiba
- * (Math.random alapú spekuláció) miatt végleg eltávolítva.
- * OK: A mesterséges korlátozások ("2-4 mondat") eltávolítva a mélyebb elemzés érdekében.
+ * VÁLTOZÁS (v51): A 'getConsolidatedAnalysis' monolitikus funkció eltávolítva.
+ * Helyette egy 3-lépcsős "Chain-of-Thought" (CoT) architektúra került bevezetésre:
+ * 1. Lépés: Tényfeltárás (runStep1_GetFacts)
+ * 2. Lépés: Elemzés (runStep2_GetAnalysis)
+ * 3. Lépés: Stratégia (runStep3_GetStrategy)
+ * Ez a szekvenciális feldolgozás mélyebb, "élethűbb" és kevésbé sablonos
+ * elemzést tesz lehetővé azáltal, hogy specializált feladatokra bontja a
+ * kognitív terhelést.
  */
 import { _callGemini } from './DataFetch.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
-import { SPORT_CONFIG } from './config.js';
+// A SPORT_CONFIG importálása már nem szükséges itt
 
-// --- v50: ÚJ KONSZOLIDÁLT PROMPT ---
-const CONSOLIDATED_ANALYSIS_PROMPT = `
-CRITICAL TASK: You are the Head Analyst.
-Analyze ALL provided raw data and generate a complete, multi-faceted tactical report in Hungarian.
+// --- 1. LÉPÉS: TÉNYFELTÁRÓ PROMPT ---
+const PROMPT_STEP_1_FACTS = `
+TASK: You are a Data Analyst. Your job is to extract and structure critical facts from the provided raw data.
+DO NOT ANALYZE. DO NOT SPECULATE. Only report confirmed facts.
+Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
+
+[DATA INPUTS]:
+1. Rich Context (News, H2H, Form): {richContext}
+2. Detailed Player Stats (API): {detailedPlayerStatsJson}
+3. Market Intel (Single Source): "{marketIntel}"
+
+[OUTPUT STRUCTURE]:
+{
+  "key_facts_home": "<List 1-3 critical facts for Home (e.g., 'Key player X (Rating 7.8) is confirmed_out'). 'N/A' if none.>",
+  "key_facts_away": "<List 1-3 critical facts for Away. 'N/A' if none.>",
+  "market_sentiment": "<Describe the market movement based on 'Market Intel'. e.g., 'Market shows movement towards Home (-5.0%)'. 'N/A' if none.>",
+  "h2h_summary": "<A 1-2 sentence summary of the H2H data from 'Rich Context'.>",
+  "contextual_notes": "<Note any other critical factors like weather or high tension from 'Rich Context'.>"
+}
+`;
+
+// --- 2. LÉPÉS: ELEMZŐ PROMPT ---
+const PROMPT_STEP_2_ANALYSIS = `
+TASK: You are the Head Tactical Analyst. Analyze the provided simulations and structured facts.
+DO NOT provide a final recommendation. Your job is deep analysis.
+Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
+
 [DATA INPUTS]:
 1. Simulation (Sim): {simJson}
-2. Value Bets: {valueBetsJson}
-3. Model Confidence: {modelConfidence}/10
-4. Raw Context (News, H2H, Form, Absentees): {richContext}
-5. Tactical/Player Data: {rawDataJson}
-6. Market Intel: "{marketIntel}"
+2. Structured Facts (from Step 1): {step1FactsJson}
+3. Raw Context (Full Data): {rawDataJson} // Use for deep tactical context if needed
 
-[CRITICAL OUTPUT INSTRUCTION]:
-Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
-Provide deep, comprehensive analysis for each text field (do not use "2-4 sentences max").
+[OUTPUT STRUCTURE]:
 {
-  "risk_analysis": "<Részletes kockázatelemzői jelentés. Térj ki a piaci anomáliákra, formai ellentmondásokra, a szimuláció gyengeségeire és a lehetséges meglepetés kimenetelekre.>",
-  "tactical_briefing": "<Részletes taktikai elemzés. Elemezd a várható kulcspárharcokat, a labdabirtoklási dinamikát, a kontratámadási potenciált és a formációk várható ütközését.>",
-  "expert_confidence_report": "**<SCORE/10>** - Részletes indoklás, amely figyelembe veszi a kontextuális tényezőket (hírek, piaci mozgás) a statisztikai modell bizalmával szemben.>",
-  "key_questions": "- Kulcskérdés 1...\\n- Kulcskérdés 2...",
-  "player_markets": "<Játékospiaci meglátások (1-3 mondat). Ha nincs, 'Nincs kiemelkedő játékospiaci lehetőség.'>",
-  "general_analysis": "<Általános elemzés (2-3 bekezdés). Szintetizáld a statisztikai modellt (várható eredmény, valószínűségek) és a taktikai képet.>",
-  "strategic_thoughts": "<Stratégiai zárógondolatok (2-3 bekezdés). Elemezd a legjobb fogadási szögeket (value vs. risk) a fő piacokon (1X2, O/U, BTTS).>",
+  "risk_analysis": "<Részletes kockázatelemzés. Térj ki a szimuláció és a tények (pl. hiányzók) közötti ellentmondásokra.>",
+  "tactical_briefing": "<Részletes taktikai elemzés. Elemezd a várható kulcspárharcokat a tények és a statisztikák alapján.>",
   "micromodels": {
     "btts_analysis": "<BTTS elemzés>\\nBizalom: [Alacsony/Közepes/Magas]",
     "goals_ou_analysis": "<Gól O/U elemzés (a {sim_mainTotalsLine} vonal alapján)>\\nBizalom: [Alacsony/Közepes/Magas]",
     "corner_analysis": "<Szöglet elemzés (a {mu_corners_sim} átlag alapján)>\\nBizalom: [Alacsony/Közepes/Magas]",
     "card_analysis": "<Lap elemzés (a {mu_cards_sim} átlag alapján)>\\nBizalom: [Alacsony/Közepes/Magas]"
   },
+  "player_markets": "<Játékospiaci meglátások (1-3 mondat). Ha nincs, 'Nincs kiemelkedő játékospiaci lehetőség.'>",
+  "general_analysis": "<Általános elemzés (2-3 bekezdés). Szintetizáld a statisztikai modellt (sim) és a taktikai képet (facts).>",
+  "key_questions": "- Kulcskérdés 1 (pl. 'Hogyan pótolja a Hazai csapat X hiányzását?')\\n- Kulcskérdés 2..."
+}
+`;
+
+// --- 3. LÉPÉS: STRATÉGA PROMPT ---
+const PROMPT_STEP_3_STRATEGY = `
+TASK: You are the Head Strategist. Your decision is final.
+Review the analysis, the model's confidence, and the available value.
+You MUST provide the single best recommendation.
+NOTE: The Odds data is from a single source (Bet365), not a market consensus. Factor this into your confidence.
+
+[DATA INPUTS]:
+1. Full Analysis (from Step 2): {step2AnalysisJson}
+2. Model Confidence Score: {modelConfidence}/10
+3. Value Bets (Calculated): {valueBetsJson}
+4. Confidence Calibration Map (Historical Accuracy): {calibrationMapJson}
+
+[OUTPUT STRUCTURE]:
+{
+  "strategic_thoughts": "<Stratégiai zárógondolatok (2-3 bekezdés). Elemezd a legjobb fogadási szögeket (value vs. risk) a fő piacokon.>",
+  "expert_confidence_report": "**<SCORE/10>** - Részletes indoklás. Vessd össze a {modelConfidence} statisztikai bizalmat az elemzési tényekkel (pl. hiányzók, piaci mozgás) és a historikus kalibrációval (Calibration Map).>",
   "master_recommendation": {
     "recommended_bet": "<A végső ajánlás (CSAK fő piac: 1X2, O/U, BTTS, Moneyline)>",
     "final_confidence": <Number 1.0-10.0>,
@@ -60,19 +97,17 @@ function fillPromptTemplate(template, data) {
             // Közvetlen kulcs keresése az adat objektumban
             if (data && typeof data === 'object' && data.hasOwnProperty(key)) {
                  value = data[key];
-            }
- 
+            } 
             // Speciális kezelés JSON stringekhez
             else if (key.endsWith('Json')) {
                 const baseKey = key.replace('Json', '');
                 if (data && data.hasOwnProperty(baseKey) && data[baseKey] !== undefined) {
-                    try { return JSON.stringify(data[baseKey]); }
-                   catch (e) { console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál`); return '{}'; }
+                    try { return JSON.stringify(data[baseKey]); } 
+                    catch (e) { console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál`); return '{}'; }
                 } else { return '{}'; } // Üres JSON, ha nincs adat
             }
             // Ha a kulcs nincs meg sehol
-            else {
- 
+            else { 
                  console.warn(`Hiányzó kulcs a prompt kitöltéséhez: ${key}`);
                 return "N/A";
             }
@@ -93,7 +128,7 @@ function fillPromptTemplate(template, data) {
                 // Vonalak (Totals, Corners, Cards)
                 if (key === 'line' || key === 'likelyLine' || key === 'sim_mainTotalsLine') return value.toString();
                 // Stringként adjuk vissza
-                return value;
+                return value; 
                 // Egyéb számok változatlanul
             }
              if (typeof value === 'object') {
@@ -110,55 +145,62 @@ function fillPromptTemplate(template, data) {
 }
 
 
-// === v50: ÚJ KONSZOLIDÁLT AI HÍVÓ ===
+// === v50: KONSZOLIDÁLT AI HÍVÓ (ELTÁVOLÍTVA) ===
+// export async function getConsolidatedAnalysis(allData) { ... } // TÖRÖLVE
+
+// === ÚJ, LÁNCOLT AI HÍVÓK (v51) ===
+
 /**
- * Egyetlen AI hívást indít, amely legenerálja a teljes elemzési riportot.
- * @param {object} allData - Az összes adat (sim, valueBets, richContext, rawData, marketIntel).
- * @returns {Promise<object>} A teljes, strukturált JSON elemzési riport.
+ * 1. LÉPÉS: Tények kinyerése
  */
-export async function getConsolidatedAnalysis(allData) {
-    let attempts = 0;
-    const retries = 1; // 1 újrapróbálkozás hiba esetén
+export async function runStep1_GetFacts(data) {
+    try {
+        const filledPrompt = fillPromptTemplate(PROMPT_STEP_1_FACTS, data);
+        const jsonString = await _callGemini(filledPrompt);
+        return JSON.parse(jsonString);
+    } catch (e) {
+        console.error(`AI Hiba (Step 1 - Facts): ${e.message}`);
+        return { error: `AI Hiba (Step 1): ${e.message}` }; // Hiba objektum visszaadása
+    }
+}
 
-    while (attempts <= retries) {
-        try {
-            const filledPrompt = fillPromptTemplate(CONSOLIDATED_ANALYSIS_PROMPT, allData);
-            const jsonString = await _callGemini(filledPrompt);
-            const result = JSON.parse(jsonString);
+/**
+ * 2. LÉPÉS: Taktikai Elemzés
+ */
+export async function runStep2_GetAnalysis(data) {
+    try {
+        const filledPrompt = fillPromptTemplate(PROMPT_STEP_2_ANALYSIS, data);
+        const jsonString = await _callGemini(filledPrompt);
+        return JSON.parse(jsonString);
+    } catch (e) {
+        console.error(`AI Hiba (Step 2 - Analysis): ${e.message}`);
+        return { error: `AI Hiba (Step 2): ${e.message}` };
+    }
+}
 
-            // Alapvető struktúra validálása
-            if (result && result.master_recommendation && result.tactical_briefing && result.micromodels) {
-                return result; // SIKER
-            }
-            console.error(`AI Hiba: A konszolidált válasz JSON nem tartalmazta a várt kulcsokat. Válasz:`, jsonString.substring(0, 500));
-            throw new Error("AI Hiba: A konszolidált válasz JSON hiányos struktúrájú.");
+/**
+ * 3. LÉPÉS: Stratégiai Döntés
+ */
+export async function runStep3_GetStrategy(data) {
+    try {
+        // Kiegészítés a kalibrációs térképpel
+        data.calibrationMapJson = getConfidenceCalibrationMap();
         
-        } catch (e) {
-            attempts++;
-            console.warn(`AI Hiba a konszolidált elemzés feldolgozásakor (Próba: ${attempts}/${retries + 1}): ${e.message}`);
-            if (attempts > retries) {
-                console.error(`Végleges AI Hiba (getConsolidatedAnalysis) ${attempts} próbálkozás után.`);
-                const errorDetails = (e instanceof SyntaxError && e.message.includes('JSON')) ?
-                    ` Invalid JSON received.` : e.message;
-                // Visszaadunk egy HIBÁS objektumot, hogy a flow kezelni tudja
-                return {
-                    "risk_analysis": `AI Hiba: ${errorDetails}`,
-                    "tactical_briefing": "AI Hiba",
-                    "expert_confidence_report": "**1.0/10** - AI Hiba",
-                    "key_questions": "- AI Hiba",
-                    "player_markets": "AI Hiba",
-                    "general_analysis": "AI Hiba",
-                    "strategic_thoughts": "AI Hiba",
-                    "micromodels": {},
-                    "master_recommendation": {
-                        "recommended_bet": "Hiba",
-                        "final_confidence": 1.0,
-                        "brief_reasoning": `AI Hiba: ${errorDetails}`
-                    }
-                };
+        const filledPrompt = fillPromptTemplate(PROMPT_STEP_3_STRATEGY, data);
+        const jsonString = await _callGemini(filledPrompt);
+        return JSON.parse(jsonString);
+    } catch (e) {
+        console.error(`AI Hiba (Step 3 - Strategy): ${e.message}`);
+        // Kritikus hiba esetén is adjunk vissza egy alap ajánlást
+        return {
+            strategic_thoughts: "AI Hiba",
+            expert_confidence_report: "**1.0/10** - AI Hiba",
+            master_recommendation: {
+                recommended_bet: "Hiba",
+                final_confidence: 1.0,
+                brief_reasoning: `AI Hiba (Step 3): ${e.message}`
             }
-            await new Promise(resolve => setTimeout(resolve, 2000 * attempts)); // Várakozás
-        }
+        };
     }
 }
 
@@ -173,7 +215,7 @@ export async function getChatResponse(context, history, question) {
             .join('\n');
         // Prompt összeállítása
         const prompt = `You are an elite sports analyst AI assistant specialized in the provided match analysis.
-CONTEXT of the analysis:
+[CONTEXT of the analysis]:
 --- START CONTEXT ---
 ${context}
 --- END CONTEXT ---
@@ -186,14 +228,15 @@ Current User Question: ${question}
 Answer concisely and accurately in Hungarian based ONLY on the provided Analysis Context and Conversation History.
 Do not provide betting advice. Do not make up information not present in the context.
 If the answer isn't in the context or history, politely state that the information is not available in the analysis.`;
+        
         // AI hívás (JSON kényszerítés nélkül)
         const rawAnswer = await _callGemini(prompt
              // Eltávolítjuk a JSON kényszerítő instrukciókat az alap _callGemini promptból
              .replace("Your entire response must be ONLY a single, valid JSON object.", "")
              .replace("Do not add any text, explanation, or introductory phrases outside of the JSON structure itself.", "")
-         
              .replace("Ensure the JSON is complete and well-formed.", "")
         );
+        
         // Válasz tisztítása (eltávolítjuk az esetleges JSON körítést)
         let answerText = rawAnswer;
         try {
@@ -215,8 +258,10 @@ If the answer isn't in the context or history, politely state that the informati
 }
 
 
-// --- FŐ EXPORT --- (v50 - Frissítve)
+// --- FŐ EXPORT --- (v51 - Frissítve a CoT lépésekre)
 export default {
-    getConsolidatedAnalysis,
+    runStep1_GetFacts,
+    runStep2_GetAnalysis,
+    runStep3_GetStrategy,
     getChatResponse
 };
