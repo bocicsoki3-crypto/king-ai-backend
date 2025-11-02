@@ -450,7 +450,7 @@ async function getApiSportsTeamSeasonStats(teamId, leagueId, season, sport) {
         // JAVÍTÁS: A 'sport' paraméter átadása a makeRequestWithRotation-nek
         const response = await makeRequestWithRotation(sport, endpoint, { params });
         const stats = response?.data?.response;
-        if (stats && (stats.league?.id || stats.games?.played > 0)) {
+        if (stats && (stats.league?.id || (stats.games?.played != null && stats.games?.played > 0))) { // Robusztusabb ellenőrzés
             console.log(`API-SPORTS (${sport}): Szezon statisztika sikeresen lekérve (${stats.league?.name || leagueId}, ${currentSeason}).`);
             let simplifiedStats = {
                 gamesPlayed: stats.fixtures?.played?.total || stats.games?.played,
@@ -821,14 +821,20 @@ export async function fetchMatchData(options) {
         ...(geminiData?.stats?.home || {}),
         ...(apiSportsHomeSeasonStats || {}),
     };
+    // === JAVÍTÁS (LOG HIBA): Kisbetűs 'gp' használata ===
     const homeGP = apiSportsHomeSeasonStats?.gamesPlayed || geminiData?.stats?.home?.gp || 1;
-    finalHomeStats.GP = homeGP;
+    finalHomeStats.gp = homeGP;
+    // === JAVÍTÁS VÉGE ===
+    
     const finalAwayStats = {
         ...(geminiData?.stats?.away || {}),
         ...(apiSportsAwaySeasonStats || {}),
     };
+    // === JAVÍTÁS (LOG HIBA): Kisbetűs 'gp' használata ===
     const awayGP = apiSportsAwaySeasonStats?.gamesPlayed || geminiData?.stats?.away?.gp || 1;
-    finalAwayStats.GP = awayGP;
+    finalAwayStats.gp = awayGP;
+    // === JAVÍTÁS VÉGE ===
+
     finalData.stats = { home: finalHomeStats, away: finalAwayStats };
     console.log(`Végleges stats használatban: Home(GP:${homeGP}), Away(GP:${awayGP})`);
     
@@ -873,7 +879,7 @@ export async function fetchMatchData(options) {
     // MÓDOSÍTVA (v50): Az 'advancedData'-t a 'realXgData'-ból (ami most 'realFixtureStats'-ból jön) töltjük fel
     const advancedData = realXgData ?
         { home: { xg: realXgData.home }, away: { xg: realXgData.away } } :
-        (geminiData?.advancedData || { home: { xg: null }, away: { xg: null } });
+        (geminiData?.advancedData || { home: { xg: null }, away: { xG: null } });
     
     const result = {
          rawStats: finalData.stats,
@@ -886,8 +892,9 @@ export async function fetchMatchData(options) {
          fromCache: false
     };
     
+    // === JAVÍTÁS (LOG HIBA): A validáció most már a kisbetűs 'gp'-t ellenőrzi ===
     if (typeof result.rawStats?.home?.gp !== 'number' || result.rawStats.home.gp <= 0 || typeof result.rawStats?.away?.gp !== 'number' || result.rawStats.away.gp <= 0) {
-        console.error(`KRITIKUS HIBA (${homeTeamName} vs ${awayTeamName}): Érvénytelen VÉGLEGES statisztikák (GP <= 0).`);
+        console.error(`KRITIKUS HIBA (${homeTeamName} vs ${awayTeamName}): Érvénytelen VÉGLEGES statisztikák (GP <= 0). HomeGP: ${result.rawStats?.home?.gp}, AwayGP: ${result.rawStats?.away?.gp}`);
         throw new Error(`Kritikus statisztikák (GP <= 0) érvénytelenek.`);
     }
     
