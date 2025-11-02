@@ -14,13 +14,10 @@ import { runSettlementProcess } from './settlementService.js';
 const app = express();
 // --- Middleware Beállítások ---
 
-// --- JAVÍTÁS v50.6: Végleges, Explicit CORS Konfiguráció (Szóköz nélkül) ---
-// A 'bocsicsoki-crypto.github.io' domain explicit engedélyezése.
-const corsOptions = {
-  origin: 'https://bocsicsoki-crypto.github.io', // FIGYELEM: Nincs szóköz a végén
-  optionsSuccessStatus: 200 // Néhány régebbi böngészőhöz
-};
-app.use(cors(corsOptions));
+// --- JAVÍTÁS v50.7: Wildcard CORS Beállítás ---
+// A specifikus origin helyett engedélyezünk minden kérést (*),
+// hogy kikerüljük a 'github.io ' (szóközös) fejléc hibáját.
+app.use(cors());
 // --- JAVÍTÁS VÉGE ---
 
 app.use(express.json()); // JSON body parser
