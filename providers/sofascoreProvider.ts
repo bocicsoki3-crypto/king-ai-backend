@@ -1,7 +1,6 @@
-// providers/sofascoreProvider.ts (v52.17 - Végleges Végpont Javítás)
-// MÓDOSÍTÁS: Az összes végpont-hívás (getSofascoreEventId, getSofascoreXg, getSofascoreLineups)
-// javítva, hogy pontosan az Ön RapidAPI képernyőképein (image_51992b.png, image_51990e.png)
-// látható, verzió-prefix nélküli útvonalakat használja.
+// providers/sofascoreProvider.ts (v52.18 - Végleges Végpont Javítás)
+// MÓDOSÍTÁS: A getSofascoreEventId hibás '/teams/get-near-events' végpontja
+// a helyes '/teams/get-next-matches'-re cserélve (az image_51faca.png alapján).
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -124,14 +123,14 @@ async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Prom
     if (cachedId) return cachedId;
 
     // === JAVÍTÁS (A KRITIKUS SOR) ===
-    // Lecseréljük a hibás '/v1/team/get-next-events' végpontot a képen (image_51992b.png)
-    // látható '/teams/get-near-events' végpontra.
-    const data = await makeSofascoreRequest('/teams/get-near-events', { teamId: homeTeamId, page: 0 });
+    // Lecseréljük a logikailag hibás '/teams/get-near-events' végpontot a képen (image_51faca.png)
+    // látható '/teams/get-next-matches' végpontra.
+    const data = await makeSofascoreRequest('/teams/get-next-matches', { teamId: homeTeamId, page: 0 });
     // === JAVÍTÁS VÉGE ===
 
-    // A '/teams/get-near-events' válasza 'events' tömböt tartalmaz (feltételezés)
+    // A '/teams/get-next-matches' válasza 'events' tömböt tartalmaz (feltételezés)
     if (!data?.events) {
-        console.warn(`[Sofascore] Meccs keresés sikertelen: Nincs 'events' mező (Hazai ID: ${homeTeamId}). (Endpoint: /teams/get-near-events)`);
+        console.warn(`[Sofascore] Meccs keresés sikertelen: Nincs 'events' mező (Hazai ID: ${homeTeamId}). (Endpoint: /teams/get-next-matches)`);
         return null;
     }
 
@@ -154,11 +153,8 @@ async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Prom
  * 3. Lépés: Lekéri a valós xG adatokat a meccs ID alapján.
  */
 async function getSofascoreXg(eventId: number): Promise<ISofascoreXg | null> {
-    // === JAVÍTÁS (A KRITIKUS SOR) ===
-    // A '/v1/event/get-statistics' cseréje a képen (image_51990e.png) látható
-    // '/matches/get-statistics' végpontra.
+    // A képen (image_51fb01.png) látható '/matches/get-statistics' végpontot használjuk
     const data = await makeSofascoreRequest('/matches/get-statistics', { matchId: eventId });
-    // === JAVÍTÁS VÉGE ===
 
     if (!data?.statistics) {
         console.warn(`[Sofascore] xG Hiba: Nincs 'statistics' mező (Event ID: ${eventId}).`);
@@ -196,11 +192,8 @@ async function getSofascoreXg(eventId: number): Promise<ISofascoreXg | null> {
  * 4. Lépés: Lekéri a felállásokat (lineups) a meccs ID alapján.
  */
 async function getSofascoreLineups(eventId: number): Promise<{ home: ISofascoreRawPlayer[], away: ISofascoreRawPlayer[] } | null> {
-    // === JAVÍTÁS (A KRITIKUS SOR) ===
-    // A '/v1/event/get-lineups' cseréje a képen (image_51990e.png) látható
-    // '/matches/get-lineups' végpontra.
+    // A képen (image_51fb01.png) látható '/matches/get-lineups' végpontot használjuk
     const data = await makeSofascoreRequest('/matches/get-lineups', { matchId: eventId });
-    // === JAVÍTÁS VÉGE ===
 
     if (!data?.home && !data?.away) {
         console.warn(`[Sofascore] Felállás Hiba: Nincs 'home' vagy 'away' mező (Event ID: ${eventId}).`);
