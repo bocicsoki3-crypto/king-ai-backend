@@ -1,4 +1,6 @@
-// providers/sofascoreProvider.ts (v52.11 - Játékos-adat Feldolgozás és TS2322 javítás)
+// providers/sofascoreProvider.ts (v52.12 - Kereső Végpont és TS2322 Javítás)
+// MÓDOSÍTÁS: A getSofascoreTeamId hibás '/v1/search/all' végpontja '/v2/teams/search'-re cserélve.
+// MÓDOSÍTÁS: A fetchSofascoreData TS2322 típus-hibája javítva.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -77,16 +79,21 @@ async function getSofascoreTeamId(teamName: string): Promise<number | null> {
     const cachedId = sofaTeamCache.get<number>(cacheKey);
     if (cachedId) return cachedId;
 
-    const data = await makeSofascoreRequest('/v1/search/all', { name: teamName });
+    console.log(`[Sofascore] Csapat keresés: "${teamName}"`);
     
-    if (!data?.results) {
-        console.warn(`[Sofascore] Csapatkeresés sikertelen: "${teamName}". Nincs 'results' mező.`);
+    // === JAVÍTÁS (A KRITIKUS SOR) ===
+    // Lecseréljük a hibás '/v1/search/all' végpontot a verzió-specifikus keresőre.
+    const data = await makeSofascoreRequest('/v2/teams/search', { name: teamName });
+    // === JAVÍTÁS VÉGE ===
+    
+    // A válasz 'teams' tömböt tartalmaz (feltételezve a /v2/teams/search struktúrát)
+    if (!data?.teams) {
+        console.warn(`[Sofascore] Csapatkeresés sikertelen: "${teamName}". Nincs 'teams' mező (Endpoint hibás, vagy 404).`);
         return null;
     }
 
-    const teams: ISofascoreTeam[] = data.results
-        .filter((r: any) => r.type === 'team' && r.entity.sport.name === 'Football')
-        .map((r: any) => r.entity);
+    const teams: ISofascoreTeam[] = data.teams
+        .map((t: any) => t.team); // Feltételezve, hogy a 'teams' tömb 'team' objektumokat tartalmaz
 
     if (teams.length === 0) {
         console.warn(`[Sofascore] Csapatkeresés: Nincs találat erre: "${teamName}"`);
@@ -116,6 +123,8 @@ async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Prom
     if (cachedId) return cachedId;
 
     // Lekérjük a hazai csapat következő 5 meccsét
+    // Ez a végpont (image_4fcbb0.png alapján) a /teams/get-next-matches
+    // A /v1/team/get-next-events a logikai megfelelője az API csomagban
     const data = await makeSofascoreRequest('/v1/team/get-next-events', { teamId: homeTeamId, page: 0 });
 
     if (!data?.events) {
@@ -142,6 +151,8 @@ async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Prom
  * 3. Lépés: Lekéri a valós xG adatokat a meccs ID alapján.
  */
 async function getSofascoreXg(eventId: number): Promise<ISofascoreXg | null> {
+    // A KÉP (image_50402c.png) ALAPJÁN A VÉGPONT: matches/get-statistics
+    // A RapidAPI csomagban ez a /v1/event/get-statistics
     const data = await makeSofascoreRequest('/v1/event/get-statistics', { eventId: eventId });
 
     if (!data?.statistics) {
@@ -160,12 +171,12 @@ async function getSofascoreXg(eventId: number): Promise<ISofascoreXg | null> {
         }
 
         if (expectedGoalsRow && expectedGoalsRow.home && expectedGoalsRow.away) {
-            const xg: ISofascoreXg = {
+            const xG: ISofascoreXg = { // Itt 'xG' a változónév
                 home: parseFloat(expectedGoalsRow.home),
                 away: parseFloat(expectedGoalsRow.away)
             };
-            console.log(`[Sofascore] xG Adat kinyerve: H=${xg.home}, A=${xg.away}`);
-            return xg;
+            console.log(`[Sofascore] xG Adat kinyerve: H=${xG.home}, A=${xG.away}`);
+            return xG; // 'xG' visszaadása
         } else {
             console.warn(`[Sofascore] xG Hiba: Nem található 'Expected goals (xG)' sor (Event ID: ${eventId}).`);
             return null;
@@ -180,6 +191,8 @@ async function getSofascoreXg(eventId: number): Promise<ISofascoreXg | null> {
  * 4. Lépés: Lekéri a felállásokat (lineups) a meccs ID alapján.
  */
 async function getSofascoreLineups(eventId: number): Promise<{ home: ISofascoreRawPlayer[], away: ISofascoreRawPlayer[] } | null> {
+    // A KÉP (image_4fcbb0.png) ALAPJÁN A VÉGPONT: matches/get-lineups
+    // A RapidAPI csomagban ez a /v1/event/get-lineups
     const data = await makeSofascoreRequest('/v1/event/get-lineups', { eventId: eventId });
 
     if (!data?.home && !data?.away) {
@@ -196,7 +209,7 @@ async function getSofascoreLineups(eventId: number): Promise<{ home: ISofascoreR
 }
 
 /**
- * === ÚJ FELDOLGOZÓ FÜGGVÉNY (v52.9) ===
+ * === FELDOLGOZÓ FÜGGVÉNY (v52.9) ===
  * Feldolgozza a nyers Sofascore felállás adatokat a Model.ts
  * által elvárt ICanonicalPlayerStats formátumra.
  */
@@ -224,10 +237,12 @@ function processSofascoreLineups(
         const ratingsByPosition: { [pos: string]: number[] } = { 'Támadó': [], 'Középpályás': [], 'Védő': [], 'Kapus': [] };
         
         players.forEach(p => {
+            if (!p || !p.player) return; // Hibás játékos-adat kihagyása
+            
             const position = POS_MAP[p.player.position] || 'Középpályás'; // Alapértelmezett, ha ismeretlen
             const ratingValue = parseFloat(p.rating || '0');
             
-            // 1. Hiányzók keresése (Alapszintű heurisztika: a keretben van, de még nincs értékelése ÉS nem kezdő)
+            // 1. Hiányzók keresése (Heurisztika: a keretben van, de 0 az értékelése ÉS nem csere)
             const isAbsent = p.substitute === false && ratingValue === 0;
             
             if (isAbsent) {
@@ -272,20 +287,20 @@ function processSofascoreLineups(
 
 
 /**
- * FŐ EXPORTÁLT FUNKCIÓ (MÓDOSÍTVA v52.11)
+ * FŐ EXPORTÁLT FUNKCIÓ (MÓDOSÍTVA v52.12)
  */
 export async function fetchSofascoreData(
     homeTeamName: string, 
     awayTeamName: string
 ): Promise<{ 
-    advancedData: { xg_home: number; xg_away: number } | null, 
+    advancedData: { xg_home: number; xG_away: number } | null, 
     playerStats: ICanonicalPlayerStats 
 }> {
     
     // === JAVÍTÁS (TS2322) ===
-    // Explicit típus a kezdeti 'result' objektumhoz, ami feloldja a típus-ütközést.
+    // Explicit típus a kezdeti 'result' objektumhoz.
     let result: { 
-        advancedData: { xg_home: number; xg_away: number } | null, 
+        advancedData: { xg_home: number; xG_away: number } | null, 
         playerStats: ICanonicalPlayerStats 
     } = {
         advancedData: null,
@@ -305,16 +320,15 @@ export async function fetchSofascoreData(
         ]);
 
         if (!homeTeamId || !awayTeamId) {
-            // Mivel a Sofascore-ban valószínűleg rossz a kereső endpoint, visszalépünk
-            console.warn(`[Sofascore Provider] Csapat ID hiba. A Sofascore kérés leáll.`);
-            return result;
+            console.warn(`[Sofascore Provider] Csapat ID hiba (${homeTeamName} vagy ${awayTeamName}). A Sofascore kérés leáll.`);
+            return result; // Visszatérés üres adatokkal
         }
 
         // 2. Meccs ID lekérése
         const eventId = await getSofascoreEventId(homeTeamId, awayTeamId);
         if (!eventId) {
-            console.warn(`[Sofascore Provider] Event ID nem található. A Sofascore kérés leáll.`);
-            return result;
+            console.warn(`[Sofascore Provider] Event ID nem található (${homeTeamId} vs ${awayTeamId}). A Sofascore kérés leáll.`);
+            return result; // Visszatérés üres adatokkal
         }
 
         // 3. xG és Felállások lekérése párhuzamosan
@@ -325,9 +339,10 @@ export async function fetchSofascoreData(
 
         // 4. Eredmények feldolgozása
         if (xgData) {
+            // JAVÍTÁS (TS2552): 'xG_away' a 'xg_away' helyett (a típus-definíció alapján)
             result.advancedData = {
                 xg_home: xgData.home,
-                xg_away: xgData.away
+                xG_away: xgData.away // Helyes mezőnév
             };
         }
         

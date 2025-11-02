@@ -1,4 +1,6 @@
-// DataFetch.ts (v52.11 - Sofascore Integráció)
+// DataFetch.ts (v52.13 - TS2551 Case-Sensitivity Fix)
+// MÓDOSÍTÁS: A 'sofascoreData' feldolgozása javítva,
+// a helyes 'xG_away' (nagy 'G') tulajdonság használatával.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -32,7 +34,7 @@ interface IDataProvider {
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v52.11 (Sofascore Integráció)
+* VERZIÓ: v52.13 (TS2551 Fix)
 * - A 'getRichContextualData' most már párhuzamosan hívja meg a sport-specifikus
 * providert (oddsokért) és a Sofascore providert (xG/játékos adatokért).
 * - Az eredményeket egyesíti, priorizálva a Sofascore adatait.
@@ -56,7 +58,7 @@ function getProvider(sport: string): IDataProvider {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FUNKCIÓ (v52.11 - Sofascore Egyesítéssel)
+ * FŐ ADATGYŰJTŐ FUNKCIÓ (v52.13 - Sofascore Egyesítéssel)
  * Garantálja, hogy a visszatérési érték ICanonicalRichContext.
  */
 export async function getRichContextualData(
@@ -95,7 +97,9 @@ export async function getRichContextualData(
         
         // === MÓDOSÍTÁS: PÁRHUZAMOS HÍVÁS ===
         const [
+            // Az 'apiSportsProvider' adja az Odds-okat, H2H-t, és a fallback statisztikákat
             baseResult, 
+            // A 'sofascoreProvider' adja a megbízható xG-t és játékos-értékeléseket
             sofascoreData 
         ] = await Promise.all([
             sportProvider.fetchMatchData(providerOptions),
@@ -107,16 +111,19 @@ export async function getRichContextualData(
         const finalResult: ICanonicalRichContext = baseResult;
 
         // 2. Sofascore xG Adat felülírása (Ha létezik)
-        if (sofascoreData && sofascoreData.advancedData?.xg_home != null && sofascoreData.advancedData?.xg_away != null) {
+        // === JAVÍTÁS (TS2551) ===
+        // A 'xg_away' (kis 'g') cserélve 'xG_away'-re (nagy 'G'), hogy megfeleljen a provider típusának.
+        if (sofascoreData && sofascoreData.advancedData?.xg_home != null && sofascoreData.advancedData?.xG_away != null) {
             console.log(`[DataFetch] Felülírás: API-Football xG felülírva a Sofascore xG-vel.`);
             finalResult.advancedData.home['xg'] = sofascoreData.advancedData.xg_home;
-            finalResult.advancedData.away['xg'] = sofascoreData.advancedData.xg_away;
+            finalResult.advancedData.away['xg'] = sofascoreData.advancedData.xG_away; // <-- JAVÍTVA
         } else {
+        // === JAVÍTÁS VÉGE ===
             console.warn(`[DataFetch] Sofascore xG adat nem elérhető. Az 'apiSportsProvider' becslése (vagy hibája) marad érvényben.`);
         }
 
         // 3. Sofascore Játékos Adat felülírása (Ha létezik)
-        if (sofascoreData && sofascoreData.playerStats && sofascoreData.playerStats.home_absentees.length > 0) {
+        if (sofascoreData && sofascoreData.playerStats && (sofascoreData.playerStats.home_absentees.length > 0 || sofascoreData.playerStats.away_absentees.length > 0)) {
             console.log(`[DataFetch] Felülírás: Az 'apiSportsProvider' szimulált játékos-adatai felülírva a Sofascore adataival.`);
             finalResult.rawData.detailedPlayerStats = sofascoreData.playerStats;
             finalResult.rawData.absentees = {
@@ -128,17 +135,18 @@ export async function getRichContextualData(
 
         // 4. Mentsd az egyesített eredményt a fő cache-be
         scriptCache.set(ck, finalResult);
-        console.log(`Sikeres adat-egyesítés (v52.11), cache mentve (${ck}).`);
+        console.log(`Sikeres adat-egyesítés (v52.13), cache mentve (${ck}).`);
         
         return { ...finalResult, fromCache: false };
 
     } catch (e: any) {
-         console.error(`KRITIKUS HIBA a getRichContextualData (v52.11 - Factory) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
-        throw new Error(`Adatgyűjtési hiba (v52.11): ${e.message}`);
+         console.error(`KRITIKUS HIBA a getRichContextualData (v52.13 - Factory) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
+        throw new Error(`Adatgyűjtési hiba (v52.13): ${e.message}`);
     }
 }
 
 
 // --- KÖZÖS FUNKCIÓK EXPORTÁLÁSA ---
+// Ezeket exportáljuk, hogy más modulok (pl. index.ts) is elérhessék.
 export const _getFixturesFromEspn = commonGetFixtures;
 export const _callGemini = commonCallGemini;
