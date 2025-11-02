@@ -1,6 +1,6 @@
-// providers/sofascoreProvider.ts (v52.13 - Végpont Javítás)
-// MÓDOSÍTÁS: A getSofascoreTeamId hibás '/v2/teams/search' végpontja '/search'-re cserélve.
-// MÓDOSÍTÁS: A válasz-értelmező 'data.teams'-ről 'data.results'-re javítva.
+// providers/sofascoreProvider.ts (v52.14 - Végpont Javítás)
+// MÓDOSÍTÁS: A getSofascoreEventId hibás '/v1/team/get-next-events' végpontja
+// a helyes '/teams/get-near-events'-re cserélve (az image_50b14b.png alapján).
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -82,20 +82,15 @@ async function getSofascoreTeamId(teamName: string): Promise<number | null> {
 
     console.log(`[Sofascore] Csapat keresés: "${teamName}"`);
 
-    // === JAVÍTÁS (A KRITIKUS SOR) ===
-    // Lecseréljük a hibás '/v2/teams/search' végpontot a képen (image_50b14b.png)
-    // látható gyökérszintű '/search' végpontra.
-    // A paramétert 'name'-ről 'q'-ra (query) változtatjuk, ami a 'search' végpontok sztenderdje.
+    // Helyes végpont: '/search' (a 50. lépésben javítva)
     const data = await makeSofascoreRequest('/search', { q: teamName });
-    // === JAVÍTÁS VÉGE ===
     
-    // A '/search' végpont 'results' tömböt ad vissza
     if (!data?.results) {
         console.warn(`[Sofascore] Csapatkeresés sikertelen: "${teamName}". Nincs 'results' mező (Endpoint: /search).`);
         return null;
     }
 
-    // A 'results' tömb feldolgozása (visszaállítva a 44. lépés logikájára)
+    // A 'results' tömb feldolgozása
     const teams: ISofascoreTeam[] = data.results
         .filter((r: any) => r.type === 'team' && r.entity.sport.name === 'Football')
         .map((r: any) => r.entity);
@@ -127,12 +122,15 @@ async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Prom
     const cachedId = sofaEventCache.get<number>(cacheKey);
     if (cachedId) return cachedId;
 
-    // A képen (image_50b14b.png) látható 'teams/get-next-events'
-    // logikai megfelelője a /v1/team/get-next-events
-    const data = await makeSofascoreRequest('/v1/team/get-next-events', { teamId: homeTeamId, page: 0 });
+    // === JAVÍTÁS (A KRITIKUS SOR) ===
+    // Lecseréljük a hibás '/v1/team/get-next-events' végpontot a képen (image_50b14b.png)
+    // látható '/teams/get-near-events' végpontra.
+    const data = await makeSofascoreRequest('/teams/get-near-events', { teamId: homeTeamId, page: 0 });
+    // === JAVÍTÁS VÉGE ===
 
+    // A '/teams/get-near-events' válasza 'events' tömböt tartalmaz (feltételezés)
     if (!data?.events) {
-        console.warn(`[Sofascore] Meccs keresés sikertelen: Nincs 'events' mező (Hazai ID: ${homeTeamId}).`);
+        console.warn(`[Sofascore] Meccs keresés sikertelen: Nincs 'events' mező (Hazai ID: ${homeTeamId}). (Endpoint: /teams/get-near-events)`);
         return null;
     }
 
@@ -239,7 +237,7 @@ function processSofascoreLineups(
         const ratingsByPosition: { [pos: string]: number[] } = { 'Támadó': [], 'Középpályás': [], 'Védő': [], 'Kapus': [] };
         
         players.forEach(p => {
-            if (!p || !p.player) return; 
+            if (!p || !p.player) return; // Hibás játékos-adat kihagyása
             
             const position = POS_MAP[p.player.position] || 'Középpályás';
             const ratingValue = parseFloat(p.rating || '0');
