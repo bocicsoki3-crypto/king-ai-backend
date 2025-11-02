@@ -1,12 +1,11 @@
-// providers/newBasketballProvider.js (v49 - Egységesített Konfiguráció)
+// providers/newBasketballProvider.js (v50 - Egységesített Konfiguráció JAVÍTVA)
 import axios from 'axios';
 import { makeRequest } from './common/utils.js';
-
-// --- JAVÍTÁS (v49): Egységesített Konfiguráció Importálása ---
-// A 'BASKETBALL_API_KEY' és 'BASKETBALL_API_HOST' közvetlen importálása helyett
-// az egész 'API_HOSTS' objektumot importáljuk.
+// --- JAVÍTÁS (v50): Helyes Konfiguráció Importálása ---
+// Az 'API_HOSTS' helyett a dedikált KOSÁRLABDA kulcsokat importáljuk.
 import {
-    API_HOSTS
+    BASKETBALL_API_KEY,
+    BASKETBALL_API_HOST
 } from '../config.js';
 // --- JAVÍTÁS VÉGE ---
 
@@ -16,8 +15,6 @@ import {
     PROMPT_V43,
     getStructuredWeatherData
 } from './common/utils.js';
-
-
 /**
  * 🏀 Kosárlabda Adatlekérő Függvény
  * FIGYELEM: Ez a provider jelenleg egy "stub" (csonk).
@@ -26,22 +23,18 @@ import {
  */
 export async function fetchMatchData(options) {
   const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
-
-  // --- JAVÍTÁS (v49): Konfiguráció ellenőrzése az API_HOSTS-ból ---
-  const basketballConfig = API_HOSTS.basketball;
-
-  if (!basketballConfig || !basketballConfig.host || !basketballConfig.keys || basketballConfig.keys.length === 0) {
-    throw new Error('[Basketball API] Kritikus konfigurációs hiba: Nincsenek API kulcsok vagy host a "basketball" sporthoz a config.js API_HOSTS objektumában.');
+  // --- JAVÍTÁS (v50): Konfiguráció ellenőrzése a helyes változókkal ---
+  if (!BASKETBALL_API_KEY || !BASKETBALL_API_HOST) {
+    throw new Error('[Basketball API] Kritikus konfigurációs hiba: Hiányzó BASKETBALL_API_KEY vagy BASKETBALL_API_HOST a config.js-ben.');
   }
   
   console.log(`[Basketball Provider]: Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
   console.log(`[Basketball Provider]: FIGYELEM: Ez a provider jelenleg egy "stub" (csonk), és placeholder adatokat ad vissza.`);
-
   // 1. API HÍVÁSOK
-  // TODO: Implementáld a kosárlabda API hívásaidat a 'basketballConfig.host' és 'basketballConfig.keys[0]' felhasználásával.
+  // TODO: Implementáld a kosárlabda API hívásaidat a 'BASKETBALL_API_HOST' és 'BASKETBALL_API_KEY' felhasználásával.
   // Példa egy (még nem létező) hívófüggvényre:
-  // const leagueId = await getBasketballLeagueId(leagueName, basketballConfig);
-  // const homeTeamId = await getBasketballTeamId(homeTeamName, leagueId, basketballConfig);
+  // const leagueId = await getBasketballLeagueId(leagueName, BASKETBALL_API_HOST, BASKETBALL_API_KEY);
+  // const homeTeamId = await getBasketballTeamId(homeTeamName, leagueId, ...);
   
   // 2. GEMINI HÍVÁS (opcionális, a placeholder adatokkal)
   const geminiJsonString = await _callGemini(PROMPT_V43(
@@ -62,7 +55,6 @@ export async function fetchMatchData(options) {
   // 1-re állítjuk, hogy a 'Model.js'  ne dobjon hibát (GP > 0 ellenőrzés).
   const finalHomeStats = { ...(geminiData.stats?.home || {}), GP: geminiData.stats?.home?.gp || 1 };
   const finalAwayStats = { ...(geminiData.stats?.away || {}), GP: geminiData.stats?.away?.gp || 1 };
-
   const unifiedResult = {
     rawStats: { home: finalHomeStats, away: finalAwayStats },
     leagueAverages: geminiData.league_averages || {},
@@ -73,7 +65,6 @@ export async function fetchMatchData(options) {
     oddsData: null,
     fromCache: false
   };
-
   // Ellenőrzés
   if (unifiedResult.rawStats.home.GP <= 0 || unifiedResult.rawStats.away.GP <= 0) {
      console.warn("[Basketball API] Figyelmeztetés: A Gemini nem adott meg GP-t, 1-re állítva.");

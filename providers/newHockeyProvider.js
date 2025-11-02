@@ -1,16 +1,15 @@
-// providers/newHockeyProvider.js (v49 - Egységesített Konfiguráció)
+// providers/newHockeyProvider.js (v50 - Egységesített Konfiguráció JAVÍTVA)
 // Implementáció az "Ice Hockey Data" API-hoz (ice-hockey-data.p.rapidapi.com)
 
 import axios from 'axios';
 import NodeCache from 'node-cache';
 import pkg from 'string-similarity';
 const { findBestMatch } = pkg;
-
-// --- JAVÍTÁS (v49): Egységesített Konfiguráció Importálása ---
-// A 'HOCKEY_API_KEY' és 'HOCKEY_API_HOST' közvetlen importálása helyett
-// az egész 'API_HOSTS' objektumot importáljuk, ahogy a modern szabvány megköveteli.
+// --- JAVÍTÁS (v50): Helyes Konfiguráció Importálása ---
+// Az 'API_HOSTS' helyett a dedikált JÉGKORONG kulcsokat importáljuk.
 import {
-    API_HOSTS 
+    HOCKEY_API_KEY,
+    HOCKEY_API_HOST
 } from '../config.js';
 // --- JAVÍTÁS VÉGE ---
 
@@ -28,22 +27,20 @@ const hockeyTeamCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600
 const hockeyFixtureCache = new NodeCache({ stdTTL: 3600 * 1, checkperiod: 600 });
 const hockeyStatsCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 3600 });
 
-// --- API HÍVÓ SEGÉDFÜGGVÉNY (JAVÍTVA v49) ---
-// Ez a függvény most már a központi API_HOSTS objektumból olvassa a konfigurációt.
+// --- API HÍVÓ SEGÉDFÜGGVÉNY (JAVÍTVA v50) ---
+// Ez a függvény most már a helyes, dedikált jégkorong változókat használja.
 async function makeHockeyRequest(endpoint, params = {}) {
     
-    // --- JAVÍTÁS (v49): Konfiguráció kinyerése az API_HOSTS-ból ---
-    const hockeyConfig = API_HOSTS.hockey;
-
-    if (!hockeyConfig || !hockeyConfig.host || !hockeyConfig.keys || hockeyConfig.keys.length === 0) {
-        // Ez a hiba most már ugyanazt a logikát követi, mint az apiSportsProvider
-        throw new Error('[Hockey API] Kritikus konfigurációs hiba: Nincsenek API kulcsok vagy host a "hockey" sporthoz a config.js API_HOSTS objektumában.');
+    // --- JAVÍTÁS (v50): Konfiguráció ellenőrzése ---
+    if (!HOCKEY_API_KEY || !HOCKEY_API_HOST) {
+        // Ez a hiba most már a helyes változókat ellenőrzi
+        throw new Error('[Hockey API] Kritikus konfigurációs hiba: Hiányzó HOCKEY_API_KEY vagy HOCKEY_API_HOST a config.js-ben.');
     }
 
     // TODO: Implementáljon kulcsrotációt, ha több kulcsot ad hozzá.
     // Jelenleg az elsődleges (és egyetlen) kulcsot használjuk.
-    const API_KEY = hockeyConfig.keys[0];
-    const API_HOST = hockeyConfig.host;
+    const API_KEY = HOCKEY_API_KEY;
+    const API_HOST = HOCKEY_API_HOST;
     // --- JAVÍTÁS VÉGE ---
 
     const options = {
@@ -55,11 +52,9 @@ async function makeHockeyRequest(endpoint, params = {}) {
             'X-RapidAPI-Host': API_HOST // Javított változónév
         }
     };
-
     try {
         // A 'makeRequest' általános hívót használjuk 0 újrapróbálkozással
         const response = await makeRequest(options.url, { headers: options.headers, params: options.params }, 0);
-        
         if (!response || !response.data) {
             throw new Error(`[Hockey API Hiba] Üres válasz érkezett. Endpoint: ${endpoint}`);
         }
@@ -73,16 +68,13 @@ async function makeHockeyRequest(endpoint, params = {}) {
 
 // --- ADATLEKÉRŐ FÜGGVÉNYEK (VÁLTOZATLAN) ---
 // Ezek a függvények már a javított 'makeHockeyRequest'-et hívják.
-
 async function getHockeyLeagueId(leagueName) {
     const cacheKey = `hockey_league_${leagueName.toLowerCase().replace(/\s/g, '')}`;
     const cached = hockeyLeagueCache.get(cacheKey);
     if (cached) return cached;
-
     console.log(`[Hockey API] Liga keresés: "${leagueName}"`);
     // JAVÍTÁS: A makeHockeyRequest hívás már helyes
     const data = await makeHockeyRequest('/tournament/list');
-    
     if (!data?.tournaments) {
         console.warn(`[Hockey API] Nem sikerült lekérni a liga listát.`);
         return null;
@@ -90,7 +82,6 @@ async function getHockeyLeagueId(leagueName) {
 
     const leagueNames = data.tournaments.map(t => t.name);
     const bestMatch = findBestMatch(leagueName, leagueNames);
-    
     if (bestMatch.bestMatch.rating > 0.8) {
         const leagueId = data.tournaments[bestMatch.bestMatchIndex].id;
         console.log(`[Hockey API] Liga találat: "${leagueName}" -> "${bestMatch.bestMatch.target}" (ID: ${leagueId})`);
@@ -118,7 +109,6 @@ async function getHockeyTeamId(teamName, leagueId) {
 
     const teamNames = data.teams.map(t => t.name);
     const bestMatch = findBestMatch(teamName, teamNames);
-    
     if (bestMatch.bestMatch.rating > 0.8) {
         const teamId = data.teams[bestMatch.bestMatchIndex].id;
         console.log(`[Hockey API] Csapat találat: "${teamName}" -> "${bestMatch.bestMatch.target}" (ID: ${teamId})`);
@@ -136,17 +126,14 @@ async function findHockeyFixture(homeTeamId, awayTeamId, leagueId, utcKickoff) {
     const cacheKey = `hockey_fixture_${leagueId}_${homeTeamId}_${awayTeamId}_${matchDate}`;
     const cached = hockeyFixtureCache.get(cacheKey);
     if (cached) return cached;
-
     console.log(`[Hockey API] Meccs keresés: H:${homeTeamId} vs A:${awayTeamId} (Dátum: ${matchDate})`);
     const data = await makeHockeyRequest('/tournament/fixture', { tournamentId: leagueId, date: matchDate });
-
     if (!data?.fixtures) {
         console.warn(`[Hockey API] Nem találhatók meccsek erre a napra: ${matchDate}`);
         return null;
     }
 
     const fixture = data.fixtures.find(f => f.home.id === homeTeamId && f.away.id === awayTeamId);
-    
     if (fixture) {
         console.log(`[Hockey API] MECCS TALÁLAT! FixtureID: ${fixture.id}`);
         hockeyFixtureCache.set(cacheKey, fixture.id);
@@ -162,10 +149,8 @@ async function getHockeyStats(leagueId) {
     const cacheKey = `hockey_stats_${leagueId}`;
     const cached = hockeyStatsCache.get(cacheKey);
     if (cached) return cached;
-
     console.log(`[Hockey API] Statisztika lekérés (Standings)... (Liga ID: ${leagueId})`);
     const data = await makeHockeyRequest('/tournament/standings', { tournamentId: leagueId });
-
     if (!data?.standings) {
         console.warn(`[Hockey API] Nem sikerült lekérni a statisztikákat a ${leagueId} ligából.`);
         return null;
@@ -208,7 +193,6 @@ export async function fetchMatchData(options) {
         findHockeyFixture(homeTeamId, awayTeamId, leagueId, utcKickoff),
         getHockeyStats(leagueId)
     ]);
-    
     // --- 3. ADATOK KINYERÉSE ---
     const homeStats = statsMap ? statsMap.get(homeTeamId) : null;
     const awayStats = statsMap ? statsMap.get(awayTeamId) : null;
@@ -226,7 +210,6 @@ export async function fetchMatchData(options) {
         goalsFor: awayStats?.scoresFor || 0,
         goalsAgainst: awayStats?.scoresAgainst || 0
     };
-    
     // --- 5. GEMINI HÍVÁS (Kontextus) ---
     const geminiJsonString = await _callGemini(PROMPT_V43(
          sport, homeTeamName, awayTeamName,
@@ -260,7 +243,6 @@ export async function fetchMatchData(options) {
     const structuredWeather = await getStructuredWeatherData(stadiumLocation, utcKickoff);
     if (!finalData.contextual_factors) finalData.contextual_factors = {};
     finalData.contextual_factors.structured_weather = structuredWeather;
-    
     const richContext = [
          geminiData.h2h_summary && `- H2H: ${geminiData.h2h_summary}`,
          geminiData.team_news?.home && `- Hírek: H:${geminiData.team_news.home}`,
@@ -279,7 +261,6 @@ export async function fetchMatchData(options) {
          oddsData: null, // Ez az API nem szolgáltat odds-okat
          fromCache: false
     };
-
     // Kritikus ellenőrzés
     if (typeof result.rawStats?.home?.GP !== 'number' || result.rawStats.home.GP <= 0 || typeof result.rawStats?.away?.GP !== 'number' || result.rawStats.away.GP <= 0) {
         console.warn(`[Hockey API] Figyelmeztetés: Érvénytelen statisztikák (GP <= 0). HomeGP: ${result.rawStats?.home?.GP}, AwayGP: ${result.rawStats?.away?.GP}`);
