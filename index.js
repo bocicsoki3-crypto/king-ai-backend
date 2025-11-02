@@ -14,9 +14,15 @@ import { runSettlementProcess } from './settlementService.js';
 const app = express();
 // --- Middleware Beállítások ---
 
-// JAVÍTÁS: A CORS beállítást ideiglenesen teljesen megengedőre állítjuk a hiba felderítéséhez.
-// Ez minden külső kérést engedélyezni fog.
-app.use(cors());
+// --- JAVÍTÁS v50.5: Explicit CORS Konfiguráció ---
+// A 'bocsicsoki-crypto.github.io' domain explicit engedélyezése.
+const corsOptions = {
+  origin: 'https://bocsicsoki-crypto.github.io',
+  optionsSuccessStatus: 200 // Néhány régebbi böngészőhöz
+};
+app.use(cors(corsOptions));
+// A régi 'app.use(cors());' helyett ezt használjuk.
+// --- JAVÍTÁS VÉGE ---
 
 app.use(express.json()); // JSON body parser
 app.use((req, res, next) => {
