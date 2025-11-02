@@ -3,7 +3,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import path from 'path'; 
 import { fileURLToPath } from 'url'; 
 import { PORT } from './config.js';
