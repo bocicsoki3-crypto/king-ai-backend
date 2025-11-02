@@ -216,9 +216,9 @@ export async function getStructuredWeatherData(stadiumLocation, utcKickoff) {
  * ESPN Meccslekérdező (az eredeti DataFetch.js-ből)
  * Ezt a fő DataFetch.js hívja, nem a providerek.
  *
- * JAVÍTÁS (v50.3): A Promise.all() hívás cserélve szekvenciális (egymás utáni)
- * for...of ciklusra, hogy elkerüljük az ESPN API rate limit hibáját
- * és az időtúllépést a 80+ egyidejű kérés miatt.
+ * JAVÍTÁS (v50.4 - Kötegelés): A 80+ kérés párhuzamos futtatása (v50.2)
+ * vagy szekvenciális futtatása (v50.3) helyett 5-ös csomagokban (batch)
+ * futtatjuk, hogy elkerüljük a rate limitet, de gyorsabbak maradjunk.
  */
 export async function _getFixturesFromEspn(sport, days) {
     const sportConfig = SPORT_CONFIG[sport];
@@ -235,9 +235,12 @@ export async function _getFixturesFromEspn(sport, days) {
 
     const allFixtures = []; // Egy tömb a gyűjtött meccseknek
     const leagueCount = Object.keys(sportConfig.espn_leagues).length;
-    console.log(`ESPN: Szekvenciális lekérés indul: ${daysInt} nap, ${leagueCount} liga... (Ez lassabb lesz, de stabil)`);
+    console.log(`ESPN: Kötegelt lekérés indul: ${daysInt} nap, ${leagueCount} liga...`);
 
-    let requestCount = 0;
+    // --- v50.4 JAVÍTÁS: Kötegelő (Batching) logika ---
+    
+    // 1. Készítünk egy listát az összes URL-ről, amit le kell kérni
+    const allUrlsToFetch = [];
     for (const dateString of datesToFetch) {
         for (const [leagueName, leagueData] of Object.entries(sportConfig.espn_leagues)) {
             const slug = leagueData.slug;
@@ -245,17 +248,26 @@ export async function _getFixturesFromEspn(sport, days) {
                 console.warn(`_getFixturesFromEspn: Üres slug (${leagueName}).`);
                 continue;
             }
-            
-            requestCount++;
-            console.log(`ESPN lekérés (${requestCount}/${leagueCount * daysInt}): ${leagueName} @ ${dateString}`);
-            
             const url = `https://site.api.espn.com/apis/site/v2/sports/${sportConfig.espn_sport_path}/${slug}/scoreboard?dates=${dateString}&limit=200`;
+            allUrlsToFetch.push({ url, leagueName, slug });
+        }
+    }
 
-            // --- JAVÍTÁS: Szekvenciális hívás (Promise.all() helyett) ---
-            try {
-                const response = await makeRequest(url, { timeout: 8000 }); // Várjuk be a hívást
-                if (response?.data?.events) {
-                    const fixturesForLeague = response.data.events
+    // 2. Definiáljuk a köteg méretét és a várakozási időt
+    const BATCH_SIZE = 5; // Egyszerre 5 kérést küldünk
+    const DELAY_BETWEEN_BATCHES = 500; // 500ms várakozás a csomagok között
+
+    console.log(`ESPN: Összesen ${allUrlsToFetch.length} kérés indítása ${BATCH_SIZE}-ös kötegekben...`);
+
+    for (let i = 0; i < allUrlsToFetch.length; i += BATCH_SIZE) {
+        const batchUrls = allUrlsToFetch.slice(i, i + BATCH_SIZE);
+        console.log(`ESPN: Köteg futtatása (${i + 1}-${i + batchUrls.length} / ${allUrlsToFetch.length})...`);
+
+        const promises = batchUrls.map(req => 
+            makeRequest(req.url, { timeout: 8000 })
+                .then(response => {
+                    if (!response?.data?.events) return [];
+                    return response.data.events
                         .filter(event => event?.status?.type?.state?.toLowerCase() === 'pre')
                         .map(event => {
                             const competition = event.competitions?.[0];
@@ -268,34 +280,40 @@ export async function _getFixturesFromEspn(sport, days) {
                                     home: homeTeam.name.trim(),
                                     away: awayTeam.name.trim(),
                                     utcKickoff: event.date,
-                                    league: leagueName.trim()
+                                    league: req.leagueName.trim()
                                 };
                             }
                             return null;
                         }).filter(Boolean);
-                    
-                    allFixtures.push(...fixturesForLeague); // Adjuk hozzá a találatokat a fő listához
-                }
-            } catch (error) {
-                if (error.response?.status === 400) {
-                    console.warn(`ESPN Hiba (400): Valószínűleg rossz slug '${slug}' (${leagueName})?`);
-                } else {
-                    console.error(`ESPN Hiba (${leagueName}): ${error.message}`);
-                }
-                // A hiba nem állítja le a teljes folyamatot, csak ez a liga marad ki
-            }
-            // --- JAVÍTÁS VÉGE ---
+                })
+                .catch(error => {
+                    if (error.response?.status === 400) {
+                        console.warn(`ESPN Hiba (400): Valószínűleg rossz slug '${req.slug}' (${req.leagueName})?`);
+                    } else {
+                        console.error(`ESPN Hiba (${req.leagueName}): ${error.message}`);
+                    }
+                    return []; // Hiba esetén üres tömböt adunk vissza, hogy a Promise.all ne szakadjon meg
+                })
+        );
 
-            // Várakozás a kérések között, hogy elkerüljük a rate limiting-et
-            await new Promise(resolve => setTimeout(resolve, 250)); // 250ms várakozás
+        // A köteg futtatása
+        const batchResults = await Promise.all(promises);
+        
+        // Eredmények hozzáadása a fő listához
+        allFixtures.push(...batchResults.flat());
+
+        // Várakozás a következő köteg előtt (ha még van hátra)
+        if (i + BATCH_SIZE < allUrlsToFetch.length) {
+            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
         }
     }
+    // --- v50.4 JAVÍTÁS VÉGE ---
 
     try {
         // A 'results.flat()' helyett már az 'allFixtures' listát használjuk
         const uniqueFixtures = Array.from(new Map(allFixtures.map(f => [`${f.home}-${f.away}-${f.utcKickoff}`, f])).values());
         uniqueFixtures.sort((a, b) => new Date(a.utcKickoff) - new Date(b.utcKickoff));
-        console.log(`ESPN: ${uniqueFixtures.length} egyedi meccs lekérve (szekvenciálisan) a következő ${daysInt} napra.`);
+        console.log(`ESPN: ${uniqueFixtures.length} egyedi meccs lekérve (kötegelve) a következő ${daysInt} napra.`);
         return uniqueFixtures;
     } catch (e) {
         console.error(`ESPN feldolgozási hiba: ${e.message}`, e.stack);
