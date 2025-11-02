@@ -1,125 +1,129 @@
-// --- JAVÍTOTT AI_service.ts (v52.2 - 'import type' javítás) ---
+// --- AI_Service.ts (v53.0 - Dialektikus Chain-of-Thought) ---
+// MÓDOSÍTÁS: A rendszer átalakítva egy "Committee of Experts" (Szakértői Bizottság)
+// modellre, amely egy Kvantitatív (Quant) és egy Taktikai (Scout)
+// nézőpont konfliktusára épül.
 
-/**
- * AI_Service.ts (Node.js Verzió)
- * VÁLTOZÁS (v52.2 - TS):
- * - Javítva a TS2846 hiba: Az 'import' ki lett cserélve 'import type'-ra
- * a canonical.d.ts típusdefiníciós fájl importálásakor.
- */
 import { _callGemini } from './DataFetch.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
-
-// Kanonikus típusok importálása
-// === JAVÍTÁS (TS2846) ===
-// A 'import' helyett 'import type'-ot használunk, mivel a .d.ts fájlok
-// nem tartalmaznak futásidejű kódot, csak típus-deklarációkat.
 import type { ICanonicalPlayerStats, ICanonicalRawData } from './src/types/canonical.d.ts';
-// === JAVÍTÁS VÉGE ===
 
-// --- 1. LÉPÉS: TÉNYFELTÁRÓ PROMPT ---
-const PROMPT_STEP_1_FACTS = `
-TASK: You are a Data Analyst. Your job is to extract and structure critical facts from the provided raw data.
-DO NOT ANALYZE. DO NOT SPECULATE. Only report confirmed facts.
-Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
-
-[DATA INPUTS]:
-1. Rich Context (News, H2H, Form): {richContext}
-2. Detailed Player Stats (API): {detailedPlayerStatsJson}
-3. Market Intel (Single Source): "{marketIntel}"
-
-[OUTPUT STRUCTURE]:
-{
-  "key_facts_home": "<List 1-3 critical facts for Home (e.g., 'Key player X (Rating 7.8) is confirmed_out'). 'N/A' if none.>",
-  "key_facts_away": "<List 1-3 critical facts for Away. 'N/A' if none.>",
-  "market_sentiment": "<Describe the market movement based on 'Market Intel'. e.g., 'Market shows movement towards Home (-5.0%)'. 'N/A' if none.>",
-  "h2h_summary": "<A 1-2 sentence summary of the H2H data from 'Rich Context'.>",
-  "contextual_notes": "<Note any other critical factors like weather or high tension from 'Rich Context'.>"
-}
-`;
-
-// --- 2. LÉPÉS: ELEMZŐ PROMPT ---
-const PROMPT_STEP_2_ANALYSIS = `
-TASK: You are the Head Tactical Analyst. Analyze the provided simulations and structured facts.
-DO NOT provide a final recommendation. Your job is deep analysis.
+// --- 1. LÉPÉS: A KVANTITATÍV ELEMZŐ (A "QUANT") ---
+const PROMPT_STEP_1_QUANT = `
+TASK: You are 'Quant 7', an elite quantitative sports analyst. You only trust objective data. You are skeptical of narrative and context.
+Your job is to analyze the provided statistical data (Simulation, xG, Player Ratings) and identify the most probable outcome based *only* on the numbers.
+DO NOT analyze tactics or injuries unless they are numerically represented in the data.
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
 
 [DATA INPUTS]:
 1. Simulation (Sim): {simJson}
-2. Structured Facts (from Step 1): {step1FactsJson}
-3. Raw Context (Full Data): {rawDataJson} // Use for deep tactical context if needed
+2. Real xG Data (from Sofascore/API-Football): {realXgJson}
+3. Key Player Ratings (Avg. per position, from Sofascore): {keyPlayerRatingsJson}
+4. Value Bets (Calculated): {valueBetsJson}
 
 [OUTPUT STRUCTURE]:
 {
-  "risk_analysis": "<Részletes kockázatelemzés. Térj ki a szimuláció és a tények (pl. hiányzók) közötti ellentmondásokra.>",
-  "tactical_briefing": "<Részletes taktikai elemzés. Elemezd a várható kulcspárharcokat a tények és a statisztikák alapján.>",
-  "micromodels": {
-    "btts_analysis": "<BTTS elemzés>\\nBizalom: [Alacsony/Közepes/Magas]",
-    "goals_ou_analysis": "<Gól O/U elemzés (a {sim_mainTotalsLine} vonal alapján)>\\nBizalom: [Alacsony/Közepes/Magas]",
-    "corner_analysis": "<Szöglet elemzés (a {mu_corners_sim} átlag alapján)>\\nBizalom: [Alacsony/Közepes/Magas]",
-    "card_analysis": "<Lap elemzés (a {mu_cards_sim} átlag alapján)>\\nBizalom: [Alacsony/Közepes/Magas]"
-  },
-  "player_markets": "<Játékospiaci meglátások (1-3 mondat). Ha nincs, 'Nincs kiemelkedő játékospiaci lehetőség.'>",
-  "general_analysis": "<Általános elemzés (2-3 bekezdés). Szintetizáld a statisztikai modellt (sim) és a taktikai képet (facts).>",
-  "key_questions": "- Kulcskérdés 1 (pl. 'Hogyan pótolja a Hazai csapat X hiányzását?')\\n- Kulcskérdés 2..."
+  "quantitative_summary": "<Egy 2-3 mondatos összefoglaló, amely *csak* a számokra (xG, sim%) fókuszál.>",
+  "data_driven_conclusion": "<Mi a legvalószínűbb kimenetel (1X2, O/U) *kizárólag* a statisztikák alapján?>",
+  "key_statistical_insights": [
+    "<1. kulcsfontosságú statisztikai adat (pl. 'A hazai xG (2.1) szignifikánsan magasabb, mint a vendég xG (0.8).')>",
+    "<2. kulcsfontosságú statisztikai adat (pl. 'A szimuláció 65%-os esélyt ad a Hazai győzelemre.')>",
+    "<3. kulcsfontosságú adat (pl. 'A vendég kapus (Rating: 7.8) statisztikailag kiemelkedő.')>"
+  ],
+  "value_opportunities": "<Listázd az 1-2 legjobb 'Value Bet'-et, ha van ilyen. Ha nincs, 'Nincs statisztikailag szignifikáns érték.'>"
 }
 `;
 
-// --- 3. LÉPÉS: STRATÉGA PROMPT ---
-const PROMPT_STEP_3_STRATEGY = `
-TASK: You are the Head Strategist. Your decision is final.
-Review the analysis, the model's confidence, and the available value.
-You MUST provide the single best recommendation.
-NOTE: The Odds data is from a single source (Bet365), not a market consensus. Factor this into your confidence.
+// --- 2. LÉPÉS: A TAKTIKAI FELDERÍTŐ (A "SCOUT") ---
+const PROMPT_STEP_2_SCOUT = `
+TASK: You are 'Scout 3', an expert tactical scout. You trust what you see (context, tactics, injuries), not what the spreadsheet says.
+Your job is to analyze the provided *qualitative* data (injuries, team news, tactical styles) and identify the most likely *narrative* of the match.
+DO NOT mention xG or simulation results. Focus on *why* the numbers might be wrong.
+Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
 
 [DATA INPUTS]:
-1. Full Analysis (from Step 2): {step2AnalysisJson}
-2. Model Confidence Score: {modelConfidence}/10
-3. Value Bets (Calculated): {valueBetsJson}
-4. Confidence Calibration Map (Historical Accuracy): {calibrationMapJson}
+1. Raw Data (Full Context): {rawDataJson}
+2. Confirmed Absentees (from Sofascore): {detailedPlayerStatsJson}
+3. Market Sentiment (Odds Movement): "{marketIntel}"
 
 [OUTPUT STRUCTURE]:
 {
-  "strategic_thoughts": "<Stratégiai zárógondolatok (2-3 bekezdés). Elemezd a legjobb fogadási szögeket (value vs. risk) a fő piacokon.>",
-  "expert_confidence_report": "**<SCORE/10>** - Részletes indoklás. Vessd össze a {modelConfidence} statisztikai bizalmat az elemzési tényekkel (pl. hiányzók, piaci mozgás) és a historikus kalibrációval (Calibration Map).>",
+  "tactical_summary": "<Egy 2-3 mondatos taktikai összefoglaló (stílus-párharc, motiváció).>",
+  "narrative_conclusion": "<Mi a legvalószínűbb kimenetel (1X2, O/U) *kizárólag* a kontextus (sérülések, forma) alapján?>",
+  "key_contextual_insights": [
+    "<1. kulcsfontosságú kontextuális adat (pl. 'A hazai kulcsjátékos (Kovács) sérülése (confirmed_out) kritikus, a védelem instabil lesz.')>",
+    "<2. kulcsfontosságú kontextuális adat (pl. 'A vendég csapat stílusa (magas letámadás) közvetlen ellenszere a hazai lassú építkezésnek.')>",
+    "<3. kulcsfontosságú adat (pl. 'A piaci mozgás (-5%) a vendégcsapatot favorizálja, ellentmondva a tabellának.')>"
+  ],
+  "contextual_risks": "<Listázd az 1-2 legnagyobb kockázatot (pl. 'Derbi meccs, a feszültség magas, sok lap várható.')>"
+}
+`;
+
+// --- 3. LÉPÉS: A VEZETŐ STRATÉGA (A "SYNTHESIS") ---
+const PROMPT_STEP_3_STRATEGIST = `
+TASK: You are the Head Strategist. Your decision is final.
+You have received two conflicting reports:
+1. QUANT REPORT (Data-driven): {step1QuantJson}
+2. SCOUT REPORT (Context-driven): {step2ScoutJson}
+
+Your job is to *resolve the conflict* between these two reports. Acknowledge their findings but provide a superior, synthesized final decision.
+Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
+
+[DATA INPUTS]:
+1. Quant Report (Step 1): {step1QuantJson}
+2. Scout Report (Step 2): {step2ScoutJson}
+3. Model Confidence (Statistical): {modelConfidence}/10
+4. Simulation (Full Sim): {simJson}
+
+[OUTPUT STRUCTURE]:
+{
+  "strategic_conflict_resolution": "<Egy 2-3 bekezdéses elemzés. Szintetizáld a Quant és a Scout jelentését. Ha ellentmondanak (pl. Quant a Hazait, Scout a Vendéget favorizálja), oldd fel az ellentmondást (pl. 'A Quant helyesen azonosította a hazai statisztikai fölényt, de a Scout jelentése a kulcsjátékos sérüléséről felülírja ezt. A kockázat túl magas.')>",
+  
+  "micromodels": {
+    "btts_analysis": "<BTTS elemzés a Quant és Scout adatok alapján>\\nBizalom: [Alacsony/Közepes/Magas]",
+    "goals_ou_analysis": "<Gól O/U elemzés (a {sim_mainTotalsLine} vonal alapján)>\\nBizalom: [Alacsony/Közepes/Magas]"
+  },
+  
+  "final_confidence_report": "**<SCORE/10>** - Részletes indoklás. Vessd össze a {modelConfidence} (stat) bizalmat a Scout által jelzett kockázatokkal (pl. sérülések, piaci mozgás). A végső pontszám tükrözze a Quant és a Scout közötti összhangot vagy annak hiányát.>",
+  
   "master_recommendation": {
-    "recommended_bet": "<A végső ajánlás (CSAK fő piac: 1X2, O/U, BTTS, Moneyline)>",
+    "recommended_bet": "<A végső, szintetizált ajánlás (CSAK fő piac: 1X2, O/U, BTTS, Moneyline)>",
     "final_confidence": <Number 1.0-10.0>,
-    "brief_reasoning": "<Egyetlen, tömör magyar mondatos indoklás>"
+    "brief_reasoning": "<Egyetlen, tömör magyar mondatos indoklás, amely tükrözi a szintézist>"
   }
 }
 `;
 
+
 // --- TÍPUSOK a bemeneti adatokhoz ---
-// Ezeket az AnalysisFlow.ts-ből kapjuk
 interface Step1Input {
-  richContext: string;
+  simJson: any;
+  realXgJson: any;
+  keyPlayerRatingsJson: any;
+  valueBetsJson: any[];
+}
+
+interface Step2Input {
+  rawDataJson: ICanonicalRawData;
   detailedPlayerStatsJson: ICanonicalPlayerStats;
   marketIntel: string;
 }
 
-interface Step2Input {
-  simJson: any; // ISimResult interfész lenne az ideális
-  step1FactsJson: any; // Step1 kimenete
-  rawDataJson: ICanonicalRawData;
-  sim_mainTotalsLine: number;
-  mu_corners_sim: number;
-  mu_cards_sim: number;
-}
-
 interface Step3Input {
-  step2AnalysisJson: any; // Step2 kimenete
+  step1QuantJson: any; // Step1 kimenete
+  step2ScoutJson: any; // Step2 kimenete
   modelConfidence: number;
-  valueBetsJson: any[]; // IValueBet[] interfész lenne az ideális
-  calibrationMapJson?: any; // Ezt a függvény adja hozzá
+  simJson: any;
+  sim_mainTotalsLine: number;
 }
 
 
-// --- HELPER a promptok kitöltéséhez --- (Változatlan, de típusosított)
+// --- HELPER a promptok kitöltéséhez (Változatlan, de típusosított) ---
 function fillPromptTemplate(template: string, data: any): string {
     if (!template || typeof template !== 'string') return '';
     try {
         return template.replace(/\{([\w_]+)\}/g, (match, key) => {
-            let value = data;
+            let value: any;
+            
             // Közvetlen kulcs keresése az adat objektumban
             if (data && typeof data === 'object' && data.hasOwnProperty(key)) {
                  value = data[key];
@@ -140,26 +144,9 @@ function fillPromptTemplate(template: string, data: any): string {
 
             // Érték formázása
             if (value === null || value === undefined) { return "N/A"; }
-            if (typeof value === 'number' && !isNaN(value)) {
-                // Százalékok, bizalmi pontszámok
-                if (key.startsWith('sim_p') || key.endsWith('_pct') || key === 'modelConfidence' || key === 'expertConfScore') return value.toFixed(1);
-                // Várható értékek (xG, GSAx)
-                if (key.startsWith('mu_') || key.startsWith('sim_mu_') || key === 'home_gsax' || key === 'away_gsax') return value.toFixed(2);
-                // Kosár statok
-                if (key.startsWith('pace') || key.endsWith('Rating')) return value.toFixed(1);
-                // Szöglet, lap átlag
-                if (key.includes('corner') || key.includes('card')) return value.toFixed(1);
-                // Módosítók
-                if (key.endsWith('advantage') || key.endsWith('mod')) return value.toFixed(2);
-                // Vonalak (Totals, Corners, Cards)
-                if (key === 'line' || key === 'likelyLine' || key === 'sim_mainTotalsLine') return value.toString();
-                // Stringként adjuk vissza
-                return String(value); 
-            }
-             if (typeof value === 'object') {
-                 // Objektumokat JSON stringgé alakítunk (ha nem Json kulcs volt eleve)
+            if (typeof value === 'object') {
                  try { return JSON.stringify(value); } catch (e) { return "[object]"; }
-             }
+            }
             // Minden más stringgé alakítva
             return String(value);
         });
@@ -169,53 +156,54 @@ function fillPromptTemplate(template: string, data: any): string {
     }
 }
 
-// === ÚJ, LÁNCOLT AI HÍVÓK (v51 / v52 TS) ===
+// === LÁNCOLT AI HÍVÓK (v53.0) ===
 
 /**
- * 1. LÉPÉS: Tények kinyerése
+ * 1. LÉPÉS: Quant Elemzés
  */
-export async function runStep1_GetFacts(data: Step1Input): Promise<any> {
+export async function runStep1_GetQuant(data: Step1Input): Promise<any> {
     try {
-        const filledPrompt = fillPromptTemplate(PROMPT_STEP_1_FACTS, data);
+        const filledPrompt = fillPromptTemplate(PROMPT_STEP_1_QUANT, data);
         const jsonString = await _callGemini(filledPrompt);
         return JSON.parse(jsonString);
     } catch (e: any) {
-        console.error(`AI Hiba (Step 1 - Facts): ${e.message}`);
-        return { error: `AI Hiba (Step 1): ${e.message}` }; // Hiba objektum visszaadása
+        console.error(`AI Hiba (Step 1 - Quant): ${e.message}`);
+        return { error: `AI Hiba (Step 1 - Quant): ${e.message}` };
     }
 }
 
 /**
- * 2. LÉPÉS: Taktikai Elemzés
+ * 2. LÉPÉS: Scout Elemzés
  */
-export async function runStep2_GetAnalysis(data: Step2Input): Promise<any> {
+export async function runStep2_GetScout(data: Step2Input): Promise<any> {
     try {
-        const filledPrompt = fillPromptTemplate(PROMPT_STEP_2_ANALYSIS, data);
+        const filledPrompt = fillPromptTemplate(PROMPT_STEP_2_SCOUT, data);
         const jsonString = await _callGemini(filledPrompt);
         return JSON.parse(jsonString);
     } catch (e: any) {
-        console.error(`AI Hiba (Step 2 - Analysis): ${e.message}`);
-        return { error: `AI Hiba (Step 2): ${e.message}` };
+        console.error(`AI Hiba (Step 2 - Scout): ${e.message}`);
+        return { error: `AI Hiba (Step 2 - Scout): ${e.message}` };
     }
 }
 
 /**
- * 3. LÉPÉS: Stratégiai Döntés
+ * 3. LÉPÉS: Stratégiai Döntés (Szintézis)
  */
 export async function runStep3_GetStrategy(data: Step3Input): Promise<any> {
     try {
-        // Kiegészítés a kalibrációs térképpel
-        data.calibrationMapJson = getConfidenceCalibrationMap();
+        // Kiegészítés a kalibrációs térképpel (bár a prompt már nem kéri, a háttérben maradhat)
+        // data.calibrationMapJson = getConfidenceCalibrationMap(); 
         
-        const filledPrompt = fillPromptTemplate(PROMPT_STEP_3_STRATEGY, data);
+        const filledPrompt = fillPromptTemplate(PROMPT_STEP_3_STRATEGIST, data);
         const jsonString = await _callGemini(filledPrompt);
         return JSON.parse(jsonString);
     } catch (e: any) {
         console.error(`AI Hiba (Step 3 - Strategy): ${e.message}`);
         // Kritikus hiba esetén is adjunk vissza egy alap ajánlást
         return {
-            strategic_thoughts: "AI Hiba",
-            expert_confidence_report: "**1.0/10** - AI Hiba",
+            strategic_conflict_resolution: `AI Hiba (Step 3): ${e.message}`,
+            micromodels: {},
+            final_confidence_report: "**1.0/10** - AI Hiba (Step 3)",
             master_recommendation: {
                 recommended_bet: "Hiba",
                 final_confidence: 1.0,
@@ -226,7 +214,7 @@ export async function runStep3_GetStrategy(data: Step3Input): Promise<any> {
 }
 
 
-// --- CHAT FUNKCIÓ --- (Változatlan, de típusosított)
+// --- CHAT FUNKCIÓ --- (Változatlan)
 interface ChatMessage {
   role: 'user' | 'model' | 'ai';
   parts: { text: string }[];
@@ -235,11 +223,10 @@ interface ChatMessage {
 export async function getChatResponse(context: string, history: ChatMessage[], question: string): Promise<{ answer?: string; error?: string }> {
     if (!context || !question) return { error: "Hiányzó 'context' vagy 'question'." };
     try {
-        // Előzmények formázása a prompt számára
         const historyString = (history || [])
              .map(msg => `${msg.role === 'user' ? 'Felhasználó' : 'AI'}: ${msg.parts?.[0]?.text || ''}`)
             .join('\n');
-        // Prompt összeállítása
+            
         const prompt = `You are an elite sports analyst AI assistant specialized in the provided match analysis.
 [CONTEXT of the analysis]:
 --- START CONTEXT ---
@@ -255,39 +242,20 @@ Answer concisely and accurately in Hungarian based ONLY on the provided Analysis
 Do not provide betting advice. Do not make up information not present in the context.
 If the answer isn't in the context or history, politely state that the information is not available in the analysis.`;
         
-        // AI hívás (JSON kényszerítés nélkül)
-        const rawAnswer = await _callGemini(prompt
-             // Eltávolítjuk a JSON kényszerítő instrukciókat az alap _callGemini promptból
-             .replace("Your entire response must be ONLY a single, valid JSON object.", "")
-             .replace("Do not add any text, explanation, or introductory phrases outside of the JSON structure itself.", "")
-             .replace("Ensure the JSON is complete and well-formed.", "")
-        );
+        const rawAnswer = await _callGemini(prompt, false); // JSON kényszerítés kikapcsolva
         
-        // Válasz tisztítása (eltávolítjuk az esetleges JSON körítést)
-        let answerText = rawAnswer;
-        try {
-            // Megpróbáljuk parse-olni, hátha mégis JSON-t adott vissza
-            const parsed = JSON.parse(rawAnswer);
-            // Ha sikerült, keressük a szöveges választ benne
-            answerText = parsed.answer || parsed.response || Object.values(parsed).find(v => typeof v === 'string') || rawAnswer;
-        } catch (e) {
-            // Ha nem JSON, csak a markdown tageket távolítjuk el
-            answerText = rawAnswer.replace(/```json\n?/, '').replace(/```\n?/, '').trim();
-        }
+        return rawAnswer ? { answer: rawAnswer } : { error: "Az AI nem tudott válaszolni." };
 
-         // Visszaadjuk a választ, ha van
-         return answerText ? { answer: answerText } : { error: "Az AI nem tudott válaszolni." };
     } catch (e: any) {
         console.error(`Chat hiba: ${e.message}`, e.stack);
         return { error: `Chat AI hiba: ${e.message}` };
     }
 }
 
-
-// --- FŐ EXPORT --- (v51 - Frissítve a CoT lépésekre)
+// --- FŐ EXPORT --- (v53.0 - Frissítve a Dialektikus CoT lépésekre)
 export default {
-    runStep1_GetFacts,
-    runStep2_GetAnalysis,
+    runStep1_GetQuant,
+    runStep2_GetScout,
     runStep3_GetStrategy,
     getChatResponse
 };
