@@ -1,12 +1,12 @@
-// --- index.ts (v52.6 - Statikus Kiszolgálás Eltávolítva) ---
+// --- index.ts (v52.7 - Hash Generátorral) ---
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 // JAVÍTÁS: A 'bcrypt.js'-t importáljuk, ahogy a 38. lépésben javítottuk
 import bcrypt from 'bcryptjs'; 
-// import path from 'path'; // ELTÁVOLÍTVA
-// import { fileURLToPath } from 'url'; // ELTÁVOLÍTVA
+import path from 'path'; 
+import { fileURLToPath } from 'url'; 
 import { PORT } from './config.js';
 
 // Importáljuk a típusosított fő funkciókat
@@ -17,8 +17,8 @@ import { getChatResponse } from './AI_Service.js';
 import { updatePowerRatings, runConfidenceCalibration } from './LearningService.js';
 import { runSettlementProcess } from './settlementService.js'; 
 
-// const __filename = fileURLToPath(import.meta.url); // ELTÁVOLÍTVA
-// const __dirname = path.dirname(__filename); // ELTÁVOLÍTVA
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app: Express = express();
 
@@ -26,6 +26,7 @@ const app: Express = express();
 app.use(cors());
 app.use(express.json()); // JSON body parser
 
+// === Statikus Fájl Kiszolgálás Eltávolítva (v52.6) ===
 // const publicPath = path.join(__dirname, 'public'); // ELTÁVOLÍTVA
 // app.use(express.static(publicPath)); // ELTÁVOLÍTVA
 
@@ -64,7 +65,7 @@ app.post('/login', async (req: Request, res: Response) => {
     }
 });
 
-// === DIAGNOSZTIKAI VÉGPONT (Ideiglenesen maradhat) ===
+// === DIAGNOSZTIKAI VÉGPONT (A 35. LÉPÉSBŐL) ===
 app.get('/checkhash', async (req: Request, res: Response) => {
     try {
         const serverHash = process.env.APP_PASSWORD_HASH;
@@ -92,7 +93,32 @@ app.get('/checkhash', async (req: Request, res: Response) => {
         res.status(500).json({ error: `Diagnosztikai hiba: ${e.message}` });
     }
 });
-// === DIAGNOSZTIKA VÉGE ===
+
+// === ÚJ HASH GENERÁTOR VÉGPONT (A 39. LÉPÉSBŐL) ===
+app.get('/generatehash', async (req: Request, res: Response) => {
+    try {
+        const passwordToHash = req.query.password as string;
+        if (!passwordToHash) {
+            return res.status(400).json({ error: "Hiányzó ?password=... query paraméter." });
+        }
+        
+        console.log(`Hash generálása a "${passwordToHash}" jelszóhoz...`);
+        const salt = await bcrypt.genSalt(10);
+        const newHash = await bcrypt.hash(passwordToHash, salt);
+        
+        console.log(`Új hash generálva: ${newHash}`);
+        
+        res.status(200).json({
+            message: "Új hash sikeresen generálva.",
+            password_provided: passwordToHash,
+            NEW_HASH_VALUE: newHash
+        });
+
+    } catch (e: any) {
+        res.status(500).json({ error: `Hash generálási hiba: ${e.message}` });
+    }
+});
+// === HASH GENERÁTOR VÉGE ===
 
 // Védelmi Middleware
 const protect = (req: Request, res: Response, next: NextFunction) => {
@@ -269,7 +295,6 @@ async function startServer() {
         app.listen(PORT, () => {
             console.log(`🎉 King AI Backend (TypeScript) sikeresen elindult!`);
             console.log(`A szerver itt fut: http://localhost:${PORT}`);
-            // JAVÍTVA: A frontend üzenet eltávolítva, mivel ez egy headless API
         });
     } catch (e: any) {
         console.error("KRITIKUS HIBA a szerver indítása során:", e.message, e.stack);
