@@ -1,19 +1,20 @@
-// --- JAVÍTOTT AI_service.ts (v52 - TypeScript & CoT) ---
+// --- JAVÍTOTT AI_service.ts (v52.2 - 'import type' javítás) ---
 
 /**
  * AI_Service.ts (Node.js Verzió)
- * VÁLTOZÁS (v52 - TS):
- * - A modul átalakítva TypeScript-re.
- * - A 3-lépcsős "Chain-of-Thought" (CoT) funkciók bemeneti paraméterei
- * szigorúan típusosítva lettek (pl. `simJson: any`, `detailedPlayerStatsJson: ICanonicalPlayerStats`).
- * - Ez biztosítja, hogy a megfelelő adatszerződések legyenek
- * kényszerítve a lánc lépései között.
+ * VÁLTOZÁS (v52.2 - TS):
+ * - Javítva a TS2846 hiba: Az 'import' ki lett cserélve 'import type'-ra
+ * a canonical.d.ts típusdefiníciós fájl importálásakor.
  */
 import { _callGemini } from './DataFetch.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
 
-// Kanonikus típusok importálása (opcionális, de ajánlott a szigorúbb ellenőrzéshez)
-import { ICanonicalPlayerStats, ICanonicalRawData } from './src/types/canonical.d.ts';
+// Kanonikus típusok importálása
+// === JAVÍTÁS (TS2846) ===
+// A 'import' helyett 'import type'-ot használunk, mivel a .d.ts fájlok
+// nem tartalmaznak futásidejű kódot, csak típus-deklarációkat.
+import type { ICanonicalPlayerStats, ICanonicalRawData } from './src/types/canonical.d.ts';
+// === JAVÍTÁS VÉGE ===
 
 // --- 1. LÉPÉS: TÉNYFELTÁRÓ PROMPT ---
 const PROMPT_STEP_1_FACTS = `
@@ -168,10 +169,6 @@ function fillPromptTemplate(template: string, data: any): string {
     }
 }
 
-
-// === v50: KONSZOLIDÁLT AI HÍVÓ (ELTÁVOLÍTVA) ===
-// export async function getConsolidatedAnalysis(allData) { ... } // TÖRÖLVE
-
 // === ÚJ, LÁNCOLT AI HÍVÓK (v51 / v52 TS) ===
 
 /**
@@ -240,7 +237,7 @@ export async function getChatResponse(context: string, history: ChatMessage[], q
     try {
         // Előzmények formázása a prompt számára
         const historyString = (history || [])
-            .map(msg => `${msg.role === 'user' ? 'Felhasználó' : 'AI'}: ${msg.parts?.[0]?.text || ''}`)
+             .map(msg => `${msg.role === 'user' ? 'Felhasználó' : 'AI'}: ${msg.parts?.[0]?.text || ''}`)
             .join('\n');
         // Prompt összeállítása
         const prompt = `You are an elite sports analyst AI assistant specialized in the provided match analysis.

@@ -1,54 +1,54 @@
-// --- JAVÍTOTT AnalysisFlow.ts (v52 - TypeScript & CoT) ---
+// --- JAVÍTOTT AnalysisFlow.ts (v52.2 - 'import type' javítás) ---
 
-import NodeCache from 'node-cache';
+import NodeCache from 'node-cache'; // CacheService helyett
 import { SPORT_CONFIG } from './config.js';
+// Konfiguráció importálása
 
 // Kanonikus típusok importálása
-import {
+// === JAVÍTÁS (TS2846) ===
+import type {
     ICanonicalRichContext,
     ICanonicalRawData,
     ICanonicalStats,
     ICanonicalOdds
 } from './src/types/canonical.d.ts';
+// === JAVÍTÁS VÉGE ===
 
-// Modul importok
+// A 'findMainTotalsLine'-t kivettük a DataFetch-ből, mert az már csak egy 'Factory'
 import { getRichContextualData } from './DataFetch.js';
+// Helyette a központi 'utils' fájlból importáljuk, ahova áthelyeztük
 import { findMainTotalsLine } from './providers/common/utils.js';
 
-// Model importok (már típusosított függvények)
+// Adatgyűjtő funkciók
 import {
     estimateXG,
     estimateAdvancedMetrics,
     simulateMatchProgress,
     calculateModelConfidence,
+    // buildPropheticTimeline, // ELTÁVOLÍTVA (v50) - Logikailag hibás (sztochasztikus)
     calculatePsychologicalProfile,
     calculateValue,
     analyzeLineMovement,
     analyzePlayerDuels
 } from './Model.js';
-
-// AI Szolgáltatás importok (már típusosított CoT függvények)
+// AI Szolgáltatás Importok
 import {
     runStep1_GetFacts,
     runStep2_GetAnalysis,
     runStep3_GetStrategy
 } from './AI_Service.js';
-
-import { saveAnalysisToSheet } from './sheets.js';
+// --- JAVÍTÁS VÉGE ---
+import { saveAnalysisToSheet } from './sheets.js'; // Mentés funkció
 import { buildAnalysisHtml } from './htmlBuilder.js';
+// HTML építő funkció
 
 // Gyorsítótár inicializálása
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
-
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v52 - TS):
-* - A teljes modul átalakítva TypeScript-re.
-* - A függvények most már a 'canonical.d.ts'-ben definiált
-* szigorú interfészeket (pl. ICanonicalRichContext) használják
-* a be- és kimeneteken.
-* - Ez biztosítja a típusbiztonságot a teljes elemzési láncon,
-* összekötve a típusosított Providereket, Modellt és AI Szolgáltatást.
+* VÁLTOZÁS (v52.2 - TS):
+* - Javítva a TS2846 hiba: Az 'import' ki lett cserélve 'import type'-ra
+* a canonical.d.ts típusdefiníciós fájl importálásakor.
 **************************************************************/
 
 // A visszatérési típus meghatározása (amit a kliens vár)
@@ -117,6 +117,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         }
 
         // --- 3. Odds és kontextus függő elemzések ---
+        
         let mutableOddsData: ICanonicalOdds | null = oddsData;
         if (!mutableOddsData) {
             console.warn(`Figyelmeztetés: Nem sikerült szorzó adatokat lekérni ${home} vs ${away} meccshez (API-Football).`);

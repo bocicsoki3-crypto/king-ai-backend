@@ -1,17 +1,20 @@
-// htmlBuilder.ts (v52 - TypeScript)
+// htmlBuilder.ts (v52.2 - 'import type' javítás)
 // MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
 // A 'buildAnalysisHtml' függvény most már a CoT (Chain-of-Thought)
 // által generált 'fullAnalysisReport' objektum típusosított
 // (bár 'any' szinten) kezelésére van felkészítve.
 
-import { ICanonicalOdds } from './src/types/canonical.d.ts'; // Importáljuk a típusokat
+// === JAVÍTÁS (TS2846) ===
+// A 'import' helyett 'import type'-ot használunk, mivel a .d.ts fájlok
+// nem tartalmaznak futásidejű kódot, csak típus-deklarációkat.
+import type { ICanonicalOdds } from './src/types/canonical.d.ts';
+// === JAVÍTÁS VÉGE ===
 
 /**************************************************************
 * htmlBuilder.ts - HTML Generátor Modul (Node.js Verzió)
-* VÁLTOZÁS (v52 - TS):
-* - A függvény paraméterei típusannotációt kaptak (pl. fullAnalysisReport: any).
-* - A belső segédfüggvények (pl. escapeHTML, getGaugeHtml)
-* paraméterei szintén típusosítva lettek.
+* VÁLTOZÁS (v52.2 - TS):
+* - Javítva a TS2846 hiba: Az 'import' ki lett cserélve 'import type'-ra
+* a canonical.d.ts típusdefiníciós fájl importálásakor.
 **************************************************************/
 
 /**
@@ -117,9 +120,9 @@ function getGaugeHtml(confidence: number | string, label: string = ""): string {
     <div class="gauge-container">
         <svg class="gauge-svg" viewBox="0 0 100 85">
              <path class="gauge-track" d="M 12.5 50 A 37.5 37.5 0 1 1 87.5 50"></path>
-            <path class="gauge-value" d="M 12.5 50 A 37.5 37.5 0 1 1 87.5 50"
+             <path class="gauge-value" d="M 12.5 50 A 37.5 37.5 0 1 1 87.5 50"
                   style="stroke-dasharray: ${circumference}; stroke-dashoffset: ${circumference}; --value: ${percentage}; animation: fillGauge 1s ease-out forwards 0.5s;">
-            </path>
+             </path>
         </svg>
         <div class="gauge-text glowing-text-white">
             ${safeConf.toFixed(1)}<span class="gauge-label-inline">/10</span>
@@ -127,7 +130,7 @@ function getGaugeHtml(confidence: number | string, label: string = ""): string {
         ${label ? `<div class="gauge-label">${escapeHTML(label)}</div>` : ''}
     </div>
     <style>
-        @keyframes fillGauge { to { stroke-dashoffset: calc(${circumference} * (1 - var(--value, 0) / 100)); } }
+         @keyframes fillGauge { to { stroke-dashoffset: calc(${circumference} * (1 - var(--value, 0) / 100)); } }
     </style>
     `;
 }
@@ -356,7 +359,7 @@ export function buildAnalysisHtml(
 
         <div class="micromodel-section">
             <h4>Piaci Mikromodellek</h4>
-             <div class="micromodel-grid">
+            <div class="micromodel-grid">
                 ${getMicroAnalysesHtml(fullAnalysisReport?.micromodels)}
             </div>
         </div>
@@ -367,7 +370,7 @@ export function buildAnalysisHtml(
                      <svg class="section-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" x2="12" y1="9" y2="13"></line><line x1="12" x2="12.01" y1="17" y2="17"></line></svg>
                      Kockázat & További Kontextus
                </span>
-           </summary>
+            </summary>
             <div class="accordion-content">
                 <h4>Stratégiai Kulcskérdések</h4>
                 ${keyQuestionsHtml}

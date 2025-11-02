@@ -1,20 +1,25 @@
 // providers/apiSportsProvider.ts
 // Ez a provider felelős a 'soccer' adatok lekéréséért az API-Sports és az xG API-k segítségével.
-// MÓDOSÍTÁS (v52 - TS): Átállás TypeScript-re és Kanonikus Interfészek implementálása.
+// MÓDOSÍTÁS (v52.2 - TS): Átállás TypeScript-re és Kanonikus Interfészek implementálása.
+// JAVÍTÁS: TS2305 (AxiosRequestConfig) és TS2846 (import type) hibák javítva.
+// JAVÍTÁS: TS2719 (FixtureResult) hiba javítva a kanonikus típus importálásával.
 
-import axios, { AxiosRequestConfig } from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios'; // JAVÍTÁS (TS2305): 'type' hozzáadva
 import NodeCache from 'node-cache';
 import pkg from 'string-similarity';
 const { findBestMatch } = pkg;
 
 // Kanonikus típusok importálása
-import {
+// === JAVÍTÁS (TS2846 és TS2719) ===
+import type {
     ICanonicalRichContext,
     ICanonicalStats,
     ICanonicalPlayerStats,
     ICanonicalRawData,
-    ICanonicalOdds
+    ICanonicalOdds,
+    FixtureResult // A központosított típus importálása
 } from '../src/types/canonical.d.ts';
+// === JAVÍTÁS VÉGE ===
 
 import {
     SPORT_CONFIG,
@@ -364,8 +369,9 @@ async function findApiSportsFixture(homeTeamId: number, awayTeamId: number, seas
 }
 
 // === v50.1: ÚJ FUNKCIÓ A VÉGEREDMÉNY LEKÉRÉSÉHEZ ===
-type FixtureResult = { home: number; away: number; status: string } | { status: string } | null;
-export async function getApiSportsFixtureResult(fixtureId: number | string, sport: string): Promise<FixtureResult> {
+// === JAVÍTÁS (TS2719): A lokális 'FixtureResult' típus eltávolítva ===
+// export async function getApiSportsFixtureResult(fixtureId: number | string, sport: string): Promise<FixtureResult> { // Eltávolítva
+export async function getApiSportsFixtureResult(fixtureId: number | string, sport: string): Promise<FixtureResult> { // A kanonikus típust használja
     if (sport !== 'soccer' || !fixtureId) {
         console.warn(`[getApiSportsFixtureResult] Lekérés kihagyva: Csak 'soccer' támogatott vagy hiányzó fixtureId.`);
         return null;
@@ -395,7 +401,7 @@ export async function getApiSportsFixtureResult(fixtureId: number | string, spor
 
         // Csak a befejezett (Full Time) meccsek érdekelnek minket
         if (status === 'FT') {
-            const result = {
+            const result: FixtureResult = { // Típusos hozzárendelés
                 home: goals.home,
                 away: goals.away,
                 status: 'FT'
@@ -413,7 +419,7 @@ export async function getApiSportsFixtureResult(fixtureId: number | string, spor
         return null;
     }
 }
-// === v50.1 JAVÍTÁS VÉGE ===
+// === JAVÍTÁS VÉGE ===
 
 
 async function getApiSportsH2H(homeTeamId: number, awayTeamId: number, limit: number = 5, sport: string): Promise<any[] | null> {

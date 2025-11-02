@@ -1,8 +1,9 @@
-// sheets.ts (v52 - TypeScript)
+// sheets.ts (v52.2 - TS hibajavítások)
 // MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
-// Ez a modul kezeli a Google Sheet I/O műveleteket.
+// JAVÍTÁS: TS2345, TS2554, TS2322 hibák javítva a google-spreadsheet
+// típusdefinícióinak megfelelően.
 
-import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
+import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet, WorksheetGridProperties, RowCellData } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
 import { SHEET_URL } from './config.js'; // A .env fájlból beolvasott Sheet URL
 
@@ -59,7 +60,7 @@ function getDocInstance(): GoogleSpreadsheet {
  * Megnyit vagy létrehoz egy munkalapot a dokumentumon belül.
  * @param {GoogleSpreadsheet} doc A hitelesített GoogleSpreadsheet példány.
  * @param {string} sheetName A munkalap neve.
- * @param {Array<string>} [headers] Opcionális: Fejlécek a lap létrehozásához.
+ * @param {Array<string>} [headers] Opcionális: Fejlérek a lap létrehozásához.
  * @returns {Promise<GoogleSpreadsheetWorksheet>} A munkalap objektum.
  */
 async function _getSheet(doc: GoogleSpreadsheet, sheetName: string, headers?: string[]): Promise<GoogleSpreadsheetWorksheet> {
@@ -69,10 +70,19 @@ async function _getSheet(doc: GoogleSpreadsheet, sheetName: string, headers?: st
         
         if (!sheet && headers && Array.isArray(headers)) {
             console.log(`'${sheetName}' munkalap nem található, létrehozás...`);
-            sheet = await doc.addSheet({ title: sheetName, headerValues: headers });
             
-            // Az 1. sor (fejléc) lefagyasztása és félkövérré tétele
-            await sheet.updateGridProperties({ frozenRowCount: 1 }); // Fagyasztás
+            // === JAVÍTÁS (TS2345) ===
+            // A 'frozenRowCount' tulajdonságot közvetlenül a 'addSheet' hívásban
+            // adjuk meg a 'gridProperties' alatt.
+            sheet = await doc.addSheet({ 
+                title: sheetName, 
+                headerValues: headers,
+                gridProperties: { frozenRowCount: 1 } // <-- JAVÍTÁS
+            });
+            // Az 'updateGridProperties' hívás eltávolítva.
+            // === JAVÍTÁS VÉGE ===
+            
+            // Az 1. sor (fejléc) félkövérré tétele
             await sheet.loadHeaderRow();
             
             // Típusosítva: A headerValues biztosan létezik
@@ -80,7 +90,11 @@ async function _getSheet(doc: GoogleSpreadsheet, sheetName: string, headers?: st
             for(const cell of headerCells) {
                 cell.textFormat = { bold: true };
             }
-            await sheet.saveUpdatedCells(headerCells); // Mentjük a formázást
+            
+            // === JAVÍTÁS (TS2554) ===
+            // A 'saveUpdatedCells' nem vár argumentumot.
+            await sheet.saveUpdatedCells(); // <-- JAVÍTÁS (argumentum eltávolítva)
+            // === JAVÍTÁS VÉGE ===
 
             console.log(`'${sheetName}' munkalap sikeresen létrehozva.`);
         } else if (!sheet) {
@@ -89,7 +103,7 @@ async function _getSheet(doc: GoogleSpreadsheet, sheetName: string, headers?: st
         }
         return sheet;
     } catch (e: any) {
-         console.error(`Hiba a munkalap elérésekor (${sheetName}): ${e.message}`, e.stack);
+        console.error(`Hiba a munkalap elérésekor (${sheetName}): ${e.message}`, e.stack);
          // Ha "PERMISSION_DENIED" hibát kapsz, az azt jelenti, hogy nem osztottad meg a Sheet-et a client_email címmel!
          throw e;
     }
@@ -248,13 +262,17 @@ export async function saveAnalysisToSheet(sheetUrl: string, analysisData: IAnaly
             analysisData.recommendation.final_confidence.toFixed(1) : 'N/A';
         
         // v50.1: FixtureID hozzáadása
-        const fixtureId = analysisData.fixtureId || null;
+        // === JAVÍTÁS (TS2322) ===
+        // A 'null' értéket 'undefined'-re cseréljük, mivel a RowCellData
+        // nem fogad el 'null'-t, de az 'undefined'-et igen (kihagyja a cellát).
+        const fixtureId: RowCellData = analysisData.fixtureId ?? undefined;
+        // === JAVÍTÁS VÉGE ===
 
         // addRow() metódus használata az új sor hozzáadásához
         // A sorrend itt már nem számít, a fejléc neveket használja
         await sheet.addRow({
             "ID": newId,
-            "FixtureID": fixtureId, // <-- ÚJ ADAT (v50.1)
+            "FixtureID": fixtureId, // <-- JAVÍTOTT (TS2322)
             "Dátum": dateToSave,
             "Sport": analysisData.sport || 'N/A',
             "Hazai": analysisData.home,

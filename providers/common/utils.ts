@@ -1,8 +1,10 @@
 // providers/common/utils.ts
 // Ez a fájl tartalmazza az összes megosztott, általános segédfüggvényt.
-// MÓDOSÍTÁS (v52 - TS): Átállás TypeScript-re.
+// MÓDOSÍTÁS (v52.2 - TS): Átállás TypeScript-re.
+// JAVÍTÁS: TS2305 (AxiosRequestConfig), TS2846 (import type), TS7006 (implicit any)
+// és TS2339 (Gemini response type) hibák javítva.
 
-import axios, { AxiosRequestConfig } from 'axios';
+import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'; // JAVÍTÁS (TS2305): 'type' hozzáadva
 import {
     GEMINI_API_KEY, GEMINI_MODEL_ID,
     SPORT_CONFIG, API_HOSTS // ESPN és Gemini hívásokhoz szükségesek
@@ -10,7 +12,9 @@ import {
 // Figyelj a relatív elérési útra!
 
 // Kanonikus típusok importálása
-import { ICanonicalOdds, ICanonicalStats } from '../../src/types/canonical.d.ts';
+// === JAVÍTÁS (TS2846) ===
+import type { ICanonicalOdds, ICanonicalStats } from '../../src/types/canonical.d.ts';
+// === JAVÍTÁS VÉGE ===
 
 
 /**
@@ -25,7 +29,9 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
         try {
             const baseConfig: AxiosRequestConfig = {
                 timeout: 25000,
-                validateStatus: (status) => status >= 200 && status < 500,
+                // === JAVÍTÁS (TS7006) ===
+                validateStatus: (status: number) => status >= 200 && status < 500, // Típus hozzáadva
+                // === JAVÍTÁS VÉGE ===
                 headers: {}
             };
             const currentConfig: AxiosRequestConfig = { ...baseConfig, ...config, headers: { ...baseConfig.headers, ...config?.headers } };
@@ -101,7 +107,11 @@ export async function _callGemini(prompt: string): Promise<string> {
     console.log(`Gemini API hívás indul a '${GEMINI_MODEL_ID}' modellel... (Prompt hossza: ${finalPrompt.length})`);
     
     try {
-        const response = await axios.post(url, payload, { 
+        // === JAVÍTÁS (TS2339) ===
+        // Az 'AxiosResponse<any>' típusozás biztosítja, hogy a 'response.data'
+        // objektumon létezhetnek a várt mezők.
+        const response: AxiosResponse<any> = await axios.post(url, payload, { 
+        // === JAVÍTÁS VÉGE ===
             headers: { 'Content-Type': 'application/json' }, 
             timeout: 120000, 
             validateStatus: () => true // Minden státuszkódot elfogadunk, hogy kézzel kezelhessük
@@ -110,12 +120,15 @@ export async function _callGemini(prompt: string): Promise<string> {
         if (response.status !== 200) {
             console.error('--- RAW GEMINI ERROR RESPONSE ---');
             console.error(JSON.stringify(response.data, null, 2));
+            // A 'response.data.error' most már elérhető
             throw new Error(`Gemini API hiba: Státusz ${response.status} - ${JSON.stringify(response.data?.error?.message || response.data)}`);
         }
         
+        // A 'response.data.candidates' most már elérhető
         const responseText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
         
         if (!responseText) {
+            // A 'response.data.candidates' most már elérhető
             const finishReason = response.data?.candidates?.[0]?.finishReason || 'Ismeretlen';
             console.warn('--- GEMINI BLOCK RESPONSE ---', JSON.stringify(response.data, null, 2));
             throw new Error(`Gemini nem adott vissza szöveges tartalmat. Ok: ${finishReason}`);
@@ -286,7 +299,6 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
     const DELAY_BETWEEN_BATCHES = 500;
 
     console.log(`ESPN: Összesen ${allUrlsToFetch.length} kérés indítása ${BATCH_SIZE}-ös kötegekben...`);
-    
     for (let i = 0; i < allUrlsToFetch.length; i += BATCH_SIZE) {
         const batchUrls = allUrlsToFetch.slice(i, i + BATCH_SIZE);
         console.log(`ESPN: Köteg futtatása (${i + 1}-${i + batchUrls.length} / ${allUrlsToFetch.length})...`);

@@ -1,6 +1,8 @@
-// --- settlementService.ts (v52 - TypeScript) ---
+// --- settlementService.ts (v52.2 - TS2719 javítás) ---
 // Ez a modul felelős a "Post-Match Settlement" (Utólagos Eredmény-elszámolás) futtatásáért.
 // MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
+// JAVÍTÁS: A lokális 'FixtureResult' típus eltávolítva, és a kanonikus
+// 'FixtureResult' importálva a 'canonical.d.ts'-ből a TS2719 hiba javítására.
 
 import { getHistorySheet } from './sheets.js';
 import { getApiSportsFixtureResult } from './providers/apiSportsProvider.js';
@@ -8,16 +10,11 @@ import { GoogleSpreadsheetRow } from 'google-spreadsheet';
 
 // --- Típusdefiníciók ---
 
-// Az 'getApiSportsFixtureResult' által visszaadott típus
-type FixtureResult = {
-    home: number;
-    away: number;
-    status: 'FT';
-} | {
-    status: string; // Pl. 'HT', 'NS', stb.
-    home?: undefined;
-    away?: undefined;
-} | null;
+// === JAVÍTÁS (TS2719) ===
+// A lokális típusdefiníciók eltávolítva.
+// Helyette a központi, kanonikus típust importáljuk.
+import type { FixtureResult } from './src/types/canonical.d.ts';
+// === JAVÍTÁS VÉGE ===
 
 // Az elszámolási folyamat eredményének típusa
 type SettlementResult = {
@@ -102,7 +99,6 @@ function checkPredictionCorrectness(prediction: string, result: Extract<FixtureR
 
         console.warn(`[Settlement] Ismeretlen tipp formátum, nem lehet kiértékelni: "${prediction}"`);
         return "N/A";
-
     } catch (e: any) {
         console.error(`[Settlement] Hiba a tipp kiértékelésekor (${prediction}): ${e.message}`);
         return "N/A";

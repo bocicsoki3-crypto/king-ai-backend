@@ -1,56 +1,110 @@
-import axios from 'axios';
-import dotenv from 'dotenv';
+// check_models.ts (v52.2 - TS hibajavítások)
+// Ez egy egyéni szkript a modellek állapotának ellenőrzésére.
+// JAVÍTÁS: TS7006 (implicit any) és TS18046 (unknown) hibák javítva
+// explicit ': any' típus-annotációk hozzáadásával.
 
-// 1. .env fájl beolvasása, hogy meglegyen az API kulcs
-dotenv.config();
+import axios from 'axios';
+
+// Bemeneti modell nevek (ahogy a Render/API várja)
+const MODEL_NAMES = [
+    'gemini-1.5-pro-latest',
+    'gemini-1.5-flash-latest',
+    'gemini-pro', // Standard
+    // ... adj hozzá bármilyen más modellt, amit tesztelni szeretnél
+];
 
 const API_KEY = process.env.GEMINI_API_KEY;
-if (!API_KEY) {
-    console.error("HIBA: Nem található GEMINI_API_KEY a .env fájlban!");
-    process.exit(1);
-}
+const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
-const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`;
-
-console.log("Modellek lekérdezése a Google-től az API kulcsoddal...");
-
-async function listMyModels() {
+async function checkModel(modelName: string): Promise<{ name: string; status: 'OK' | 'ERROR'; details: string }> {
+    const url = `${BASE_URL}${modelName}?key=${API_KEY}`;
     try {
         const response = await axios.get(url);
         
-        if (response.status === 200) {
-            const models = response.data.models;
-            
-            console.log("\n--- ELÉRHETŐ MODELLEK LISTÁJA ---");
-            
-            // Kilistázzuk azokat a modelleket, amik TÁMOGATJÁK a 'generateContent' (tartalomgenerálás) funkciót
-            const supportedModels = models
-                .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"))
-                .map(m => m.name); // Csak a nevük kell
+        // === JAVÍTÁS (TS18046) ===
+        // Az 'response.data' 'unknown'. Típus-szűkítést (cast) végzünk 'any'-re.
+        const data: any = response.data;
+        // === JAVÍTÁS VÉGE ===
 
-            if (supportedModels.length > 0) {
-                console.log("A te API kulcsod a következő modelleket használhatja:");
-                supportedModels.forEach(name => console.log(`- ${name}`));
-                
-                // Automatikus javaslat
-                if (supportedModels.includes("models/gemini-1.5-flash-latest")) {
-                    console.log("\n>>> JAVASLAT: A 'gemini-1.5-flash-latest' elérhető! Ezt fogjuk használni.");
-                } else if (supportedModels.includes("models/gemini-pro")) {
-                    console.log("\n>>> JAVASLAT: A 'gemini-pro' (v1.0) elérhető! Ezt fogjuk használni.");
-                } else {
-                     console.log("\n>>> FIGYELEM: Nem található sem az 1.5-flash, sem a gemini-pro. Kérlek, másold be ezt a listát nekem!");
-                }
-
-            } else {
-                console.log("Nem található olyan modell, ami támogatná a tartalomgenerálást (generateContent).");
-            }
-
+        if (data && data.name) {
+            console.log(`✅ MODELL ELÉRHETŐ: ${data.name}`);
+            return { name: modelName, status: 'OK', details: `DisplayName: ${data.displayName || 'N/A'}` };
         } else {
-            console.error(`Hiba a modellek lekérésekor (Státusz: ${response.status}):`, response.data);
+            throw new Error('Érvénytelen válasz struktúra.');
         }
-    } catch (error) {
-        console.error("Hiba történt az axios hívás során:", error.response ? error.response.data : error.message);
+    } catch (error: any) { // JAVÍTÁS (TS18046): 'error' típus 'any'-re állítva
+        let details = 'Ismeretlen hiba';
+        if (error.response) {
+            details = `Státusz: ${error.response.status}, Válasz: ${JSON.stringify(error.response.data?.error?.message || error.response.data)}`;
+        } else {
+            details = error.message;
+        }
+        console.error(`❌ MODELL HIBA (${modelName}): ${details}`);
+        return { name: modelName, status: 'ERROR', details };
     }
 }
 
-listMyModels();
+async function checkModels() {
+    console.log("Gemini Modellek Ellenőrzése Indul...");
+    if (!API_KEY) {
+        console.error("KRITIKUS HIBA: GEMINI_API_KEY nincs beállítva. Az ellenőrzés leáll.");
+        return;
+    }
+
+    const results = await Promise.all(MODEL_NAMES.map(checkModel));
+    
+    console.log("\n--- Eredmények Összegzése ---");
+    
+    const okModels = results
+        // === JAVÍTÁS (TS7006) ===
+        .filter((m: any) => m.status === 'OK')
+        .map((m: any) => m.name);
+        // === JAVÍTÁS VÉGE ===
+
+    const errorModels = results.filter((m: any) => m.status === 'ERROR'); // TS7006 javítva
+
+    if (okModels.length > 0) {
+        console.log(`✅ Elérhető modellek (${okModels.length} db): ${okModels.join(', ')}`);
+        
+        // Javaslat a .env fájlhoz
+        const primaryModel = okModels.includes('gemini-1.5-pro-latest') 
+            ? 'gemini-1.5-pro-latest' 
+            : okModels[0];
+        console.log(`\nJavasolt .env beállítás:\nGEMINI_MODEL_ID=${primaryModel}`);
+        
+    } else {
+        console.warn("⚠️ Egyetlen modell sem érhető el a listából.");
+    }
+
+    if (errorModels.length > 0) {
+        console.error(`\n❌ Hibás vagy nem elérhető modellek (${errorModels.length} db):`);
+        errorModels.forEach(m => {
+            console.error(`  - ${m.name}: ${m.details}`);
+        });
+    }
+
+    // === JAVÍTÁS (TS18046) ===
+    // 'unknown' típus 'any'-re cserélve
+    const supportedModelsResponse = await axios.get(`${BASE_URL}?key=${API_KEY}`).catch((error: any) => {
+        console.error("\nHIBA: Nem sikerült lekérni a teljes modell listát.", error.response?.data?.error?.message || error.message);
+        return null;
+    });
+    
+    if (supportedModelsResponse && supportedModelsResponse.data) {
+        // === JAVÍTÁS (TS7006) ===
+        const data: any = supportedModelsResponse.data; // TS18046 javítva
+        const allModelNames = (data.models || []).map((m: any) => m.name.replace('models/', ''))
+            .reduce((acc: any, name: any) => {
+                const baseName = name.split('-')[0];
+                if (!acc[baseName]) acc[baseName] = [];
+                acc[baseName].push(name);
+                return acc;
+            }, {});
+        // === JAVÍTÁS VÉGE ===
+            
+        console.log("\n--- Teljes Elérhető Modell Lista (API szerint) ---");
+        console.log(JSON.stringify(allModelNames, null, 2));
+    }
+}
+
+checkModels();

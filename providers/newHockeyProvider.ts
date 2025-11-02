@@ -1,4 +1,4 @@
-// providers/newHockeyProvider.ts (v52 - TypeScript & Kanonikus Adatmodell)
+// providers/newHockeyProvider.ts (v52.2 - 'import type' javítás)
 // Implementáció az "Ice Hockey Data" API-hoz
 // MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
 // A 'fetchMatchData' most már a 'IDataProvider' interfésznek megfelelően
@@ -10,13 +10,17 @@ import pkg from 'string-similarity';
 const { findBestMatch } = pkg;
 
 // Kanonikus típusok importálása
-import {
+// === JAVÍTÁS (TS2846) ===
+// A 'import' helyett 'import type'-ot használunk, mivel a .d.ts fájlok
+// nem tartalmaznak futásidejű kódot, csak típus-deklarációkat.
+import type {
     ICanonicalRichContext,
     ICanonicalStats,
     ICanonicalPlayerStats,
     ICanonicalRawData,
     ICanonicalOdds
 } from '../src/types/canonical.d.ts';
+// === JAVÍTÁS VÉGE ===
 
 import {
     HOCKEY_API_KEY,
@@ -226,7 +230,8 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
     // --- 5. GEMINI HÍVÁS (Kontextus) ---
     const geminiJsonString = await _callGemini(PROMPT_V43(
          sport, homeTeamName, awayTeamName,
-         unifiedHomeStats, unifiedAwayStats, // Már a kanonikus statokat adjuk át
+         unifiedHomeStats, // Már a kanonikus statokat adjuk át
+         unifiedAwayStats, 
          null, // H2H (ez az API nem támogatja)
          null // Lineups
     ));

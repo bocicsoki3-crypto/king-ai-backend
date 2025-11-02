@@ -1,4 +1,4 @@
-// providers/newBasketballProvider.ts (v52 - TypeScript & Kanonikus Adatmodell)
+// providers/newBasketballProvider.ts (v52.2 - 'import type' javítás)
 // MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
 // A 'fetchMatchData' most már a 'IDataProvider' interfésznek megfelelően
 // Promise<ICanonicalRichContext> típust ad vissza.
@@ -9,13 +9,17 @@ import axios from 'axios';
 import { makeRequest } from './common/utils.js';
 
 // Kanonikus típusok importálása
-import {
+// === JAVÍTÁS (TS2846) ===
+// A 'import' helyett 'import type'-ot használunk, mivel a .d.ts fájlok
+// nem tartalmaznak futásidejű kódot, csak típus-deklarációkat.
+import type {
     ICanonicalRichContext,
     ICanonicalStats,
     ICanonicalPlayerStats,
     ICanonicalRawData,
     ICanonicalOdds
 } from '../src/types/canonical.d.ts';
+// === JAVÍTÁS VÉGE ===
 
 import {
     BASKETBALL_API_KEY,
