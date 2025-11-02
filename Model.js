@@ -1285,6 +1285,6 @@ export function analyzePlayerDuels(keyPlayers, sport) {
 
 // --- Placeholder Funkciók (Változatlan) ---
 export function generateProTip(probabilities, odds, market) { console.warn("Figyelmeztetés: generateProTip() placeholder függvény hívva!");
- return "Pro Tipp generálása még nincs implementálva."; }
+    return "Pro Tipp generálása még nincs implementálva."; }
 // calculateProbabilities már nem használt, mert a simulateMatchProgress adja a valószínűségeket
 // export function calculateProbabilities(rawStats, homeAdvantage, avgGoals) { ... }
