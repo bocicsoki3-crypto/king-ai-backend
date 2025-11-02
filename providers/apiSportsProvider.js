@@ -728,8 +728,14 @@ async function getDetailedPlayerStats(homeTeamId, awayTeamId, leagueId) {
 
 // --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (JAVÍTVA A SZEZON KEZELÉSÉVEL ÉS xG KONSZOLIDÁCIÓVAL v50) ---
 export async function fetchMatchData(options) {
-    const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
-    const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(utcKickoff));
+    const { sport, homeTeamName, awayTeamName, leagueName: rawLeagueName, utcKickoff: rawUtcKickoff } = options; // Átnevezés 'raw'-ra
+    
+    // --- MÓDOSÍTÁS KEZDETE ---
+    // Biztosítjuk, hogy minden bemeneti paraméter dekódolva legyen
+    const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(rawUtcKickoff));
+    const leagueName = decodeURIComponent(decodeURIComponent(rawLeagueName)); // HIÁNYZÓ DEKÓDOLÁS HOZZÁADVA
+    // --- MÓDOSÍTÁS VÉGE ---
+
     const seasonDate = new Date(decodedUtcKickoff);
     
     // Az 'originSeason' az aktuális év (vagy a szezonátfedés miatt az előző)
@@ -741,7 +747,10 @@ export async function fetchMatchData(options) {
     console.log(`Adatgyűjtés indul (v50 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
     // 1. LÉPÉS: Liga adatok lekérése
     const sportConfig = SPORT_CONFIG[sport];
-    const leagueData = sportConfig.espn_leagues[leagueName];
+    
+    // A 'leagueName' már a dekódolt '2. Bundesliga' értéket tartalmazza
+    const leagueData = sportConfig.espn_leagues[leagueName]; 
+    
     if (!leagueData?.country) throw new Error(`Hiányzó 'country' konfiguráció a(z) '${leagueName}' ligához a config.js-ben.`);
     
     const country = leagueData.country;
