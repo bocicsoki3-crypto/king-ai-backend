@@ -28,6 +28,7 @@
   "devDependencies": {
     "@types/axios": "^0.9.36",
     "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.5",
     "@types/google-spreadsheet": "^3.3.2",
     "@types/jsonwebtoken": "^9.0.10",
