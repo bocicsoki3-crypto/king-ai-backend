@@ -1,6 +1,7 @@
-// providers/sofascoreProvider.ts (v52.19 - Helyes Meccskereső Végpont)
-// MÓDOSÍTÁS: A getSofascoreEventId logikailag hibás '/teams/get-near-events' végpontja
-// a helyes '/teams/get-next-matches'-re cserélve (az image_51faca.png alapján).
+// providers/sofascoreProvider.ts (v52.19 - Kétirányú Meccskeresés)
+// MÓDOSÍTÁS: A getSofascoreEventId (2. lépés) most már kétirányú ellenőrzést végez.
+// Először a hazai csapat, majd (ha sikertelen) a vendég csapat naptárát
+// is ellenőrzi a '/teams/get-next-matches' végponton.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -116,36 +117,55 @@ async function getSofascoreTeamId(teamName: string): Promise<number | null> {
 
 /**
  * 2. Lépés: Megkeresi a meccs (Event) Sofascore ID-ját a csapat ID-k alapján.
+ * (MÓDOSÍTVA v52.19 - Kétirányú ellenőrzés)
  */
 async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Promise<number | null> {
     const cacheKey = `event_${homeTeamId}_vs_${awayTeamId}`;
     const cachedId = sofaEventCache.get<number>(cacheKey);
-    if (cachedId) return cachedId;
+    if (cachedId) {
+        console.log(`[Sofascore] Meccs ID Találat (Cache): ${cachedId}`);
+        return cachedId;
+    }
 
-    // === JAVÍTÁS (A KRITIKUS SOR) ===
-    // Lecseréljük a logikailag hibás '/teams/get-near-events' végpontot a képen (image_51faca.png)
-    // látható '/teams/get-next-matches' végpontra.
-    const data = await makeSofascoreRequest('/teams/get-next-matches', { teamId: homeTeamId, page: 0 });
+    // === JAVÍTÁS (A KRITIKUS LOGIKA) ===
+    // A rendszernek mindkét csapat naptárát ellenőriznie kell.
+
+    // 1. Kísérlet: Keressük a (Home) naptárában a (Away) csapatot
+    console.log(`[Sofascore] Meccs keresés (1/2): ${homeTeamId} (Home) naptárának ellenőrzése...`);
+    let data = await makeSofascoreRequest('/teams/get-next-matches', { teamId: homeTeamId, page: 0 });
+    
+    if (data?.events) {
+        const events: ISofascoreEvent[] = data.events;
+        // Keressük az első meccset, ahol a vendég csapat ID-ja egyezik
+        const foundEvent = events.find(event => event.awayTeam?.id === awayTeamId);
+        if (foundEvent) {
+            console.log(`[Sofascore] Meccs ID Találat (1/2): (Event ID: ${foundEvent.id})`);
+            sofaEventCache.set(cacheKey, foundEvent.id);
+            return foundEvent.id;
+        }
+    } else {
+         console.warn(`[Sofascore] Meccs keresés (1/2) sikertelen: Nincs 'events' mező (Hazai ID: ${homeTeamId}).`);
+    }
+
+    // 2. Kísérlet: Ha az 1. sikertelen, keressük a (Away) naptárában a (Home) csapatot
+    console.log(`[Sofascore] Meccs keresés (2/2): ${awayTeamId} (Away) naptárának ellenőrzése...`);
+    data = await makeSofascoreRequest('/teams/get-next-matches', { teamId: awayTeamId, page: 0 });
+
+    if (data?.events) {
+        const events: ISofascoreEvent[] = data.events;
+        // Figyelem: Itt azt keressük, ahol a *hazai* csapat (homeTeam) azonosítója egyezik a mi *homeTeamId*-nkkel
+        const foundEvent = events.find(event => event.homeTeam?.id === homeTeamId);
+        if (foundEvent) {
+            console.log(`[Sofascore] Meccs ID Találat (2/2): (Event ID: ${foundEvent.id})`);
+            sofaEventCache.set(cacheKey, foundEvent.id);
+            return foundEvent.id;
+        }
+    } else {
+         console.warn(`[Sofascore] Meccs keresés (2/2) sikertelen: Nincs 'events' mező (Vendég ID: ${awayTeamId}).`);
+    }
     // === JAVÍTÁS VÉGE ===
 
-    // A '/teams/get-next-matches' válasza 'events' tömböt tartalmaz (feltételezés)
-    if (!data?.events) {
-        console.warn(`[Sofascore] Meccs keresés sikertelen: Nincs 'events' mező (Hazai ID: ${homeTeamId}). (Endpoint: /teams/get-next-matches)`);
-        return null;
-    }
-
-    const events: ISofascoreEvent[] = data.events;
-    
-    // Keressük az első meccset, ahol a vendég csapat ID-ja egyezik
-    const foundEvent = events.find(event => event.awayTeam?.id === awayTeamId);
-
-    if (foundEvent) {
-        console.log(`[Sofascore] Meccs ID Találat: (Event ID: ${foundEvent.id})`);
-        sofaEventCache.set(cacheKey, foundEvent.id);
-        return foundEvent.id;
-    }
-
-    console.warn(`[Sofascore] Meccs ID Találat: Nem található ${homeTeamId} vs ${awayTeamId} meccs a következő események között.`);
+    console.warn(`[Sofascore] Meccs ID Találat: Nem található ${homeTeamId} vs ${awayTeamId} meccs (mindkét csapat naptára ellenőrizve).`);
     return null;
 }
 
@@ -282,7 +302,7 @@ function processSofascoreLineups(
 
 
 /**
- * FŐ EXPORTÁLT FUNKCIÓ (MÓDOSÍTVA v52.18)
+ * FŐ EXPORTÁLT FUNKCIÓ (MÓDOSÍTVA v52.19)
  */
 export async function fetchSofascoreData(
     homeTeamName: string, 
@@ -317,7 +337,7 @@ export async function fetchSofascoreData(
             return result; // Visszatérés üres adatokkal
         }
 
-        // 2. Meccs ID lekérése (A javított végponttal)
+        // 2. Meccs ID lekérése (A javított, kétirányú végponttal)
         const eventId = await getSofascoreEventId(homeTeamId, awayTeamId);
         if (!eventId) {
             console.warn(`[Sofascore Provider] Event ID nem található (${homeTeamId} vs ${awayTeamId}). A Sofascore kérés leáll.`);
@@ -333,8 +353,8 @@ export async function fetchSofascoreData(
         // 4. Eredmények feldolgozása
         if (xgData) {
             result.advancedData = {
-                xg_home: xgData.home,
-                xG_away: xgData.away 
+                xg_home: xGData.home,
+                xG_away: xGData.away 
             };
         }
         
