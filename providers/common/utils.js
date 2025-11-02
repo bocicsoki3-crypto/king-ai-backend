@@ -109,14 +109,10 @@ export async function _callGemini(prompt) {
  * Gemini Prompt Generátor (az eredeti DataFetch.js-ből)
  */
 export function PROMPT_V43(sport, homeTeamName, awayTeamName, apiSportsHomeSeasonStats, apiSportsAwaySeasonStats, apiSportsH2HData, apiSportsLineups) {
-    // ... (Az eredeti PROMPT_V43 teljes tartalma ide kerül) ...
-    // (A rövidség kedvéért itt nem másolom be a 100+ sort,
-    // de neked át kell másolnod a teljes PROMPT_V43 függvényt ide.)
+    
+    // --- v50.5 JAVÍTÁS: A hibás [source] címkék eltávolítva a stringekből ---
 
-    // --- PROMPT (NEM VÁLTOZOTT) ---
-    // (A DataFetch.gs.txt 253. sorától indul)
-    let calculatedStatsInfo = "NOTE ON STATS: No reliable API-Sports season stats available. Please use your best knowledge for 
-the CURRENT SEASON/COMPETITION stats.\n";
+    let calculatedStatsInfo = "NOTE ON STATS: No reliable API-Sports season stats available. Please use your best knowledge for the CURRENT SEASON/COMPETITION stats.\n";
     if (apiSportsHomeSeasonStats || apiSportsAwaySeasonStats) {
         calculatedStatsInfo = `CRITICAL NOTE ON STATS: The following basic stats have been PRE-CALCULATED from API-Sports.
 Use these exact numbers; do not rely on your internal knowledge for these specific stats.\n`;
@@ -196,7 +192,6 @@ STRUCTURE: {
   "advanced_stats_goalie":{ "home_goalie":{...}, "away_goalie":{...} },
   "shot_distribution":{ "home":"...", "away":"..." },
   "defensive_style":{ "home":"...", "away":"..." }, 
-  
   "league_averages": { /* Optional: avg_goals_per_game, etc. */ }
 }`;
 }
