@@ -1,6 +1,6 @@
 // providers/sofascoreProvider.ts (v52.14 - Végpont Javítás)
 // MÓDOSÍTÁS: A getSofascoreEventId hibás '/v1/team/get-next-events' végpontja
-// a helyes '/teams/get-near-events'-re cserélve (az image_50b14b.png alapján).
+// a helyes '/teams/get-near-events'-re cserélve (az image_517bfd.png alapján).
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -123,7 +123,7 @@ async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Prom
     if (cachedId) return cachedId;
 
     // === JAVÍTÁS (A KRITIKUS SOR) ===
-    // Lecseréljük a hibás '/v1/team/get-next-events' végpontot a képen (image_50b14b.png)
+    // Lecseréljük a hibás '/v1/team/get-next-events' végpontot a képen (image_517bfd.png)
     // látható '/teams/get-near-events' végpontra.
     const data = await makeSofascoreRequest('/teams/get-near-events', { teamId: homeTeamId, page: 0 });
     // === JAVÍTÁS VÉGE ===
@@ -153,8 +153,8 @@ async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Prom
  * 3. Lépés: Lekéri a valós xG adatokat a meccs ID alapján.
  */
 async function getSofascoreXg(eventId: number): Promise<ISofascoreXg | null> {
-    // A képen (image_50402c.png) látható 'matches/get-statistics'
-    // logikai megfelelője a /v1/event/get-statistics
+    // A RapidAPI felületen ez a 'matches/get-statistics'
+    // A csomagban a logikai megfelelője a /v1/event/get-statistics
     const data = await makeSofascoreRequest('/v1/event/get-statistics', { eventId: eventId });
 
     if (!data?.statistics) {
@@ -193,8 +193,8 @@ async function getSofascoreXg(eventId: number): Promise<ISofascoreXg | null> {
  * 4. Lépés: Lekéri a felállásokat (lineups) a meccs ID alapján.
  */
 async function getSofascoreLineups(eventId: number): Promise<{ home: ISofascoreRawPlayer[], away: ISofascoreRawPlayer[] } | null> {
-    // A képen (image_4fcbb0.png) látható 'matches/get-lineups'
-    // logikai megfelelője a /v1/event/get-lineups
+    // A RapidAPI felületen ez a 'matches/get-lineups'
+    // A csomagban a logikai megfelelője a /v1/event/get-lineups
     const data = await makeSofascoreRequest('/v1/event/get-lineups', { eventId: eventId });
 
     if (!data?.home && !data?.away) {
@@ -237,7 +237,7 @@ function processSofascoreLineups(
         const ratingsByPosition: { [pos: string]: number[] } = { 'Támadó': [], 'Középpályás': [], 'Védő': [], 'Kapus': [] };
         
         players.forEach(p => {
-            if (!p || !p.player) return; // Hibás játékos-adat kihagyása
+            if (!p || !p.player) return; 
             
             const position = POS_MAP[p.player.position] || 'Középpályás';
             const ratingValue = parseFloat(p.rating || '0');
