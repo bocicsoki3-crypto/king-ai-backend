@@ -1,16 +1,19 @@
-// DataFetch.js (Refaktorált v49 - Hibakezelés Javítva)
-// Ez a modul most már "Factory"-ként működik.
+// DataFetch.ts (Refaktorált v52 - TypeScript & Kanonikus Adatmodell)
+// Ez a modul most már "Factory"-ként működik TypeScript alatt.
 // Felelőssége:
 // 1. A fő 'rich_context' cache kezelése.
 // 2. A 'sport' paraméter alapján a megfelelő provider kiválasztása.
 // 3. A feladat delegálása a provider-nek.
-// 4. Általános (nem provider-specifikus) funkciók exportálása (pl. _getFixturesFromEspn).
+// 4. Annak kényszerítése, hogy minden provider ICanonicalRichContext-et adjon vissza.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
-// Visszaálltunk a dedikált providerekre (a v48-as javítás alapján)
+// Kanonikus típusok importálása
+import { ICanonicalRichContext } from './types/canonical.d.ts';
+
+// Providerek importálása (már .ts fájlokként, de az import .js-t használ a NodeNext modul feloldás miatt)
 import * as apiSportsProvider from './providers/apiSportsProvider.js';
 import * as hockeyProvider from './providers/newHockeyProvider.js';
 import * as basketballProvider from './providers/newBasketballProvider.js';
@@ -22,27 +25,36 @@ import {
 } from './providers/common/utils.js';
 
 // --- FŐ CACHE INICIALIZÁLÁS ---
-// (Minden más cache a provider-specifikus fájlokba került)
 const scriptCache = new NodeCache({ stdTTL: 3600 * 2, checkperiod: 600, useClones: false });
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+
+// Típusdefiníció a providerek számára
+// Minden providernek implementálnia kell ezt a szerződést
+interface IDataProvider {
+    fetchMatchData: (options: any) => Promise<ICanonicalRichContext>;
+    providerName: string;
+}
 
 /**************************************************************
-* DataFetch.js - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v49 (2025-11-01) - ReferenceError javítása a catch blokkban
+* DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
+* VERZIÓ: v52 (TypeScript)
+* - A 'getRichContextualData' most már Promise<ICanonicalRichContext> típust ad vissza.
+* - A 'getProvider' egy IDataProvider interfészt ad vissza.
+* - Ez biztosítja, hogy minden adatforrás ugyanazt a kanonikus
+* adatmodellt szolgáltassa a rendszer többi része felé.
 **************************************************************/
 
 /**
  * A "Factory" (gyár) funkció, ami kiválasztja a megfelelő
  * adatlekérő "stratégiát" (provider) a sportág alapján.
- * (v48-as javítás)
  */
-function getProvider(sport) {
+function getProvider(sport: string): IDataProvider {
   switch (sport.toLowerCase()) {
     case 'soccer':
       return apiSportsProvider;
     case 'hockey':
-      return hockeyProvider;
+      // Megjegyzés: A hockeyProvider-t és basketballProvider-t is át kell
+      // alakítani, hogy ICanonicalRichContext-et adjanak vissza.
+      return hockeyProvider; 
     case 'basketball':
       return basketballProvider;
     default:
@@ -53,21 +65,31 @@ function getProvider(sport) {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FUNKCIÓ (v46 - Factory)
+ * FŐ ADATGYŰJTŐ FUNKCIÓ (v52 - TS Factory)
  * Ez a függvény kezeli a fő gyorsítótárat és delegálja a
  * feladatot a megfelelő sport-providernek.
+ * Garantálja, hogy a visszatérési érték ICanonicalRichContext.
  */
-export async function getRichContextualData(sport, homeTeamName, awayTeamName, leagueName, utcKickoff) {
+export async function getRichContextualData(
+    sport: string, 
+    homeTeamName: string, 
+    awayTeamName: string, 
+    leagueName: string, 
+    utcKickoff: string
+): Promise<ICanonicalRichContext> {
+    
     const teamNames = [homeTeamName, awayTeamName].sort();
-    // A cache kulcs verzióját v46-ra emeljük, hogy a refaktorálás után friss adatokat kapjunk
-    const ck = `rich_context_v46_apif_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
-    const cached = scriptCache.get(ck);
+    // A cache kulcs verzióját v52-re emeljük a TS migráció miatt
+    const ck = `rich_context_v52_ts_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
+    
+    const cached = scriptCache.get<ICanonicalRichContext>(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
         return { ...cached, fromCache: true };
     }
     
     console.log(`Nincs cache (${ck}), friss adatok lekérése...`);
+    
     try {
         // 1. Válaszd ki a megfelelő stratégiát (provider-t)
         const provider = getProvider(sport);
@@ -82,27 +104,24 @@ export async function getRichContextualData(sport, homeTeamName, awayTeamName, l
             leagueName,
             utcKickoff
         };
-        const result = await provider.fetchMatchData(options);
+        
+        // A TypeScript itt kényszeríti, hogy a 'result' ICanonicalRichContext típusú legyen
+        const result: ICanonicalRichContext = await provider.fetchMatchData(options);
         
         // 3. Mentsd az egységesített eredményt a fő cache-be
         scriptCache.set(ck, result);
-        console.log(`Sikeres adatgyűjtés (v49), cache mentve (${ck}).`);
+        console.log(`Sikeres adatgyűjtés (v52), cache mentve (${ck}).`);
         
         return { ...result, fromCache: false };
-    } catch (e) {
-        // --- JAVÍTÁS (v49) ---
-        // A 'awayTeam' változó 'awayTeamName'-re cserélve, hogy
-        // megszüntessük a ReferenceError-t a hibakezelőben.
-        console.error(`KRITIKUS HIBA a getRichContextualData (v49 - Factory) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
-        // --- JAVÍTÁS VÉGE ---
-        throw new Error(`Adatgyűjtési hiba (v49): ${e.message}`);
+
+    } catch (e: any) {
+        console.error(`KRITIKUS HIBA a getRichContextualData (v52 - Factory) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
+        throw new Error(`Adatgyűjtési hiba (v52): ${e.message}`);
     }
 }
 
 
 // --- KÖZÖS FUNKCIÓK EXPORTÁLÁSA ---
-// Ezeket exportáljuk, hogy más modulok (pl. index.js) is elérhessék.
-// Az ESPN lekérdező most már a 'utils.js'-ből jön
+// Ezeket exportáljuk, hogy más modulok (pl. index.ts) is elérhessék.
 export const _getFixturesFromEspn = commonGetFixtures;
-// A Gemini hívó most már a 'utils.js'-ből jön
 export const _callGemini = commonCallGemini;
