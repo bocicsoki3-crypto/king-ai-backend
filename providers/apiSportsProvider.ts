@@ -1,8 +1,10 @@
 // providers/apiSportsProvider.ts
 // Ez a provider felelős a 'soccer' adatok lekéréséért az API-Sports és az xG API-k segítségével.
-// MÓDOSÍTÁS (v52.2 - TS): Átállás TypeScript-re és Kanonikus Interfészek implementálása.
-// JAVÍTÁS: TS2305 (AxiosRequestConfig) és TS2846 (import type) hibák javítva.
-// JAVÍTÁS: TS2719 (FixtureResult) hiba javítva a kanonikus típus importálásával.
+// MÓDOSÍTÁS (v52.3 - TS Hibajavítás):
+// JAVÍTÁS: TS2305 (AxiosRequestConfig) javítva: 'import type' használatával.
+// JAVÍTÁS: TS2719 (FixtureResult) javítva: A kanonikus típus importálásával.
+// JAVÍTÁS: TS2846 (import type) javítva: Az összes típus import 'import type'-ra cserélve.
+// JAVÍTÁS: TS2307 (Path Fix): A 'canonical.d.ts' import útvonala javítva '../src/'-re.
 
 import axios, { type AxiosRequestConfig } from 'axios'; // JAVÍTÁS (TS2305): 'type' hozzáadva
 import NodeCache from 'node-cache';
@@ -10,7 +12,8 @@ import pkg from 'string-similarity';
 const { findBestMatch } = pkg;
 
 // Kanonikus típusok importálása
-// === JAVÍTÁS (TS2846 és TS2719) ===
+// === JAVÍTÁS (TS2846, TS2719, TS2307) ===
+// Helyes 'import type' és helyes '../src/' útvonal használata.
 import type {
     ICanonicalRichContext,
     ICanonicalStats,
@@ -18,7 +21,7 @@ import type {
     ICanonicalRawData,
     ICanonicalOdds,
     FixtureResult // A központosított típus importálása
-} from '../src/types/canonical.d.ts';
+} from '../src/types/canonical.d.ts'; 
 // === JAVÍTÁS VÉGE ===
 
 import {

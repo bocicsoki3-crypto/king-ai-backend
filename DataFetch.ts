@@ -1,4 +1,4 @@
-// DataFetch.ts (Refaktorált v52 - TypeScript & Kanonikus Adatmodell)
+// DataFetch.ts (Refaktorált v52.3 - TS2307 Path Fix)
 // Ez a modul most már "Factory"-ként működik TypeScript alatt.
 // Felelőssége:
 // 1. A fő 'rich_context' cache kezelése.
@@ -11,7 +11,11 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 
 // Kanonikus típusok importálása
-import { ICanonicalRichContext } from './types/canonical.d.ts';
+// === JAVÍTÁS (TS2307) ===
+// A hibás './types/canonical.d.ts' útvonal javítva a helyes './src/types/canonical.d.ts'-re,
+// a 'tsconfig.json' "include" beállításával összhangban.
+import type { ICanonicalRichContext } from './src/types/canonical.d.ts';
+// === JAVÍTÁS VÉGE ===
 
 // Providerek importálása (már .ts fájlokként, de az import .js-t használ a NodeNext modul feloldás miatt)
 import * as apiSportsProvider from './providers/apiSportsProvider.js';
@@ -36,11 +40,10 @@ interface IDataProvider {
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v52 (TypeScript)
+* VERZIÓ: v52.3 (TypeScript Path Fix)
 * - A 'getRichContextualData' most már Promise<ICanonicalRichContext> típust ad vissza.
 * - A 'getProvider' egy IDataProvider interfészt ad vissza.
-* - Ez biztosítja, hogy minden adatforrás ugyanazt a kanonikus
-* adatmodellt szolgáltassa a rendszer többi része felé.
+* - Javítva a TS2307 hiba (import útvonal).
 **************************************************************/
 
 /**
@@ -91,6 +94,7 @@ export async function getRichContextualData(
     console.log(`Nincs cache (${ck}), friss adatok lekérése...`);
     
     try {
+        
         // 1. Válaszd ki a megfelelő stratégiát (provider-t)
         const provider = getProvider(sport);
         console.log(`Adatgyűjtés indul (Provider: ${provider.providerName || sport}): ${homeTeamName} vs ${awayTeamName}...`);
@@ -115,7 +119,7 @@ export async function getRichContextualData(
         return { ...result, fromCache: false };
 
     } catch (e: any) {
-        console.error(`KRITIKUS HIBA a getRichContextualData (v52 - Factory) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
+         console.error(`KRITIKUS HIBA a getRichContextualData (v52 - Factory) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
         throw new Error(`Adatgyűjtési hiba (v52): ${e.message}`);
     }
 }

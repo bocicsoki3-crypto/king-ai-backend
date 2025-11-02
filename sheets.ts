@@ -1,16 +1,21 @@
-// sheets.ts (v52.2 - TS hibajavítások)
+// sheets.ts (v52.3 - TS2459/TS2345/TS2322 hibajavítások)
 // MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
-// JAVÍTÁS: TS2345, TS2554, TS2322 hibák javítva a google-spreadsheet
-// típusdefinícióinak megfelelően.
+// JAVÍTÁS: TS2459 hiba javítva a nem exportált típusok ('WorksheetGridProperties', 
+// 'RowCellData') importjának és használatának eltávolításával.
+// JAVÍTÁS: TS2345 hiba javítva 'any' típus-kényszerítéssel.
+// JAVÍTÁS: TS2322 hiba javítva (null vs undefined).
 
-import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet, WorksheetGridProperties, RowCellData } from 'google-spreadsheet';
+import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
+// === JAVÍTÁS (TS2459) ===
+// A 'WorksheetGridProperties' és 'RowCellData' típusok eltávolítva az importból,
+// mivel azokat a 'google-spreadsheet' csomag nem exportálja.
+// === JAVÍTÁS VÉGE ===
+
 import { JWT } from 'google-auth-library';
 import { SHEET_URL } from './config.js'; // A .env fájlból beolvasott Sheet URL
 
 // --- Google Hitelesítés Beállítása (Környezeti Változókból) ---
 
-// A 'GOOGLE_PRIVATE_KEY' változót úgy kell beállítani, hogy a sortöréseket
-// cseréljük valódi sortörésekre (pl. `key.replace(/\\n/g, '\n')`).
 const privateKey = process.env.GOOGLE_PRIVATE_KEY 
     ? process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n') 
     : undefined;
@@ -33,20 +38,16 @@ const serviceAccountAuth = new JWT({
 
 /**
  * Segédfüggvény a Google Táblázat dokumentum betöltéséhez és hitelesítéséhez.
- * @returns {GoogleSpreadsheet} A hitelesített GoogleSpreadsheet példány.
- * @throws {Error} Hiba, ha a SHEET_URL hiányzik vagy érvénytelen.
  */
 function getDocInstance(): GoogleSpreadsheet {
     if (!SHEET_URL) {
         console.error("Hiányzó SHEET_URL a .env fájlban.");
         throw new Error("Hiányzó SHEET_URL a .env fájlban.");
     }
-    // Ellenőrizzük, hogy a hitelesítés be van-e állítva
     if (!privateKey || !clientEmail) {
         throw new Error("A Google Sheet szolgáltatás nincs konfigurálva (hiányzó GOOGLE_CLIENT_EMAIL/GOOGLE_PRIVATE_KEY).");
     }
 
-    // A SHEET_URL-ből ki kell nyerni az ID-t
     const sheetIdMatch = SHEET_URL.match(/\/d\/([a-zA-Z0-9-_]+)/);
     if (!sheetIdMatch || !sheetIdMatch[1]) {
         console.error("Érvénytelen Google Sheet URL a .env fájlban. Nem sikerült kinyerni az ID-t. A megadott URL:", SHEET_URL);
@@ -58,10 +59,6 @@ function getDocInstance(): GoogleSpreadsheet {
 
 /**
  * Megnyit vagy létrehoz egy munkalapot a dokumentumon belül.
- * @param {GoogleSpreadsheet} doc A hitelesített GoogleSpreadsheet példány.
- * @param {string} sheetName A munkalap neve.
- * @param {Array<string>} [headers] Opcionális: Fejlérek a lap létrehozásához.
- * @returns {Promise<GoogleSpreadsheetWorksheet>} A munkalap objektum.
  */
 async function _getSheet(doc: GoogleSpreadsheet, sheetName: string, headers?: string[]): Promise<GoogleSpreadsheetWorksheet> {
     try {
@@ -71,30 +68,29 @@ async function _getSheet(doc: GoogleSpreadsheet, sheetName: string, headers?: st
         if (!sheet && headers && Array.isArray(headers)) {
             console.log(`'${sheetName}' munkalap nem található, létrehozás...`);
             
-            // === JAVÍTÁS (TS2345) ===
-            // A 'frozenRowCount' tulajdonságot közvetlenül a 'addSheet' hívásban
-            // adjuk meg a 'gridProperties' alatt.
+            // === JAVÍTÁS (TS2459 / TS2345) ===
+            // Az 'addSheet' hívásból eltávolítjuk a 'gridProperties'-t,
+            // hogy elkerüljük a TS2459 import hibát.
             sheet = await doc.addSheet({ 
                 title: sheetName, 
-                headerValues: headers,
-                gridProperties: { frozenRowCount: 1 } // <-- JAVÍTÁS
+                headerValues: headers
             });
-            // Az 'updateGridProperties' hívás eltávolítva.
+
+            // A 'frozenRowCount' beállítását 'any' típus-kényszerítéssel végezzük el,
+            // hogy megkerüljük a TS2345 hibát (mivel a típus nincs exportálva),
+            // de a futásidejű funkcionalitás megmarad.
+            await sheet.updateGridProperties({ 
+                frozenRowCount: 1
+            } as any); // <-- JAVÍTÁS
             // === JAVÍTÁS VÉGE ===
             
-            // Az 1. sor (fejléc) félkövérré tétele
             await sheet.loadHeaderRow();
-            
-            // Típusosítva: A headerValues biztosan létezik
             const headerCells = sheet.headerValues.map((header, index) => sheet.getCell(0, index));
             for(const cell of headerCells) {
                 cell.textFormat = { bold: true };
             }
             
-            // === JAVÍTÁS (TS2554) ===
-            // A 'saveUpdatedCells' nem vár argumentumot.
-            await sheet.saveUpdatedCells(); // <-- JAVÍTÁS (argumentum eltávolítva)
-            // === JAVÍTÁS VÉGE ===
+            await sheet.saveUpdatedCells(); // (TS2554 hiba javítva)
 
             console.log(`'${sheetName}' munkalap sikeresen létrehozva.`);
         } else if (!sheet) {
@@ -104,14 +100,12 @@ async function _getSheet(doc: GoogleSpreadsheet, sheetName: string, headers?: st
         return sheet;
     } catch (e: any) {
         console.error(`Hiba a munkalap elérésekor (${sheetName}): ${e.message}`, e.stack);
-         // Ha "PERMISSION_DENIED" hibát kapsz, az azt jelenti, hogy nem osztottad meg a Sheet-et a client_email címmel!
          throw e;
     }
 }
 
 /**
  * Lekéri a "History" munkalapot.
- * @returns {Promise<GoogleSpreadsheetWorksheet>} A "History" munkalap.
  */
 export async function getHistorySheet(): Promise<GoogleSpreadsheetWorksheet> {
     const doc = getDocInstance();
@@ -168,13 +162,11 @@ interface IAnalysisDataToSave {
 
 /**
  * Lekéri az elemzési előzményeket a táblázatból.
- * (A frontend hívja)
- * @returns {Promise<object>} Objektum { history: [...] } vagy { error: ... } formában.
  */
 export async function getHistoryFromSheet(): Promise<{ history?: IHistoryRow[]; error?: string }> {
     try {
         const sheet = await getHistorySheet();
-        const rows = await sheet.getRows(); // Betölti az összes sort (fejléc nélkül)
+        const rows = await sheet.getRows(); 
 
         const history: IHistoryRow[] = rows.map(row => {
             const dateVal = row.get("Dátum");
@@ -210,9 +202,6 @@ export async function getHistoryFromSheet(): Promise<{ history?: IHistoryRow[]; 
 
 /**
  * Lekéri egy konkrét elemzés részleteit (HTML tartalmát) ID alapján.
- * (A frontend hívja)
- * @param {string} id Az elemzés egyedi ID-ja.
- * @returns {Promise<object>} Objektum { record: {...} } vagy { error: ... } formában.
  */
 export async function getAnalysisDetailFromSheet(id: string): Promise<{ record?: IAnalysisDetail; error?: string }> {
     try {
@@ -239,10 +228,6 @@ export async function getAnalysisDetailFromSheet(id: string): Promise<{ record?:
 
 /**
  * Elment egy új elemzést a Google Sheet "History" lapjára.
- * (Az AnalysisFlow hívja)
- * @param {string} sheetUrl (Nem használt, a globális SHEET_URL-t használjuk)
- * @param {IAnalysisDataToSave} analysisData Az elemzés adatai.
- * @returns {Promise<void>}
  */
 export async function saveAnalysisToSheet(sheetUrl: string, analysisData: IAnalysisDataToSave): Promise<void> {
     const analysisId = analysisData.id || 'N/A';
@@ -253,23 +238,19 @@ export async function saveAnalysisToSheet(sheetUrl: string, analysisData: IAnaly
         }
 
         const sheet = await getHistorySheet();
-        const newId = analysisData.id || crypto.randomUUID(); // Node.js 19+
+        const newId = analysisData.id || crypto.randomUUID(); 
         const dateToSave = (analysisData.date instanceof Date ? analysisData.date : new Date()).toISOString();
         
-        // Ajánlás adatainak kinyerése
         const tip = analysisData.recommendation?.recommended_bet || 'N/A';
         const confidence = analysisData.recommendation?.final_confidence ? 
             analysisData.recommendation.final_confidence.toFixed(1) : 'N/A';
         
-        // v50.1: FixtureID hozzáadása
         // === JAVÍTÁS (TS2322) ===
-        // A 'null' értéket 'undefined'-re cseréljük, mivel a RowCellData
+        // A 'null' értéket 'undefined'-re cseréljük, mivel a RowCellData (implicit)
         // nem fogad el 'null'-t, de az 'undefined'-et igen (kihagyja a cellát).
-        const fixtureId: RowCellData = analysisData.fixtureId ?? undefined;
+        const fixtureId: string | number | boolean | undefined = analysisData.fixtureId ?? undefined;
         // === JAVÍTÁS VÉGE ===
 
-        // addRow() metódus használata az új sor hozzáadásához
-        // A sorrend itt már nem számít, a fejléc neveket használja
         await sheet.addRow({
             "ID": newId,
             "FixtureID": fixtureId, // <-- JAVÍTOTT (TS2322)
@@ -280,7 +261,6 @@ export async function saveAnalysisToSheet(sheetUrl: string, analysisData: IAnaly
             "HTML Tartalom": analysisData.html || '',
             "Tipp": tip,
             "Bizalom": confidence
-            // A 'Valós Eredmény' és 'Helyes (W/L/P)' üresen marad
         });
         
     } catch (e: any) {
@@ -290,9 +270,6 @@ export async function saveAnalysisToSheet(sheetUrl: string, analysisData: IAnaly
 
 /**
  * Töröl egy elemet a "History" lapról ID alapján.
- * (A frontend hívja)
- * @param {string} id A törlendő elem ID-ja.
- * @returns {Promise<object>} Objektum { success: true } vagy { error: ... } formában.
  */
 export async function deleteHistoryItemFromSheet(id: string): Promise<{ success?: boolean; error?: string }> {
     try {
@@ -314,10 +291,6 @@ export async function deleteHistoryItemFromSheet(id: string): Promise<{ success?
 
 /**
  * Elment egy mélyebb öntanulási tanulságot a "Learning_Insights" lapra.
- * (Async)
- * @param {string} sheetUrl (Nem használt)
- * @param {object} insightData A tanulság adatai.
- * @returns {Promise<void>}
  */
 export async function logLearningInsight(sheetUrl: string, insightData: any): Promise<void> {
     const headers = ["Dátum", "Sport", "Hazai", "Vendég", "Tipp", "Bizalom", "Valós Eredmény", "Tanulság (AI)"];

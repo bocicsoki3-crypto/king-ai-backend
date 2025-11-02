@@ -1,19 +1,22 @@
 // providers/common/utils.ts
 // Ez a fájl tartalmazza az összes megosztott, általános segédfüggvényt.
-// MÓDOSÍTÁS (v52.2 - TS): Átállás TypeScript-re.
-// JAVÍTÁS: TS2305 (AxiosRequestConfig), TS2846 (import type), TS7006 (implicit any)
-// és TS2339 (Gemini response type) hibák javítva.
+// MÓDOSÍTÁS (v52.3 - TS Hibajavítás):
+// JAVÍTÁS: TS2305 (AxiosRequestConfig/AxiosResponse) javítva: 'import type' használatával.
+// JAVÍTÁS: TS2307 (Path Fix): Az 'canonical.d.ts' import útvonala javítva '../../src/'-re.
+// JAVÍTÁS: TS2846 (import type) javítva.
+// JAVÍTÁS: TS7006 (implicit any) javítva a 'validateStatus'-ban.
+// JAVÍTÁS: TS2339 (unknown type) javítva a '_callGemini'-ben.
 
-import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'; // JAVÍTÁS (TS2305): 'type' hozzáadva
+import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'; // JAVÍTÁS (TS2305)
 import {
     GEMINI_API_KEY, GEMINI_MODEL_ID,
     SPORT_CONFIG, API_HOSTS // ESPN és Gemini hívásokhoz szükségesek
-} from '../../config.js';
-// Figyelj a relatív elérési útra!
+} from '../../config.js'; 
+// Figyelj a relatív elérési útra! (két szinttel feljebb)
 
 // Kanonikus típusok importálása
-// === JAVÍTÁS (TS2846) ===
-import type { ICanonicalOdds, ICanonicalStats } from '../../src/types/canonical.d.ts';
+// === JAVÍTÁS (TS2846 és TS2307) ===
+import type { ICanonicalOdds, ICanonicalStats } from '../../src/types/canonical.d.ts'; // Helyes útvonal: ../../
 // === JAVÍTÁS VÉGE ===
 
 

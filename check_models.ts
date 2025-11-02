@@ -1,7 +1,7 @@
-// check_models.ts (v52.2 - TS hibajavítások)
+// check_models.ts (v52.3 - TS2339 hibajavítás)
 // Ez egy egyéni szkript a modellek állapotának ellenőrzésére.
-// JAVÍTÁS: TS7006 (implicit any) és TS18046 (unknown) hibák javítva
-// explicit ': any' típus-annotációk hozzáadásával.
+// JAVÍTÁS: TS2339 (property does not exist on type 'never'/'unknown') hibák javítva
+// explicit ': any' típus-annotációk és típus-kényszerítés (as any) hozzáadásával.
 
 import axios from 'axios';
 
@@ -21,7 +21,7 @@ async function checkModel(modelName: string): Promise<{ name: string; status: 'O
     try {
         const response = await axios.get(url);
         
-        // === JAVÍTÁS (TS18046) ===
+        // === JAVÍTÁS (TS2339) ===
         // Az 'response.data' 'unknown'. Típus-szűkítést (cast) végzünk 'any'-re.
         const data: any = response.data;
         // === JAVÍTÁS VÉGE ===
@@ -32,9 +32,10 @@ async function checkModel(modelName: string): Promise<{ name: string; status: 'O
         } else {
             throw new Error('Érvénytelen válasz struktúra.');
         }
-    } catch (error: any) { // JAVÍTÁS (TS18046): 'error' típus 'any'-re állítva
+    } catch (error: any) { // JAVÍTÁS (TS18046/TS2339): 'error' típus 'any'-re állítva
         let details = 'Ismeretlen hiba';
         if (error.response) {
+            // JAVÍTÁS (TS2339): error.response.data implicit 'any' (az 'error: any' miatt)
             details = `Státusz: ${error.response.status}, Válasz: ${JSON.stringify(error.response.data?.error?.message || error.response.data)}`;
         } else {
             details = error.message;
@@ -55,11 +56,11 @@ async function checkModels() {
     
     console.log("\n--- Eredmények Összegzése ---");
     
+    // === JAVÍTÁS (TS7006) ===
     const okModels = results
-        // === JAVÍTÁS (TS7006) ===
         .filter((m: any) => m.status === 'OK')
         .map((m: any) => m.name);
-        // === JAVÍTÁS VÉGE ===
+    // === JAVÍTÁS VÉGE ===
 
     const errorModels = results.filter((m: any) => m.status === 'ERROR'); // TS7006 javítva
 
@@ -83,7 +84,7 @@ async function checkModels() {
         });
     }
 
-    // === JAVÍTÁS (TS18046) ===
+    // === JAVÍTÁS (TS2339 / TS18046) ===
     // 'unknown' típus 'any'-re cserélve
     const supportedModelsResponse = await axios.get(`${BASE_URL}?key=${API_KEY}`).catch((error: any) => {
         console.error("\nHIBA: Nem sikerült lekérni a teljes modell listát.", error.response?.data?.error?.message || error.message);
@@ -91,10 +92,10 @@ async function checkModels() {
     });
     
     if (supportedModelsResponse && supportedModelsResponse.data) {
-        // === JAVÍTÁS (TS7006) ===
-        const data: any = supportedModelsResponse.data; // TS18046 javítva
+        // === JAVÍTÁS (TS2339 / TS7006) ===
+        const data: any = supportedModelsResponse.data; // TS18046/TS2339 javítva
         const allModelNames = (data.models || []).map((m: any) => m.name.replace('models/', ''))
-            .reduce((acc: any, name: any) => {
+            .reduce((acc: any, name: any) => { // TS7006 javítva
                 const baseName = name.split('-')[0];
                 if (!acc[baseName]) acc[baseName] = [];
                 acc[baseName].push(name);
