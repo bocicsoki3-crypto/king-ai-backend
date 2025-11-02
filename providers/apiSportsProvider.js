@@ -29,6 +29,7 @@ const apiSportsStatsCache = new NodeCache({ stdTTL: 3600 * 24 * 3, checkperiod: 
 const apiSportsFixtureCache = new NodeCache({ stdTTL: 3600 * 1, checkperiod: 600 });
 // const xgApiCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 3600 }); // ELTÁVOLÍTVA (v50)
 const apiSportsFixtureStatsCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 3600 }); // ÚJ (v50)
+const fixtureResultCache = new NodeCache({ stdTTL: 3600 * 24 * 30, checkperiod: 3600 * 12 }); // v50.1: ÚJ Cache az eredményeknek (30 nap)
 
 // --- NÉV- ÉS ROSTER CACHE-EK ---
 const apiSportsNameMappingCache = new NodeCache({ stdTTL: 3600 * 24 * 30, checkperiod: 3600 * 12 });
@@ -347,6 +348,64 @@ async function findApiSportsFixture(homeTeamId, awayTeamId, season, leagueId, ut
     apiSportsFixtureCache.set(cacheKey, { fixtureId: null, fixtureDate: null });
     return { fixtureId: null, fixtureDate: null };
 }
+
+// === v50.1: ÚJ FUNKCIÓ A VÉGEREDMÉNY LEKÉRÉSÉHEZ ===
+/**
+ * Lekéri egyetlen, befejezett meccs végeredményét FixtureID alapján.
+ * Ezt az Eredmény-elszámoló (Settlement) szolgáltatás hívja.
+ */
+export async function getApiSportsFixtureResult(fixtureId, sport) {
+    if (sport !== 'soccer' || !fixtureId) {
+        console.warn(`[getApiSportsFixtureResult] Lekérés kihagyva: Csak 'soccer' támogatott vagy hiányzó fixtureId.`);
+        return null;
+    }
+
+    const cacheKey = `fixture_result_v1_${fixtureId}`;
+    const cached = fixtureResultCache.get(cacheKey);
+    if (cached) {
+        console.log(`[getApiSportsFixtureResult] Cache találat (ID: ${fixtureId}): ${cached.status}`);
+        return cached;
+    }
+
+    console.log(`[getApiSportsFixtureResult] Eredmény lekérése... (ID: ${fixtureId})`);
+    
+    const endpoint = `/v3/fixtures`;
+    const params = { id: fixtureId };
+
+    try {
+        const response = await makeRequestWithRotation(sport, endpoint, { params });
+
+        if (!response?.data?.response || response.data.response.length === 0) {
+            console.warn(`[getApiSportsFixtureResult] Nem található meccs a ${fixtureId} ID alatt.`);
+            return null; // Nem található
+        }
+
+        const fixture = response.data.response[0];
+        const status = fixture.fixture?.status?.short;
+        const goals = fixture.goals;
+
+        // Csak a befejezett (Full Time) meccsek érdekelnek minket
+        if (status === 'FT') {
+            const result = {
+                home: goals.home,
+                away: goals.away,
+                status: 'FT'
+            };
+            fixtureResultCache.set(cacheKey, result); // Eredmény cache-elése (végleges)
+            console.log(`[getApiSportsFixtureResult] Eredmény rögzítve (ID: ${fixtureId}): H:${result.home}-A:${result.away}`);
+            return result;
+        }
+
+        console.log(`[getApiSportsFixtureResult] Meccs még nincs befejezve (ID: ${fixtureId}). Státusz: ${status}`);
+        return { status: status }; // Visszaadjuk az aktuális státuszt, de nem cache-eljük véglegesen
+
+    } catch (error) {
+        console.error(`[getApiSportsFixtureResult] Hiba történt (ID: ${fixtureId}): ${error.message}`);
+        return null;
+    }
+}
+// === v50.1 JAVÍTÁS VÉGE ===
+
 
 async function getApiSportsH2H(homeTeamId, awayTeamId, limit = 5, sport) {
     const endpoint = `/v3/fixtures/headtohead`;

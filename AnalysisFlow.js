@@ -1,4 +1,4 @@
-// --- JAVÍTOTT AnalysisFlow.js (v50 - Konszolidált Architektúra) ---
+// --- JAVÍTOTT AnalysisFlow.js (v50.1 - FixtureID mentéssel) ---
 
 import NodeCache from 'node-cache'; // CacheService helyett
 import { SPORT_CONFIG } from './config.js';
@@ -43,6 +43,8 @@ import { buildAnalysisHtml } from './htmlBuilder.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.js - Fő Elemzési Munkafolyamat
+* VÁLTOZÁS (v50.1): A 'saveAnalysisToSheet' hívás most már
+* átadja a 'fixtureId'-t az öntanuló hurok támogatásához.
 * VÁLTOZÁS (v50): A teljes "AI Bizottság" (Kritikus Lánc)
 * architektúra eltávolítva és helyettesítve egyetlen
 * 'getConsolidatedAnalysis' hívással a jobb teljesítmény,
@@ -53,6 +55,7 @@ const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 
 export async function runFullAnalysis(params, sport, openingOdds) {
     let analysisCacheKey = 'unknown_analysis';
+    let fixtureIdForSaving = null; // v50.1: Változó a FixtureID tárolására
     try {
         // Parameter validation and extraction
         const { home: rawHome, away: rawAway, force: forceNewStr, sheetUrl, utcKickoff, leagueName } = params;
@@ -94,11 +97,16 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             richContext, 
             advancedData, 
             form, 
-            rawData, 
+            rawData, // Ez tartalmazza az apiFootballData-t
             leagueAverages = {}, 
             oddsData
         } = await getRichContextualData(sport, home, away, leagueName, utcKickoff);
         console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
+
+        // v50.1: FixtureID kinyerése mentéshez
+        if (rawData && rawData.apiFootballData && rawData.apiFootballData.fixtureId) {
+            fixtureIdForSaving = rawData.apiFootballData.fixtureId;
+        }
 
         // --- 3. Odds és kontextus függő elemzések (Most már biztonságos) ---
         
@@ -199,15 +207,21 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         };
         const jsonResponse = { html: finalHtml, debugInfo: debugInfo };
         scriptCache.set(analysisCacheKey, jsonResponse);
-        console.log(`Elemzés befejezve és cache mentve (${analysisCacheKey})`);
+        console.log(`Elemzés befejeve és cache mentve (${analysisCacheKey})`);
 
         if (params.sheetUrl && typeof params.sheetUrl === 'string') {
+            // --- JAVÍTÁS v50.1: Átadjuk a fixtureIdForSaving-t a mentéshez ---
             saveAnalysisToSheet(params.sheetUrl, {
-                sport, home, away, date: new Date(), html: finalHtml, id: analysisCacheKey,
+                sport, 
+                home, 
+                away, 
+                date: new Date(), 
+                html: finalHtml, 
+                id: analysisCacheKey,
+                fixtureId: fixtureIdForSaving, // <-- ÚJ ADAT (v50.1)
                 recommendation: masterRecommendation
             })
-                .then(() => console.log(`Elemzés mentve 
-a Google Sheet-be (${analysisCacheKey})`))
+                .then(() => console.log(`Elemzés mentve a Google Sheet-be (${analysisCacheKey})`))
                 .catch(sheetError => console.error(`Hiba az elemzés Google Sheet-be mentésekor (${analysisCacheKey}): ${sheetError.message}`));
         }
 
