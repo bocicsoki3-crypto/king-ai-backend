@@ -269,16 +269,27 @@ async function getApiSportsLeagueId(leagueName, country, season, sport) {
             lowerName: l.name.toLowerCase(), 
             id: l.id 
         }));
-        // 1. Próba: Nyers hasonlóság (pl. "LaLiga" vs "La Liga", "MLS" vs "Major League Soccer")
-        // JAVÍTÁS: Küszöb csökkentése 0.6-ra, hogy az "MLS" vs "Major League Soccer" egyezést elkapja
+
+        // --- v50.2 JAVÍTÁS KEZDETE: Szigorúbb egyezés ---
+        // 1. Próba: Tökéletes egyezés
+        const perfectMatch = leagueNameMap.find(l => l.lowerName === targetLower);
+        if (perfectMatch) {
+            console.log(`API-SPORTS (${sport}): HELYI LIGA TALÁLAT (Tökéletes): "${targetName}" -> "${perfectMatch.name}" (ID: ${perfectMatch.id})`);
+            return perfectMatch.id;
+        }
+
+        // 2. Próba: Nyers hasonlóság (pl. "LaLiga" vs "La Liga", "MLS" vs "Major League Soccer")
+        // JAVÍTÁS: Küszöb emelése 0.6-ról 0.85-re
         let matchResult = findBestMatch(targetLower, leagueNameMap.map(l => l.lowerName));
-        if (matchResult.bestMatch.rating > 0.6) { 
+        const HIGH_CONFIDENCE_THRESHOLD = 0.85; // Szigorúbb küszöb
+        if (matchResult.bestMatch.rating > HIGH_CONFIDENCE_THRESHOLD) { 
             const foundLeague = leagueNameMap[matchResult.bestMatchIndex];
             console.log(`API-SPORTS (${sport}): HELYI LIGA TALÁLAT (Nyers hasonlóság, R: ${matchResult.bestMatch.rating.toFixed(2)}) "${targetName}" -> "${foundLeague.name}" (ID: ${foundLeague.id})`);
             return foundLeague.id;
         }
+        // --- v50.2 JAVÍTÁS VÉGE ---
 
-        // 2. Próba: Tisztított hasonlóság (pl. "Brazil Serie B" vs "Serie B")
+        // 3. Próba: Tisztított hasonlóság (pl. "Brazil Serie B" vs "Serie B")
         // Eltávolítjuk az országnevet a keresett névből
         const cleanTargetName = targetLower.replace(new RegExp(`^${lowerCountry}\\s*`), '').trim();
         // Eltávolítjuk az országnevet a listából is
