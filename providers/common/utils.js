@@ -5,7 +5,8 @@ import axios from 'axios';
 import {
     GEMINI_API_KEY, GEMINI_MODEL_ID,
     SPORT_CONFIG, API_HOSTS // ESPN és Gemini hívásokhoz szükségesek
-} from '../../config.js'; // Figyelj a relatív elérési útra!
+} from '../../config.js';
+// Figyelj a relatív elérési útra!
 
 /**
  * Általános, hibatűrő API hívó segédfüggvény (az eredeti DataFetch.js-ből)
@@ -20,7 +21,7 @@ export async function makeRequest(url, config = {}, retries = 1) {
                 timeout: 25000,
                 validateStatus: (status) => status >= 200 && status < 500,
                 headers: {}
-            };
+           };
             const currentConfig = { ...baseConfig, ...config, headers: { ...baseConfig.headers, ...config?.headers } };
             
             let response;
@@ -71,8 +72,10 @@ export async function makeRequest(url, config = {}, retries = 1) {
  * Gemini API Hívó (az eredeti DataFetch.js-ből)
  */
 export async function _callGemini(prompt) {
-    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') { throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY."); }
-    if (!GEMINI_MODEL_ID) { throw new Error("Hiányzó GEMINI_MODEL_ID."); }
+    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') { throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY.");
+    }
+    if (!GEMINI_MODEL_ID) { throw new Error("Hiányzó GEMINI_MODEL_ID.");
+    }
     const finalPrompt = `${prompt}\n\nCRITICAL OUTPUT INSTRUCTION: Your entire response must be ONLY a single, valid JSON object.\nDo not add any text, explanation, or introductory phrases outside of the JSON structure itself.\nEnsure the JSON is complete and well-formed.`;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent?key=${GEMINI_API_KEY}`;
     const payload = { contents: [{ role: "user", parts: [{ text: finalPrompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 8192, responseMimeType: "application/json", }, };
@@ -112,7 +115,8 @@ export function PROMPT_V43(sport, homeTeamName, awayTeamName, apiSportsHomeSeaso
 
     // --- PROMPT (NEM VÁLTOZOTT) ---
     // (A DataFetch.gs.txt 253. sorától indul)
-    let calculatedStatsInfo = "NOTE ON STATS: No reliable API-Sports season stats available. Please use your best knowledge for the CURRENT SEASON/COMPETITION stats.\n";
+    let calculatedStatsInfo = "NOTE ON STATS: No reliable API-Sports season stats available. Please use your best knowledge for 
+the CURRENT SEASON/COMPETITION stats.\n";
     if (apiSportsHomeSeasonStats || apiSportsAwaySeasonStats) {
         calculatedStatsInfo = `CRITICAL NOTE ON STATS: The following basic stats have been PRE-CALCULATED from API-Sports.
 Use these exact numbers; do not rely on your internal knowledge for these specific stats.\n`;
@@ -167,7 +171,7 @@ REQUESTED ANALYSIS (Fill in based on your knowledge AND the provided factual dat
 --- SPECIFIC DATA BY SPORT ---
 IF soccer:
   7. Tactics: Style (e.g., Possession, Counter, Pressing) + formation.
-**(CRITICAL: Infer formation from the 'formation' field in the API-Sports LINEUP data. If N/A, use your knowledge but state it's an estimate).**
+  **(CRITICAL: Infer formation from the 'formation' field in the API-Sports LINEUP data. If N/A, use your knowledge but state it's an estimate).**
   8. Tactical Patterns: { home: ["pattern1", "pattern2"], away: [...] }.
   9. Key Matchups: Identify 1-2 key positional or player battles.
 IF hockey:
@@ -211,6 +215,10 @@ export async function getStructuredWeatherData(stadiumLocation, utcKickoff) {
 /**
  * ESPN Meccslekérdező (az eredeti DataFetch.js-ből)
  * Ezt a fő DataFetch.js hívja, nem a providerek.
+ *
+ * JAVÍTÁS (v50.3): A Promise.all() hívás cserélve szekvenciális (egymás utáni)
+ * for...of ciklusra, hogy elkerüljük az ESPN API rate limit hibáját
+ * és az időtúllépést a 80+ egyidejű kérés miatt.
  */
 export async function _getFixturesFromEspn(sport, days) {
     const sportConfig = SPORT_CONFIG[sport];
@@ -218,13 +226,18 @@ export async function _getFixturesFromEspn(sport, days) {
     
     const daysInt = parseInt(days, 10);
     if (isNaN(daysInt) || daysInt <= 0 || daysInt > 7) return [];
+    
     const datesToFetch = Array.from({ length: daysInt }, (_, d) => {
         const date = new Date();
         date.setUTCDate(date.getUTCDate() + d);
         return date.toISOString().split('T')[0].replace(/-/g, '');
     });
-    const promises = [];
-    console.log(`ESPN: ${daysInt} nap, ${Object.keys(sportConfig.espn_leagues).length} liga lekérése...`);
+
+    const allFixtures = []; // Egy tömb a gyűjtött meccseknek
+    const leagueCount = Object.keys(sportConfig.espn_leagues).length;
+    console.log(`ESPN: Szekvenciális lekérés indul: ${daysInt} nap, ${leagueCount} liga... (Ez lassabb lesz, de stabil)`);
+
+    let requestCount = 0;
     for (const dateString of datesToFetch) {
         for (const [leagueName, leagueData] of Object.entries(sportConfig.espn_leagues)) {
             const slug = leagueData.slug;
@@ -232,46 +245,57 @@ export async function _getFixturesFromEspn(sport, days) {
                 console.warn(`_getFixturesFromEspn: Üres slug (${leagueName}).`);
                 continue;
             }
-            const url = `https://site.api.espn.com/apis/site/v2/sports/${sportConfig.espn_sport_path}/${slug}/scoreboard?dates=${dateString}&limit=200`;
-            // Az 'makeRequest' hívást az utils.js-ből importáltra cseréljük
-            promises.push(makeRequest(url, { timeout: 8000 }).then(response => {
-                if (!response?.data?.events) return [];
-                return response.data.events
-                    .filter(event => event?.status?.type?.state?.toLowerCase() === 'pre')
-                    .map(event => {
             
-                        const competition = event.competitions?.[0];
-                        if (!competition) return null;
-                        const homeTeam = competition.competitors?.find(c => c.homeAway === 'home')?.team;
-                        const awayTeam = competition.competitors?.find(c => c.homeAway === 'away')?.team;
-                        if (event.id && homeTeam?.name && awayTeam?.name && event.date) {
-                            return {
-                                id: String(event.id),
-                                home: homeTeam.name.trim(),
-                                away: awayTeam.name.trim(),
-                                utcKickoff: event.date,
-                                league: leagueName.trim()
-                            };
-                        }
-                        return null;
-            }).filter(Boolean);
-            }).catch(error => {
+            requestCount++;
+            console.log(`ESPN lekérés (${requestCount}/${leagueCount * daysInt}): ${leagueName} @ ${dateString}`);
+            
+            const url = `https://site.api.espn.com/apis/site/v2/sports/${sportConfig.espn_sport_path}/${slug}/scoreboard?dates=${dateString}&limit=200`;
+
+            // --- JAVÍTÁS: Szekvenciális hívás (Promise.all() helyett) ---
+            try {
+                const response = await makeRequest(url, { timeout: 8000 }); // Várjuk be a hívást
+                if (response?.data?.events) {
+                    const fixturesForLeague = response.data.events
+                        .filter(event => event?.status?.type?.state?.toLowerCase() === 'pre')
+                        .map(event => {
+                            const competition = event.competitions?.[0];
+                            if (!competition) return null;
+                            const homeTeam = competition.competitors?.find(c => c.homeAway === 'home')?.team;
+                            const awayTeam = competition.competitors?.find(c => c.homeAway === 'away')?.team;
+                            if (event.id && homeTeam?.name && awayTeam?.name && event.date) {
+                                return {
+                                    id: String(event.id),
+                                    home: homeTeam.name.trim(),
+                                    away: awayTeam.name.trim(),
+                                    utcKickoff: event.date,
+                                    league: leagueName.trim()
+                                };
+                            }
+                            return null;
+                        }).filter(Boolean);
+                    
+                    allFixtures.push(...fixturesForLeague); // Adjuk hozzá a találatokat a fő listához
+                }
+            } catch (error) {
                 if (error.response?.status === 400) {
                     console.warn(`ESPN Hiba (400): Valószínűleg rossz slug '${slug}' (${leagueName})?`);
                 } else {
                     console.error(`ESPN Hiba (${leagueName}): ${error.message}`);
                 }
-                return [];
-            }));
-            await new Promise(resolve => setTimeout(resolve, 50));
+                // A hiba nem állítja le a teljes folyamatot, csak ez a liga marad ki
+            }
+            // --- JAVÍTÁS VÉGE ---
+
+            // Várakozás a kérések között, hogy elkerüljük a rate limiting-et
+            await new Promise(resolve => setTimeout(resolve, 250)); // 250ms várakozás
         }
     }
 
     try {
-        const results = await Promise.all(promises);
-        const uniqueFixtures = Array.from(new Map(results.flat().map(f => [`${f.home}-${f.away}-${f.utcKickoff}`, f])).values());
+        // A 'results.flat()' helyett már az 'allFixtures' listát használjuk
+        const uniqueFixtures = Array.from(new Map(allFixtures.map(f => [`${f.home}-${f.away}-${f.utcKickoff}`, f])).values());
         uniqueFixtures.sort((a, b) => new Date(a.utcKickoff) - new Date(b.utcKickoff));
-        console.log(`ESPN: ${uniqueFixtures.length} egyedi meccs lekérve a következő ${daysInt} napra.`);
+        console.log(`ESPN: ${uniqueFixtures.length} egyedi meccs lekérve (szekvenciálisan) a következő ${daysInt} napra.`);
         return uniqueFixtures;
     } catch (e) {
         console.error(`ESPN feldolgozási hiba: ${e.message}`, e.stack);
@@ -283,14 +307,12 @@ export async function _getFixturesFromEspn(sport, days) {
 // A 'SPORT_CONFIG' importot már tartalmaznia kell a fájl tetejének.
 // Ha mégsem, írd a többi import alá: 
 // import { SPORT_CONFIG } from '../../config.js';
-
 /**
  * Meghatározza a fő gól/pont vonalat az odds adatokból.
  * Az AnalysisFlow.js hívja meg.
  */
 export function findMainTotalsLine(oddsData, sport) {
     const defaultConfigLine = SPORT_CONFIG[sport]?.totals_line || (sport === 'soccer' ? 2.5 : 6.5);
-    
     if (!oddsData?.fullApiData?.bookmakers || oddsData.fullApiData.bookmakers.length === 0) {
         return defaultConfigLine;
     }
@@ -303,8 +325,17 @@ export function findMainTotalsLine(oddsData, sport) {
     else if (sport === 'hockey') marketName = "total";
     else if (sport === 'basketball') marketName = "total points";
     else marketName = "over/under";
+    
+    // v50.3 JAVÍTÁS: Alternatív piacnév keresése
+    let totalsMarket = bookmaker.bets.find(b => b.name.toLowerCase() === marketName);
+    if (!totalsMarket) {
+        const alternativeMarketName = (sport === 'soccer') ? "totals" : null;
+        if (alternativeMarketName) {
+            totalsMarket = bookmaker.bets.find(b => b.name.toLowerCase() === alternativeMarketName);
+        }
+    }
+    // v50.3 JAVÍTÁS VÉGE
 
-    const totalsMarket = bookmaker.bets.find(b => b.name.toLowerCase() === marketName);
     if (!totalsMarket?.values) {
         console.warn(`Nem található '${marketName}' piac a szorzókban (${sport}).`);
         return defaultConfigLine;
