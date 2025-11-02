@@ -1,7 +1,7 @@
-// providers/sofascoreProvider.ts (v52.20 - Végleges Javítás)
-// MÓDOSÍTÁS 1 (TS2552): A 'xGData' (nagy G) változónév-elgépelés javítva 'xgData'-ra (kis g).
-// MÓDOSÍTÁS 2 (Logikai hiba): A getSofascoreEventId hibás '/teams/get-near-events' végpontja
-// a helyes '/teams/get-next-matches'-re cserélve.
+// providers/sofascoreProvider.ts (v52.19 - Kétirányú Meccskeresés)
+// MÓDOSÍTÁS: A getSofascoreEventId (2. lépés) most már kétirányú ellenőrzést végez.
+// Először a hazai csapat, majd (ha sikertelen) a vendég csapat naptárát
+// is ellenőrzi a '/teams/get-next-matches' végponton.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -117,6 +117,7 @@ async function getSofascoreTeamId(teamName: string): Promise<number | null> {
 
 /**
  * 2. Lépés: Megkeresi a meccs (Event) Sofascore ID-ját a csapat ID-k alapján.
+ * (MÓDOSÍTVA v52.19 - Kétirányú ellenőrzés)
  */
 async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Promise<number | null> {
     const cacheKey = `event_${homeTeamId}_vs_${awayTeamId}`;
@@ -127,9 +128,8 @@ async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Prom
     }
 
     // === JAVÍTÁS (A KRITIKUS LOGIKA) ===
-    // Lecseréljük a logikailag hibás '/teams/get-near-events' végpontot a
-    // '/teams/get-next-matches' végpontra (az image_51faca.png alapján).
-    
+    // A rendszernek mindkét csapat naptárát ellenőriznie kell.
+
     // 1. Kísérlet: Keressük a (Home) naptárában a (Away) csapatot
     console.log(`[Sofascore] Meccs keresés (1/2): ${homeTeamId} (Home) naptárának ellenőrzése...`);
     let data = await makeSofascoreRequest('/teams/get-next-matches', { teamId: homeTeamId, page: 0 });
@@ -302,7 +302,7 @@ function processSofascoreLineups(
 
 
 /**
- * FŐ EXPORTÁLT FUNKCIÓ (MÓDOSÍTVA v52.20)
+ * FŐ EXPORTÁLT FUNKCIÓ (MÓDOSÍTVA v52.19)
  */
 export async function fetchSofascoreData(
     homeTeamName: string, 
@@ -340,7 +340,7 @@ export async function fetchSofascoreData(
         // 2. Meccs ID lekérése (A javított, kétirányú végponttal)
         const eventId = await getSofascoreEventId(homeTeamId, awayTeamId);
         if (!eventId) {
-            console.warn(`[Sofascore Provider] Event ID nem található (${homeTeamId} vs ${awayTeamId}). A Sofascore kérés leáll.`);
+            console.warn(`[Sofascore Provider] Event ID nem található (${homeTeamId} vs ${awayTeamName}). A Sofascore kérés leáll.`);
             return result; // Visszatérés üres adatokkal
         }
 
@@ -351,15 +351,12 @@ export async function fetchSofascoreData(
         ]);
 
         // 4. Eredmények feldolgozása
-        // === JAVÍTÁS (TS2552) ===
-        // A 'xGData' (nagy G) elgépelés 'xgData'-ra (kis g) javítva
-        if (xgData) { 
+        if (xgData) {
             result.advancedData = {
                 xg_home: xgData.home,
                 xG_away: xgData.away 
             };
         }
-        // === JAVÍTÁS VÉGE ===
         
         // A nyers 'lineupsData' átadása a feldolgozó funkciónak.
         result.playerStats = processSofascoreLineups(lineupsData);
