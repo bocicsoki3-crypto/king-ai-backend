@@ -15,7 +15,7 @@
   "include": [
     "*.js",
     "*.ts",
-    "src/**/*.ts", // HOZZÁADVA: Ez javítja a TS2307 hibát 
+    "src/**/*.ts",
     "providers/**/*.js",
     "providers/**/*.ts",
     "providers/common/*.js",
@@ -23,6 +23,7 @@
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "script.ts" // KIVÉTEL: A tsc ne fordítsa le a kliens szkriptet
   ]
 }
