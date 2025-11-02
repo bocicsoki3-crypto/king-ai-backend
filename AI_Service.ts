@@ -1,19 +1,19 @@
-// --- JAVÍTOTT AI_service.js (v51 - Chain-of-Thought) ---
+// --- JAVÍTOTT AI_service.ts (v52 - TypeScript & CoT) ---
 
 /**
- * AI_Service.js (Node.js Verzió)
- * VÁLTOZÁS (v51): A 'getConsolidatedAnalysis' monolitikus funkció eltávolítva.
- * Helyette egy 3-lépcsős "Chain-of-Thought" (CoT) architektúra került bevezetésre:
- * 1. Lépés: Tényfeltárás (runStep1_GetFacts)
- * 2. Lépés: Elemzés (runStep2_GetAnalysis)
- * 3. Lépés: Stratégia (runStep3_GetStrategy)
- * Ez a szekvenciális feldolgozás mélyebb, "élethűbb" és kevésbé sablonos
- * elemzést tesz lehetővé azáltal, hogy specializált feladatokra bontja a
- * kognitív terhelést.
+ * AI_Service.ts (Node.js Verzió)
+ * VÁLTOZÁS (v52 - TS):
+ * - A modul átalakítva TypeScript-re.
+ * - A 3-lépcsős "Chain-of-Thought" (CoT) funkciók bemeneti paraméterei
+ * szigorúan típusosítva lettek (pl. `simJson: any`, `detailedPlayerStatsJson: ICanonicalPlayerStats`).
+ * - Ez biztosítja, hogy a megfelelő adatszerződések legyenek
+ * kényszerítve a lánc lépései között.
  */
 import { _callGemini } from './DataFetch.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
-// A SPORT_CONFIG importálása már nem szükséges itt
+
+// Kanonikus típusok importálása (opcionális, de ajánlott a szigorúbb ellenőrzéshez)
+import { ICanonicalPlayerStats, ICanonicalRawData } from './src/types/canonical.d.ts';
 
 // --- 1. LÉPÉS: TÉNYFELTÁRÓ PROMPT ---
 const PROMPT_STEP_1_FACTS = `
@@ -88,8 +88,33 @@ NOTE: The Odds data is from a single source (Bet365), not a market consensus. Fa
 }
 `;
 
-// --- HELPER a promptok kitöltéséhez --- (Változatlan)
-function fillPromptTemplate(template, data) {
+// --- TÍPUSOK a bemeneti adatokhoz ---
+// Ezeket az AnalysisFlow.ts-ből kapjuk
+interface Step1Input {
+  richContext: string;
+  detailedPlayerStatsJson: ICanonicalPlayerStats;
+  marketIntel: string;
+}
+
+interface Step2Input {
+  simJson: any; // ISimResult interfész lenne az ideális
+  step1FactsJson: any; // Step1 kimenete
+  rawDataJson: ICanonicalRawData;
+  sim_mainTotalsLine: number;
+  mu_corners_sim: number;
+  mu_cards_sim: number;
+}
+
+interface Step3Input {
+  step2AnalysisJson: any; // Step2 kimenete
+  modelConfidence: number;
+  valueBetsJson: any[]; // IValueBet[] interfész lenne az ideális
+  calibrationMapJson?: any; // Ezt a függvény adja hozzá
+}
+
+
+// --- HELPER a promptok kitöltéséhez --- (Változatlan, de típusosított)
+function fillPromptTemplate(template: string, data: any): string {
     if (!template || typeof template !== 'string') return '';
     try {
         return template.replace(/\{([\w_]+)\}/g, (match, key) => {
@@ -103,7 +128,7 @@ function fillPromptTemplate(template, data) {
                 const baseKey = key.replace('Json', '');
                 if (data && data.hasOwnProperty(baseKey) && data[baseKey] !== undefined) {
                     try { return JSON.stringify(data[baseKey]); } 
-                    catch (e) { console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál`); return '{}'; }
+                    catch (e: any) { console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál`); return '{}'; }
                 } else { return '{}'; } // Üres JSON, ha nincs adat
             }
             // Ha a kulcs nincs meg sehol
@@ -128,8 +153,7 @@ function fillPromptTemplate(template, data) {
                 // Vonalak (Totals, Corners, Cards)
                 if (key === 'line' || key === 'likelyLine' || key === 'sim_mainTotalsLine') return value.toString();
                 // Stringként adjuk vissza
-                return value; 
-                // Egyéb számok változatlanul
+                return String(value); 
             }
              if (typeof value === 'object') {
                  // Objektumokat JSON stringgé alakítunk (ha nem Json kulcs volt eleve)
@@ -138,7 +162,7 @@ function fillPromptTemplate(template, data) {
             // Minden más stringgé alakítva
             return String(value);
         });
-    } catch(e) {
+    } catch(e: any) {
          console.error(`Váratlan hiba a fillPromptTemplate során: ${e.message}`);
          return template; // Hiba esetén az eredeti sablont adjuk vissza
     }
@@ -148,17 +172,17 @@ function fillPromptTemplate(template, data) {
 // === v50: KONSZOLIDÁLT AI HÍVÓ (ELTÁVOLÍTVA) ===
 // export async function getConsolidatedAnalysis(allData) { ... } // TÖRÖLVE
 
-// === ÚJ, LÁNCOLT AI HÍVÓK (v51) ===
+// === ÚJ, LÁNCOLT AI HÍVÓK (v51 / v52 TS) ===
 
 /**
  * 1. LÉPÉS: Tények kinyerése
  */
-export async function runStep1_GetFacts(data) {
+export async function runStep1_GetFacts(data: Step1Input): Promise<any> {
     try {
         const filledPrompt = fillPromptTemplate(PROMPT_STEP_1_FACTS, data);
         const jsonString = await _callGemini(filledPrompt);
         return JSON.parse(jsonString);
-    } catch (e) {
+    } catch (e: any) {
         console.error(`AI Hiba (Step 1 - Facts): ${e.message}`);
         return { error: `AI Hiba (Step 1): ${e.message}` }; // Hiba objektum visszaadása
     }
@@ -167,12 +191,12 @@ export async function runStep1_GetFacts(data) {
 /**
  * 2. LÉPÉS: Taktikai Elemzés
  */
-export async function runStep2_GetAnalysis(data) {
+export async function runStep2_GetAnalysis(data: Step2Input): Promise<any> {
     try {
         const filledPrompt = fillPromptTemplate(PROMPT_STEP_2_ANALYSIS, data);
         const jsonString = await _callGemini(filledPrompt);
         return JSON.parse(jsonString);
-    } catch (e) {
+    } catch (e: any) {
         console.error(`AI Hiba (Step 2 - Analysis): ${e.message}`);
         return { error: `AI Hiba (Step 2): ${e.message}` };
     }
@@ -181,7 +205,7 @@ export async function runStep2_GetAnalysis(data) {
 /**
  * 3. LÉPÉS: Stratégiai Döntés
  */
-export async function runStep3_GetStrategy(data) {
+export async function runStep3_GetStrategy(data: Step3Input): Promise<any> {
     try {
         // Kiegészítés a kalibrációs térképpel
         data.calibrationMapJson = getConfidenceCalibrationMap();
@@ -189,7 +213,7 @@ export async function runStep3_GetStrategy(data) {
         const filledPrompt = fillPromptTemplate(PROMPT_STEP_3_STRATEGY, data);
         const jsonString = await _callGemini(filledPrompt);
         return JSON.parse(jsonString);
-    } catch (e) {
+    } catch (e: any) {
         console.error(`AI Hiba (Step 3 - Strategy): ${e.message}`);
         // Kritikus hiba esetén is adjunk vissza egy alap ajánlást
         return {
@@ -205,8 +229,13 @@ export async function runStep3_GetStrategy(data) {
 }
 
 
-// --- CHAT FUNKCIÓ --- (Változatlan)
-export async function getChatResponse(context, history, question) {
+// --- CHAT FUNKCIÓ --- (Változatlan, de típusosított)
+interface ChatMessage {
+  role: 'user' | 'model' | 'ai';
+  parts: { text: string }[];
+}
+
+export async function getChatResponse(context: string, history: ChatMessage[], question: string): Promise<{ answer?: string; error?: string }> {
     if (!context || !question) return { error: "Hiányzó 'context' vagy 'question'." };
     try {
         // Előzmények formázása a prompt számára
@@ -251,7 +280,7 @@ If the answer isn't in the context or history, politely state that the informati
 
          // Visszaadjuk a választ, ha van
          return answerText ? { answer: answerText } : { error: "Az AI nem tudott válaszolni." };
-    } catch (e) {
+    } catch (e: any) {
         console.error(`Chat hiba: ${e.message}`, e.stack);
         return { error: `Chat AI hiba: ${e.message}` };
     }
