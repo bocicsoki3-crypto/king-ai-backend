@@ -1,4 +1,4 @@
-// --- JAVÍTOTT AnalysisFlow.js (v46 - Provider Fix) ---
+// --- JAVÍTOTT AnalysisFlow.js (v50 - Konszolidált Architektúra) ---
 
 import NodeCache from 'node-cache'; // CacheService helyett
 import { SPORT_CONFIG } from './config.js';
@@ -17,31 +17,24 @@ import {
     estimateAdvancedMetrics,
     simulateMatchProgress,
     calculateModelConfidence,
-    buildPropheticTimeline,
+    // buildPropheticTimeline, // ELTÁVOLÍTVA (v50) - Logikailag hibás (sztochasztikus)
     calculatePsychologicalProfile,
     calculateValue,
     analyzeLineMovement,
     analyzePlayerDuels
 } from './Model.js';
+// --- JAVÍTÁS (v50): AI Szolgáltatás Importok cseréje ---
+// A régi, "chatty" bizottsági importok eltávolítva
 import {
-    getRiskAssessment,
-    getTacticalBriefing,
-    getPropheticScenario,
-    getAiKeyQuestions,
-    getPlayerMarkets,
-    getFinalGeneralAnalysis,
-    getExpertConfidence,
-    getBTTSAnalysis,
-    getSoccerGoalsOUAnalysis,
-    getCornerAnalysis,
-    getCardAnalysis,
-    getHockeyGoalsOUAnalysis,
-    getHockeyWinnerAnalysis,
-    getBasketballPointsOUAnalysis,
-    getPropheticEvent,
-    getMasterRecommendation,
-    getStrategicClosingThoughts
+    getConsolidatedAnalysis
+    // getRiskAssessment, // ELTÁVOLÍTVA
+    // getTacticalBriefing, // ELTÁVOLÍTVA
+    // getPropheticScenario, // ELTÁVOLÍTVA
+    // ... (összes többi egyedi AI import) ... // ELTÁVOLÍTVA
+    // getMasterRecommendation, // ELTÁVOLÍTVA
+    // getStrategicClosingThoughts // ELTÁVOLÍTVA
 } from './AI_Service.js';
+// --- JAVÍTÁS VÉGE ---
 import { saveAnalysisToSheet } from './sheets.js'; // Mentés funkció
 import { buildAnalysisHtml } from './htmlBuilder.js';
 // HTML építő funkció
@@ -50,10 +43,12 @@ import { buildAnalysisHtml } from './htmlBuilder.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.js - Fő Elemzési Munkafolyamat
-* VÁLTOZÁS (v45): A 'findMainTotalsLine' hívása most már
-* átadja a 'sport' paramétert, hogy elkerülje a 6.5-ös
-* gólvonal hibát focimeccseknél.
-* VÁLTOZÁS (v46): Import útvonal javítva a refaktorálás után.
+* VÁLTOZÁS (v50): A teljes "AI Bizottság" (Kritikus Lánc)
+* architektúra eltávolítva és helyettesítve egyetlen
+* 'getConsolidatedAnalysis' hívással a jobb teljesítmény,
+* koherencia és mélyebb elemzés érdekében.
+* A 'buildPropheticTimeline' eltávolítva a spekulatív
+* (Math.random) természete miatt.
 **************************************************************/
 
 export async function runFullAnalysis(params, sport, openingOdds) {
@@ -101,7 +96,7 @@ export async function runFullAnalysis(params, sport, openingOdds) {
             form, 
             rawData, 
             leagueAverages = {}, 
-            oddsData // <-- Az 'oddsData' itt 
+            oddsData
         } = await getRichContextualData(sport, home, away, leagueName, utcKickoff);
         console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
 
@@ -142,125 +137,65 @@ export async function runFullAnalysis(params, sport, openingOdds) {
         const modelConfidence = calculateModelConfidence(sport, home, away, rawData, form, sim, marketIntel);
         const valueBets = calculateValue(sim, mutableOddsData, sport, home, away); // 'mutableOddsData' használata
         console.log(`Modellezés kész: ${home} vs ${away}.`);
-        // --- 3. ÁLTALÁNOS AI BIZOTTSÁG (SZAKÉRTŐI LÁNC) ---
-        console.log(`AI Bizottság (Kritikus Lánc / Vitázó) indul: ${home} vs ${away}...`);
+
+        // --- 3. KONSZOLIDÁLT AI ELEMZÉS (v50) ---
+        console.log(`Konszolidált Fő Elemző hívása indul: ${home} vs ${away}...`);
+        
         const safeRichContext = typeof richContext === 'string' ? richContext : "Kontextus adatok hiányosak.";
         const richContextWithDuels = `${safeRichContext}\n- **Kulcs Párharc Elemzés:** ${duelAnalysis || 'N/A'}`;
-        const propheticTimeline = buildPropheticTimeline(mu_h, mu_a, rawData, sport, home, away);
-        const committeeResults = {};
+        
+        // A 'buildPropheticTimeline' hívás eltávolítva (v50)
+        // const propheticTimeline = buildPropheticTimeline(mu_h, mu_a, rawData, sport, home, away); // TÖRÖLVE
 
-        // LÉPÉS 1: Kockázat
-        console.log("Kritikus Lánc 1/6: Kockázatelemzés...");
-        try { committeeResults.riskAssessment = await getRiskAssessment(sim, mu_h, mu_a, rawData, sport, marketIntel);
-        }
-        catch (e) { console.error(`AI Hiba (Risk): ${e.message}`); committeeResults.riskAssessment = "Kockázatelemzés hiba.";
-        }
+        // A "Kritikus Lánc" és "Párhuzamos Ág" (10+ hívás) eltávolítva (v50)
+        
+        // Ehelyett egyetlen adatobjektumot építünk
+        const allDataForAI = {
+            simJson: sim,
+            valueBetsJson: valueBets,
+            modelConfidence: modelConfidence,
+            richContext: richContextWithDuels,
+            rawDataJson: rawData, // A teljes nyers adat a mélyebb taktikai elemzéshez
+            marketIntel: marketIntel,
+            // Átadjuk a sim adatokat a prompt-ba, hogy a micromodellek promptjai megkapják
+            sim_mainTotalsLine: sim.mainTotalsLine,
+            mu_corners_sim: sim.mu_corners_sim,
+            mu_cards_sim: sim.mu_cards_sim
+        };
 
-        // LÉPÉS 2: Taktika
-        console.log("Kritikus Lánc 2/6: Taktikai Elemzés...");
-        try { committeeResults.tacticalBriefing = await getTacticalBriefing(rawData, sport, home, away, duelAnalysis, committeeResults.riskAssessment);
-        }
-        catch (e) { console.error(`AI Hiba (Tactical): ${e.message}`); committeeResults.tacticalBriefing = "Taktikai elemzés hiba.";
-        }
+        // Egyetlen AI hívás, amely visszaadja a teljes elemzési struktúrát
+        const fullAnalysisReport = await getConsolidatedAnalysis(allDataForAI);
 
-        // LÉPÉS 3: Szakértői Bizalom
-        console.log("Kritikus Lánc 3/6: Szakértői Bizalom...");
-        try { committeeResults.expertConfidence = await getExpertConfidence(modelConfidence, richContextWithDuels, rawData); }
-         catch (e) { console.error(`AI Hiba (ExpertConf): ${e.message}`);
-         committeeResults.expertConfidence = "**1.0/10** - Hiba."; }
-
-        // LÉPÉS 4: Párhuzamos Ág (Prophetic Event, Key Questions itt fut)
-        console.log("AI Bizottság (Párhuzamos ág) indul...");
-        const parallelPromises = {};
-        parallelPromises.keyQuestions = getAiKeyQuestions(richContextWithDuels, rawData).catch(e => { console.error(`AI Hiba (Questions): ${e.message}`); return "- Kulcskérdés hiba."; });
-        parallelPromises.playerMarkets = getPlayerMarkets(rawData?.key_players, richContextWithDuels, rawData).catch(e => { console.error(`AI Hiba (Player Markets): ${e.message}`); return "Játékospiac hiba."; });
-        parallelPromises.propheticEvent = getPropheticEvent(rawData, sport, home, away).catch(e => { console.error(`AI Hiba (PropheticEvent): ${e.message}`); return "Prófétai esemény hiba."; });
-        const microPromises = {};
-        if (sport === 'soccer') {
-            microPromises.btts = getBTTSAnalysis(sim, rawData).catch(e => `BTTS hiba: ${e.message}`);
-            microPromises.goalsOU = getSoccerGoalsOUAnalysis(sim, rawData, mainTotalsLine).catch(e => `Gól O/U hiba: ${e.message}`);
-            microPromises.corners = getCornerAnalysis(sim, rawData).catch(e => `Szöglet hiba: ${e.message}`);
-            microPromises.cards = getCardAnalysis(sim, rawData).catch(e => `Lapok hiba: ${e.message}`);
-        } else if (sport === 'hockey') {
-            microPromises.goalsOU = getHockeyGoalsOUAnalysis(sim, rawData, mainTotalsLine).catch(e => `Hoki O/U hiba: ${e.message}`);
-            microPromises.winner = getHockeyWinnerAnalysis(sim, rawData).catch(e => `Hoki Győztes hiba: ${e.message}`);
-        } else if (sport === 'basketball') {
-            microPromises.pointsOU = getBasketballPointsOUAnalysis(sim, rawData, mainTotalsLine).catch(e => `Kosár Pont O/U hiba: ${e.message}`);
-        }
-        parallelPromises.microResults = Promise.all(Object.values(microPromises));
-        // Várjuk meg a párhuzamos ág befejeződését
-        const parallelPromiseKeys = ['keyQuestions', 'playerMarkets', 'propheticEvent', 'microResults'];
-        const parallelResults = await Promise.all(parallelPromiseKeys.map(key => parallelPromises[key]));
-        committeeResults.keyQuestions = parallelResults[parallelPromiseKeys.indexOf('keyQuestions')];
-        committeeResults.playerMarkets = parallelResults[parallelPromiseKeys.indexOf('playerMarkets')];
-        committeeResults.propheticEvent = parallelResults[parallelPromiseKeys.indexOf('propheticEvent')];
-
-        const microResults = parallelResults[parallelPromiseKeys.indexOf('microResults')];
-        const microAnalyses = {};
-        const microKeys = Object.keys(microPromises);
-        microResults.forEach((result, index) => { microAnalyses[microKeys[index]] = result; });
-        committeeResults.microAnalyses = microAnalyses;
-        // --- KRITIKUS LÁNC FOLYTATÁSA ---
-        // LÉPÉS 5: Szcenárió (Most már megkapja a propheticEvent-et)
-        console.log("Kritikus Lánc 4/6: Forgatókönyv...");
-        try { committeeResults.propheticScenario = await getPropheticScenario(propheticTimeline, rawData, home, away, sport, committeeResults.tacticalBriefing, committeeResults.propheticEvent);
-        }
-        catch (e) { console.error(`AI Hiba (Scenario): ${e.message}`); committeeResults.propheticScenario = "Forgatókönyv hiba.";
-        }
-
-        // LÉPÉS 6: Általános Elemzés
-        console.log("Kritikus Lánc 5/6: Általános Elemzés...");
-        try { committeeResults.generalAnalysis = await getFinalGeneralAnalysis(sim, mu_h, mu_a, committeeResults.tacticalBriefing, committeeResults.propheticScenario, rawData, modelConfidence);
-        }
-        catch (e) { console.error(`AI Hiba (General): ${e.message}`); committeeResults.generalAnalysis = "Ált. elemzés hiba.";
-        }
-
-        // LÉPÉS 7: Stratégiai Zárógondolatok
-        console.log("Kritikus Lánc 6/6: Stratégiai Zárógondolatok...");
-        try { committeeResults.strategicClosingThoughts = await getStrategicClosingThoughts(sim, rawData, richContextWithDuels, marketIntel, committeeResults.microAnalyses, committeeResults.riskAssessment, committeeResults.tacticalBriefing, committeeResults.propheticScenario, valueBets, modelConfidence, committeeResults.expertConfidence);
-        }
-         catch (e) { console.error(`AI Hiba (Strategic): ${e.message}`);
-         committeeResults.strategicClosingThoughts = "Stratégiai elemzési hiba.";
-        }
-
-        // Ellentmondás Elemzés (Kikapcsolva)
-        const contradictionAnalysisResult = "Ellentmondás elemzés kikapcsolva.";
-        committeeResults.contradictionAnalysis = contradictionAnalysisResult;
-        console.log(`AI Bizottság kész: ${home} vs ${away}.`);
-
-        // --- 6. Mester Ajánlás Lekérése ---
-        console.log(`Mester Ajánlás kérése indul: ${home} vs ${away}...`);
-        const masterRecommendation = await getMasterRecommendation(
-            valueBets, sim, modelConfidence, committeeResults.expertConfidence,
-            committeeResults.riskAssessment, committeeResults.microAnalyses, committeeResults.generalAnalysis,
-            committeeResults.strategicClosingThoughts, rawData, contradictionAnalysisResult
-        );
-        console.log(`Mester Ajánlás megkapva: ${JSON.stringify(masterRecommendation)}`);
-
+        // A 'committeeResults' most már a teljes riport
+        const committeeResults = fullAnalysisReport;
+        
+        // A mester ajánlás már a riport része
+        const masterRecommendation = fullAnalysisReport.master_recommendation || { "recommended_bet": "Hiba", "final_confidence": 1.0, "brief_reasoning": "AI Hiba: A konszolidált riport nem tartalmazott ajánlást." };
+        
+        console.log(`Konszolidált elemzés és ajánlás megkapva: ${JSON.stringify(masterRecommendation)}`);
+        
+        // --- 6. Mester Ajánlás Lekérése (Már megtörtént a 3. lépésben) ---
         // --- 7. Végső HTML Generálás ---
         console.log(`HTML generálás indul: ${home} vs ${away}...`);
         const finalHtml = buildAnalysisHtml(
-            committeeResults,
-            { home, away, sport, mainTotalsLine, mu_h: sim.mu_h_sim, mu_a: sim.mu_a_sim, propheticTimeline },
+            committeeResults, // Ez már a teljes, konszolidált objektum
+            { home, away, sport, mainTotalsLine, mu_h: sim.mu_h_sim, mu_a: sim.mu_a_sim, propheticTimeline: null }, // propheticTimeline: null (v50)
             mutableOddsData, // 'mutableOddsData' használata
             valueBets,
             modelConfidence,
             sim,
-            
             masterRecommendation
          );
         console.log(`HTML generálás kész: ${home} vs ${away}.`);
         // --- 8. Válasz Elküldése és Naplózás ---
         const debugInfo = {
              // ... (Debug infók)
-            playerDataFetched: rawData?.key_players && (rawData.key_players.home?.some(p => p.stats && typeof p.stats === 'string' && p.stats !== 'N/A') || rawData.key_players.away?.some(p => p.stats && typeof p.stats === 'string' && p.stats !== 'N/A')) ?
-            `Igen, ${(rawData.key_players.home?.length || 0) + (rawData.key_players.away?.length || 0)} játékosra` : "Nem (vagy nem talált adatot)",
+            playerDataFetched: rawData?.key_players && (rawData.key_players.home?.some(p => p.stats && typeof p.stats === 'string' && p.stats !== 'N/A') || rawData.key_players.away?.some(p => p.stats && typeof p.stats === 'string' && p.stats !== 'N/A')) ? `Igen, ${(rawData.key_players.home?.length || 0) + (rawData.key_players.away?.length || 0)} játékosra` : "Nem (vagy nem talált adatot)",
              sportMonksUsedInXG: (sport === 'soccer' && advancedData?.home?.xg != null) ?
-            "Igen (valós xG)" : (sport === 'hockey' && rawData?.advanced_stats_team?.home?.High_Danger_Chances_For_Pct != null) ?
-            "Igen (HDCF%)" : (sport === 'basketball' && rawData?.advanced_data?.home?.pace != null) ?
-            "Igen (Pace/Rating)" : "Nem (becsült adatok)",
-            fromCache_RichContext: rawData?.fromCache ??
-            'Ismeretlen'
+ "Igen (valós xG - API-Football)" : (sport === 'hockey' && rawData?.advanced_stats_team?.home?.High_Danger_Chances_For_Pct != null) ?
+ "Igen (HDCF%)" : (sport === 'basketball' && rawData?.advanced_data?.home?.pace != null) ?
+ "Igen (Pace/Rating)" : "Nem (becsült adatok)",
+            fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
         };
         const jsonResponse = { html: finalHtml, debugInfo: debugInfo };
         scriptCache.set(analysisCacheKey, jsonResponse);
