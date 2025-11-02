@@ -1,205 +1,233 @@
-import express from 'express';
-import cors from 'cors';
-import { PORT } from './config.js';
-import { _getFixturesFromEspn } from './DataFetch.js';
-import { runFullAnalysis } from './AnalysisFlow.js';
-import { getHistoryFromSheet, getAnalysisDetailFromSheet, deleteHistoryItemFromSheet } from './sheets.js';
-import aiService, { getChatResponse } from './AI_Service.js';
+// --- index.ts (v52 - TypeScript & JWT Hitelesítés) ---
 
-// === MÓDOSÍTÁS (v50.1): Az öntanuló modulok importálása ===
+import express, { Express, Request, Response, NextFunction } from 'express';
+import cors from 'cors';
+import jwt from 'jsonwebtoken'; // Hitelesítéshez
+import bcrypt from 'bcrypt'; // Jelszó-hash ellenőrzéshez
+import { PORT } from './config.js';
+
+// Importáljuk a típusosított fő funkciókat
+import { runFullAnalysis } from './AnalysisFlow.js';
+import { _getFixturesFromEspn } from './DataFetch.js';
+import { getHistoryFromSheet, getAnalysisDetailFromSheet, deleteHistoryItemFromSheet } from './sheets.js';
+import { getChatResponse } from './AI_Service.js';
+
+// Öntanuló modulok importálása
 import { updatePowerRatings, runConfidenceCalibration } from './LearningService.js';
-// ÚJ (v50.1): Az eredmény-elszámoló importálása
 import { runSettlementProcess } from './settlementService.js'; 
 
-const app = express();
+const app: Express = express();
+
 // --- Middleware Beállítások ---
-
-// --- JAVÍTÁS v50.7: Wildcard CORS Beállítás ---
-// A specifikus origin helyett engedélyezünk minden kérést (*),
-// hogy kikerüljük a 'github.io ' (szóközös) fejléc hibáját.
 app.use(cors());
-// --- JAVÍTÁS VÉGE ---
-
 app.use(express.json()); // JSON body parser
-app.use((req, res, next) => {
+
+// --- ÚJ (v52): Hitelesítési Végpont (Nem védett) ---
+app.post('/login', async (req: Request, res: Response) => {
+    try {
+        const { password } = req.body;
+        // A .env fájlban kell tárolni a hash-elt jelszót és a titkos kulcsot
+        if (!password || !process.env.APP_PASSWORD_HASH || !process.env.JWT_SECRET) {
+            return res.status(400).json({ error: "Hiányzó adatok vagy szerver konfiguráció." });
+        }
+
+        // Jelszó összehasonlítása a .env-ben tárolt hash-sel
+        const isMatch = await bcrypt.compare(password, process.env.APP_PASSWORD_HASH);
+
+        if (!isMatch) {
+            console.warn("Sikertelen bejelentkezési kísérlet (hibás jelszó).");
+            return res.status(401).json({ error: "Hitelesítés sikertelen." });
+        }
+
+        // Sikeres belépés: JWT generálása
+        const token = jwt.sign(
+            { user: 'autentikalt_felhasznalo' }, 
+            process.env.JWT_SECRET, 
+            { expiresIn: '24h' } // Token érvényessége
+        );
+        
+        res.status(200).json({ token: token });
+
+    } catch (e: any) {
+        console.error(`Hiba a /login végponton: ${e.message}`);
+        res.status(500).json({ error: "Szerver hiba (login)." });
+    }
+});
+
+// --- ÚJ (v52): Védelmi Middleware ---
+const protect = (req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Formátum: "Bearer <token>"
+
+    if (!token) {
+        return res.status(401).json({ error: "Hitelesítés szükséges (Token hiányzik)." });
+    }
+
+    try {
+        if (!process.env.JWT_SECRET) {
+             console.error("KRITIKUS HIBA: JWT_SECRET nincs beállítva a szerveren.");
+             return res.status(500).json({ error: "Szerver konfigurációs hiba." });
+        }
+        jwt.verify(token, process.env.JWT_SECRET);
+        next(); // Token érvényes, kérés folytatódhat
+    } catch (e) {
+        return res.status(401).json({ error: "Hitelesítés sikertelen (Érvénytelen vagy lejárt token)." });
+    }
+};
+
+// --- Logoló Middleware ---
+app.use((req: Request, res: Response, next: NextFunction) => {
     console.log(`[${new Date().toISOString()}] Kérés érkezett: ${req.method} ${req.originalUrl}`);
     next();
 });
-// --- API Útvonalak (Routes) ---
 
-// Meccsek lekérése ESPN-ből
-app.get('/getFixtures', async (req, res) => {
+// --- API Útvonalak (Routes) - MOST MÁR VÉDETT ---
+
+// Meccsek lekérése ESPN-ből (VÉDETT)
+app.get('/getFixtures', protect, async (req: Request, res: Response) => {
     try {
-        // GET kérésnél a req.query használata helyes
-        const sport = req.query.sport;
-        const days = req.query.days;
+        const sport = req.query.sport as string;
+        const days = req.query.days as string;
         if (!sport || !days) {
             return res.status(400).json({ error: "Hiányzó 'sport' vagy 'days' paraméter." });
         }
       
-     const fixtures = await _getFixturesFromEspn(sport, days);
-
-       
-  // Az ESPN válaszát közvetlenül adjuk vissza, amely tartalmazza a utcKickoff-ot
-         res.status(200).json({
-            fixtures: fixtures, // Ez már tartalmazza a utcKickoff-ot
+        const fixtures = await _getFixturesFromEspn(sport, days);
+        
+        res.status(200).json({
+            fixtures: fixtures,
             odds: {} // Odds adatokat külön kezeljük, itt üres marad
         });
-    } catch (e) {
-        console.error(`Hiba a 
-/getFixtures végponton: ${e.message}`, e.stack);
-        res.status(500).json({ error: `Szerver 
-hiba (getFixtures): ${e.message}` });
+    } catch (e: any) {
+        console.error(`Hiba a /getFixtures végponton: ${e.message}`, e.stack);
+        res.status(500).json({ error: `Szerver hiba (getFixtures): ${e.message}` });
     }
 });
-// Elemzés futtatása
-app.post('/runAnalysis', async (req, res) => {
-    // === JAVÍTÁS: Minden paraméter olvasása a req.body-ból ===
-    // A req.query használata POST végponton helytelen.
+
+// Elemzés futtatása (VÉDETT)
+app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
     console.log('--- /runAnalysis Kérés Törzse (Body): ---');
-    console.log(req.body); // Kiírja az összes body paramétert
+    console.log(req.body);
     console.log('--- DEBUG VÉGE ---');
 
     try {
-        // --- MÓDOSÍTÁS: Paraméterek kinyerése a req.body-ból ---
         const {
             home,
-    
             away,
             force,
             sheetUrl,
             utcKickoff,
             leagueName,
             sport,
-            openingOdds = {} // Alapértelmezett érték, ha hiányzik
+            openingOdds = {}
         } = req.body;
 
-   
-         // === JAVÍTOTT ELLENŐRZÉS: A req.body alapján ===
         if (!home || !away || !sport || !utcKickoff || !leagueName) { 
             console.error('!!! HIBA: Hiányzó body paraméter(ek)! Ellenőrzés:', {
-                home,
-                away,
-                sport,
-   
-                 utcKickoff,
-                leagueName
+                home, away, sport, utcKickoff, leagueName
             });
-            // Részletesebb logolás hiba esetén
             return res.status(400).json({ error: "Hiányzó 'sport', 'home', 'away', 'utcKickoff' vagy 'leagueName' paraméter a kérés törzsében (body)." });
         }
-        // === EDDIG ===
 
-        // A 'params' objektum összeállítása a runFullAnalysis számára
-        const params = {
-            home,
-            away,
-            force,
-            sheetUrl,
-            utcKickoff,
-   
-             leagueName
-        };
-
+        const params = { home, away, force, sheetUrl, utcKickoff, leagueName };
+        
         console.log(`Elemzés indítása...`);
+        // A runFullAnalysis már típusosított IAnalysisResponse | IAnalysisError választ ad
         const result = await runFullAnalysis(params, sport, openingOdds);
-if (result.error) {
+
+        if ('error' in result) {
             console.error(`Elemzési hiba (AnalysisFlow): ${result.error}`);
             return res.status(500).json({ error: result.error });
         }
 
         console.log("Elemzés sikeresen befejezve, válasz elküldve.");
         res.status(200).json(result);
-    } catch (e) {
+    } catch (e: any) {
         console.error(`Hiba a /runAnalysis végponton: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (runAnalysis): ${e.message}` });
     }
 });
 
-// Előzmények lekérése a Google Sheet-ből
-app.get('/getHistory', async (req, res) => {
+// Előzmények lekérése a Google Sheet-ből (VÉDETT)
+app.get('/getHistory', protect, async (req: Request, res: Response) => {
     try {
         const historyData = await getHistoryFromSheet();
         if (historyData.error) {
             return res.status(500).json(historyData);
         }
         res.status(200).json(historyData);
-    } catch (e) {
+    } catch (e: any) {
         console.error(`Hiba a /getHistory végponton: ${e.message}`, e.stack);
-      
-  
-  res.status(500).json({ error: `Szerver hiba (getHistory): ${e.message}` });
+        res.status(500).json({ error: `Szerver hiba (getHistory): ${e.message}` });
     }
 });
-// Egy konkrét elemzés részleteinek lekérése ID alapján
-app.get('/getAnalysisDetail', async (req, res) => {
+
+// Egy konkrét elemzés részleteinek lekérése ID alapján (VÉDETT)
+app.get('/getAnalysisDetail', protect, async (req: Request, res: Response) => {
     try {
-        const id = req.query.id; // GET esetén req.query helyes
+        const id = req.query.id as string;
         if (!id) {
             return res.status(400).json({ error: "Hiányzó 'id' paraméter." });
         }
         const detailData = await getAnalysisDetailFromSheet(id);
         if (detailData.error) {
-         
-           return res.status(500).json(detailData);
- 
-       }
+            return res.status(500).json(detailData);
+        }
         res.status(200).json(detailData);
-    } catch (e) {
+    } catch (e: any) {
         console.error(`Hiba a /getAnalysisDetail végponton: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (getAnalysisDetail): ${e.message}` });
     }
 });
-// Előzmény elem törlése ID alapján
-app.post('/deleteHistoryItem', async (req, res) => {
+
+// Előzmény elem törlése ID alapján (VÉDETT)
+app.post('/deleteHistoryItem', protect, async (req: Request, res: Response) => {
     try {
-        const id = req.body.id; // POST esetén req.body helyes
+        const id = req.body.id as string;
         if (!id) {
             return res.status(400).json({ error: "Hiányzó 'id' a kérés body-jában." });
         }
         const deleteData = await deleteHistoryItemFromSheet(id);
         if (deleteData.error) {
-         
-           return res.status(500).json(deleteData);
- 
-       }
+            return res.status(500).json(deleteData);
+        }
         res.status(200).json(deleteData);
-    } catch (e) {
+    } catch (e: any) {
         console.error(`Hiba a /deleteHistoryItem végponton: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (deleteHistoryItem): ${e.message}` });
     }
 });
-// Chat funkció
-app.post('/askChat', async (req, res) => {
+
+// Chat funkció (VÉDETT)
+app.post('/askChat', protect, async (req: Request, res: Response) => {
     try {
-        const { context, history, question } = req.body; // POST esetén req.body helyes
+        const { context, history, question } = req.body;
         if (!context || !question) {
             return res.status(400).json({ error: "Hiányzó 'context' vagy 'question' a kérés body-jában." });
         }
+        // A getChatResponse már típusosított
         const chatData = await getChatResponse(context, history, question);
 
         if (chatData.error) {
-  
-      
-      return res.status(500).json(chatData);
+            return res.status(500).json(chatData);
         }
         res.status(200).json(chatData);
-    } catch (e) {
+    } catch (e: any) {
         console.error(`Hiba a /askChat végponton: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (askChat): ${e.message}` });
     }
 });
 
-// === MÓDOSÍTÁS (v50.1): Az öntanuló végpont átalakítása és levédése ===
-app.post('/runLearning', async (req, res) => {
+// Öntanuló végpont (VÉDETT)
+// MEGJEGYZÉS: Ez a végpont most már KÉTSZERESEN VÉDETT.
+// 1. A 'protect' ellenőrzi az érvényes felhasználói JWT tokent.
+// 2. A belső logika ellenőrzi a .env-ben tárolt ADMIN_API_KEY-t.
+// Ez a helyes működés (pl. csak admin futtathatja, de be kell legyen lépve).
+app.post('/runLearning', protect, async (req: Request, res: Response) => {
     try {
-        // --- BIZTONSÁGI ELLENŐRZÉS (KÖTELEZŐ) ---
-        // Ez a végpont módosítja az adatbázist és tanulást végez.
-        // Védeni KELL egy titkos kulccsal, amit a .env fájlban kell tárolni.
-        // Futtatáshoz küldj egy 'key' attribútumot a JSON body-ban, vagy 'x-admin-key' fejlécet.
+        // --- ADMIN KULCS ELLENŐRZÉS (MEGERŐSÍTÉS) ---
         const providedKey = req.body.key || req.headers['x-admin-key'];
         
-        // ÁLLÍTS BE EGY 'ADMIN_API_KEY' VÁLTOZÓT A .ENV FÁJLBAN (pl. egy erős, véletlenszerű string)
         if (!process.env.ADMIN_API_KEY || providedKey !== process.env.ADMIN_API_KEY) {
             console.warn("Sikertelen ÖNTANULÁSI kísérlet (hibás admin kulcs).");
             return res.status(401).json({ error: "Hitelesítés sikertelen. Admin kulcs szükséges." });
@@ -208,7 +236,7 @@ app.post('/runLearning', async (req, res) => {
 
         console.log("Öntanulási folyamat indítása (1. Lépés: Eredmény-elszámolás)...");
         
-        // 1. LÉPÉS: Eredmények elszámolása (W/L/P státuszok frissítése a Sheet-ben)
+        // 1. LÉPÉS: Eredmények elszámolása
         const settlementResult = await runSettlementProcess();
         if (settlementResult.error) {
              console.error("Hiba az eredmény-elszámolás során, a tanulás leáll:", settlementResult.error);
@@ -218,44 +246,56 @@ app.post('/runLearning', async (req, res) => {
 
         console.log("Öntanulási folyamat (2. Lépés: Kalibráció és Rating frissítés) indul...");
 
-        // 2. LÉPÉS: Párhuzamosan futtatjuk a kalibrációt (ami a friss W/L/P-t olvassa) és a rating frissítést
+        // 2. LÉPÉS: Párhuzamos futtatás
         const [powerRatingResult, calibrationResult] = await Promise.all([
-            Promise.resolve(updatePowerRatings()), // Becsomagoljuk Promise-ba
-            runConfidenceCalibration() // Ez már Promise-t ad vissza (a frissített Sheet alapján)
+            Promise.resolve(updatePowerRatings()),
+            runConfidenceCalibration()
         ]);
 
         const learningResult = {
             message: "Öntanuló modulok sikeresen lefutottak.",
-            settlement: settlementResult, // Eredmény-elszámolás riportja
+            settlement: settlementResult,
             power_ratings: powerRatingResult || { updated: false, message:"Nem volt elég adat a frissítéshez." },
             confidence_calibration: calibrationResult || { error: "Ismeretlen hiba a kalibráció során." }
         };
-
+        
         if (learningResult.confidence_calibration.error) {
              console.error("Hiba a bizalmi kalibráció során:", learningResult.confidence_calibration.error);
         }
 
         res.status(200).json(learningResult);
-    } catch (e) {
+    } catch (e: any) {
         console.error(`Hiba a /runLearning végponton: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (runLearning): ${e.message}` });
     }
 });
-// === MÓDOSÍTÁS VÉGE ===
+
 
 // --- Szerver Indítása ---
 async function startServer() {
     try {
+        // Ellenőrizzük a kritikus környezeti változókat indításkor
+        if (!process.env.JWT_SECRET || !process.env.APP_PASSWORD_HASH) {
+            console.error("KRITIKUS HIBA: A JWT_SECRET vagy APP_PASSWORD_HASH nincs beállítva a .env fájlban!");
+            console.error("A hitelesítés nem fog működni. A szerver leáll.");
+            process.exit(1); // Kilépés hibakóddal
+        }
+        if (!process.env.GEMINI_API_KEY) {
+            console.warn("Figyelmeztetés: GEMINI_API_KEY hiányzik. Az AI funkciók nem fognak működni.");
+        }
+        if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+             console.warn("Figyelmeztetés: GOOGLE_CLIENT_EMAIL vagy GOOGLE_PRIVATE_KEY hiányzik. A Google Sheet integráció nem fog működni.");
+        }
+
         console.log("Szerver indítása...");
         app.listen(PORT, () => {
-            console.log(`🎉 King AI Backend sikeresen elindult!`);
+            console.log(`🎉 King AI Backend (TypeScript) sikeresen elindult!`);
             console.log(`A szerver itt fut: http://localhost:${PORT}`);
             console.log("A frontend most már ehhez a címhez tud csatlakozni.");
         });
-    } catch (e) {
+    } catch (e: any) {
         console.error("KRITIKUS HIBA a szerver indítása során:", e.message, e.stack);
-        // Korábbi hibakereső logok itt voltak, szükség esetén visszaállíthatók
-        // if (!process.env.GOOGLE_CREDENTIALS) { ... }
+        process.exit(1);
     }
 }
 
