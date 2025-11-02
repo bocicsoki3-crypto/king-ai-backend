@@ -1,20 +1,21 @@
 {
   "compilerOptions": {
-    "target": "ES2022",                // Modern Node.js verzióhoz igazítva
-    "module": "NodeNext",             // Helyes modulkezelés (import/export)
-    "moduleResolution": "NodeNext",   // Helyes modul-feloldás
-    "rootDir": "./",                  // A forrásfájlok gyökere
-    "outDir": "./dist",               // Fordított .js fájlok helye (opcionális, de javasolt)
-    "strict": true,                   // Szigorú típusellenőrzés (elengedhetetlen)
-    "esModuleInterop": true,          // CommonJS és ES modulok kompatibilitása
-    "skipLibCheck": true,             // Könyvtárak típusellenőrzésének kihagyása
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": "./",
+    "outDir": "./dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,        // Engedélyezi a .json fájlok importálását
-    "noImplicitAny": true             // Tiltja az 'any' típus implicit használatát
+    "resolveJsonModule": true,
+    "noImplicitAny": true
   },
   "include": [
-    "*.js",  // Átmenetileg tartalmazza a .js fájlokat
-    "*.ts",  // Tartalmazza az új .ts fájlokat
+    "*.js",
+    "*.ts",
+    "src/**/*.ts", // HOZZÁADVA: Ez javítja a TS2307 hibát 
     "providers/**/*.js",
     "providers/**/*.ts",
     "providers/common/*.js",
