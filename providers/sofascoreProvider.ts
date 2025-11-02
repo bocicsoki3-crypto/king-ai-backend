@@ -1,5 +1,5 @@
-// providers/sofascoreProvider.ts (v52.18 - Végleges Végpont Javítás)
-// MÓDOSÍTÁS: A getSofascoreEventId hibás '/teams/get-near-events' végpontja
+// providers/sofascoreProvider.ts (v52.19 - Helyes Meccskereső Végpont)
+// MÓDOSÍTÁS: A getSofascoreEventId logikailag hibás '/teams/get-near-events' végpontja
 // a helyes '/teams/get-next-matches'-re cserélve (az image_51faca.png alapján).
 
 import axios, { type AxiosRequestConfig } from 'axios';
@@ -282,7 +282,7 @@ function processSofascoreLineups(
 
 
 /**
- * FŐ EXPORTÁLT FUNKCIÓ (MÓDOSÍTVA v52.17)
+ * FŐ EXPORTÁLT FUNKCIÓ (MÓDOSÍTVA v52.18)
  */
 export async function fetchSofascoreData(
     homeTeamName: string, 
