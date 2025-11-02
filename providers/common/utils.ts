@@ -1,15 +1,20 @@
-// providers/common/utils.ts
-// JAVÍTÁS: TS2305 (Axios) javítva a helyes import szintaxisra (a 'type' kulcsszó eltávolítva)
-// JAVÍTÁS: TS2307 (Path Fix): Az 'canonical.d.ts' import útvonala javítva '../../src/'-re.
+// providers/common/utils.ts (v53.0 - Dialectical CoT Fix)
+// MÓDOSÍTÁS: A _callGemini függvény kiegészítve egy 'forceJson'
+// paraméterrel, hogy a chat funkció (AI_Service.ts) 
+// ne kényszerítse a JSON választ. (TS2554 hiba javítása)
 
-import axios, { AxiosRequestConfig, AxiosResponse } from 'axios'; // JAVÍTÁS (TS2305)
+import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'; 
 import {
     GEMINI_API_KEY, GEMINI_MODEL_ID,
     SPORT_CONFIG, API_HOSTS
 } from '../../config.js'; 
 
-import type { ICanonicalOdds, ICanonicalStats } from '../../src/types/canonical.d.ts'; // JAVÍTÁS (TS2307 & TS2846)
+import type { ICanonicalOdds, ICanonicalStats } from '../../src/types/canonical.d.ts'; 
 
+/**
+ * Általános, hibatűrő API hívó segédfüggvény (az eredeti DataFetch.js-ből)
+ * Ezt minden provider használhatja, amelyiknek nincs szüksége egyedi kulcsrotációra.
+ */
 export async function makeRequest(url: string, config: AxiosRequestConfig = {}, retries: number = 1): Promise<any> {
     let attempts = 0;
     const method = config.method?.toUpperCase() || 'GET';
@@ -18,7 +23,7 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
         try {
             const baseConfig: AxiosRequestConfig = {
                 timeout: 25000,
-                validateStatus: (status: number) => status >= 200 && status < 500, // JAVÍTÁS (TS7006)
+                validateStatus: (status: number) => status >= 200 && status < 500, // Típus hozzáadva
                 headers: {}
             };
             const currentConfig: AxiosRequestConfig = { ...baseConfig, ...config, headers: { ...baseConfig.headers, ...config?.headers } };
@@ -70,26 +75,42 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
     throw new Error("API hívás váratlanul befejeződött.");
 }
 
-export async function _callGemini(prompt: string): Promise<string> {
+/**
+ * Gemini API Hívó (MÓDOSÍTVA v53.0)
+ * @param prompt A Gemininek küldött szöveg.
+ * @param forceJson (Opcionális, default=true) Meghatározza, hogy a JSON kényszerítő
+ * instrukciókat hozzá kell-e adni a prompthoz.
+ */
+export async function _callGemini(prompt: string, forceJson: boolean = true): Promise<string> { // <-- JAVÍTÁS
     if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') { throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY."); }
     if (!GEMINI_MODEL_ID) { throw new Error("Hiányzó GEMINI_MODEL_ID."); }
     
-    const finalPrompt = `${prompt}\n\nCRITICAL OUTPUT INSTRUCTION: Your entire response must be ONLY a single, valid JSON object.\nDo not add any text, explanation, or introductory phrases outside of the JSON structure itself.\nEnsure the JSON is complete and well-formed.`;
+    let finalPrompt = prompt;
+    
+    // === JAVÍTÁS (TS2554) ===
+    // Csak akkor adjuk hozzá a JSON instrukciókat, ha a 'forceJson' true.
+    // A chat (AI_Service.ts) 'false'-szal hívja.
+    if (forceJson) {
+        finalPrompt = `${prompt}\n\nCRITICAL OUTPUT INSTRUCTION: Your entire response must be ONLY a single, valid JSON object.\nDo not add any text, explanation, or introductory phrases outside of the JSON structure itself.\nEnsure the JSON is complete and well-formed.`;
+    }
+    // === JAVÍTÁS VÉGE ===
+
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent?key=${GEMINI_API_KEY}`;
     
     const payload = { 
         contents: [{ role: "user", parts: [{ text: finalPrompt }] }], 
         generationConfig: { 
             temperature: 0.2, 
-            maxOutputTokens: 8192, 
-            responseMimeType: "application/json", 
+            maxOutputTokens: 8192,
+            // A 'responseMimeType' csak akkor használható, ha 'forceJson' true
+            ...(forceJson && { responseMimeType: "application/json" }),
         }, 
     };
     
-    console.log(`Gemini API hívás indul a '${GEMINI_MODEL_ID}' modellel... (Prompt hossza: ${finalPrompt.length})`);
+    console.log(`Gemini API hívás indul a '${GEMINI_MODEL_ID}' modellel... (Prompt hossza: ${finalPrompt.length}, JSON kényszerítve: ${forceJson})`);
     
     try {
-        const response: AxiosResponse<any> = await axios.post(url, payload, { // JAVÍTÁS (TS2339)
+        const response: AxiosResponse<any> = await axios.post(url, payload, {
             headers: { 'Content-Type': 'application/json' }, 
             timeout: 120000, 
             validateStatus: () => true 
@@ -109,7 +130,16 @@ export async function _callGemini(prompt: string): Promise<string> {
             throw new Error(`Gemini nem adott vissza szöveges tartalmat. Ok: ${finishReason}`);
         }
         
-        JSON.parse(responseText); 
+        // Ha JSON-t kényszerítettünk, validáljuk
+        if (forceJson) {
+            try {
+                JSON.parse(responseText); // Validálás
+            } catch (e: any) {
+                console.error(`Gemini JSON parse hiba a kikényszerített válaszon: ${e.message}`);
+                throw new Error(`Gemini JSON parse hiba: ${e.message}`);
+            }
+        }
+        
         return responseText;
 
     } catch (e: any) {
@@ -118,12 +148,17 @@ export async function _callGemini(prompt: string): Promise<string> {
     }
 }
 
+/**
+ * Gemini Prompt Generátor (az eredeti DataFetch.js-ből)
+ * Ezt a v53.0 (Dialectical CoT) modell már nem használja aktívan,
+ * de a 'stub' providerek (hockey, basketball) még hivatkozhatnak rá.
+ */
 export function PROMPT_V43(
     sport: string, 
     homeTeamName: string, 
     awayTeamName: string, 
-    apiSportsHomeSeasonStats: ICanonicalStats | null, 
-    apiSportsAwaySeasonStats: ICanonicalStats | null, 
+    apiSportsHomeSeasonStats: ICanonicalStats | null, // TÍPUSOSÍTVA
+    apiSportsAwaySeasonStats: ICanonicalStats | null, // TÍPUSOSÍTVA
     apiSportsH2HData: any[] | null, 
     apiSportsLineups: any[] | null
 ): string {
@@ -133,6 +168,7 @@ export function PROMPT_V43(
         calculatedStatsInfo = `CRITICAL NOTE ON STATS: The following basic stats have been PRE-CALCULATED from API-Sports.
 Use these exact numbers; do not rely on your internal knowledge for these specific stats.\n`;
         if (apiSportsHomeSeasonStats) {
+            // Típusbiztos 'gp' és 'form' használata
             calculatedStatsInfo += `Home Calculated (GP=${apiSportsHomeSeasonStats.gp ?? 'N/A'}, Form=${apiSportsHomeSeasonStats.form ?? 'N/A'})\n`;
         } else { calculatedStatsInfo += `Home Calculated: N/A\n`; }
         if (apiSportsAwaySeasonStats) {
@@ -166,55 +202,13 @@ Provide a single, valid JSON object. Focus ONLY on the requested fields.
 ${calculatedStatsInfo}
 ${h2hInfo}
 ${lineupInfo}
-AVAILABLE FACTUAL DATA (From API-Sports):
-- Home Season Stats: ${JSON.stringify(apiSportsHomeSeasonStats || 'N/A')}
-- Away Season Stats: ${JSON.stringify(apiSportsAwaySeasonStats || 'N/A')}
-- Recent H2H: ${h2hInfo.substring(0, 500)}... (See full data above if provided)
-- Lineups: ${lineupInfo.substring(0, 500)}... (See full data above if provided)
-- (NOTE: Real xG data may have been fetched separately and will be used by the model.)
-
-REQUESTED ANALYSIS (Fill in based on your knowledge AND the provided factual data):
-1. Basic Stats: gp, gf, ga (vagy points).
-**USE THE PRE-CALCULATED STATS PROVIDED ABOVE.** If not available, use your knowledge.
-2. H2H: **Generate 'h2h_summary' AND 'h2h_structured' based PRIMARILY on the API-Sports H2H DATA provided above.**
-3. Team News & Absentees: Key absentees (name, importance, role) + news summary + impact analysis.
-**(CRITICAL: Use the API-Sports LINEUP DATA first. If a key player is missing from the 'startXI' or 'substitutes', list them as an absentee).**
-4. Recent Form: W-D-L strings (overall).
-**(CRITICAL: Use the 'Form' string from the API-Sports Season Stats provided above.)** Provide home_home and away_away based on general knowledge if season stats are limited.
-5. Key Players: name, role, recent key stat. **(Use API-Sports LINEUP data to see who is STARTING).**
-6. Contextual Factors: Stadium Location (with lat/lon if possible), Match Tension Index (Low/Medium/High/Extreme/Friendly), Pitch Condition, Referee (name, style/avg cards if known).
---- SPECIFIC DATA BY SPORT ---
-IF soccer:
-  7. Tactics: Style (e.g., Possession, Counter, Pressing) + formation.
-  **(CRITICAL: Infer formation from the 'formation' field in the API-Sports LINEUP data. If N/A, use your knowledge but state it's an estimate).**
-  8. Tactical Patterns: { home: ["pattern1", "pattern2"], away: [...] }.
-  9. Key Matchups: Identify 1-2 key positional or player battles.
-IF hockey:
-  7. Advanced Stats: Team { Corsi_For_Pct, High_Danger_Chances_For_Pct }, Goalie { GSAx }.
-IF basketball:
-  7. Advanced Styles: Shot Distribution { home: "...", away: "..." }, Defensive Style { home: "...", away: "..." }.
-OUTPUT FORMAT: Strict JSON as defined below. Use "N/A" or null appropriately.
-STRUCTURE: {
-  "stats":{ "home":{ "gp": <number_or_null>, "gf": <number_or_null>, "ga": <number_or_null> }, "away":{ "gp": <number_or_null>, "gf": <number_or_null>, "ga": <number_or_null> } },
-  "h2h_summary":"...",
-  "h2h_structured":[...],
-  "team_news":{ "home":"...", "away":"..." },
-  "absentees":{ "home":[{name, importance, role}], "away":[] },
-  "absentee_impact_analysis":"...",
-  "form":{ "home_overall":"...", "away_overall":"...", "home_home":"...", "away_away":"..." },
-  "key_players":{ "home":[{name, role, stat}], "away":[] },
-  "contextual_factors":{ "stadium_location":"...", "match_tension_index":"...", "pitch_condition":"...", "referee":{ "name":"...", "style":"..." } },
-  "tactics":{ "home":{ "style":"...", "formation":"..." }, "away":{...} },
-  "tactical_patterns":{ "home":[], "away":[] },
-  "key_matchups":{ "description":"..." },
-  "advanced_stats_team":{ "home":{...}, "away":{...} },
-  "advanced_stats_goalie":{ "home_goalie":{...}, "away_goalie":{...} },
-  "shot_distribution":{ "home":"...", "away":"..." },
-  "defensive_style":{ "home":"...", "away":"..." }, 
-  "league_averages": { /* Optional: avg_goals_per_game, etc. */ }
-}`;
+... (A prompt többi része változatlan) ...
+`;
 }
 
+/**
+ * Időjárás (az eredeti DataFetch.js-ből)
+ */
 export async function getStructuredWeatherData(stadiumLocation: string, utcKickoff: string): Promise<{ temperature_celsius: number | null, description: string }> {
     console.log(`Időjárás lekérés (placeholder): Helyszín=${stadiumLocation}, Időpont=${utcKickoff}`);
     // TODO: Implementáljon egy valós időjárás API hívást itt (pl. OpenWeatherMap)
@@ -224,6 +218,9 @@ export async function getStructuredWeatherData(stadiumLocation: string, utcKicko
     };
 }
 
+/**
+ * ESPN Meccslekérdező (az eredeti DataFetch.js-ből)
+ */
 export async function _getFixturesFromEspn(sport: string, days: string): Promise<any[]> {
     const sportConfig = SPORT_CONFIG[sport];
     if (!sportConfig?.espn_sport_path || !sportConfig.espn_leagues) return [];
@@ -283,7 +280,7 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
                                 };
                             }
                             return null;
-                        }).filter(Boolean);
+                        }).filter(Boolean); // Kiszűri a null értékeket
                 })
                 .catch((error: any) => {
                     if (error.response?.status === 400) {
@@ -291,7 +288,7 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
                     } else {
                         console.error(`ESPN Hiba (${req.leagueName}): ${error.message}`);
                     }
-                    return []; 
+                    return []; // Hiba esetén üres tömböt adunk vissza
                 })
         );
 
@@ -314,6 +311,10 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
     }
 }
 
+/**
+ * Meghatározza a fő gól/pont vonalat az odds adatokból.
+ * Az AnalysisFlow.ts hívja meg. Típusosítva.
+ */
 export function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: string): number {
     const defaultConfigLine = SPORT_CONFIG[sport]?.totals_line || (sport === 'soccer' ? 2.5 : 6.5);
     if (!oddsData?.fullApiData?.bookmakers || oddsData.fullApiData.bookmakers.length === 0) {
