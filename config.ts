@@ -61,7 +61,7 @@ export const PORT: number = parseInt(process.env.PORT || "3001", 10);
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY: string | undefined = process.env.GEMINI_API_KEY;
-export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-1.5-pro'; 
+export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-2.5-pro'; 
 export const SHEET_URL: string | undefined = process.env.SHEET_URL;
 
 export const HOCKEY_API_KEY: string | undefined = process.env.HOCKEY_API_KEY;
