@@ -4,7 +4,7 @@
 // A Fogyasztók (pl. Model, AnalysisFlow) ezen interfészekre támaszkodnak.
 
 /**
- * A csapatok alapvető statisztikai adatai, amelyeket a Model.js vár.
+ * A csapatok alapvető statisztikai adatai, amelyeket a Model.ts vár.
  * Ez az interfész azonnal észlelte volna a 'gp' vs 'GP' hibát.
  */
 export interface ICanonicalStats {
@@ -57,7 +57,7 @@ export interface ICanonicalOdds {
 
 /**
  * A "nyers" adatcsomag, amelyet a CoT (Chain-of-Thought) elemzéshez
- * és a Model.js-hez gyűjtünk.
+ * és a Model.ts-hez gyűjtünk.
  */
 export interface ICanonicalRawData {
   stats: {
@@ -85,7 +85,7 @@ export interface ICanonicalRawData {
 
 /**
  * A fő adatcsomag, amelyet a getRichContextualData visszaad
- * és az AnalysisFlow.js felhasznál.
+ * és az AnalysisFlow.ts felhasznál.
  */
 export interface ICanonicalRichContext {
   rawStats: {
@@ -107,3 +107,18 @@ export interface ICanonicalRichContext {
   oddsData: ICanonicalOdds | null;
   fromCache: boolean;
 }
+
+/**
+ * === ÚJ (v52.2) ===
+ * A 'FixtureResult' típus központosítása a TS2719 hiba javítására.
+ * Ezt használja az 'apiSportsProvider.ts' és a 'settlementService.ts' is.
+ */
+export type FixtureResult = {
+    home: number;
+    away: number;
+    status: 'FT'; // Befejezett meccs, van eredmény
+} | {
+    status: string; // Bármilyen más státusz (pl. 'HT', 'NS', 'PST')
+    home?: undefined;
+    away?: undefined;
+} | null; // Hiba vagy nem található
