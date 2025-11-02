@@ -1,52 +1,39 @@
-// --- index.ts (v52.5 - Statikus Kiszolgálás Hozzáadva) ---
+// --- index.ts (v52.6 - Diagnosztikai Végpont Hozzáadva) ---
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import path from 'path'; // ÚJ IMPORT
-import { fileURLToPath } from 'url'; // ÚJ IMPORT
+import path from 'path'; 
+import { fileURLToPath } from 'url'; 
 import { PORT } from './config.js';
 
-// Importáljuk a típusosított fő funkciókat
+// ... (minden más import változatlan) ...
 import { runFullAnalysis } from './AnalysisFlow.js';
 import { _getFixturesFromEspn } from './DataFetch.js';
 import { getHistoryFromSheet, getAnalysisDetailFromSheet, deleteHistoryItemFromSheet } from './sheets.js';
 import { getChatResponse } from './AI_Service.js';
-
-// Öntanuló modulok importálása
 import { updatePowerRatings, runConfidenceCalibration } from './LearningService.js';
 import { runSettlementProcess } from './settlementService.js'; 
 
-// === ÚJ: ESM Kompatibilis __dirname ===
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// === VÉGE ===
 
 const app: Express = express();
 
-// --- Middleware Beállítások ---
 app.use(cors());
-app.use(express.json()); // JSON body parser
+app.use(express.json()); 
 
-// === ÚJ: STATIKUS FÁJLOK KISZOLGÁLÁSA ===
-// A 'dist/public' mappát szolgáljuk ki (ahova az 'esbuild' és 'build:assets' másol)
 const publicPath = path.join(__dirname, 'public');
 app.use(express.static(publicPath));
-// === VÉGE ===
 
-// --- Logoló Middleware ---
 app.use((req: Request, res: Response, next: NextFunction) => {
-    // API hívások logolása (a statikus fájlok (JS/CSS) kéréseinek kihagyása)
     if (!req.path.includes('.js') && !req.path.includes('.css') && req.path !== '/') {
         console.log(`[${new Date().toISOString()}] Kérés érkezett: ${req.method} ${req.originalUrl}`);
     }
     next();
 });
 
-// --- API Útvonalak (Routes) ---
-
-// A 'gyökér' útvonal (/) most már az 'index.html'-t szolgálja ki
 app.get('/', (req: Request, res: Response) => {
     res.sendFile(path.join(publicPath, 'index.html'));
 });
@@ -65,18 +52,58 @@ app.post('/login', async (req: Request, res: Response) => {
         }
         const token = jwt.sign(
            { user: 'autentikalt_felhasznalo' }, 
-            process.env.JWT_SECRET, 
+            process.env.JWT_SECRET as string, // 'as string' a TS-nek
             { expiresIn: '24h' }
         );
         res.status(200).json({ token: token });
     } catch (e: any) {
-        console.error(`Hiba a /login végponton: ${e.message}`);
+        console.error(`Hiba a /login végpont-on: ${e.message}`);
         res.status(500).json({ error: "Szerver hiba (login)." });
     }
 });
 
+// === ÚJ DIAGNOSZTIKAI VÉGPONT ===
+// Ideiglenes, nem biztonságos végpont a HASH és a jelszó-ellenőrzés tesztelésére.
+app.get('/checkhash', async (req: Request, res: Response) => {
+    try {
+        const serverHash = process.env.APP_PASSWORD_HASH;
+        
+        if (!serverHash) {
+            return res.status(500).json({ 
+                error: "KRITIKUS HIBA: Az APP_PASSWORD_HASH nincs beállítva a szerver környezetében."
+            });
+        }
+        
+        const testPassword = req.query.password as string;
+
+        if (!testPassword) {
+            // Ha nincs jelszó paraméter, csak a hash-t küldjük vissza
+            return res.status(200).json({
+                message: "Diagnosztika: A szerver által látott HASH. (Adjon meg ?password=... query paramétert a teszteléshez)",
+                server_hash_value: serverHash,
+                hash_is_correct_format: serverHash === "$2b$10$3g0.iG/3E.ZB50wK.1MvXOvjZJULfWJ07J75WlD6cEdMUH/h3aLwe"
+            });
+        }
+
+        // Ha van jelszó paraméter, lefuttatjuk az ellenőrzést
+        const isMatch = await bcrypt.compare(testPassword, serverHash);
+        
+        res.status(200).json({
+            message: "Diagnosztika: bcrypt.compare() teszt eredménye.",
+            password_provided: testPassword,
+            server_hash_value: serverHash,
+            compare_result_isMatch: isMatch
+        });
+
+    } catch (e: any) {
+        res.status(500).json({ error: `Diagnosztikai hiba: ${e.message}` });
+    }
+});
+// === DIAGNOSZTIKA VÉGE ===
+
 // Védelmi Middleware
 const protect = (req: Request, res: Response, next: NextFunction) => {
+    // ... (protect logika változatlan) ...
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1]; 
     if (!token) {
@@ -87,14 +114,14 @@ const protect = (req: Request, res: Response, next: NextFunction) => {
              console.error("KRITIKUS HIBA: JWT_SECRET nincs beállítva a szerveren.");
              return res.status(500).json({ error: "Szerver konfigurációs hiba." });
         }
-        jwt.verify(token, process.env.JWT_SECRET);
+        jwt.verify(token, process.env.JWT_SECRET as string);
         next(); 
     } catch (e) {
         return res.status(401).json({ error: "Hitelesítés sikertelen (Érvénytelen vagy lejárt token)." });
     }
 };
 
-// Védett API végpontok...
+// ... (minden más védett végpont (/getFixtures, /runAnalysis, stb.) változatlan) ...
 app.get('/getFixtures', protect, async (req: Request, res: Response) => {
     try {
         const sport = req.query.sport as string;
@@ -108,13 +135,12 @@ app.get('/getFixtures', protect, async (req: Request, res: Response) => {
             odds: {} 
         });
     } catch (e: any) {
-        console.error(`Hiba a /getFixtures végponton: ${e.message}`, e.stack);
+        console.error(`Hiba a /getFixtures végpont-on: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (getFixtures): ${e.message}` });
     }
 });
 
 app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
-    // ... (runAnalysis logika változatlan)
     try {
         const { home, away, force, sheetUrl, utcKickoff, leagueName, sport, openingOdds = {} } = req.body;
         if (!home || !away || !sport || !utcKickoff || !leagueName) { 
@@ -128,13 +154,12 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
         }
         res.status(200).json(result);
     } catch (e: any) {
-        console.error(`Hiba a /runAnalysis végponton: ${e.message}`, e.stack);
+        console.error(`Hiba a /runAnalysis végpont-on: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (runAnalysis): ${e.message}` });
     }
 });
 
 app.get('/getHistory', protect, async (req: Request, res: Response) => {
-    // ... (getHistory logika változatlan)
     try {
         const historyData = await getHistoryFromSheet();
         if (historyData.error) {
@@ -142,13 +167,12 @@ app.get('/getHistory', protect, async (req: Request, res: Response) => {
         }
         res.status(200).json(historyData);
     } catch (e: any) {
-        console.error(`Hiba a /getHistory végponton: ${e.message}`, e.stack);
+        console.error(`Hiba a /getHistory végpont-on: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (getHistory): ${e.message}` });
     }
 });
 
 app.get('/getAnalysisDetail', protect, async (req: Request, res: Response) => {
-    // ... (getAnalysisDetail logika változatlan)
     try {
         const id = req.query.id as string;
         if (!id) {
@@ -160,13 +184,12 @@ app.get('/getAnalysisDetail', protect, async (req: Request, res: Response) => {
         }
         res.status(200).json(detailData);
     } catch (e: any) {
-        console.error(`Hiba a /getAnalysisDetail végponton: ${e.message}`, e.stack);
+        console.error(`Hiba a /getAnalysisDetail végpont-on: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (getAnalysisDetail): ${e.message}` });
     }
 });
 
 app.post('/deleteHistoryItem', protect, async (req: Request, res: Response) => {
-    // ... (deleteHistoryItem logika változatlan)
     try {
         const id = req.body.id as string;
         if (!id) {
@@ -178,13 +201,12 @@ app.post('/deleteHistoryItem', protect, async (req: Request, res: Response) => {
         }
         res.status(200).json(deleteData);
     } catch (e: any) {
-        console.error(`Hiba a /deleteHistoryItem végponton: ${e.message}`, e.stack);
+        console.error(`Hiba a /deleteHistoryItem végpont-on: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (deleteHistoryItem): ${e.message}` });
     }
 });
 
 app.post('/askChat', protect, async (req: Request, res: Response) => {
-    // ... (askChat logika változatlan)
     try {
         const { context, history, question } = req.body;
         if (!context || !question) {
@@ -196,13 +218,12 @@ app.post('/askChat', protect, async (req: Request, res: Response) => {
         }
         res.status(200).json(chatData);
     } catch (e: any) {
-        console.error(`Hiba a /askChat végponton: ${e.message}`, e.stack);
+        console.error(`Hiba a /askChat végpont-on: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (askChat): ${e.message}` });
     }
 });
 
 app.post('/runLearning', protect, async (req: Request, res: Response) => {
-    // ... (runLearning logika változatlan)
     try {
         const providedKey = req.body.key || req.headers['x-admin-key'];
         if (!process.env.ADMIN_API_KEY || providedKey !== process.env.ADMIN_API_KEY) {
@@ -236,7 +257,7 @@ app.post('/runLearning', protect, async (req: Request, res: Response) => {
         }
         res.status(200).json(learningResult);
     } catch (e: any) {
-        console.error(`Hiba a /runLearning végponton: ${e.message}`, e.stack);
+        console.error(`Hiba a /runLearning végpont-on: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (runLearning): ${e.message}` });
     }
 });
@@ -256,7 +277,7 @@ async function startServer() {
         app.listen(PORT, () => {
             console.log(`🎉 King AI Backend (TypeScript) sikeresen elindult!`);
             console.log(`A szerver itt fut: http://localhost:${PORT}`);
-            console.log("A frontend most már a gyökér '/' címhez tud csatlakozni."); // Módosított üzenet
+            console.log("A frontend most már a gyökér '/' címhez tud csatlakozni.");
         });
     } catch (e: any) {
         console.error("KRITIKUS HIBA a szerver indítása során:", e.message, e.stack);
