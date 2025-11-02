@@ -1,14 +1,15 @@
-// --- index.ts (v52.6 - Diagnosztikai Végpont Hozzáadva) ---
+// --- index.ts (v52.6 - Statikus Kiszolgálás Eltávolítva) ---
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
-import path from 'path'; 
-import { fileURLToPath } from 'url'; 
+// JAVÍTÁS: A 'bcrypt.js'-t importáljuk, ahogy a 38. lépésben javítottuk
+import bcrypt from 'bcryptjs'; 
+// import path from 'path'; // ELTÁVOLÍTVA
+// import { fileURLToPath } from 'url'; // ELTÁVOLÍTVA
 import { PORT } from './config.js';
 
-// ... (minden más import változatlan) ...
+// Importáljuk a típusosított fő funkciókat
 import { runFullAnalysis } from './AnalysisFlow.js';
 import { _getFixturesFromEspn } from './DataFetch.js';
 import { getHistoryFromSheet, getAnalysisDetailFromSheet, deleteHistoryItemFromSheet } from './sheets.js';
@@ -16,27 +17,28 @@ import { getChatResponse } from './AI_Service.js';
 import { updatePowerRatings, runConfidenceCalibration } from './LearningService.js';
 import { runSettlementProcess } from './settlementService.js'; 
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// const __filename = fileURLToPath(import.meta.url); // ELTÁVOLÍTVA
+// const __dirname = path.dirname(__filename); // ELTÁVOLÍTVA
 
 const app: Express = express();
 
+// --- Middleware Beállítások ---
 app.use(cors());
-app.use(express.json()); 
+app.use(express.json()); // JSON body parser
 
-const publicPath = path.join(__dirname, 'public');
-app.use(express.static(publicPath));
+// const publicPath = path.join(__dirname, 'public'); // ELTÁVOLÍTVA
+// app.use(express.static(publicPath)); // ELTÁVOLÍTVA
 
+// --- Logoló Middleware ---
 app.use((req: Request, res: Response, next: NextFunction) => {
-    if (!req.path.includes('.js') && !req.path.includes('.css') && req.path !== '/') {
-        console.log(`[${new Date().toISOString()}] Kérés érkezett: ${req.method} ${req.originalUrl}`);
-    }
+    // Most már minden kérést logolunk, mivel nincs statikus fájl
+    console.log(`[${new Date().toISOString()}] Kérés érkezett: ${req.method} ${req.originalUrl}`);
     next();
 });
 
-app.get('/', (req: Request, res: Response) => {
-    res.sendFile(path.join(publicPath, 'index.html'));
-});
+// --- API Útvonalak (Routes) ---
+
+// app.get('/', (req: Request, res: Response) => { ... }); // ELTÁVOLÍTVA (ENOENT hiba okozója)
 
 // Hitelesítés
 app.post('/login', async (req: Request, res: Response) => {
@@ -52,7 +54,7 @@ app.post('/login', async (req: Request, res: Response) => {
         }
         const token = jwt.sign(
            { user: 'autentikalt_felhasznalo' }, 
-            process.env.JWT_SECRET as string, // 'as string' a TS-nek
+            process.env.JWT_SECRET as string, 
             { expiresIn: '24h' }
         );
         res.status(200).json({ token: token });
@@ -62,39 +64,30 @@ app.post('/login', async (req: Request, res: Response) => {
     }
 });
 
-// === ÚJ DIAGNOSZTIKAI VÉGPONT ===
-// Ideiglenes, nem biztonságos végpont a HASH és a jelszó-ellenőrzés tesztelésére.
+// === DIAGNOSZTIKAI VÉGPONT (Ideiglenesen maradhat) ===
 app.get('/checkhash', async (req: Request, res: Response) => {
     try {
         const serverHash = process.env.APP_PASSWORD_HASH;
-        
         if (!serverHash) {
             return res.status(500).json({ 
                 error: "KRITIKUS HIBA: Az APP_PASSWORD_HASH nincs beállítva a szerver környezetében."
             });
         }
-        
         const testPassword = req.query.password as string;
-
         if (!testPassword) {
-            // Ha nincs jelszó paraméter, csak a hash-t küldjük vissza
             return res.status(200).json({
-                message: "Diagnosztika: A szerver által látott HASH. (Adjon meg ?password=... query paramétert a teszteléshez)",
+                message: "Diagnosztika: A szerver által látott HASH.",
                 server_hash_value: serverHash,
                 hash_is_correct_format: serverHash === "$2b$10$3g0.iG/3E.ZB50wK.1MvXOvjZJULfWJ07J75WlD6cEdMUH/h3aLwe"
             });
         }
-
-        // Ha van jelszó paraméter, lefuttatjuk az ellenőrzést
         const isMatch = await bcrypt.compare(testPassword, serverHash);
-        
         res.status(200).json({
             message: "Diagnosztika: bcrypt.compare() teszt eredménye.",
             password_provided: testPassword,
             server_hash_value: serverHash,
             compare_result_isMatch: isMatch
         });
-
     } catch (e: any) {
         res.status(500).json({ error: `Diagnosztikai hiba: ${e.message}` });
     }
@@ -103,7 +96,6 @@ app.get('/checkhash', async (req: Request, res: Response) => {
 
 // Védelmi Middleware
 const protect = (req: Request, res: Response, next: NextFunction) => {
-    // ... (protect logika változatlan) ...
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1]; 
     if (!token) {
@@ -277,7 +269,7 @@ async function startServer() {
         app.listen(PORT, () => {
             console.log(`🎉 King AI Backend (TypeScript) sikeresen elindult!`);
             console.log(`A szerver itt fut: http://localhost:${PORT}`);
-            console.log("A frontend most már a gyökér '/' címhez tud csatlakozni.");
+            // JAVÍTVA: A frontend üzenet eltávolítva, mivel ez egy headless API
         });
     } catch (e: any) {
         console.error("KRITIKUS HIBA a szerver indítása során:", e.message, e.stack);
