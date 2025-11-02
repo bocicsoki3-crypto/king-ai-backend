@@ -1,29 +1,15 @@
 // providers/common/utils.ts
-// Ez a fájl tartalmazza az összes megosztott, általános segédfüggvényt.
-// MÓDOSÍTÁS (v52.3 - TS Hibajavítás):
-// JAVÍTÁS: TS2305 (AxiosRequestConfig/AxiosResponse) javítva: 'import type' használatával.
+// JAVÍTÁS: TS2305 (Axios) javítva a helyes import szintaxisra (a 'type' kulcsszó eltávolítva)
 // JAVÍTÁS: TS2307 (Path Fix): Az 'canonical.d.ts' import útvonala javítva '../../src/'-re.
-// JAVÍTÁS: TS2846 (import type) javítva.
-// JAVÍTÁS: TS7006 (implicit any) javítva a 'validateStatus'-ban.
-// JAVÍTÁS: TS2339 (unknown type) javítva a '_callGemini'-ben.
 
-import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'; // JAVÍTÁS (TS2305)
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios'; // JAVÍTÁS (TS2305)
 import {
     GEMINI_API_KEY, GEMINI_MODEL_ID,
-    SPORT_CONFIG, API_HOSTS // ESPN és Gemini hívásokhoz szükségesek
+    SPORT_CONFIG, API_HOSTS
 } from '../../config.js'; 
-// Figyelj a relatív elérési útra! (két szinttel feljebb)
 
-// Kanonikus típusok importálása
-// === JAVÍTÁS (TS2846 és TS2307) ===
-import type { ICanonicalOdds, ICanonicalStats } from '../../src/types/canonical.d.ts'; // Helyes útvonal: ../../
-// === JAVÍTÁS VÉGE ===
+import type { ICanonicalOdds, ICanonicalStats } from '../../src/types/canonical.d.ts'; // JAVÍTÁS (TS2307 & TS2846)
 
-
-/**
- * Általános, hibatűrő API hívó segédfüggvény (az eredeti DataFetch.js-ből)
- * Ezt minden provider használhatja, amelyiknek nincs szüksége egyedi kulcsrotációra.
- */
 export async function makeRequest(url: string, config: AxiosRequestConfig = {}, retries: number = 1): Promise<any> {
     let attempts = 0;
     const method = config.method?.toUpperCase() || 'GET';
@@ -32,14 +18,12 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
         try {
             const baseConfig: AxiosRequestConfig = {
                 timeout: 25000,
-                // === JAVÍTÁS (TS7006) ===
-                validateStatus: (status: number) => status >= 200 && status < 500, // Típus hozzáadva
-                // === JAVÍTÁS VÉGE ===
+                validateStatus: (status: number) => status >= 200 && status < 500, // JAVÍTÁS (TS7006)
                 headers: {}
             };
             const currentConfig: AxiosRequestConfig = { ...baseConfig, ...config, headers: { ...baseConfig.headers, ...config?.headers } };
             
-            let response: any;
+            let response: AxiosResponse<any>; // Típusosítás
             if (method === 'POST') {
                 response = await axios.post(url, currentConfig.data || {}, currentConfig);
             } else {
@@ -67,7 +51,6 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
                 }
                 if ([401, 403].includes(error.response.status)) { 
                     console.error(`HITELESÍTÉSI HIBA: ${errorMessage}`);
-                    // Dobjuk tovább a hibát, hogy a JWT-kezelő elkapja
                     throw error; 
                 }
             } else if (error.request) {
@@ -84,13 +67,9 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
             await new Promise(resolve => setTimeout(resolve, 1500 * attempts));
         }
     }
-    // Ez az ág elméletileg elérhetetlen, de a TS fordító megköveteli a visszatérési értéket
     throw new Error("API hívás váratlanul befejeződött.");
 }
 
-/**
- * Gemini API Hívó (az eredeti DataFetch.js-ből)
- */
 export async function _callGemini(prompt: string): Promise<string> {
     if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') { throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY."); }
     if (!GEMINI_MODEL_ID) { throw new Error("Hiányzó GEMINI_MODEL_ID."); }
@@ -110,36 +89,27 @@ export async function _callGemini(prompt: string): Promise<string> {
     console.log(`Gemini API hívás indul a '${GEMINI_MODEL_ID}' modellel... (Prompt hossza: ${finalPrompt.length})`);
     
     try {
-        // === JAVÍTÁS (TS2339) ===
-        // Az 'AxiosResponse<any>' típusozás biztosítja, hogy a 'response.data'
-        // objektumon létezhetnek a várt mezők.
-        const response: AxiosResponse<any> = await axios.post(url, payload, { 
-        // === JAVÍTÁS VÉGE ===
+        const response: AxiosResponse<any> = await axios.post(url, payload, { // JAVÍTÁS (TS2339)
             headers: { 'Content-Type': 'application/json' }, 
             timeout: 120000, 
-            validateStatus: () => true // Minden státuszkódot elfogadunk, hogy kézzel kezelhessük
+            validateStatus: () => true 
         });
         
         if (response.status !== 200) {
             console.error('--- RAW GEMINI ERROR RESPONSE ---');
             console.error(JSON.stringify(response.data, null, 2));
-            // A 'response.data.error' most már elérhető
             throw new Error(`Gemini API hiba: Státusz ${response.status} - ${JSON.stringify(response.data?.error?.message || response.data)}`);
         }
         
-        // A 'response.data.candidates' most már elérhető
         const responseText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
         
         if (!responseText) {
-            // A 'response.data.candidates' most már elérhető
             const finishReason = response.data?.candidates?.[0]?.finishReason || 'Ismeretlen';
             console.warn('--- GEMINI BLOCK RESPONSE ---', JSON.stringify(response.data, null, 2));
             throw new Error(`Gemini nem adott vissza szöveges tartalmat. Ok: ${finishReason}`);
         }
         
-        // A 'responseMimeType: "application/json"' miatt a válasz már tiszta JSON string
-        // Nincs szükség a '```json' csupaszításra
-        JSON.parse(responseText); // Validálás
+        JSON.parse(responseText); 
         return responseText;
 
     } catch (e: any) {
@@ -148,17 +118,12 @@ export async function _callGemini(prompt: string): Promise<string> {
     }
 }
 
-/**
- * Gemini Prompt Generátor (az eredeti DataFetch.js-ből)
- * Megjegyzés: Ez a prompt most már kevésbé kritikus a CoT (Chain-of-Thought)
- * architektúra miatt, de a "stub" providerek (hockey, basketball) még használják.
- */
 export function PROMPT_V43(
     sport: string, 
     homeTeamName: string, 
     awayTeamName: string, 
-    apiSportsHomeSeasonStats: ICanonicalStats | null, // TÍPUSOSÍTVA
-    apiSportsAwaySeasonStats: ICanonicalStats | null, // TÍPUSOSÍTVA
+    apiSportsHomeSeasonStats: ICanonicalStats | null, 
+    apiSportsAwaySeasonStats: ICanonicalStats | null, 
     apiSportsH2HData: any[] | null, 
     apiSportsLineups: any[] | null
 ): string {
@@ -168,7 +133,6 @@ export function PROMPT_V43(
         calculatedStatsInfo = `CRITICAL NOTE ON STATS: The following basic stats have been PRE-CALCULATED from API-Sports.
 Use these exact numbers; do not rely on your internal knowledge for these specific stats.\n`;
         if (apiSportsHomeSeasonStats) {
-            // Típusbiztos 'gp' és 'form' használata
             calculatedStatsInfo += `Home Calculated (GP=${apiSportsHomeSeasonStats.gp ?? 'N/A'}, Form=${apiSportsHomeSeasonStats.form ?? 'N/A'})\n`;
         } else { calculatedStatsInfo += `Home Calculated: N/A\n`; }
         if (apiSportsAwaySeasonStats) {
@@ -251,9 +215,6 @@ STRUCTURE: {
 }`;
 }
 
-/**
- * Időjárás (az eredeti DataFetch.js-ből)
- */
 export async function getStructuredWeatherData(stadiumLocation: string, utcKickoff: string): Promise<{ temperature_celsius: number | null, description: string }> {
     console.log(`Időjárás lekérés (placeholder): Helyszín=${stadiumLocation}, Időpont=${utcKickoff}`);
     // TODO: Implementáljon egy valós időjárás API hívást itt (pl. OpenWeatherMap)
@@ -263,9 +224,6 @@ export async function getStructuredWeatherData(stadiumLocation: string, utcKicko
     };
 }
 
-/**
- * ESPN Meccslekérdező (az eredeti DataFetch.js-ből)
- */
 export async function _getFixturesFromEspn(sport: string, days: string): Promise<any[]> {
     const sportConfig = SPORT_CONFIG[sport];
     if (!sportConfig?.espn_sport_path || !sportConfig.espn_leagues) return [];
@@ -283,8 +241,6 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
     const leagueCount = Object.keys(sportConfig.espn_leagues).length;
     console.log(`ESPN: Kötegelt lekérés indul: ${daysInt} nap, ${leagueCount} liga...`);
 
-    // --- v50.4 JAVÍTÁS: Kötegelő (Batching) logika ---
-    
     const allUrlsToFetch: { url: string; leagueName: string; slug: string }[] = [];
     for (const dateString of datesToFetch) {
         for (const [leagueName, leagueData] of Object.entries(sportConfig.espn_leagues)) {
@@ -327,7 +283,7 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
                                 };
                             }
                             return null;
-                        }).filter(Boolean); // Kiszűri a null értékeket
+                        }).filter(Boolean);
                 })
                 .catch((error: any) => {
                     if (error.response?.status === 400) {
@@ -335,7 +291,7 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
                     } else {
                         console.error(`ESPN Hiba (${req.leagueName}): ${error.message}`);
                     }
-                    return []; // Hiba esetén üres tömböt adunk vissza
+                    return []; 
                 })
         );
 
@@ -346,7 +302,6 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
             await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
         }
     }
-    // --- v50.4 JAVÍTÁS VÉGE ---
 
     try {
         const uniqueFixtures = Array.from(new Map(allFixtures.map(f => [`${f.home}-${f.away}-${f.utcKickoff}`, f])).values());
@@ -359,10 +314,6 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
     }
 }
 
-/**
- * Meghatározza a fő gól/pont vonalat az odds adatokból.
- * Az AnalysisFlow.ts hívja meg. Típusosítva.
- */
 export function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: string): number {
     const defaultConfigLine = SPORT_CONFIG[sport]?.totals_line || (sport === 'soccer' ? 2.5 : 6.5);
     if (!oddsData?.fullApiData?.bookmakers || oddsData.fullApiData.bookmakers.length === 0) {

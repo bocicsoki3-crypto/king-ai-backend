@@ -1,6 +1,5 @@
-// check_models.ts (v52.3 - TS2339 hibajavítás)
-// Ez egy egyéni szkript a modellek állapotának ellenőrzésére.
-// JAVÍTÁS: TS2339 (property does not exist on type 'never'/'unknown') hibák javítva
+// check_models.ts (v52.4 - TS2339/TS7006 hibajavítás)
+// JAVÍTÁS: TS2339 ('never') és TS7006 (implicit 'any') hibák javítva
 // explicit ': any' típus-annotációk és típus-kényszerítés (as any) hozzáadásával.
 
 import axios from 'axios';
@@ -10,7 +9,6 @@ const MODEL_NAMES = [
     'gemini-1.5-pro-latest',
     'gemini-1.5-flash-latest',
     'gemini-pro', // Standard
-    // ... adj hozzá bármilyen más modellt, amit tesztelni szeretnél
 ];
 
 const API_KEY = process.env.GEMINI_API_KEY;
@@ -32,10 +30,9 @@ async function checkModel(modelName: string): Promise<{ name: string; status: 'O
         } else {
             throw new Error('Érvénytelen válasz struktúra.');
         }
-    } catch (error: any) { // JAVÍTÁS (TS18046/TS2339): 'error' típus 'any'-re állítva
+    } catch (error: any) { // JAVÍTÁS (TS2339): 'error' típus 'any'-re állítva
         let details = 'Ismeretlen hiba';
         if (error.response) {
-            // JAVÍTÁS (TS2339): error.response.data implicit 'any' (az 'error: any' miatt)
             details = `Státusz: ${error.response.status}, Válasz: ${JSON.stringify(error.response.data?.error?.message || error.response.data)}`;
         } else {
             details = error.message;
@@ -67,7 +64,6 @@ async function checkModels() {
     if (okModels.length > 0) {
         console.log(`✅ Elérhető modellek (${okModels.length} db): ${okModels.join(', ')}`);
         
-        // Javaslat a .env fájlhoz
         const primaryModel = okModels.includes('gemini-1.5-pro-latest') 
             ? 'gemini-1.5-pro-latest' 
             : okModels[0];
@@ -84,8 +80,7 @@ async function checkModels() {
         });
     }
 
-    // === JAVÍTÁS (TS2339 / TS18046) ===
-    // 'unknown' típus 'any'-re cserélve
+    // === JAVÍTÁS (TS2339) ===
     const supportedModelsResponse = await axios.get(`${BASE_URL}?key=${API_KEY}`).catch((error: any) => {
         console.error("\nHIBA: Nem sikerült lekérni a teljes modell listát.", error.response?.data?.error?.message || error.message);
         return null;
@@ -93,9 +88,9 @@ async function checkModels() {
     
     if (supportedModelsResponse && supportedModelsResponse.data) {
         // === JAVÍTÁS (TS2339 / TS7006) ===
-        const data: any = supportedModelsResponse.data; // TS18046/TS2339 javítva
+        const data: any = supportedModelsResponse.data; 
         const allModelNames = (data.models || []).map((m: any) => m.name.replace('models/', ''))
-            .reduce((acc: any, name: any) => { // TS7006 javítva
+            .reduce((acc: any, name: any) => { 
                 const baseName = name.split('-')[0];
                 if (!acc[baseName]) acc[baseName] = [];
                 acc[baseName].push(name);

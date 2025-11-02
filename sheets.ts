@@ -1,15 +1,11 @@
-// sheets.ts (v52.3 - TS2459/TS2345/TS2322 hibajavítások)
+// sheets.ts (v52.4 - TS2322 hibajavítás)
 // MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
-// JAVÍTÁS: TS2459 hiba javítva a nem exportált típusok ('WorksheetGridProperties', 
-// 'RowCellData') importjának és használatának eltávolításával.
-// JAVÍTÁS: TS2345 hiba javítva 'any' típus-kényszerítéssel.
-// JAVÍTÁS: TS2322 hiba javítva (null vs undefined).
+// JAVÍTÁS: TS2459 (import) és TS2345 (GridProperties) hibák javítva.
+// JAVÍTÁS: TS2322 hiba javítva: 'undefined' helyett '' (üres string)
+// használata, mivel a RowCellData nem fogadja el az undefined értéket.
 
 import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
-// === JAVÍTÁS (TS2459) ===
-// A 'WorksheetGridProperties' és 'RowCellData' típusok eltávolítva az importból,
-// mivel azokat a 'google-spreadsheet' csomag nem exportálja.
-// === JAVÍTÁS VÉGE ===
+// A 'WorksheetGridProperties' és 'RowCellData' típusok eltávolítva az importból (TS2459 javítás)
 
 import { JWT } from 'google-auth-library';
 import { SHEET_URL } from './config.js'; // A .env fájlból beolvasott Sheet URL
@@ -68,21 +64,19 @@ async function _getSheet(doc: GoogleSpreadsheet, sheetName: string, headers?: st
         if (!sheet && headers && Array.isArray(headers)) {
             console.log(`'${sheetName}' munkalap nem található, létrehozás...`);
             
-            // === JAVÍTÁS (TS2459 / TS2345) ===
-            // Az 'addSheet' hívásból eltávolítjuk a 'gridProperties'-t,
-            // hogy elkerüljük a TS2459 import hibát.
+            // JAVÍTÁS (TS2459 / TS2345)
             sheet = await doc.addSheet({ 
                 title: sheetName, 
                 headerValues: headers
             });
 
-            // A 'frozenRowCount' beállítását 'any' típus-kényszerítéssel végezzük el,
-            // hogy megkerüljük a TS2345 hibát (mivel a típus nincs exportálva),
-            // de a futásidejű funkcionalitás megmarad.
+            // A 'frozenRowCount' beállítása 'any' típus-kényszerítéssel
             await sheet.updateGridProperties({ 
-                frozenRowCount: 1
-            } as any); // <-- JAVÍTÁS
-            // === JAVÍTÁS VÉGE ===
+                frozenRowCount: 1,
+                // A TS2345 hiba elkerülése a hiányzó mezők hozzáadásával
+                rowCount: sheet.rowCount,
+                columnCount: sheet.columnCount
+            } as any); // 'as any' használata a nem exportált típusok megkerülésére
             
             await sheet.loadHeaderRow();
             const headerCells = sheet.headerValues.map((header, index) => sheet.getCell(0, index));
@@ -246,9 +240,10 @@ export async function saveAnalysisToSheet(sheetUrl: string, analysisData: IAnaly
             analysisData.recommendation.final_confidence.toFixed(1) : 'N/A';
         
         // === JAVÍTÁS (TS2322) ===
-        // A 'null' értéket 'undefined'-re cseréljük, mivel a RowCellData (implicit)
-        // nem fogad el 'null'-t, de az 'undefined'-et igen (kihagyja a cellát).
-        const fixtureId: string | number | boolean | undefined = analysisData.fixtureId ?? undefined;
+        // A 'null' és 'undefined' értéket ''-re (üres string) cseréljük,
+        // mivel a RowCellData típusa (implicit módon) csak primitív értékeket
+        // (string, number, boolean) fogad el.
+        const fixtureId: string | number | boolean = analysisData.fixtureId ?? '';
         // === JAVÍTÁS VÉGE ===
 
         await sheet.addRow({
