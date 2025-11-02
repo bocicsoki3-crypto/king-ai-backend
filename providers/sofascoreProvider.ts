@@ -1,7 +1,6 @@
-// providers/sofascoreProvider.ts (v52.19 - Kétirányú Meccskeresés)
-// MÓDOSÍTÁS: A getSofascoreEventId (2. lépés) most már kétirányú ellenőrzést végez.
-// Először a hazai csapat, majd (ha sikertelen) a vendég csapat naptárát
-// is ellenőrzi a '/teams/get-next-matches' végponton.
+// providers/sofascoreProvider.ts (v53-Sentinel - Robusztus Csapategyeztetés)
+// MÓDOSÍTÁS: A getSofascoreTeamId (1. lépés) felülírva egy többlépcsős 
+// egyeztetési logikával (Tökéletes, Tartalmazza, Hasonlóság).
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -75,43 +74,73 @@ async function makeSofascoreRequest(endpoint: string, params: any) {
 
 /**
  * 1. Lépés: Megkeresi egy csapat Sofascore ID-ját a neve alapján.
+ * (OPTIMALIZÁLT v53-Sentinel: Robusztus, többlépcsős egyeztetési logikával)
  */
 async function getSofascoreTeamId(teamName: string): Promise<number | null> {
     const cacheKey = `team_${teamName.toLowerCase().replace(/\s/g, '')}`;
     const cachedId = sofaTeamCache.get<number>(cacheKey);
     if (cachedId) return cachedId;
 
-    console.log(`[Sofascore] Csapat keresés: "${teamName}"`);
-
-    // Helyes végpont: '/search' (a képen látható)
+    console.log(`[Sofascore] Csapat keresés (Optimalizált): "${teamName}"`);
+    
     const data = await makeSofascoreRequest('/search', { q: teamName });
     
-    if (!data?.results) {
-        console.warn(`[Sofascore] Csapatkeresés sikertelen: "${teamName}". Nincs 'results' mező (Endpoint: /search).`);
+    if (!data?.results || !Array.isArray(data.results) || data.results.length === 0) {
+        console.warn(`[Sofascore] Csapatkeresés sikertelen: "${teamName}". Nincs 'results' tömb (Endpoint: /search).`);
         return null;
     }
 
-    // A 'results' tömb feldolgozása
+    // A 'results' tömb feldolgozása, biztosítva, hogy csak érvényes futball csapatokat kapjunk
     const teams: ISofascoreTeam[] = data.results
-        .filter((r: any) => r.type === 'team' && r.entity.sport.name === 'Football')
+        .filter((r: any) => 
+            r.type === 'team' && 
+            r.entity?.sport?.name === 'Football' && 
+            r.entity.id &&
+            r.entity.name
+        )
         .map((r: any) => r.entity);
 
     if (teams.length === 0) {
-        console.warn(`[Sofascore] Csapatkeresés: Nincs találat erre: "${teamName}"`);
+        console.warn(`[Sofascore] Csapatkeresés: Nincs 'Football' típusú 'team' találat erre: "${teamName}"`);
         return null;
     }
-    
+
+    const normalizedInput = teamName.toLowerCase();
+    let foundTeam: ISofascoreTeam | null = null;
+
+    // 1. Lépés: Tökéletes egyezés (normalizált)
+    // "Austin FC" -> "austin fc" === "Austin FC" -> "austin fc"
+    foundTeam = teams.find(t => t.name.toLowerCase() === normalizedInput) || null;
+    if (foundTeam) {
+        console.log(`[Sofascore] Csapat ID Találat (1/3 - Tökéletes): "${teamName}" -> "${foundTeam.name}" (ID: ${foundTeam.id})`);
+        sofaTeamCache.set(cacheKey, foundTeam.id);
+        return foundTeam.id;
+    }
+
+    // 2. Lépés: 'Includes' egyezés (a rövidebb név 'LAFC' benne van a hosszabb 'Los Angeles FC'-ben)
+    // Ez kezeli az "LAFC" vs "Los Angeles FC" problémát
+    foundTeam = teams.find(t => t.name.toLowerCase().includes(normalizedInput)) || null;
+     if (foundTeam) {
+        console.log(`[Sofascore] Csapat ID Találat (2/3 - Tartalmazza): "${teamName}" -> "${foundTeam.name}" (ID: ${foundTeam.id})`);
+        sofaTeamCache.set(cacheKey, foundTeam.id);
+        return foundTeam.id;
+    }
+
+    // 3. Lépés: Hasonlósági egyezés (Fuzzy Match) - Végső megoldás
     const teamNames = teams.map(t => t.name);
     const bestMatch = findBestMatch(teamName, teamNames);
     
-    if (bestMatch.bestMatch.rating > 0.7) {
-        const foundTeam = teams[bestMatch.bestMatchIndex];
-        console.log(`[Sofascore] Csapat ID Találat: "${teamName}" -> "${foundTeam.name}" (ID: ${foundTeam.id})`);
+    // A 0.7-es küszöbérték logikailag hibás volt.
+    // A 0.4-es küszöbérték itt elfogadható, mivel a determinisztikus ellenőrzések (1, 2) már lefutottak.
+    const FUZZY_THRESHOLD = 0.4; 
+    if (bestMatch.bestMatch.rating >= FUZZY_THRESHOLD) {
+        foundTeam = teams[bestMatch.bestMatchIndex];
+        console.log(`[Sofascore] Csapat ID Találat (3/3 - Hasonlóság >= ${FUZZY_THRESHOLD}): "${teamName}" -> "${foundTeam.name}" (ID: ${foundTeam.id}, Rating: ${bestMatch.bestMatch.rating})`);
         sofaTeamCache.set(cacheKey, foundTeam.id);
         return foundTeam.id;
     }
     
-    console.warn(`[Sofascore] Csapat ID Találat: Alacsony egyezés (${bestMatch.bestMatch.rating}) erre: "${teamName}"`);
+    console.warn(`[Sofascore] Csapat ID Találat: Sikertelen egyeztetés (Minden lépés hibát adott). Alacsony egyezés (${bestMatch.bestMatch.rating}) erre: "${teamName}"`);
     return null;
 }
 
@@ -326,21 +355,21 @@ export async function fetchSofascoreData(
     };
 
     try {
-        // 1. Csapat ID-k lekérése párhuzamosan
+        // 1. Csapat ID-k lekérése párhuzamosan (AZ OPTIMALIZÁLT FUNKCIÓVAL)
         const [homeTeamId, awayTeamId] = await Promise.all([
             getSofascoreTeamId(homeTeamName),
             getSofascoreTeamId(awayTeamName)
         ]);
 
         if (!homeTeamId || !awayTeamId) {
-            console.warn(`[Sofascore Provider] Csapat ID hiba (${homeTeamName} vagy ${awayTeamName}). A Sofascore kérés leáll.`);
+            console.warn(`[Sofascore Provider] Csapat ID hiba (${homeTeamName}=${homeTeamId} | ${awayTeamName}=${awayTeamId}). A Sofascore kérés leáll.`);
             return result; // Visszatérés üres adatokkal
         }
 
         // 2. Meccs ID lekérése (A javított, kétirányú végponttal)
         const eventId = await getSofascoreEventId(homeTeamId, awayTeamId);
         if (!eventId) {
-            console.warn(`[Sofascore Provider] Event ID nem található (${homeTeamId} vs ${awayTeamName}). A Sofascore kérés leáll.`);
+            console.warn(`[Sofascore Provider] Event ID nem található (${homeTeamId} vs ${awayTeamId}). A Sofascore kérés leáll.`);
             return result; // Visszatérés üres adatokkal
         }
 
