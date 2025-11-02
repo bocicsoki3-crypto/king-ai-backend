@@ -1,6 +1,4 @@
-// config.ts (v52 - TypeScript)
-// MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
-// Definiálja a rendszer konfigurációs szerződéseit (interfészeit).
+// config.ts (v52.9 - Sofascore Kulcsok Hozzáadva)
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -63,14 +61,18 @@ export const PORT: number = parseInt(process.env.PORT || "3001", 10);
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY: string | undefined = process.env.GEMINI_API_KEY;
-export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-2.5-pro'; // Vagy a 'gemini-2.5-pro' [cite: 4, 5]
+export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-1.5-pro'; 
 export const SHEET_URL: string | undefined = process.env.SHEET_URL;
 
-// === JAVÍTÁS: Új sportágak kulcsainak hozzáadása ===
 export const HOCKEY_API_KEY: string | undefined = process.env.HOCKEY_API_KEY;
 export const HOCKEY_API_HOST: string = process.env.HOCKEY_API_HOST || 'ice-hockey-data.p.rapidapi.com';
 export const BASKETBALL_API_KEY: string | undefined = process.env.BASKETBALL_API_KEY;
 export const BASKETBALL_API_HOST: string = process.env.BASKETBALL_API_HOST || 'basketball-api.p.rapidapi.com';
+
+// === ÚJ SOFASCORE KONFIGURÁCIÓ ===
+export const SOFASCORE_API_KEY: string | undefined = process.env.SOFASCORE_API_KEY; // ÚJ EXPORT
+export const SOFASCORE_API_HOST: string = process.env.SOFASCORE_API_HOST || 'sportapi7.p.rapidapi.com'; // ÚJ EXPORT
+// === VÉGE ===
 
 // --- API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
 // Típusosítva az IApiHostMap interfész alapján
@@ -162,9 +164,9 @@ export const SPORT_CONFIG: ISportConfigMap = {
             "Major League Soccer": { slug: "usa.1", country: "USA" },
             "Liga MX": { slug: "mex.1", country: "Mexico" },
             "Jupiler Pro League": { slug: "bel.1", country: "Belgium" },
-            "Serie A Betano": { slug: "rou.1", country: "Romania" }, // API-Football: "Liga I"
+            "Serie A Betano": { slug: "rou.1", country: "Romania" }, 
             "Superliga": { slug: "den.1", country: "Denmark" },
-            "Chance Liga": { slug: "cze.1", country: "Czech Republic"}, // API-Football: "Czech Liga"
+            "Chance Liga": { slug: "cze.1", country: "Czech Republic"}, 
             "Premier Division": { slug: "irl.1", country: "Ireland" },
             "Primera A": { slug: "col.1", country: "Colombia" },
             "Champions League": { slug: "uefa.champions", country: "World" },
@@ -176,22 +178,11 @@ export const SPORT_CONFIG: ISportConfigMap = {
             "CAF World Cup Qualifying": { slug: "fifa.worldq.caf", country: "World" },
             "AFC World Cup Qualifying": { slug: "fifa.worldq.afc", country: "World" },
             "UEFA World Cup Qualifying": { slug: "fifa.worldq.uefa", country: "World" },
-            // Duplikált "Serie A" (Olaszország vs Brazília) és "Bundesliga" (Németország vs Ausztria)
-            // Az ESPN-alapú lekérdezés egyedi kulcsneveket igényel, ezt a config.js [cite: 26, 27] hibásan kezeli.
-            // A TypeScript fordító ezt nem képes elkapni, de a logika hibás.
-            // A jelenlegi implementációban a későbbi felülírja a korábbit.
-            // A JAVASLAT az, hogy a kulcsok legyenek egyediek, pl.:
-            // "Serie A (Brazil)": { slug: "bra.1", country: "Brazil" },
-            // "Bundesliga (Austria)": { slug: "aut.1", country: "Austria" },
-            // A meglévő kód [cite: 26, 27] alapján azonban meghagyom a duplikációt,
-            // de az utolsó nyer elvét alkalmazom (ahogy a JS tenné).
-            // Az `espn_leagues` kulcsainak egyedinek kell lenniük!
-            // A [cite: 26, 27] alapján a "Serie A" és "Bundesliga" felülírja a korábbiakat.
-            "Serie A (Brazil)": { slug: "bra.1", country: "Brazil" }, // JAVÍTVA egyedire
-            "Serie B (Brazil)": { slug: "bra.2", country: "Brazil" }, // JAVÍTVA egyedire
+            "Serie A (Brazil)": { slug: "bra.1", country: "Brazil" }, 
+            "Serie B (Brazil)": { slug: "bra.2", country: "Brazil" }, 
             "Argentinian Liga Profesional": { slug: "arg.1", country: "Argentina" },
             "A-League": { slug: "aus.1", country: "Australia" },
-            "Bundesliga (Austria)": { slug: "aut.1", country: "Austria" }, // JAVÍTVA egyedire
+            "Bundesliga (Austria)": { slug: "aut.1", country: "Austria" }, 
             "Super League": { slug: "sui.1", country: "Switzerland" },
             "Super League 1": { slug: "gre.1", country: "Greece" },
             "Czech Liga": { slug: 'cze.1', country: 'Czech Republic' },
@@ -205,7 +196,7 @@ export const SPORT_CONFIG: ISportConfigMap = {
         avg_goals: 3.0,
         home_advantage: { home: 1.0, away: 1.0 },
         espn_leagues: {
-           'NHL': { slug: 'nhl', country: 'USA' } 
+            'NHL': { slug: 'nhl', country: 'USA' } 
         },
     },
     basketball: {

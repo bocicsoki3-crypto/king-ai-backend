@@ -1,6 +1,5 @@
-// providers/sofascoreProvider.ts (v52.7 - Új Provider)
-// Ez a modul felelős a Sofascore API-val való kommunikációért,
-// hogy megbízható xG és játékos-statisztikai adatokat nyerjen ki.
+// providers/sofascoreProvider.ts (v52.10 - Utolsó TS hiba javítása)
+// JAVÍTÁS: TS2322 hiba javítva az 'advancedData' mező kezdeti értékének megfelelő típusozásával.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -8,12 +7,12 @@ import pkg from 'string-similarity';
 const { findBestMatch } = pkg;
 
 import { SOFASCORE_API_KEY, SOFASCORE_API_HOST } from '../config.js';
-import { makeRequest } from './common/utils.js'; // A központi hívót használjuk
+import { makeRequest } from './common/utils.js';
 
 // Kanonikus típusok importálása
-import type { ICanonicalPlayerStats } from '../src/types/canonical.d.ts';
+import type { ICanonicalPlayerStats, ICanonicalPlayer } from '../src/types/canonical.d.ts';
 
-// --- Típusdefiníciók a Sofascore válaszokhoz (egyszerűsítve) ---
+// --- Típusdefiníciók a Sofascore válaszokhoz (Kiterjesztve) ---
 interface ISofascoreTeam {
     name: string;
     id: number;
@@ -28,13 +27,19 @@ interface ISofascoreXg {
     home: number;
     away: number;
 }
-interface ISofascorePlayerRating {
-    player: { id: number; name: string; };
-    rating: string; // Pl. "7.5"
-    position: string; // Pl. 'M', 'D', 'F'
+// Nyers játékos adatok a /get-lineups végpontról
+interface ISofascoreRawPlayer {
+    player: {
+        id: number;
+        name: string;
+        position: 'G' | 'D' | 'M' | 'F' | 'Attacker' | 'Defender' | 'Midfielder' | 'Goalkeeper'; // Poszt
+    };
+    rating?: string; // Pl. "7.5", hiányzik, ha még nem játszott
+    position?: string; // Fő poszt (redundáns, de hasznos)
+    substitute?: boolean; // Csere?
 }
 
-// --- Cache-ek a Sofascore ID-k és adatok tárolására ---
+// --- Cache-ek ---
 const sofaTeamCache = new NodeCache({ stdTTL: 3600 * 24 * 7 }); // 1 hét
 const sofaEventCache = new NodeCache({ stdTTL: 3600 * 6 }); // 6 óra
 
@@ -57,12 +62,11 @@ async function makeSofascoreRequest(endpoint: string, params: any) {
     };
     
     try {
-        // A 'makeRequest' az 'utils.ts'-ből származó általános hívó
         const response = await makeRequest(config.url as string, config, 0); 
         return response.data;
     } catch (error: any) {
         console.error(`[Sofascore API Hiba] Endpoint: ${endpoint} - ${error.message}`);
-        return null; // Hiba esetén null-t adunk vissza, hogy a folyamat folytatódhasson
+        return null;
     }
 }
 
@@ -76,7 +80,6 @@ async function getSofascoreTeamId(teamName: string): Promise<number | null> {
 
     const data = await makeSofascoreRequest('/v1/search/all', { name: teamName });
     
-    // A válasz 'results' tömböt tartalmaz, amelyben 'team' objektumok vannak
     if (!data?.results) {
         console.warn(`[Sofascore] Csapatkeresés sikertelen: "${teamName}". Nincs 'results' mező.`);
         return null;
@@ -142,7 +145,6 @@ async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Prom
 async function getSofascoreXg(eventId: number): Promise<ISofascoreXg | null> {
     const data = await makeSofascoreRequest('/v1/event/get-statistics', { eventId: eventId });
 
-    // Az xG adat "statistics[0].groups[...].rows" alatt van elrejtve
     if (!data?.statistics) {
         console.warn(`[Sofascore] xG Hiba: Nincs 'statistics' mező (Event ID: ${eventId}).`);
         return null;
@@ -151,9 +153,10 @@ async function getSofascoreXg(eventId: number): Promise<ISofascoreXg | null> {
     try {
         let expectedGoalsRow: any = null;
         for (const statGroup of data.statistics) {
-            if (statGroup.groupName === 'Expected') {
+            // Néha 'Expected', néha 'Attacking' csoportban van
+            if (statGroup.groupName === 'Expected' || statGroup.groupName === 'Attacking') {
                 expectedGoalsRow = statGroup.rows.find((row: any) => row.name === 'Expected goals (xG)');
-                break;
+                if (expectedGoalsRow) break;
             }
         }
 
@@ -163,7 +166,7 @@ async function getSofascoreXg(eventId: number): Promise<ISofascoreXg | null> {
                 away: parseFloat(expectedGoalsRow.away)
             };
             console.log(`[Sofascore] xG Adat kinyerve: H=${xg.home}, A=${xg.away}`);
-            return xG;
+            return xg;
         } else {
             console.warn(`[Sofascore] xG Hiba: Nem található 'Expected goals (xG)' sor (Event ID: ${eventId}).`);
             return null;
@@ -175,40 +178,102 @@ async function getSofascoreXg(eventId: number): Promise<ISofascoreXg | null> {
 }
 
 /**
- * 4. Lépés: Lekéri a játékosok értékeléseit (Player Ratings) a meccs ID alapján.
+ * 4. Lépés: Lekéri a felállásokat (lineups) a meccs ID alapján.
  */
-async function getSofascorePlayerRatings(eventId: number): Promise<ISofascorePlayerRating[] | null> {
+async function getSofascoreLineups(eventId: number): Promise<{ home: ISofascoreRawPlayer[], away: ISofascoreRawPlayer[] } | null> {
     const data = await makeSofascoreRequest('/v1/event/get-lineups', { eventId: eventId });
 
-    if (!data?.home?.players && !data?.away?.players) {
-        console.warn(`[Sofascore] Játékos Hiba: Nincs 'players' mező (Event ID: ${eventId}).`);
+    if (!data?.home && !data?.away) {
+        console.warn(`[Sofascore] Felállás Hiba: Nincs 'home' vagy 'away' mező (Event ID: ${eventId}).`);
         return null;
     }
-
-    const allPlayers: ISofascorePlayerRating[] = [];
     
-    // Kezdő és cserejátékosok (hazai)
-    (data.home?.players || []).forEach((p: any) => {
-        if (p.rating && p.player) {
-            allPlayers.push({ player: p.player, rating: p.rating, position: p.position });
-        }
-    });
-    // Kezdő és cserejátékosok (vendég)
-    (data.away?.players || []).forEach((p: any) => {
-        if (p.rating && p.player) {
-            allPlayers.push({ player: p.player, rating: p.rating, position: p.position });
-        }
-    });
+    // Összegyűjtjük a kezdőket és a cseréket is, hogy megkapjuk a ratingeket
+    const homePlayers = (data.home.players || []).map((p: any) => ({ ...p, team: 'home' }));
+    const awayPlayers = (data.away.players || []).map((p: any) => ({ ...p, team: 'away' }));
 
-    console.log(`[Sofascore] Játékos Adat kinyerve: ${allPlayers.length} játékos értékelés.`);
-    return allPlayers;
+    console.log(`[Sofascore] Felállás Adat kinyerve: ${homePlayers.length} hazai, ${awayPlayers.length} vendég játékos.`);
+    return { home: homePlayers, away: awayPlayers };
+}
+
+/**
+ * === ÚJ FELDOLGOZÓ FÜGGVÉNY (v52.9) ===
+ * Feldolgozza a nyers Sofascore felállás adatokat a Model.ts
+ * által elvárt ICanonicalPlayerStats formátumra.
+ */
+function processSofascoreLineups(
+    lineups: { home: ISofascoreRawPlayer[], away: ISofascoreRawPlayer[] } | null
+): ICanonicalPlayerStats {
+    
+    const canonicalStats: ICanonicalPlayerStats = {
+        home_absentees: [],
+        away_absentees: [],
+        key_players_ratings: { home: {}, away: {} }
+    };
+
+    if (!lineups) return canonicalStats;
+    
+    // Konverziós segédtérkép a Sofascore posztokhoz
+    const POS_MAP: { [key: string]: 'Támadó' | 'Középpályás' | 'Védő' | 'Kapus' } = {
+        'F': 'Támadó', 'Attacker': 'Támadó',
+        'M': 'Középpályás', 'Midfielder': 'Középpályás',
+        'D': 'Védő', 'Defender': 'Védő',
+        'G': 'Kapus', 'Goalkeeper': 'Kapus'
+    };
+
+    const processSide = (players: ISofascoreRawPlayer[], side: 'home' | 'away') => {
+        const ratingsByPosition: { [pos: string]: number[] } = { 'Támadó': [], 'Középpályás': [], 'Védő': [], 'Kapus': [] };
+        
+        players.forEach(p => {
+            const position = POS_MAP[p.player.position] || 'Középpályás'; // Alapértelmezett, ha ismeretlen
+            const ratingValue = parseFloat(p.rating || '0');
+            
+            // 1. Hiányzók keresése (Alapszintű heurisztika: a keretben van, de még nincs értékelése ÉS nem kezdő)
+            const isAbsent = p.substitute === false && ratingValue === 0;
+            
+            if (isAbsent) {
+                const absentee: ICanonicalPlayer = {
+                    name: p.player.name,
+                    role: position,
+                    importance: 'key', // Feltételezés (a Model.ts felelős a súlyozásért)
+                    status: 'confirmed_out', 
+                    rating_last_5: 0 // Nincs értékelés
+                };
+                if (side === 'home') canonicalStats.home_absentees.push(absentee);
+                else canonicalStats.away_absentees.push(absentee);
+            }
+            
+            // 2. Értékelések gyűjtése poszt szerint (csak ha van valós értékelés)
+            if (ratingValue > 0) {
+                if (ratingsByPosition[position]) {
+                    ratingsByPosition[position].push(ratingValue);
+                }
+            }
+        });
+
+        // 3. Posztok átlagolása a Model.ts számára
+        for (const [pos, ratings] of Object.entries(ratingsByPosition)) {
+            if (ratings.length > 0) {
+                const avgRating = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+                if (side === 'home') canonicalStats.key_players_ratings.home[pos] = avgRating;
+                else canonicalStats.key_players_ratings.away[pos] = avgRating;
+            }
+        }
+    };
+
+    processSide(lineups.home, 'home');
+    processSide(lineups.away, 'away');
+
+    if (canonicalStats.home_absentees.length > 0 || canonicalStats.away_absentees.length > 0) {
+        console.log(`[Sofascore Feldolgozó] Hiányzók azonosítva: ${canonicalStats.home_absentees.length} (H), ${canonicalStats.away_absentees.length} (A)`);
+    }
+
+    return canonicalStats;
 }
 
 
 /**
- * FŐ EXPORTÁLT FUNKCIÓ
- * Orchestrálja a Sofascore hívásokat, hogy visszaadja az xG-t és a játékos adatokat.
- * Ezt a DataFetch.ts hívja meg.
+ * FŐ EXPORTÁLT FUNKCIÓ (MÓDOSÍTVA v52.10)
  */
 export async function fetchSofascoreData(
     homeTeamName: string, 
@@ -218,8 +283,13 @@ export async function fetchSofascoreData(
     playerStats: ICanonicalPlayerStats 
 }> {
     
-    // Alapértelmezett (üres) visszatérési érték
-    const result = {
+    // === JAVÍTÁS (TS2322) ===
+    // Explicit típus a kezdeti 'result' objektumhoz, ami kikényszeríti, hogy
+    // a mezők 'null' VAGY a cél-típus legyenek.
+    let result: { 
+        advancedData: { xg_home: number; xg_away: number } | null, 
+        playerStats: ICanonicalPlayerStats 
+    } = {
         advancedData: null,
         playerStats: {
             home_absentees: [],
@@ -227,6 +297,7 @@ export async function fetchSofascoreData(
             key_players_ratings: { home: {}, away: {} }
         } as ICanonicalPlayerStats
     };
+    // === JAVÍTÁS VÉGE ===
 
     try {
         // 1. Csapat ID-k lekérése párhuzamosan
@@ -245,25 +316,22 @@ export async function fetchSofascoreData(
             throw new Error("A meccs (Event) ID nem található a Sofascore-ban.");
         }
 
-        // 3. xG és Játékos-értékelések lekérése párhuzamosan
-        const [xgData, playerRatings] = await Promise.all([
+        // 3. xG és Felállások lekérése párhuzamosan
+        const [xgData, lineupsData] = await Promise.all([
             getSofascoreXg(eventId),
-            getSofascorePlayerRatings(eventId)
+            getSofascoreLineups(eventId)
         ]);
 
         // 4. Eredmények feldolgozása
         if (xgData) {
             result.advancedData = {
                 xg_home: xgData.home,
-                xg_away: xGData.away
+                xg_away: xgData.away
             };
         }
-
-        // TODO: A 'playerRatings' adatokat (amelyek most már valósak)
-        // fel kell dolgozni, hogy feltöltsék a 'result.playerStats'
-        // ICanonicalPlayerStats interfészt (pl. hiányzók azonosítása,
-        // kulcsjátékosok átlagolása poszt szerint).
-        // Jelenleg ez a logika még hiányzik, de az adatgyűjtés már valós.
+        
+        // A nyers 'lineupsData' átadása a feldolgozó funkciónak.
+        result.playerStats = processSofascoreLineups(lineupsData);
 
     } catch (e: any) {
         console.warn(`[Sofascore Provider] Hiba a teljes folyamat során: ${e.message}. A rendszer a becsült adatokra támaszkodik.`);

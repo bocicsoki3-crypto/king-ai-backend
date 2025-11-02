@@ -1,42 +1,34 @@
 // providers/apiSportsProvider.ts
 // Ez a provider felelős a 'soccer' adatok lekéréséért az API-Sports és az xG API-k segítségével.
-// MÓDOSÍTÁS (v52.3 - TS Hibajavítás):
-// JAVÍTÁS: TS2305 (AxiosRequestConfig) javítva: 'import type' használatával.
-// JAVÍTÁS: TS2719 (FixtureResult) javítva: A kanonikus típus importálásával.
-// JAVÍTÁS: TS2846 (import type) javítva: Az összes típus import 'import type'-ra cserélve.
-// JAVÍTÁS: TS2307 (Path Fix): A 'canonical.d.ts' import útvonala javítva '../src/'-re.
+// MÓDOSÍTÁS (v52.9 - KÓDTISZTÍTÁS): Eltávolítva a szimulált getDetailedPlayerStats funkció.
 
-import axios, { type AxiosRequestConfig } from 'axios'; // JAVÍTÁS (TS2305): 'type' hozzáadva
+import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
 import pkg from 'string-similarity';
 const { findBestMatch } = pkg;
 
 // Kanonikus típusok importálása
-// === JAVÍTÁS (TS2846, TS2719, TS2307) ===
-// Helyes 'import type' és helyes '../src/' útvonal használata.
 import type {
     ICanonicalRichContext,
     ICanonicalStats,
-    ICanonicalPlayerStats,
+    ICanonicalPlayerStats, // Még importálva, mert a fetchMatchData használja a finalData-ban.
     ICanonicalRawData,
     ICanonicalOdds,
-    FixtureResult // A központosított típus importálása
+    FixtureResult 
 } from '../src/types/canonical.d.ts'; 
-// === JAVÍTÁS VÉGE ===
 
 import {
     SPORT_CONFIG,
     APIFOOTBALL_TEAM_NAME_MAP,
     API_HOSTS,
 } from '../config.js';
-// Figyelj a relatív elérési útra!
 
 // Importáljuk a megosztott segédfüggvényeket
 import {
     _callGemini,
     PROMPT_V43,
     getStructuredWeatherData,
-    makeRequest // Az általános hívót is importáljuk
+    makeRequest 
 } from './common/utils.js';
 
 // --- API-SPORTS SPECIFIKUS CACHE-EK ---
@@ -372,7 +364,6 @@ async function findApiSportsFixture(homeTeamId: number, awayTeamId: number, seas
 }
 
 // === v50.1: ÚJ FUNKCIÓ A VÉGEREDMÉNY LEKÉRÉSÉHEZ ===
-// === JAVÍTÁS (TS2719): A lokális 'FixtureResult' típus eltávolítva ===
 // export async function getApiSportsFixtureResult(fixtureId: number | string, sport: string): Promise<FixtureResult> { // Eltávolítva
 export async function getApiSportsFixtureResult(fixtureId: number | string, sport: string): Promise<FixtureResult> { // A kanonikus típust használja
     if (sport !== 'soccer' || !fixtureId) {
@@ -706,33 +697,10 @@ function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: string): num
     return numericLines[0];
 }
 
-// --- ÚJ (SZIMULÁLT) FUNKCIÓ: Valós Player Stats API Hívás ---
-/**
- * SZIMULÁCIÓ: Egy valós, játékos-specifikus API (pl. FotMob/Sofascore) hívását
- * reprezentálja. Visszaadja a megerősített hiányzókat és a kulcsjátékosok
- * valós idejű értékeléseit.
- */
-async function getDetailedPlayerStats(homeTeamId: number, awayTeamId: number, leagueId: number): Promise<ICanonicalPlayerStats> {
-    console.log(`[PlayerStatsAPI] Részletes játékos adatok lekérése: H:${homeTeamId} vs A:${awayTeamId}`);
-    // EZ EGY MOCK (TESZT) VÁLASZ. Ezt kell lecserélni a valós RapidAPI hívásra.
-    await new Promise(resolve => setTimeout(resolve, 50)); // Szimulált hálózati késleltetés
-    
-    // Kanonikus adatmodell, amit egy valós API adna:
-    return {
-        home_absentees: [
-            // { name: "Kulcs Játékos A", importance: "key", status: "confirmed_out", role: "Védő", rating_last_5: 6.2 }
-        ],
-        away_absentees: [
-            // { name: "Kulcs Játékos B", importance: "key", status: "doubtful", role: "Támadó", rating_last_5: 7.8 }
-        ],
-        key_players_ratings: { // Átlagértékelés az utolsó 5 meccsen
-            home: { "Támadó": 7.5, "Középpályás": 7.0, "Védő": 6.8, "Kapus": 7.1 },
-            away: { "Támadó": 7.9, "Középpályás": 6.9, "Védő": 7.0, "Kapus": 6.9 }
-        }
-    };
-    // --- SZIMULÁCIÓ VÉGE ---
-}
-// --- MÓDOSÍTÁS VÉGE ---
+// --- Szimulált Player Stats Funkció Eltávolítva (v52.9) ---
+// --- Eredeti kód itt: getDetailedPlayerStats(homeTeamId, awayTeamId, leagueId) { ... }
+// Ezt már a SofascoreProvider fogja biztosítani
+// --- VÉGE ---
 
 
 // --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (JAVÍTVA A SZEZON KEZELÉSÉVEL ÉS xG KONSZOLIDÁCIÓVAL v50) ---
@@ -798,37 +766,29 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         apiSportsH2HData,
         apiSportsHomeSeasonStats,
         apiSportsAwaySeasonStats,
-        //realXgData // ELTÁVOLÍTVA (v50)
-        realFixtureStats, // ÚJ (v50)
-        detailedPlayerStats // --- ÚJ ADAT (2. Javaslat) ---
+        // Szimulált/redundáns hívások eltávolítva:
+        realFixtureStats, // xG adat (API-Football)
+        // getDetailedPlayerStats (SZIMULÁLT) ELTÁVOLÍTVA (v52.9)
     ] = await Promise.all([
         getApiSportsOdds(fixtureId, sport), 
         getApiSportsH2H(homeTeamId, awayTeamId, 5, sport),
-       
-         // JAVÍTÁS: A 'sport' paraméter átadása
-        
         getApiSportsTeamSeasonStats(homeTeamId, leagueId, foundSeason, sport),
         getApiSportsTeamSeasonStats(awayTeamId, leagueId, foundSeason, sport),
-      
-         // (sport === 'soccer' && fixtureId) ? getXgData(fixtureId) : Promise.resolve(null) // ELTÁVOLÍTVA (v50)
-         (sport === 'soccer' && fixtureId) ? getApiSportsFixtureStats(fixtureId, sport) : Promise.resolve(null), // ÚJ (v50)
-         getDetailedPlayerStats(homeTeamId, awayTeamId, leagueId) // --- ÚJ HÍVÁS ---
+        (sport === 'soccer' && fixtureId) ? getApiSportsFixtureStats(fixtureId, sport) : Promise.resolve(null),
+        // getDetailedPlayerStats(homeTeamId, awayTeamId, leagueId) ELTÁVOLÍTVA
     ]);
     console.log(`API-SPORTS (${sport}): Párhuzamos lekérések befejezve.`);
     
     // --- v50 JAVÍTÁS: realXgData kinyerése a realFixtureStats-ból ---
-    const realXgData = realFixtureStats || null; // A realFixtureStats már a {home, away} xG objektum, vagy null
+    const realXgData = realFixtureStats || null; 
+    let geminiData: any = null; 
     
-    // A CoT modell miatt ezt a hívást egyszerűsítjük, vagy eltávolítjuk
-    // A PROMPT_V43 hívása itt már nem szükséges, mivel az AI_Service (CoT) kezeli a feldolgozást
-    let geminiData: any = null; // Alapértelmezett üres objektum
-    
-    // --- VÉGLEGES ADAT EGYESÍTÉS (v51) ---
+    // --- VÉGLEGES ADAT EGYESÍTÉS (v52.9) ---
     // Az ICanonicalRawData interfész alapján hozzuk létre a finalData-t
     const finalData: ICanonicalRawData = {
-        ...(geminiData || {}), // Fallback, ha a geminiData mégis tartalmazna alap struktúrát
+        ...(geminiData || {}), 
         stats: {
-            home: {} as ICanonicalStats, // Kezdetben üres
+            home: {} as ICanonicalStats, 
             away: {} as ICanonicalStats
         },
         apiFootballData: {
@@ -841,14 +801,16 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
             home_overall: apiSportsHomeSeasonStats?.form || geminiData?.form?.home_overall || null,
             away_overall: apiSportsHomeSeasonStats?.form || geminiData?.form?.away_overall || null,
         },
-        detailedPlayerStats: detailedPlayerStats,
-        absentees: { // Az 'detailedPlayerStats'-ból származtatva
-            home: detailedPlayerStats.home_absentees, 
-            away: detailedPlayerStats.away_absentees 
-        }
+        // Alapértelmezett, üres playerStats, amelyet a DataFetch.ts fog felülírni a Sofascore adatokkal
+        detailedPlayerStats: {
+            home_absentees: [],
+            away_absentees: [],
+            key_players_ratings: { home: {}, away: {} }
+        },
+        absentees: { home: [], away: [] } // Sofascore fogja felülírni
     };
     
-    // === JAVÍTÁS (LOG HIBA): Kanonikus statisztikák feltöltése (gp, gf, ga, form) ===
+    // Kanonikus statisztikák feltöltése (gp, gf, ga, form)
     const homeGP = apiSportsHomeSeasonStats?.gamesPlayed || geminiData?.stats?.home?.gp || 1;
     finalData.stats.home = {
         gp: homeGP,
@@ -864,7 +826,6 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         ga: apiSportsAwaySeasonStats?.goalsAgainst || geminiData?.stats?.away?.ga || 0,
         form: apiSportsAwaySeasonStats?.form || geminiData?.form?.away_overall || null
     };
-    // === JAVÍTÁS VÉGE ===
 
     console.log(`Végleges stats használatban: Home(GP:${homeGP}), Away(GP:${awayGP})`);
     
@@ -892,12 +853,12 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
          richContext,
          advancedData: advancedData,
          form: finalData.form,
-         rawData: finalData, // Ez most már tartalmazza a 'detailedPlayerStats'-t
+         rawData: finalData, // Ez tartalmazza az alapértelmezett detailedPlayerStats-t
          oddsData: fetchedOddsData, 
          fromCache: false
     };
     
-    // === JAVÍTÁS (LOG HIBA): A validáció most már a kisbetűs 'gp'-t ellenőrzi ===
+    // Validáció
     if (typeof result.rawStats?.home?.gp !== 'number' || result.rawStats.home.gp <= 0 || typeof result.rawStats?.away?.gp !== 'number' || result.rawStats.away.gp <= 0) {
         console.error(`KRITIKUS HIBA (${homeTeamName} vs ${awayTeamName}): Érvénytelen VÉGLEGES statisztikák (GP <= 0). HomeGP: ${result.rawStats?.home?.gp}, AwayGP: ${result.rawStats?.away?.gp}`);
         throw new Error(`Kritikus statisztikák (GP <= 0) érvénytelenek.`);
