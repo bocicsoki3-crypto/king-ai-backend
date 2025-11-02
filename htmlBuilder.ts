@@ -1,14 +1,11 @@
-// htmlBuilder.ts (v52.3 - TS2339 hibajavítás)
-// JAVÍTÁS: TS2339 (TypeError: .split is not a function) javítva
-// a 'keyQuestionsHtml' generátor robusztusabbá tételével.
+// htmlBuilder.ts (v52.11 - text.trim() hiba javítása)
 
 import type { ICanonicalOdds } from './src/types/canonical.d.ts'; 
 
 /**************************************************************
 * htmlBuilder.ts - HTML Generátor Modul (Node.js Verzió)
-* VÁLTOZÁS (v52.3 - TS):
-* - Javítva a 'key_questions' feldolgozása, hogy kezelje a 'null'
-* vagy 'undefined' értékeket, megelőzve a .split() hibát.
+* VÁLTOZÁS (v52.11 - TS):
+* - Javítva a 'processAiText' funkció a 'text.trim()' hiba elhárítására.
 **************************************************************/
 
 /**
@@ -38,12 +35,17 @@ function escapeHTML(str: string | null | undefined): string {
 
 /**
  * Segédfüggvény AI szövegek feldgozásához (escape + newline -> <br>)
+ * JAVÍTÁS: A bemenetet explicit stringgé alakítjuk a .trim() előtt.
  */
 const processAiText = (text: string | null | undefined): string => {
-    if (!text || text.includes("Hiba") || text.trim() === 'N/A') {
-        return `<p>${escapeHTML(text || "N/A.")}</p>`; // N/A-t adunk vissza hiba esetén
+    // === JAVÍTÁS (A KRITIKUS SOR) ===
+    // Biztosítjuk, hogy a 'text' érvényes string legyen, különben üres stringet használunk.
+    const safeText = String(text || ''); // <- A javítás: Mindig string!
+
+    if (safeText.includes("Hiba") || safeText.trim() === 'N/A') {
+        return `<p>${escapeHTML(safeText || "N/A.")}</p>`; 
     }
-    const escapedHtml = escapeHTML(text);
+    const escapedHtml = escapeHTML(safeText);
     return escapedHtml.replace(/\n/g, '<br>');
 };
 
@@ -295,7 +297,7 @@ export function buildAnalysisHtml(
          <div class="market-card-grid">${marketCardsHtml}</div>
     </div>`;
     
-    // === JAVÍTÁS (TS2339 / ) ===
+    // === JAVÍTÁS (TS2339 /) ===
     // Ellenőrizzük, hogy a 'key_questions' string-e, mielőtt a .split()-et hívnánk.
     let keyQuestionsHtml = '<p>- Nincsenek kulcskérdések azonosítva.</p>';
     if (fullAnalysisReport?.key_questions && typeof fullAnalysisReport.key_questions === 'string') {

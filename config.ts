@@ -1,4 +1,4 @@
-// config.ts (v52.9 - Sofascore Kulcsok Hozzáadva)
+// config.ts (v52.11 - Sofascore Kulcsok Hozzáadva)
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -70,8 +70,8 @@ export const BASKETBALL_API_KEY: string | undefined = process.env.BASKETBALL_API
 export const BASKETBALL_API_HOST: string = process.env.BASKETBALL_API_HOST || 'basketball-api.p.rapidapi.com';
 
 // === ÚJ SOFASCORE KONFIGURÁCIÓ ===
-export const SOFASCORE_API_KEY: string | undefined = process.env.SOFASCORE_API_KEY; // ÚJ EXPORT
-export const SOFASCORE_API_HOST: string = process.env.SOFASCORE_API_HOST || 'sportapi7.p.rapidapi.com'; // ÚJ EXPORT
+export const SOFASCORE_API_KEY: string | undefined = process.env.SOFASCORE_API_KEY; 
+export const SOFASCORE_API_HOST: string = process.env.SOFASCORE_API_HOST || 'sportapi7.p.rapidapi.com'; 
 // === VÉGE ===
 
 // --- API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---

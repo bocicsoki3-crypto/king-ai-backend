@@ -1,5 +1,4 @@
-// providers/sofascoreProvider.ts (v52.10 - Utolsó TS hiba javítása)
-// JAVÍTÁS: TS2322 hiba javítva az 'advancedData' mező kezdeti értékének megfelelő típusozásával.
+// providers/sofascoreProvider.ts (v52.11 - Játékos-adat Feldolgozás és TS2322 javítás)
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -273,7 +272,7 @@ function processSofascoreLineups(
 
 
 /**
- * FŐ EXPORTÁLT FUNKCIÓ (MÓDOSÍTVA v52.10)
+ * FŐ EXPORTÁLT FUNKCIÓ (MÓDOSÍTVA v52.11)
  */
 export async function fetchSofascoreData(
     homeTeamName: string, 
@@ -284,8 +283,7 @@ export async function fetchSofascoreData(
 }> {
     
     // === JAVÍTÁS (TS2322) ===
-    // Explicit típus a kezdeti 'result' objektumhoz, ami kikényszeríti, hogy
-    // a mezők 'null' VAGY a cél-típus legyenek.
+    // Explicit típus a kezdeti 'result' objektumhoz, ami feloldja a típus-ütközést.
     let result: { 
         advancedData: { xg_home: number; xg_away: number } | null, 
         playerStats: ICanonicalPlayerStats 
@@ -307,13 +305,16 @@ export async function fetchSofascoreData(
         ]);
 
         if (!homeTeamId || !awayTeamId) {
-            throw new Error("A csapat ID-k nem találhatók a Sofascore-ban.");
+            // Mivel a Sofascore-ban valószínűleg rossz a kereső endpoint, visszalépünk
+            console.warn(`[Sofascore Provider] Csapat ID hiba. A Sofascore kérés leáll.`);
+            return result;
         }
 
         // 2. Meccs ID lekérése
         const eventId = await getSofascoreEventId(homeTeamId, awayTeamId);
         if (!eventId) {
-            throw new Error("A meccs (Event) ID nem található a Sofascore-ban.");
+            console.warn(`[Sofascore Provider] Event ID nem található. A Sofascore kérés leáll.`);
+            return result;
         }
 
         // 3. xG és Felállások lekérése párhuzamosan
@@ -334,7 +335,7 @@ export async function fetchSofascoreData(
         result.playerStats = processSofascoreLineups(lineupsData);
 
     } catch (e: any) {
-        console.warn(`[Sofascore Provider] Hiba a teljes folyamat során: ${e.message}. A rendszer a becsült adatokra támaszkodik.`);
+        console.warn(`[Sofascore Provider] Kritikus hiba a teljes Sofascore folyamat során: ${e.message}`);
     }
 
     return result;
