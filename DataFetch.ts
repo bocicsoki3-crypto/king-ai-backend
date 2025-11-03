@@ -158,7 +158,7 @@ export async function getRichContextualData(
 // === JAVÍTÁS (v54.3) ===
 // Az _getFixturesFromEspn helyett az apiSportsProvider SSOT függvényét exportáljuk
 // Az 'index.ts' (Source 699) mostantól automatikusan az API-Football-t hívja.
-export const _getFixturesFromEspn = apiSportsProvider.getFixturesFromApiSports;
+export const _getFixturesFromEspn = apiSportsProvider.fetchMatchData;
 // === JAVÍTÁS VÉGE ===
 
 export const _callGemini = commonCallGemini;
