@@ -1,11 +1,12 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v54.12 (DataFetch v54.10+ Hívás Javítás)
+// VERZIÓ: v54.15 (forceNew és Manual xG Átadás Javítása)
 // MÓDOSÍTÁS:
-// 1. A 'getRichContextualData' hívása javítva, hogy egyetlen 'options'
-//    objektumot adjon át, megoldva a TS2554 hibát.
-// 2. Importálva az 'IDataFetchOptions' típus.
-// 3. Az 'AnalysisFlow' továbbra is felelős a P1 (Manuális 4-komponensű)
-//    xG felülbírálásáért.
+// 1. A 'getRichContextualData' hívása (v54.12) javítva:
+// 2. Most már helyesen átadja a 'forceNew' paramétert a DataFetch rétegnek.
+// 3. Helyesen adja át a 'params.manual_xg_home'/'manual_xg_away'
+//    értékeket, ahelyett, hogy 'null'-t hardkódolna.
+// 4. Eltávolítva a (v54.5) redundáns, 4-komponensű xG logikája,
+//    mivel azt a DataFetch (v54.15) fogja központilag kezelni.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -20,9 +21,7 @@ import type {
 import { findMainTotalsLine } from './providers/common/utils.js';
 
 // Adatgyűjtő funkciók
-// === JAVÍTÁS (v54.12): Importáljuk az új interfészt is ===
 import { getRichContextualData, type IDataFetchOptions } from './DataFetch.js';
-// === JAVÍTÁS VÉGE ===
 
 import {
     estimateXG,
@@ -48,9 +47,8 @@ const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v54.12):
-* - A 'runFullAnalysis' fogadja a 4 xG komponenst
-* és elvégzi a számítást a szerveren.
+* VÁLTOZÁS (v54.15):
+* - Az xG prioritási logika átkerült a DataFetch.ts-be.
 * - A 'getRichContextualData' hívás javítva.
 **************************************************************/
 
@@ -71,7 +69,8 @@ interface IAnalysisResponse {
         modelConfidence: number;
         sim: any; 
         recommendation: any;
-        xgSource: 'Manual (Components)' | 'API (Real)' | 'Calculated (Fallback)';
+        // Az 'xgSource' most már a DataFetch rétegből érkezik
+        xgSource: 'Manual (Direct)' | 'Manual (Components)' | 'API (Real)' | 'Calculated (Fallback)';
     };
     debugInfo: any;
 }
@@ -85,7 +84,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
     let fixtureIdForSaving: number | string | null = null;
     
     try {
-        // === JAVÍTÁS (v54.5): 4-komponensű xG felülbírálás ===
+        // === xG Komponensek és Direkt xG beolvasása ===
         const { 
             home: rawHome, 
             away: rawAway, 
@@ -93,12 +92,16 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             sheetUrl, 
             utcKickoff, 
             leagueName,
-            manual_H_xG,   // ÚJ (Opcionális)
-            manual_H_xGA, // ÚJ (Opcionális)
-            manual_A_xG,   // ÚJ (Opcionális)
-            manual_A_xGA  // ÚJ (Opcionális)
+            // P1 (Komponens)
+            manual_H_xG, 
+            manual_H_xGA,
+            manual_A_xG, 
+            manual_A_xGA,
+            // P1 (Direkt)
+            manual_xg_home,
+            manual_xg_away
         } = params;
-        // === JAVÍTÁS VÉGE ===
+        // === Olvasás Vége ===
 
         if (!rawHome || !rawAway || !sport || !utcKickoff) {
             throw new Error("Hiányzó kötelező paraméterek: 'home', 'away', 'sport', 'utcKickoff'.");
@@ -109,8 +112,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         
-        // A cache kulcs verzióját v54.5-re emeljük (az xG logika miatt)
-        analysisCacheKey = `analysis_v54.5_json_api_${sport}_${safeHome}_vs_${safeAway}`; 
+        // Cache kulcs (v54.15 - DataFetch kezeli az xG-t)
+        analysisCacheKey = `analysis_v54.15_json_api_${sport}_${safeHome}_vs_${safeAway}`; 
 
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
@@ -133,31 +136,36 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         // --- 2. Fő Adatgyűjtés ---
         console.log(`Adatgyűjtés indul: ${home} vs ${away}...`);
 
-        // === JAVÍTÁS (v54.12): A 'getRichContextualData' hívás javítása ===
-        // A 'DataFetch.ts' (v54.10+) már egyetlen 'options' objektumot vár.
-        // Ez megoldja a TS2554 hibát.
+        // === JAVÍTÁS (v54.15): A 'getRichContextualData' hívás javítása ===
+        // Most már átadjuk a 'forceNew' kapcsolót és a P1 xG adatokat
         const dataFetchOptions: IDataFetchOptions = {
             sport: sport,
             homeTeamName: home,
             awayTeamName: away,
             leagueName: leagueName,
             utcKickoff: utcKickoff,
+            forceNew: forceNew, // ÁTADVA
             
-            // A manuális xG komponenseket NEM adjuk át,
-            // mivel az 'AnalysisFlow' (v54.5) logikája itt kezeli azokat.
-            // A DataFetch.ts P2(Sofascore) > P3(API) logikát futtatja le.
-            manual_xg_home: null, // (A P1 felülbírálás itt, alább történik)
-            manual_xg_away: null
+            // P1 (Direkt)
+            manual_xg_home: manual_xg_home ? Number(manual_xg_home) : null,
+            manual_xg_away: manual_xg_away ? Number(manual_xg_away) : null,
+
+            // P1 (Komponens)
+            manual_H_xG: manual_H_xG ? Number(manual_H_xG) : null,
+            manual_H_xGA: manual_H_xGA ? Number(manual_H_xGA) : null,
+            manual_A_xG: manual_A_xG ? Number(manual_A_xG) : null,
+            manual_A_xGA: manual_A_xGA ? Number(manual_A_xGA) : null
         };
         
         const { 
             rawStats, 
             richContext,
-            advancedData, // Ez tartalmazza a P2 (Sofascore) vagy P3 (API-Sports) xG-t
+            advancedData, // Ez már a VÉGLEGES, priorizált xG-t tartalmazza
             form, 
             rawData, 
             leagueAverages = {}, 
-            oddsData 
+            oddsData,
+            xgSource // Ezt most már a DataFetch adja vissza
         }: ICanonicalRichContext = await getRichContextualData(dataFetchOptions);
         // === JAVÍTÁS VÉGE ===
 
@@ -190,51 +198,24 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         // --- 4. Statisztikai Modellezés ---
         console.log(`Modellezés indul: ${home} vs ${away}...`);
 
-        // Először futtatjuk a normál becslést (ez adja a P4 fallback-et ÉS a módosítókat)
-        const { mu_h: estimated_h, mu_a: estimated_a } = estimateXG(home, away, rawStats, sport, form, leagueAverages, advancedData, rawData, psyProfileHome, psyProfileAway);
+        // === JAVÍTÁS (v54.15): xG Logika Átstrukturálása ===
+        // Az 'advancedData' már a VÉGLEGES xG-t tartalmazza (P1, P2, vagy P3)
+        // Az 'estimateXG' feladata most már csak a P4 (Becslés) biztosítása,
+        // HA az 'advancedData.home.xg' null.
+
+        const { mu_h, mu_a, xgSource: finalXgSource } = estimateXG(
+            home, away, rawStats, sport, form, leagueAverages, 
+            advancedData, // Ezt kapja meg (P1, P2, v P3)
+            rawData, psyProfileHome, psyProfileAway, 
+            xgSource // Ezt is megkapja a DataFetch-től
+        );
         
-        // === JAVÍTÁS (v54.5): 4-komponensű xG felülbírálási logika ===
-        // Ez a logika (v54.12) most már helyesen működik:
-        // P1 (Manual) > P2/P3 (advancedData) > P4 (estimated)
-        let mu_h: number;
-        let mu_a: number;
-        let xgSource: IAnalysisResponse['analysisData']['xgSource'];
-        
-        // 3-szintű prioritás
-        if (typeof manual_H_xG === 'number' && 
-            typeof manual_H_xGA === 'number' && 
-            typeof manual_A_xG === 'number' && 
-            typeof manual_A_xGA === 'number') 
-        {
-            // 1. PRIORITÁS: Manuális Komponens felülbírálás
-            // (Hazai Támadás + Vendég Védekezés) / 2
-            mu_h = (manual_H_xG + manual_A_xGA) / 2;
-            // (Vendég Támadás + Hazai Védekezés) / 2
-            mu_a = (manual_A_xG + manual_H_xGA) / 2;
-            xgSource = 'Manual (Components)';
-            console.log(`MANUÁLIS XG FELÜLBÍRÁLÁS (Komponensekből): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
-        
-        } else if (advancedData?.home?.xg != null && advancedData?.away?.xg != null) {
-            // 2. PRIORITÁS: API-ból (P2:Sofascore/P3:API-Football) kapott valós xG
-            // (Az 'advancedData' már a DataFetch.ts által priorizált xG-t tartalmazza)
-            mu_h = advancedData.home.xg; 
-            mu_a = advancedData.away.xg;
-            xgSource = 'API (Real)';
-            console.log(`API XG HASZNÁLATBAN (DataFetch prioritás): H=${mu_h}, A=${mu_a}`);
-        
-        } else {
-            // 3. PRIORITÁS: Becsült xG (P4)
-            // (Ez az 'estimateXG' futtatásának eredménye, ha 'advancedData.xg' null volt)
-            mu_h = estimated_h;
-            mu_a = estimated_a;
-            xgSource = 'Calculated (Fallback)';
-            console.log(`BECSÜLT XG HASZNÁLATBAN: H=${mu_h}, A=${mu_a}`);
-        }
+        // Az 'estimateXG' vagy visszaadja a P1/P2/P3-at, vagy kiszámolja a P4-et.
+        console.log(`${finalXgSource.toUpperCase()} XG HASZNÁLATBAN: H=${mu_h}, A=${mu_a}`);
         // === JAVÍTÁS VÉGE ===
 
         const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
         
-        // A sim() már a VÉGLEGES (potenciálisan felülbírált) mu_h, mu_a értékekkel fut
         const sim = simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData);
         sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a;
         sim.mu_corners_sim = mu_corners;
@@ -249,8 +230,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         
         const quantInput = {
             simJson: sim,
-            // JAVÍTÁS (v54.5): A 'realXgJson' most a *végleges* xG adatot kapja meg
-            realXgJson: { home: mu_h, away: mu_a, source: xgSource },
+            realXgJson: { home: mu_h, away: mu_a, source: finalXgSource },
             keyPlayerRatingsJson: rawData.detailedPlayerStats.key_players_ratings,
             valueBetsJson: valueBets
         };
@@ -285,11 +265,11 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         // --- 6. Válasz Elküldése és Naplózás ---
         const debugInfo = {
             playerDataFetched: (rawData?.detailedPlayerStats?.key_players_ratings?.home) ? 'Igen (Sofascore)' : 'Nem (Fallback)',
-            realXgUsed: xgSource, // A v54.5-ös xgSource-t használjuk
+            realXgUsed: finalXgSource,
             fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
         };
         
-        // A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA (JSON API v54.5)
+        // A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA
         const jsonResponse: IAnalysisResponse = { 
             analysisData: {
                 committeeResults: committeeResults,
@@ -306,7 +286,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 modelConfidence: modelConfidence,
                 sim: sim,
                 recommendation: masterRecommendation,
-                xgSource: xgSource // Hozzáadva
+                xgSource: finalXgSource as any
             },
             debugInfo: debugInfo 
         };
@@ -320,7 +300,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 home, 
                 away, 
                 date: new Date(), 
-                html: `JSON_API_MODE (xG Forrás: ${xgSource})`,
+                html: `JSON_API_MODE (xG Forrás: ${finalXgSource})`,
                 id: analysisCacheKey,
                 fixtureId: fixtureIdForSaving,
                 recommendation: masterRecommendation
