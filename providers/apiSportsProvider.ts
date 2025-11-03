@@ -1,6 +1,6 @@
-// providers/apiSportsProvider.ts (v54.2 - Build Fix 2. kísérlet)
-// JAVÍTÁS: (TS1005) Hiányzó vessző pótlása a getApiSportsOdds -> result objektumban.
-// JAVÍTÁS: (2. Fázis) 'getApiSportsFixtureStats' hívás eltávolítva a fetchMatchData-ból.
+// providers/apiSportsProvider.ts (v54.2 - Build Fix 3. kísérlet)
+// JAVÍTÁS: (TS1005) Hiányzó vessző pótlása a getApiSportsOdds -> result objektumban (Source 1407).
+// JAVÍTÁS: (2. Fázis) 'getApiSportsFixtureStats' hívás eltávolítva a fetchMatchData-ból (Source 1470).
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -220,7 +220,7 @@ searchName;
         }
     }
 
-    // 5. LÉPÉS: Eredmény feldgozása
+    // 5. LÉPÉS: Eredmény feldolgozása
     if (foundTeam && foundTeam.id) {
         apiSportsNameMappingCache.set(nameCacheKey, foundTeam.id);
         return foundTeam.id;
@@ -493,7 +493,7 @@ stats.games?.played,
     return stats;
 }
 
-// --- JAVÍTOTT getApiSportsOdds (TypeError javítva) ---
+// --- JAVÍTOTT getApiSportsOdds (TS1005 JAVÍTVA) ---
 async function getApiSportsOdds(fixtureId: number | string | null, sport: string): Promise<ICanonicalOdds |
 null> {
     if (!fixtureId) {
