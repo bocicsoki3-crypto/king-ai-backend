@@ -1,310 +1,189 @@
-// --- AnalysisFlow.ts (v54.5 - Manual xG Components) ---
-// MÓDOSÍTÁS: A runFullAnalysis implementálja a 4-komponensű
-// xG prioritási logikát (1. Manuális Komponensek, 2. API, 3. Becsült).
+// FÁJL: DataFetch.ts
+// VERZIÓ: v54.12 (Sofascore 'xG_away' Típusjavítás)
+// MÓDOSÍTÁS:
+// 1. A 'getRichContextualData' (v54.10) egy 'options' objektumot fogad.
+// 2. Az "EGYESÍTÉS" szekció betartja a P1 > P2 > P3 > P4 láncot.
+// 3. (v54.12) A Sofascore P2 prioritás javítva, hogy a 'xG_away' (nagy G)
+//    kulcsot használja, ahogy azt a TS2551 hiba jelzi.
 
 import NodeCache from 'node-cache';
-import { SPORT_CONFIG } from './config.js';
+import { fileURLToPath } from 'url';
+import path from 'path';
 // Kanonikus típusok importálása
-import type {
-    ICanonicalRichContext,
-    ICanonicalRawData,
-    ICanonicalStats,
-    ICanonicalOdds
-} from './src/types/canonical.d.ts';
-// A 'findMainTotalsLine'-t a központi 'utils' fájlból importáljuk
-import { findMainTotalsLine } from './providers/common/utils.js';
-// Adatgyűjtő funkciók
-import { getRichContextualData } from './DataFetch.js';
-import {
-    estimateXG,
-    estimateAdvancedMetrics,
-    simulateMatchProgress,
-    calculateModelConfidence,
-    calculatePsychologicalProfile,
-    calculateValue,
-    analyzeLineMovement,
-    analyzePlayerDuels
-} from './Model.js';
-// AI Szolgáltatás Importok
-import {
-    runStep1_GetQuant,
-    runStep2_GetScout,
-    runStep3_GetStrategy
-} from './AI_Service.js';
+import type { ICanonicalRichContext } from './src/types/canonical.d.ts';
 
-import { saveAnalysisToSheet } from './sheets.js'; 
-// import { buildAnalysisHtml } from './htmlBuilder.js'; // A v54.0 JSON API refaktorban eltávolítva
+// Providerek importálása
+import * as apiSportsProvider from './providers/apiSportsProvider.js';
+import * as hockeyProvider from './providers/newHockeyProvider.js';
+import * as basketballProvider from './providers/newBasketballProvider.js';
+import { fetchSofascoreData } from './providers/sofascoreProvider.js';
+import { SPORT_CONFIG } from './config.js'; 
 
-// Gyorsítótár inicializálása
-const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
+// Importáljuk a megosztott segédfüggvényeket
+import {
+    _callGemini as commonCallGemini,
+    _getFixturesFromEspn as commonGetFixtures
+} from './providers/common/utils.js';
+
+// --- FŐ CACHE INICIALIZÁLÁS ---
+const scriptCache = new NodeCache({ stdTTL: 3600 * 2, checkperiod: 600, useClones: false });
+
+// Típusdefiníció a providerek számára
+interface IDataProvider {
+    fetchMatchData: (options: any) => Promise<ICanonicalRichContext>;
+    providerName: string;
+}
+
+// Interfész a kiterjesztett funkció opciókhoz
+export interface IDataFetchOptions {
+    sport: string;
+    homeTeamName: string; // URL-kódoltan érkezik
+    awayTeamName: string; // URL-kódoltan érkezik
+    leagueName: string;   // URL-kódoltan érkezik
+    utcKickoff: string;   // URL-kódoltan érkezik
+    manual_xg_home?: number | null; // A P1 prioritású adat (AnalysisFlow kezeli)
+    manual_xg_away?: number | null; // A P1 prioritású adat (AnalysisFlow kezeli)
+}
 
 /**************************************************************
-* AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v54.5 - Manual xG Components):
-* - A 'runFullAnalysis' fogadja a 4 xG komponenst
-* és elvégzi a számítást a szerveren.
+* DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
+* VERZIÓ: v54.12 (xG Prioritási Lánc Fix)
 **************************************************************/
 
-// Az új, strukturált JSON válasz (v54.0)
-interface IAnalysisResponse {
-    analysisData: {
-        committeeResults: any;
-        matchData: {
-            home: string;
-            away: string;
-            sport: string;
-            mainTotalsLine: number | string;
-            mu_h: number | string;
-            mu_a: number | string;
-        };
-        oddsData: ICanonicalOdds | null;
-        valueBets: any[];
-        modelConfidence: number;
-        sim: any; 
-        recommendation: any;
-        xgSource: 'Manual (Components)' | 'API (Real)' | 'Calculated (Fallback)';
-    };
-    debugInfo: any;
+function getProvider(sport: string): IDataProvider {
+  switch (sport.toLowerCase()) {
+    case 'soccer':
+      return apiSportsProvider;
+    case 'hockey':
+      return hockeyProvider; 
+    case 'basketball':
+      return basketballProvider;
+    default:
+      throw new Error(`Nem támogatott sportág: '${sport}'. Nincs implementált provider.`);
+  }
 }
 
-interface IAnalysisError {
-    error: string;
-}
-
-export async function runFullAnalysis(params: any, sport: string, openingOdds: any): Promise<IAnalysisResponse | IAnalysisError> {
-    let analysisCacheKey = 'unknown_analysis';
-    let fixtureIdForSaving: number | string | null = null;
+/**
+ * FŐ ADATGYŰJTŐ FUNKCIÓ (v54.12)
+ */
+export async function getRichContextualData(
+    options: IDataFetchOptions 
+): Promise<ICanonicalRichContext> {
     
+    // === Dekódolás ===
+    const decodedLeagueName = decodeURIComponent(decodeURIComponent(options.leagueName));
+    const decodedHomeTeam = decodeURIComponent(decodeURIComponent(options.homeTeamName));
+    const decodedAwayTeam = decodeURIComponent(decodeURIComponent(options.awayTeamName));
+    const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(options.utcKickoff));
+
+    const teamNames = [decodedHomeTeam, decodedAwayTeam].sort();
+    // A cache kulcs verzióját v54.12-re emeljük
+    const ck = `rich_context_v54.12_sofascore_${options.sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
+    const cached = scriptCache.get<ICanonicalRichContext>(ck);
+    if (cached) {
+        console.log(`Cache találat (${ck})`);
+        return { ...cached, fromCache: true };
+    }
+    
+    console.log(`Nincs cache (${ck}), friss adatok lekérése...`);
     try {
-        // === JAVÍTÁS (v54.5): 4-komponensű xG felülbírálás ===
-        const { 
-            home: rawHome, 
-            away: rawAway, 
-            force: forceNewStr, 
-            sheetUrl, 
-            utcKickoff, 
-            leagueName,
-            manual_H_xG,  // ÚJ (Opcionális)
-            manual_H_xGA, // ÚJ (Opcionális)
-            manual_A_xG,  // ÚJ (Opcionális)
-            manual_A_xGA  // ÚJ (Opcionális)
-        } = params;
+        
+        // 1. Providerek kiválasztása és beállítása
+        const sportProvider = getProvider(options.sport);
+        console.log(`Adatgyűjtés indul (Provider: ${sportProvider.providerName || options.sport}): ${decodedHomeTeam} vs ${decodedAwayTeam}...`);
+
+        const sportConfig = SPORT_CONFIG[options.sport];
+        const leagueData = sportConfig?.espn_leagues[decodedLeagueName]; 
+        const countryContext = leagueData?.country || null; 
+        if (!countryContext) {
+            console.warn(`[DataFetch] Nincs 'country' kontextus a(z) '${decodedLeagueName}' ligához. A Sofascore névfeloldás pontatlan lehet.`);
+        }
+        
+        const providerOptions = {
+            sport: options.sport,
+            homeTeamName: decodedHomeTeam,
+            awayTeamName: decodedAwayTeam,
+            leagueName: decodedLeagueName,
+            utcKickoff: decodedUtcKickoff
+        };
+
+        // Párhuzamos hívás
+        const [
+            baseResult, 
+            sofascoreData 
+        ] = await Promise.all([
+             sportProvider.fetchMatchData(providerOptions), 
+            options.sport === 'soccer' 
+                ? fetchSofascoreData(decodedHomeTeam, decodedAwayTeam, countryContext) 
+                : Promise.resolve(null)
+        ]);
+
+        // === EGYESÍTÉS (v54.12 JAVÍTÁS - xG PRIORITÁSI LÁNC) ===
+        const finalResult: ICanonicalRichContext = baseResult;
+
+        let finalHomeXg: number | null = null;
+        let finalAwayXg: number | null = null;
+        let xgSource: string = "N/A";
+
+        // 1. PRIORITÁS: Manuális xG
+        // (Ezt az 'AnalysisFlow.ts' (v54.12) kezeli, miután ez a függvény visszatér)
+        // Mi a P2 > P3 logikát futtatjuk le.
+
+        // === JAVÍTÁS (v54.12): Visszaállítás 'xG_away'-re (nagy G) ===
+        // Ez oldja meg a TS2551 hibát.
+        // 2. PRIORITÁS: Sofascore valós xG
+        if (sofascoreData?.advancedData?.xg_home != null && sofascoreData?.advancedData?.xG_away != null) {
+            finalHomeXg = sofascoreData.advancedData.xg_home;
+            finalAwayXg = sofascoreData.advancedData.xG_away; // JAVÍTVA (nagy G)
+            xgSource = "P2: Sofascore (Real)";
+        }
         // === JAVÍTÁS VÉGE ===
 
-        if (!rawHome || !rawAway || !sport || !utcKickoff) {
-            throw new Error("Hiányzó kötelező paraméterek: 'home', 'away', 'sport', 'utcKickoff'.");
+        // 3. PRIORITÁS: API-Sports valós xG
+        else if (baseResult?.advancedData?.home?.xg != null && baseResult?.advancedData?.away?.xg != null) {
+            finalHomeXg = baseResult.advancedData.home.xg;
+            finalAwayXg = baseResult.advancedData.away.xg;
+            xgSource = "P3: API-Sports (Real)";
         }
-        const home: string = String(rawHome).trim();
-        const away: string = String(rawAway).trim();
-        const forceNew: boolean = String(forceNewStr).toLowerCase() === 'true';
-        const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
-        const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
+        // 4. PRIORITÁS: Visszaesés (Becslés)
+        else {
+            xgSource = "P4: N/A (Fallback to Model Estimation)";
+        }
         
-        // A cache kulcs verzióját v54.5-re emeljük
-        analysisCacheKey = `analysis_v54.5_json_api_${sport}_${safeHome}_vs_${safeAway}`; 
-
-        if (!forceNew) {
-            const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
-            if (cachedResult) {
-                console.log(`Cache találat (${analysisCacheKey})`);
-                return cachedResult;
-            } else {
-                console.log(`Nincs cache (${analysisCacheKey}), friss elemzés indul...`);
-            }
-        } else {
-            console.log(`Újraelemzés kényszerítve (${analysisCacheKey})`);
-        }
-
-        // --- 1. Alapkonfiguráció ---
-        const sportConfig = SPORT_CONFIG[sport];
-        if (!sportConfig) {
-            throw new Error(`Nincs konfiguráció a(z) '${sport}' sporthoz.`);
-        }
-
-        // --- 2. Fő Adatgyűjtés ---
-        console.log(`Adatgyűjtés indul: ${home} vs ${away}...`);
-        // A v54.3-as (javított) DataFetch hívása
-        const { 
-            rawStats, 
-            richContext,
-            advancedData, // Ez tartalmazza az API-ból jövő (ha van) xG-t
-            form, 
-            rawData, 
-            leagueAverages = {}, 
-            oddsData 
-        }: ICanonicalRichContext = await getRichContextualData(sport, home, away, leagueName, utcKickoff);
-        console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
+        // Végleges xG beállítása
+        finalResult.advancedData = {
+            home: { ...finalResult.advancedData.home, xG: finalHomeXg }, // 'xG'-t használunk, de a Model 'xg'-t vár...
+            away: { ...finalResult.advancedData.away, xG: finalAwayXg }  // ... javítsuk 'xg'-re (kis g)
+        };
+        // JAVÍTÁS: A kanonikus modell (ICanonicalRichContext) 'advancedData.home.xg' (kis g)-t vár.
+        finalResult.advancedData.home['xg'] = finalHomeXg;
+        finalResult.advancedData.away['xg'] = finalAwayXg;
         
-        if (rawData && rawData.apiFootballData && rawData.apiFootballData.fixtureId) {
-            fixtureIdForSaving = rawData.apiFootballData.fixtureId;
-        }
-
-        // --- 3. Odds és kontextus függő elemzések ---
-        let mutableOddsData: ICanonicalOdds | null = oddsData;
-        if (!mutableOddsData) {
-            console.warn(`Figyelmeztetés: Nem sikerült szorzó adatokat lekérni ${home} vs ${away} meccshez.`);
-            mutableOddsData = { 
-                current: [], 
-                allMarkets: [], 
-                fromCache: false, 
-                fullApiData: null 
+        console.log(`[DataFetch] xG Forrás meghatározva (API szinten): ${xgSource}. (H:${finalHomeXg ?? 'N/A'}, A:${finalAwayXg ?? 'N/A'})`);
+        
+        // 3. Sofascore Játékos Adat felülírása (Logika helyes)
+        if (sofascoreData && sofascoreData.playerStats) {
+            console.log(`[DataFetch] Felülírás: Az 'apiSportsProvider' szimulált játékos-adatai felülírva a Sofascore adataival (Hiányzók: ${sofascoreData.playerStats.home_absenteS.length}H / ${sofascoreData.playerStats.away_absentees.length}A).`);
+            finalResult.rawData.detailedPlayerStats = sofascoreData.playerStats;
+            finalResult.rawData.absentees = {
+                home: sofascoreData.playerStats.home_absentees,
+                away: sofascoreData.playerStats.away_absentees
             };
         }
+        // === EGYESÍTÉS VÉGE ===
 
-        const marketIntel = analyzeLineMovement(mutableOddsData, openingOdds, sport, home);
-        const mainTotalsLine = findMainTotalsLine(mutableOddsData, sport) || sportConfig.totals_line;
-        console.log(`Meghatározott fő gól/pont vonal: ${mainTotalsLine}`);
-
-        const duelAnalysis = analyzePlayerDuels(rawData?.key_players_ratings, sport);
-        const psyProfileHome = calculatePsychologicalProfile(home, away, rawData);
-        const psyProfileAway = calculatePsychologicalProfile(away, home, rawData);
-
-        // --- 4. Statisztikai Modellezés ---
-        console.log(`Modellezés indul: ${home} vs ${away}...`);
-
-        // Először futtatjuk a normál becslést (ez adja a fallback-et ÉS a módosítókat)
-        const { mu_h: estimated_h, mu_a: estimated_a } = estimateXG(home, away, rawStats, sport, form, leagueAverages, advancedData, rawData, psyProfileHome, psyProfileAway);
+        // 4. Cache mentése
+        scriptCache.set(ck, finalResult);
+        console.log(`Sikeres adat-egyesítés (v54.12), cache mentve (${ck}).`);
         
-        // === JAVÍTÁS (v54.5): 4-komponensű xG felülbírálási logika ===
-        let mu_h: number;
-        let mu_a: number;
-        let xgSource: IAnalysisResponse['analysisData']['xgSource'];
-        
-        // 3-szintű prioritás
-        if (typeof manual_H_xG === 'number' && 
-            typeof manual_H_xGA === 'number' && 
-            typeof manual_A_xG === 'number' && 
-            typeof manual_A_xGA === 'number') 
-        {
-            // 1. PRIORITÁS: Manuális Komponens felülbírálás
-            // (Hazai Támadás + Vendég Védekezés) / 2
-            mu_h = (manual_H_xG + manual_A_xGA) / 2;
-            // (Vendég Támadás + Hazai Védekezés) / 2
-            mu_a = (manual_A_xG + manual_H_xGA) / 2;
-            xgSource = 'Manual (Components)';
-            console.log(`MANUÁLIS XG FELÜLBÍRÁLÁS (Komponensekből): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
-        } else if (advancedData?.home?.xg != null && advancedData?.away?.xg != null) {
-            // 2. PRIORITÁS: API-ból (Sofascore/API-Football) kapott valós xG
-            // (Az estimateXG már ezt használta, ha volt)
-            mu_h = estimated_h; 
-            mu_a = estimated_a;
-            xgSource = 'API (Real)';
-            console.log(`API XG HASZNÁLATBAN: H=${mu_h}, A=${mu_a}`);
-        } else {
-            // 3. PRIORITÁS: Becsült xG
-            mu_h = estimated_h;
-            mu_a = estimated_a;
-            xgSource = 'Calculated (Fallback)';
-            console.log(`BECSÜLT XG HASZNÁLATBAN: H=${mu_h}, A=${mu_a}`);
-        }
-        // === JAVÍTÁS VÉGE ===
-
-        const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
-        
-        // A sim() már a VÉGLEGES (potenciálisan felülbírált) mu_h, mu_a értékekkel fut
-        const sim = simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData);
-        sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a;
-        sim.mu_corners_sim = mu_corners;
-        sim.mu_cards_sim = mu_cards; sim.mainTotalsLine = mainTotalsLine;
-        
-        const modelConfidence = calculateModelConfidence(sport, home, away, rawData, form, sim, marketIntel);
-        const valueBets = calculateValue(sim, mutableOddsData, sport, home, away);
-        console.log(`Modellezés kész: ${home} vs ${away}.`);
-        
-        // --- 5. LÉPÉS: DIALEKTIKUS AI ELEMZÉS ---
-        console.log(`Dialektikus AI Elemzés indul (Quant/Scout/Strategist)...`);
-        
-        const quantInput = {
-            simJson: sim,
-            // JAVÍTÁS (v54.5): A 'realXgJson' most a *végleges* xG adatot kapja meg
-            realXgJson: { home: mu_h, away: mu_a, source: xgSource },
-            keyPlayerRatingsJson: rawData.detailedPlayerStats.key_players_ratings,
-            valueBetsJson: valueBets
-        };
-        const step1_Quant = await runStep1_GetQuant(quantInput);
-        if (step1_Quant.error) throw new Error(step1_Quant.error);
-
-        const scoutInput = {
-            rawDataJson: rawData,
-            detailedPlayerStatsJson: rawData.detailedPlayerStats,
-            marketIntel: marketIntel
-        };
-        const step2_Scout = await runStep2_GetScout(scoutInput);
-        if (step2_Scout.error) throw new Error(step2_Scout.error);
-        
-        const strategyInput = {
-            step1QuantJson: step1_Quant,
-            step2ScoutJson: step2_Scout,
-            modelConfidence: modelConfidence,
-            simJson: sim,
-            sim_mainTotalsLine: sim.mainTotalsLine
-        };
-        const step3_Strategy = await runStep3_GetStrategy(strategyInput);
-        
-        const committeeResults = {
-            ...step1_Quant,
-            ...step2_Scout,
-            ...step3_Strategy
-        };
-        const masterRecommendation = committeeResults.master_recommendation;
-        console.log(`Dialektikus elemzés és ajánlás megkapva: ${JSON.stringify(masterRecommendation)}`);
-
-        // --- 6. HTML Generálás ELTÁVOLÍTVA ---
-        
-        // --- 7. Válasz Elküldése és Naplózás ---
-        const debugInfo = {
-            playerDataFetched: (rawData?.detailedPlayerStats?.key_players_ratings?.home) ? 'Igen (Sofascore)' : 'Nem (Fallback)',
-            realXgUsed: xgSource, // A v54.5-ös xgSource-t használjuk
-            fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
-        };
-        
-        // A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA (JSON API v54.5)
-        const jsonResponse: IAnalysisResponse = { 
-            analysisData: {
-                committeeResults: committeeResults,
-                matchData: {
-                    home, 
-                    away, 
-                    sport, 
-                    mainTotalsLine: sim.mainTotalsLine,
-                    mu_h: sim.mu_h_sim,
-                    mu_a: sim.mu_a_sim
-                },
-                oddsData: mutableOddsData,
-                valueBets: valueBets,
-                modelConfidence: modelConfidence,
-                sim: sim,
-                recommendation: masterRecommendation,
-                xgSource: xgSource // Hozzáadva
-            },
-            debugInfo: debugInfo 
-        };
-
-        scriptCache.set(analysisCacheKey, jsonResponse);
-        console.log(`Elemzés befejezve és cache mentve (${analysisCacheKey})`);
-
-        if (params.sheetUrl && typeof params.sheetUrl === 'string') {
-            saveAnalysisToSheet(params.sheetUrl, {
-                sport, 
-                home, 
-                away, 
-                date: new Date(), 
-                html: `JSON_API_MODE (xG Forrás: ${xgSource})`,
-                id: analysisCacheKey,
-                fixtureId: fixtureIdForSaving,
-                recommendation: masterRecommendation
-            })
-                .then(() => console.log(`Elemzés (JSON) mentve a Google Sheet-be (${analysisCacheKey})`))
-                .catch(sheetError => console.error(`Hiba az elemzés Google Sheet-be mentésekor (${analysisCacheKey}): ${sheetError.message}`));
-        }
-
-        return jsonResponse;
-        
-    } catch (error: any) {
-        const homeParam = params?.home || 'N/A';
-        const awayParam = params?.away || 'N/A';
-        const sportParam = sport || params?.sport || 'N/A';
-        console.error(`Súlyos hiba az elemzési folyamatban (${sportParam} - ${homeParam} vs ${awayParam}): ${error.message}`, error.stack);
-        return { error: `Elemzési hiba: ${error.message}` };
+        return { ...finalResult, fromCache: false };
+    } catch (e: any) {
+         console.error(`KRITIKUS HIBA a getRichContextualData (v54.12 - Factory) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
+        throw new Error(`Adatgyűjtési hiba (v54.12): ${e.message} \nStack: ${e.stack}`);
     }
 }
+
+
+// --- KÖZÖS FUNKCIÓK EXPORTÁLÁSA ---
+export const _getFixturesFromEspn = commonGetFixtures;
+export const _callGemini = commonCallGemini;
