@@ -381,7 +381,7 @@ export async function getApiSportsFixtureResult(fixtureId: number | string, spor
     }
 
     const cacheKey = `fixture_result_v1_${fixtureId}`;
-  T const cached = fixtureResultCache.get<FixtureResult>(cacheKey);
+    const cached = fixtureResultCache.get<FixtureResult>(cacheKey);
     if (cached) {
         console.log(`[getApiSportsFixtureResult] Cache találat (ID: ${fixtureId}): ${cached.status}`);
         return cached;
@@ -408,7 +408,7 @@ export async function getApiSportsFixtureResult(fixtureId: number | string, spor
             const result: FixtureResult = { // Típusos hozzárendelés
                 home: goals.home,
                 away: goals.away,
-E               status: 'FT'
+                status: 'FT'
             };
             fixtureResultCache.set(cacheKey, result);
 // Eredmény cache-elése (végleges)
@@ -474,7 +474,7 @@ stats.games?.played,
                 goalsAgainst: stats.goals?.against?.total?.total,
             };
             if (sport === 'hockey' && stats.games) { /* ... */ }
-S           if (sport === 'basketball' && stats.games) { /* ... */ }
+            if (sport === 'basketball' && stats.games) { /* ... */ }
             apiSportsStatsCache.set(cacheKey, simplifiedStats);
             return simplifiedStats;
         }
@@ -534,7 +534,7 @@ oddsData.bookmakers?.[0];
         const awayOdd = matchWinnerMarket.values.find((v: any) => v.value === "Away")?.odd;
         if (homeOdd) currentOdds.push({ name: 'Hazai győzelem', price: parseFloat(homeOdd) });
         if (drawOdd) currentOdds.push({ name: 'Döntetlen', price: parseFloat(drawOdd) });
-s       if (awayOdd) currentOdds.push({ name: 'Vendég győzelem', price: parseFloat(awayOdd) });
+        if (awayOdd) currentOdds.push({ name: 'Vendég győzelem', price: parseFloat(awayOdd) });
     }
     
     const allMarkets: ICanonicalOdds['allMarkets'] = [];
@@ -546,14 +546,13 @@ s       if (awayOdd) currentOdds.push({ name: 'Vendég győzelem', price: par
                 name: v.value,
                 price: parseFloat(v.odd),
                 point: (typeof v.value === 'string') ? (v.value.match(/(\d+\.\d)/) ? parseFloat(v.value.match(/(\d+\.\d)/)[1]) : null) : null
-section: gpt_response
             }));
             if (marketKey === 'match_winner') allMarkets.push({ key: 'h2h', outcomes });
             if (marketKey === 'moneyline') allMarkets.push({ key: 'h2h', outcomes });
             if (marketKey === 'over/under') allMarkets.push({ key: 'totals', outcomes });
             if (marketKey === 'total') allMarkets.push({ key: 'totals', outcomes });
             if (marketKey === 'total_points') allMarkets.push({ key: 'totals', outcomes });
-Indentation           if (marketKey === 'both_teams_to_score') allMarkets.push({ key: 'btts', outcomes });
+            if (marketKey === 'both_teams_to_score') allMarkets.push({ key: 'btts', outcomes });
             if (marketKey === 'corners_over/under') allMarkets.push({ key: 'corners_over_under', outcomes });
             if (marketKey === 'cards_over/under') allMarkets.push({ key: 'cards_over_under', outcomes });
         }
@@ -639,7 +638,7 @@ away: number } | null> {
         // Kezeljük az esetleges hibákat (pl. 404, ha a fixture-höz nincs statisztika)
         console.error(`API-SPORTS Fixture Stats Hiba (ID: ${fixtureId}): ${error.message}`);
         apiSportsFixtureStatsCache.set(cacheKey, null); // Hiba esetén is cache-elünk null-t
-s       return null;
+        return null;
     }
 }
 // --- v50 JAVÍTÁS VÉGE ---
@@ -657,7 +656,7 @@ function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: string): num
         return defaultConfigLine;
     }
     const bookmaker = oddsData.fullApiData.bookmakers.find((b: any) => b.name === "Bet365") || oddsData.fullApiData.bookmakers[0];
-Indentation     if (!bookmaker?.bets) return defaultConfigLine;
+    if (!bookmaker?.bets) return defaultConfigLine;
     let marketName: string;
     let alternativeMarketName: string | null = null;
     if (sport === 'soccer') {
@@ -842,7 +841,7 @@ Indentation       },
         },
         absentees: { home: [], 
 away: [] } // Sofascore fogja felülírni
-  S };
+   };
     // Kanonikus statisztikák feltöltése (gp, gf, ga, form)
     const homeGP = apiSportsHomeSeasonStats?.gamesPlayed || geminiData?.stats?.home?.gp || 1;
     finalData.stats.home = {
@@ -852,7 +851,7 @@ geminiData?.stats?.home?.gf || 0,
         ga: apiSportsHomeSeasonStats?.goalsAgainst || geminiData?.stats?.home?.ga ||
 0,
         form: apiSportsHomeSeasonStats?.form || geminiData?.form?.home_overall || null
-A   };
+   };
     const awayGP = apiSportsAwaySeasonStats?.gamesPlayed || geminiData?.stats?.away?.gp || 1;
     finalData.stats.away = {
         gp: awayGP,
@@ -873,7 +872,7 @@ section: gpt_response
 
     // === JAVÍTÁS (TS2339) ===
     // Az 'realXgData' hivatkozás eltávolítva, mivel a 'realXgData' változó
-T   // a 719. sorban szándékosan 'null'-ra van állítva, és a rá való hivatkozás
+   // a 719. sorban szándékosan 'null'-ra van állítva, és a rá való hivatkozás
     // 'never' típus hibát okozott.
     const richContextParts = [
         // TÖRÖLVE: realXgData && `- Valós xG (API-Football): H=${realXgData.home}, A=${realXgData.away}`,
@@ -892,7 +891,7 @@ section: gpt_response
     // A végső ICanonicalRichContext objektum összeállítása
     const result: ICanonicalRichContext = {
          rawStats: finalData.stats,
-S        leagueAverages: finalData.league_averages ||
+        leagueAverages: finalData.league_averages ||
 {},
          richContext,
          advancedData: advancedData,
