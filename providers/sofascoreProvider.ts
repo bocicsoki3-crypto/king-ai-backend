@@ -277,7 +277,7 @@ function processSofascoreLineups(
             const ratingValue = parseFloat(p.rating || '0');
 
             // === JAVÍTÁS (v54.2 / 1. Fázis) ===
-            // A 'ratingValue === 0' hibásan azonosította 
+            // A 'ratingValue === 0' hibásan azonosította (Source 1046)
             // a meccs előtti
             // kezdőket hiányzóként. Ezt a logikát eltávolítjuk.
             // (Eltávolítva a logikai blokk, ami a Source 1850-1856-ban volt)
