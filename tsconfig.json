@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    /* Alapvető fordítási beállítások (Ezek helyesek voltak) */
+    /* Alapvető beállítások (Ezek helyesek voltak) */
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
@@ -9,37 +9,31 @@
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "noImplicitAny": true, // Megtartva az eredeti konfigból
+
+    /* === Architektúra Javítás === */
+    // A forrásfájlok a gyökérben kezdődnek
+    "rootDir": "./", 
+    // Minden lefordított .js fájl ide kerül
+    "outDir": "./dist", 
     
-    /* === JAVÍTÁS 1. (Architekturális Konfliktus) === */
-    // A kódod importjai (pl. './DataFetch.js', './sheets.js')
-    // megkövetelik, hogy a lefordított .js fájlok a gyökérben legyenek,
-    // ezért az "outDir"-nek "." kell lennie, nem "./dist".
-    "outDir": ".", 
-    
-    // A forrásfájlok a gyökérben kezdődnek.
-    "rootDir": ".", 
-    
-    // Engedélyezi a .ts fájloknak, hogy .js fájlokat importáljanak
-    // (A te esetedben a .ts fájlok a leendő .js fájlokat importálják)
-    "allowJs": true, 
-    
-    // Nem generálunk .d.ts fájlokat a build során
-    "declaration": false
+    "declaration": false,
+    "allowJs": true
   },
   
-  /* === JAVÍTÁS 2. (TS2304 Hiba) ===
-   * Ez a robusztusabb 'include' biztosítja, hogy a tsc
-   * az összes .ts fájlt ÉS a .d.ts típusdefiníciókat is megtalálja
-   * a fordítás megkezdése előtt, megoldva a 'Cannot find name' hibát.
+  /* === A TS2304 HIBA VÉGLEGES JAVÍTÁSA ===
+   * Ez garantálja, hogy a tsc megtalálja az ÖSSZES .ts fájlt
+   * és (kritikusan) az összes típusdefiníciót (pl. ICanonicalRichContext)
+   * a fordítás megkezdése előtt.
    */
   "include": [
-    "**/*.ts",           // Minden .ts fájl a projektben (pl. index.ts, AnalysisFlow.ts)
-    "src/types/**/*.d.ts" // Garantálja, hogy 'ICanonicalRichContext' stb. ismert legyen
+    "**/*.ts",           // Minden .ts fájl a projektben
+    "src/types/**/*.d.ts" // Garantálja, hogy a típusok ismertek
   ],
   
   "exclude": [
     "node_modules",
-    "dist", // Ha mégis létezik a mappa, ne olvassa be
-    "script.ts" // A kliens szkript kizárása helyes volt
+    "dist", // Ne olvassa be a saját kimenetét
+    "script.ts" // A kliens szkript kizárása
   ]
 }
