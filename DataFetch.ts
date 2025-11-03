@@ -1,11 +1,10 @@
-// DataFetch.ts (v52.13 - TS2551 Case-Sensitivity Fix)
-// MÓDOSÍTÁS: A 'sofascoreData' feldolgozása javítva,
-// a helyes 'xG_away' (nagy 'G') tulajdonság használatával.
+// DataFetch.ts (v54.1 - Dinamikus Sofascore Kontextussal)
+// MÓDOSÍTÁS: A getRichContextualData átadja a 'countryContext'-et
+// a fetchSofascoreData-nak a pontosabb névfeloldás érdekében.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
 import path from 'path';
-
 // Kanonikus típusok importálása
 import type { ICanonicalRichContext } from './src/types/canonical.d.ts';
 
@@ -15,6 +14,9 @@ import * as hockeyProvider from './providers/newHockeyProvider.js';
 import * as basketballProvider from './providers/newBasketballProvider.js';
 // === ÚJ IMPORT (Sofascore) ===
 import { fetchSofascoreData } from './providers/sofascoreProvider.js';
+// === VÉGE ===
+// === SZÜKSÉGES IMPORT ===
+import { SPORT_CONFIG } from './config.js'; 
 // === VÉGE ===
 
 // Importáljuk a megosztott segédfüggvényeket
@@ -34,10 +36,9 @@ interface IDataProvider {
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v52.13 (TS2551 Fix)
-* - A 'getRichContextualData' most már párhuzamosan hívja meg a sport-specifikus
-* providert (oddsokért) és a Sofascore providert (xG/játékos adatokért).
-* - Az eredményeket egyesíti, priorizálva a Sofascore adatait.
+* VERZIÓ: v54.1 (Dinamikus Kontextus Fix)
+* - A 'getRichContextualData' most már átadja az ország-kontextust
+* a Sofascore providernek.
 **************************************************************/
 
 /**
@@ -58,7 +59,7 @@ function getProvider(sport: string): IDataProvider {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FUNKCIÓ (v52.13 - Sofascore Egyesítéssel)
+ * FŐ ADATGYŰJTŐ FUNKCIÓ (v54.1 - Ország Kontextus Javítással)
  * Garantálja, hogy a visszatérési érték ICanonicalRichContext.
  */
 export async function getRichContextualData(
@@ -70,9 +71,8 @@ export async function getRichContextualData(
 ): Promise<ICanonicalRichContext> {
     
     const teamNames = [homeTeamName, awayTeamName].sort();
-    // A cache kulcs verzióját v52.7-re emeljük az új adatforrás miatt
-    const ck = `rich_context_v52.7_sofascore_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
-    
+    // A cache kulcs verzióját v54.1-re emeljük az új kontextus miatt
+    const ck = `rich_context_v54.1_sofascore_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
     const cached = scriptCache.get<ICanonicalRichContext>(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
@@ -80,12 +80,20 @@ export async function getRichContextualData(
     }
     
     console.log(`Nincs cache (${ck}), friss adatok lekérése...`);
-    
     try {
         
         // 1. Válaszd ki a megfelelő sport providert (Odds, H2H, Alap statok)
         const sportProvider = getProvider(sport);
         console.log(`Adatgyűjtés indul (Provider: ${sportProvider.providerName || sport}): ${homeTeamName} vs ${awayTeamName}...`);
+
+        // === JAVÍTÁS KEZDETE: Ország kontextus kinyerése ===
+        const sportConfig = SPORT_CONFIG[sport];
+        const leagueData = sportConfig?.espn_leagues[leagueName];
+        const countryContext = leagueData?.country || null; // Pl. "USA" vagy "Italy"
+        if (!countryContext) {
+            console.warn(`[DataFetch] Nincs 'country' kontextus a(z) '${leagueName}' ligához. A Sofascore névfeloldás pontatlan lehet.`);
+        }
+        // === JAVÍTÁS VÉGE ===
 
         const providerOptions = {
             sport,
@@ -94,31 +102,31 @@ export async function getRichContextualData(
             leagueName,
             utcKickoff
         };
-        
-        // === MÓDOSÍTÁS: PÁRHUZAMOS HÍVÁS ===
+
+        // === MÓDOSÍTÁS: PÁRHUZAMOS HÍVÁS (Kontextussal) ===
         const [
             // Az 'apiSportsProvider' adja az Odds-okat, H2H-t, és a fallback statisztikákat
             baseResult, 
             // A 'sofascoreProvider' adja a megbízható xG-t és játékos-értékeléseket
             sofascoreData 
         ] = await Promise.all([
-            sportProvider.fetchMatchData(providerOptions),
-            // Csak foci esetén hívjuk a Sofascore-t
-            sport === 'soccer' ? fetchSofascoreData(homeTeamName, awayTeamName) : Promise.resolve(null)
+             sportProvider.fetchMatchData(providerOptions),
+            // Csak foci esetén hívjuk a Sofascore-t, ÉS átadjuk az ország kontextust
+            sport === 'soccer' 
+                ? fetchSofascoreData(homeTeamName, awayTeamName, countryContext) 
+                : Promise.resolve(null)
         ]);
-        
+
         // === EGYESÍTÉS (MERGE) ===
         const finalResult: ICanonicalRichContext = baseResult;
 
         // 2. Sofascore xG Adat felülírása (Ha létezik)
-        // === JAVÍTÁS (TS2551) ===
-        // A 'xg_away' (kis 'g') cserélve 'xG_away'-re (nagy 'G'), hogy megfeleljen a provider típusának.
+        // (A TS2551 'xG_away' javítás változatlan)
         if (sofascoreData && sofascoreData.advancedData?.xg_home != null && sofascoreData.advancedData?.xG_away != null) {
             console.log(`[DataFetch] Felülírás: API-Football xG felülírva a Sofascore xG-vel.`);
             finalResult.advancedData.home['xg'] = sofascoreData.advancedData.xg_home;
             finalResult.advancedData.away['xg'] = sofascoreData.advancedData.xG_away; // <-- JAVÍTVA
         } else {
-        // === JAVÍTÁS VÉGE ===
             console.warn(`[DataFetch] Sofascore xG adat nem elérhető. Az 'apiSportsProvider' becslése (vagy hibája) marad érvényben.`);
         }
 
@@ -135,13 +143,12 @@ export async function getRichContextualData(
 
         // 4. Mentsd az egyesített eredményt a fő cache-be
         scriptCache.set(ck, finalResult);
-        console.log(`Sikeres adat-egyesítés (v52.13), cache mentve (${ck}).`);
+        console.log(`Sikeres adat-egyesítés (v54.1), cache mentve (${ck}).`);
         
         return { ...finalResult, fromCache: false };
-
     } catch (e: any) {
-         console.error(`KRITIKUS HIBA a getRichContextualData (v52.13 - Factory) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
-        throw new Error(`Adatgyűjtési hiba (v52.13): ${e.message}`);
+         console.error(`KRITIKUS HIBA a getRichContextualData (v54.1 - Factory) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
+        throw new Error(`Adatgyűjtési hiba (v54.1): ${e.message}`);
     }
 }
 
