@@ -817,7 +817,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
             key_players_ratings: { home: {}, away: {} }
         },
         absentees: { home: [], away: [] } // Sofascore fogja felülírni
-  D };
+    };
     // Kanonikus statisztikák feltöltése (gp, gf, ga, form)
     const homeGP = apiSportsHomeSeasonStats?.gamesPlayed || geminiData?.stats?.home?.gp || 1;
     finalData.stats.home = {
