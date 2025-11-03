@@ -1,4 +1,5 @@
-// providers/newHockeyProvider.ts (v52.2 - 'import type' javítás)
+// FÁJL: providers/newHockeyProvider.ts
+// (v54.8 - Típusbiztos 'contextual_factors' és 'referee' javítás)
 // Implementáció az "Ice Hockey Data" API-hoz
 // MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
 // A 'fetchMatchData' most már a 'IDataProvider' interfésznek megfelelően
@@ -18,7 +19,8 @@ import type {
     ICanonicalStats,
     ICanonicalPlayerStats,
     ICanonicalRawData,
-    ICanonicalOdds
+    ICanonicalOdds,
+    IStructuredWeather // Szükséges a helyi inicializáláshoz
 } from '../src/types/canonical.d.ts';
 // === JAVÍTÁS VÉGE ===
 
@@ -243,7 +245,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         console.error(`[Hockey API] Gemini JSON parse hiba: ${e.message}`);
     }
 
-    // --- 6. VÉGLEGES ADAT EGYESÍTÉS (KANONIKUS MODELL) ---
+    // --- 6. VÉGLEGES ADAT EGYESÍTÉS (KANONIKUS MODELL v54.8) ---
     
     // Hozzuk létre az alap ICanonicalRawData struktúrát
     const finalData: ICanonicalRawData = {
@@ -264,6 +266,31 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         },
         absentees: { home: [], away: [] }, // Szintén a 'detailedPlayerStats'-ból származna
         h2h_structured: geminiData.h2h_structured || null,
+        
+        // === JAVÍTÁS (v54.8) Kezdete ===
+        // A hiányzó mezők pótlása az ICanonicalRawData (v54.8) interfésznek megfelelően.
+        // Ez megoldja a TS2739 és TS2339 hibákat.
+        referee: {
+            name: null,
+            style: null
+        },
+        contextual_factors: {
+            stadium_location: geminiData?.contextual_factors?.stadium_location || "N/A (Beltéri)",
+            pitch_condition: "N/A (Jég)",
+            
+            // A Model.ts által várt mezők (TS2339)
+            weather: "N/A (Beltéri)", // Alapértelmezett, felülírjuk a structuredWeather alapján
+            match_tension_index: null, 
+
+            // Alapértelmezett 'structured_weather', hogy az objektum teljes legyen
+            structured_weather: {
+                description: "N/A (Beltéri)",
+                temperature_celsius: -1 // Szimbolikus érték
+                // A többi mező (humidity, wind, precip) opcionális a v54.8 interfészben
+            }
+        },
+        // === JAVÍTÁS (v54.8) Vége ===
+        
         ...geminiData // Minden egyéb AI által generált adat (pl. tactics)
     };
     
@@ -273,17 +300,26 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
 
     console.log(`[Hockey API] Végleges stats használatban: Home(GP:${finalData.stats.home.gp}), Away(GP:${finalData.stats.away.gp})`);
 
-    const stadiumLocation = geminiData?.contextual_factors?.stadium_location || "N/A";
-    const structuredWeather = await getStructuredWeatherData(stadiumLocation, utcKickoff);
-    if (!finalData.contextual_factors) finalData.contextual_factors = {};
+    // === JAVÍTÁS (v54.8) A 'structured_weather' kezelése ===
+    // A 'getStructuredWeatherData' egy legacy függvény, ami csak { desc, temp } objektumot ad vissza.
+    const structuredWeather = await getStructuredWeatherData(
+        finalData.contextual_factors.stadium_location, 
+        utcKickoff
+    );
+
+    // Közvetlenül frissítjük a finalData objektumot
     finalData.contextual_factors.structured_weather = structuredWeather;
+    // Frissítjük a Model.ts által várt 'weather' stringet is
+    finalData.contextual_factors.weather = structuredWeather.description || "N/A (Beltéri)";
+    // === JAVÍTÁS VÉGE ===
 
     const richContext = [
          geminiData.h2h_summary && `- H2H: ${geminiData.h2h_summary}`,
          geminiData.team_news?.home && `- Hírek: H:${geminiData.team_news.home}`,
          geminiData.team_news?.away && `- Hírek: V:${geminiData.team_news.away}`,
          (finalData.form.home_overall || finalData.form.away_overall) && `- Forma: H:${finalData.form.home_overall || 'N/A'}, V:${finalData.form.away_overall || 'N/A'}`,
-         structuredWeather.description !== "N/A" && `- Időjárás: ${structuredWeather.description}`
+         // Most már a finalData-ból olvassuk ki
+         finalData.contextual_factors.weather !== "N/A (Beltéri)" && `- Időjárás: ${finalData.contextual_factors.weather}`
     ].filter(Boolean).join('\n') || "N/A";
 
     // A végső ICanonicalRichContext objektum összeállítása
@@ -293,7 +329,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
          richContext,
          advancedData: geminiData.advancedData || { home: {}, away: {} },
          form: finalData.form,
-         rawData: finalData,
+         rawData: finalData, // Ez már a v54.8-nak megfelelő adat
          oddsData: null, // Ez az API nem szolgáltat odds-okat
          fromCache: false
     };
