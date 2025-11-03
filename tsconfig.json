@@ -1,29 +1,45 @@
 {
   "compilerOptions": {
+    /* Alapvető fordítási beállítások (Ezek helyesek voltak) */
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "rootDir": "./",
-    "outDir": "./dist",
-    "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noImplicitAny": true
+    
+    /* === JAVÍTÁS 1. (Architekturális Konfliktus) === */
+    // A kódod importjai (pl. './DataFetch.js', './sheets.js')
+    // megkövetelik, hogy a lefordított .js fájlok a gyökérben legyenek,
+    // ezért az "outDir"-nek "." kell lennie, nem "./dist".
+    "outDir": ".", 
+    
+    // A forrásfájlok a gyökérben kezdődnek.
+    "rootDir": ".", 
+    
+    // Engedélyezi a .ts fájloknak, hogy .js fájlokat importáljanak
+    // (A te esetedben a .ts fájlok a leendő .js fájlokat importálják)
+    "allowJs": true, 
+    
+    // Nem generálunk .d.ts fájlokat a build során
+    "declaration": false
   },
+  
+  /* === JAVÍTÁS 2. (TS2304 Hiba) ===
+   * Ez a robusztusabb 'include' biztosítja, hogy a tsc
+   * az összes .ts fájlt ÉS a .d.ts típusdefiníciókat is megtalálja
+   * a fordítás megkezdése előtt, megoldva a 'Cannot find name' hibát.
+   */
   "include": [
-    "*.js",
-    "*.ts",
-    "src/**/*.ts",
-    "providers/**/*.js",
-    "providers/**/*.ts",
-    "providers/common/*.js",
-    "providers/common/*.ts"
+    "**/*.ts",           // Minden .ts fájl a projektben (pl. index.ts, AnalysisFlow.ts)
+    "src/types/**/*.d.ts" // Garantálja, hogy 'ICanonicalRichContext' stb. ismert legyen
   ],
+  
   "exclude": [
     "node_modules",
-    "dist",
-    "script.ts" // KIVÉTEL: A tsc ne fordítsa le a kliens szkriptet
+    "dist", // Ha mégis létezik a mappa, ne olvassa be
+    "script.ts" // A kliens szkript kizárása helyes volt
   ]
 }
