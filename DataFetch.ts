@@ -1,12 +1,10 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v54.15 (Teljes xG Lánc és forceNew Javítás)
+// VERZIÓ: v54.16 (IDataFetchResponse exportálása)
 // MÓDOSÍTÁS:
-// 1. 'getRichContextualData' fogadja a 'forceNew' kapcsolót,
-//    és 'true' esetén KIHAGYJA a rich_context cache-t.
-// 2. Az EGYESÍTÉS szekció most már a TELJES xG prioritási láncot kezeli,
-//    beleértve a P1 (Manuális Direkt) és P1 (Manuális Komponens) logikát.
-// 3. A 'home_absenteS' elírás javítva (v54.14).
-// 4. Az 'xgSource' stringet most ez a fájl generálja és adja vissza.
+// 1. Az 'IDataFetchResponse' interfész most már 'export'-álva van,
+//    hogy az AnalysisFlow.ts importálhassa (ez javítja a TS2339 hibát).
+// 2. Az xG prioritási lánc (v54.15) és a cache 'forceNew' (v54.15)
+//    logikája változatlan.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -43,7 +41,7 @@ export interface IDataFetchOptions {
     awayTeamName: string; 
     leagueName: string;   
     utcKickoff: string;   
-    forceNew: boolean; // ÚJ (v54.15)
+    forceNew: boolean; // (v54.15)
     // P1 (Direkt)
     manual_xg_home?: number | null; 
     manual_xg_away?: number | null; 
@@ -54,9 +52,9 @@ export interface IDataFetchOptions {
     manual_A_xGA?: number | null;
 }
 
-// === JAVÍTÁS (v54.15): Bővítjük a visszatérési típust ===
+// === JAVÍTÁS (v54.16): Interfész exportálása ===
 // A 'getRichContextualData' most már az 'xgSource'-t is visszaadja.
-interface IDataFetchResponse extends ICanonicalRichContext {
+export interface IDataFetchResponse extends ICanonicalRichContext {
     xgSource: 'Manual (Direct)' | 'Manual (Components)' | 'API (Real)' | 'Calculated (Fallback)';
 }
 // === JAVÍTÁS VÉGE ===
@@ -64,7 +62,7 @@ interface IDataFetchResponse extends ICanonicalRichContext {
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v54.15 (Teljes xG Lánc és forceNew Fix)
+* VERZIÓ: v54.16 (Teljes xG Lánc és forceNew Fix)
 **************************************************************/
 
 function getProvider(sport: string): IDataProvider {
@@ -81,7 +79,7 @@ function getProvider(sport: string): IDataProvider {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FUNKCIÓ (v54.15)
+ * FŐ ADATGYŰJTŐ FUNKCIÓ (v54.16)
  */
 export async function getRichContextualData(
     options: IDataFetchOptions 
@@ -94,8 +92,8 @@ export async function getRichContextualData(
     const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(options.utcKickoff));
 
     const teamNames = [decodedHomeTeam, decodedAwayTeam].sort();
-    // A cache kulcs verzióját v54.15-re emeljük
-    const ck = `rich_context_v54.15_sofascore_${options.sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
+    // A cache kulcs verzióját v54.16-ra emeljük
+    const ck = `rich_context_v54.16_sofascore_${options.sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
     
     // === JAVÍTÁS (v54.15): Cache ellenőrzés a 'forceNew' figyelembevételével ===
     if (!options.forceNew) {
@@ -140,7 +138,7 @@ export async function getRichContextualData(
                 : Promise.resolve(null)
         ]);
 
-        // === EGYESÍTÉS (v54.15 JAVÍTÁS - TELJES xG LÁNC) ===
+        // === EGYESÍTÉS (v54.16 JAVÍTÁS - TELJES xG LÁNC) ===
         const finalResult: ICanonicalRichContext = baseResult;
 
         let finalHomeXg: number | null = null;
@@ -207,13 +205,13 @@ export async function getRichContextualData(
         };
 
         scriptCache.set(ck, response);
-        console.log(`Sikeres adat-egyesítés (v54.15), cache mentve (${ck}).`);
+        console.log(`Sikeres adat-egyesítés (v54.16), cache mentve (${ck}).`);
         
         return { ...response, fromCache: false };
 
     } catch (e: any) {
-         console.error(`KRITIKUS HIBA a getRichContextualData (v54.15 - Factory) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
-        throw new Error(`Adatgyűjtési hiba (v54.15): ${e.message} \nStack: ${e.stack}`);
+         console.error(`KRITIKUS HIBA a getRichContextualData (v54.16 - Factory) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
+        throw new Error(`Adatgyűjtési hiba (v54.16): ${e.message} \nStack: ${e.stack}`);
     }
 }
 
