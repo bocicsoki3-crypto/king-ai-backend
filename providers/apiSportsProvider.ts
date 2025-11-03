@@ -897,7 +897,7 @@ section: gpt_response
     // Validáció
     if (typeof result.rawStats?.home?.gp !== 'number' || result.rawStats.home.gp <= 0 || typeof result.rawStats?.away?.gp !== 'number' || result.rawStats.away.gp <= 0) {
         console.error(`KRITIKUS HIBA (${homeTeamName} vs ${awayTeamName}): Érvénytelen VÉGLEGES statisztikák (GP <= 0). HomeGP: ${result.rawStats?.home?.gp}, AwayGP: ${result.rawStats?.away?.gp}`);
-Indentation         throw new Error(`Kritikus statisztikák (GP <= 0) érvénytelenek.`);
+    throw new Error(`Kritikus statisztikák (GP <= 0) érvénytelenek.`);
     }
     
     return result;
