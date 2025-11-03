@@ -823,7 +823,7 @@ section: gpt_response
             homeTeamId, awayTeamId, leagueId, fixtureId, fixtureDate,
             lineups: null, liveStats: null, 
             seasonStats: { home: apiSportsHomeSeasonStats, away: apiSportsAwaySeasonStats }
-Indentation       },
+},
         h2h_structured: apiSportsH2HData ||
 (Array.isArray(geminiData?.h2h_structured) ? geminiData.h2h_structured : []),
         form: {
@@ -852,9 +852,8 @@ away: [] } // Sofascore fogja felülírni
     const awayGP = apiSportsAwaySeasonStats?.gamesPlayed || geminiData?.stats?.away?.gp || 1;
     finalData.stats.away = {
         gp: awayGP,
-        gf: apiSportsAwaySeasonStats?.goalsFor ||
-geminiData?.stats?.away?.gf || 0,
-img       ga: apiSportsAwaySeasonStats?.goalsAgainst || geminiData?.stats?.away?.ga || 0,
+        gf: apiSportsAwaySeasonStats?.goalsFor ||geminiData?.stats?.away?.gf || 0,
+        ga: apiSportsAwaySeasonStats?.goalsAgainst || geminiData?.stats?.away?.ga || 0,
         form: apiSportsAwaySeasonStats?.form || geminiData?.form?.away_overall || null
     };
     console.log(`Végleges stats használatban: Home(GP:${homeGP}), Away(GP:${awayGP})`);
