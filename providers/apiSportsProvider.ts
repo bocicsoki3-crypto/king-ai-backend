@@ -1,7 +1,6 @@
-// providers/apiSportsProvider.ts (v54.3 - SSOT Refaktor)
-// MÓDOSÍTÁS: A 'fetchMatchData' optimalizálva a natív ID-k fogadására.
-// MÓDOSÍTÁS: Új 'getFixturesFromApiSports' funkció hozzáadva (SSOT).
-// MÓDOSÍTÁS: (2. Fázis) 'getApiSportsFixtureStats' hívás eltávolítva a fetchMatchData-ból.
+// providers/apiSportsProvider.ts (v54.2 - Build Fix)
+// JAVÍTÁS: Eltávolítva a felesleges '}' a fájl végéről (TS1404 hiba).
+// JAVÍTÁS: (2. Fázis) 'getApiSportsFixtureStats' hívás eltávolítva a fetchMatchData-ból.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -886,7 +885,7 @@ geminiData?.stats?.away?.gf || 0,
     
     const advancedData = realXgData ?
         { home: { xg: realXgData.home }, away: { xg: realXgData.away } } :
-        (geminiData?.advancedData || { home: { xg: null }, away: { xG: null } }); // FIGYELEM: A Sofascore 'xG_away'-t használ, de a becsült 'xg'-t. Itt a becsült ág van.
+        (geminiData?.advancedData || { home: { xg: null }, away: { xg: null } }); 
     
     // A végső ICanonicalRichContext objektum összeállítása
     const result: ICanonicalRichContext = {
