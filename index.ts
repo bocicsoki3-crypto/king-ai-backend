@@ -1,4 +1,4 @@
-// --- index.ts (v54.3 - SSOT Refaktor) ---
+// --- index.ts (v54.3 - SSOT Refaktor - TISZTA) ---
 // MÓDOSÍTÁS: A /runAnalysis végpont (Source 701) most már fogadja és
 // továbbítja a natív API-Football ID-kat (Source 2540-2544) az AnalysisFlow-nak.
 
