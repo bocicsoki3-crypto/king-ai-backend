@@ -1,4 +1,6 @@
-// --- index.ts (v54.4 - Manual xG Override) ---
+// --- index.ts (v54.5 - Manual xG Components) ---
+// MÓDOSÍTÁS: A /runAnalysis végpont fogadja a 4-komponensű
+// manuális xG felülbírálási adatokat.
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
@@ -135,7 +137,7 @@ app.get('/getFixtures', protect, async (req: Request, res: Response) => {
         const fixtures = await _getFixturesFromEspn(sport, days);
         res.status(200).json({
             fixtures: fixtures,
-            odds: {} // Odds adat jelenleg nincs az ESPN-től
+            odds: {} 
         });
     } catch (e: any) {
         console.error(`Hiba a /getFixtures végpont-on: ${e.message}`, e.stack);
@@ -145,7 +147,7 @@ app.get('/getFixtures', protect, async (req: Request, res: Response) => {
 
 app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
     try {
-        // === JAVÍTÁS (v54.4): Új mezők olvasása a body-ból ===
+        // === JAVÍTÁS (v54.5): 4-komponensű xG felülbírálás ===
         const { 
             home, 
             away, 
@@ -155,8 +157,10 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             leagueName, 
             sport, 
             openingOdds = {},
-            manual_xg_home, // ÚJ (Opcionális)
-            manual_xg_away  // ÚJ (Opcionális)
+            manual_H_xG,  // ÚJ (Opcionális)
+            manual_H_xGA, // ÚJ (Opcionális)
+            manual_A_xG,  // ÚJ (Opcionális)
+            manual_A_xGA  // ÚJ (Opcionális)
         } = req.body;
         // === JAVÍTÁS VÉGE ===
 
@@ -172,8 +176,10 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             sheetUrl, 
             utcKickoff, 
             leagueName,
-            manual_xg_home, // ÚJ
-            manual_xg_away  // ÚJ
+            manual_H_xG,  // ÚJ
+            manual_H_xGA, // ÚJ
+            manual_A_xG,  // ÚJ
+            manual_A_xGA  // ÚJ
         };
         
         const result = await runFullAnalysis(params, sport, openingOdds);
@@ -183,7 +189,6 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             return res.status(500).json({ error: result.error });
         }
         
-        // A v54.0 refaktor óta 'result' a teljes JSON objektumot tartalmazza
         res.status(200).json(result); 
 
     } catch (e: any) {

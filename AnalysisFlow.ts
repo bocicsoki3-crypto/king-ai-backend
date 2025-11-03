@@ -1,6 +1,6 @@
-// --- AnalysisFlow.ts (v54.4 - Manual xG Override) ---
-// MÓDOSÍTÁS: A runFullAnalysis implementálja a 3-szintű xG prioritási
-// logikát (1. Manuális, 2. API, 3. Becsült).
+// --- AnalysisFlow.ts (v54.5 - Manual xG Components) ---
+// MÓDOSÍTÁS: A runFullAnalysis implementálja a 4-komponensű
+// xG prioritási logikát (1. Manuális Komponensek, 2. API, 3. Becsült).
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -32,17 +32,17 @@ import {
     runStep3_GetStrategy
 } from './AI_Service.js';
 
-import { saveAnalysisToSheet } from './sheets.js'; // Mentés funkció
-// import { buildAnalysisHtml } from './htmlBuilder.js'; // A v54.0 refaktorban eltávolítva
+import { saveAnalysisToSheet } from './sheets.js'; 
+// import { buildAnalysisHtml } from './htmlBuilder.js'; // A v54.0 JSON API refaktorban eltávolítva
 
 // Gyorsítótár inicializálása
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v54.4 - Manual xG Override):
-* - A 'runFullAnalysis' fogadja a 'manual_xg_home'/'manual_xg_away'
-* paramétereket és felülbírálja a becsült (mu_h/mu_a) értékeket.
+* VÁLTOZÁS (v54.5 - Manual xG Components):
+* - A 'runFullAnalysis' fogadja a 4 xG komponenst
+* és elvégzi a számítást a szerveren.
 **************************************************************/
 
 // Az új, strukturált JSON válasz (v54.0)
@@ -62,8 +62,7 @@ interface IAnalysisResponse {
         modelConfidence: number;
         sim: any; 
         recommendation: any;
-        // JAVÍTÁS (v54.4): Hozzáadjuk a debug szintű forrást
-        xgSource: 'Manual' | 'API (Real)' | 'Calculated (Fallback)';
+        xgSource: 'Manual (Components)' | 'API (Real)' | 'Calculated (Fallback)';
     };
     debugInfo: any;
 }
@@ -77,7 +76,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
     let fixtureIdForSaving: number | string | null = null;
     
     try {
-        // === JAVÍTÁS (v54.4): Új paraméterek fogadása ===
+        // === JAVÍTÁS (v54.5): 4-komponensű xG felülbírálás ===
         const { 
             home: rawHome, 
             away: rawAway, 
@@ -85,8 +84,10 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             sheetUrl, 
             utcKickoff, 
             leagueName,
-            manual_xg_home, // ÚJ (Opcionális)
-            manual_xg_away  // ÚJ (Opcionális)
+            manual_H_xG,  // ÚJ (Opcionális)
+            manual_H_xGA, // ÚJ (Opcionális)
+            manual_A_xG,  // ÚJ (Opcionális)
+            manual_A_xGA  // ÚJ (Opcionális)
         } = params;
         // === JAVÍTÁS VÉGE ===
 
@@ -99,8 +100,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         
-        // A cache kulcs verzióját v54.4-re emeljük
-        analysisCacheKey = `analysis_v54.4_json_api_${sport}_${safeHome}_vs_${safeAway}`; 
+        // A cache kulcs verzióját v54.5-re emeljük
+        analysisCacheKey = `analysis_v54.5_json_api_${sport}_${safeHome}_vs_${safeAway}`; 
 
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
@@ -122,6 +123,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
 
         // --- 2. Fő Adatgyűjtés ---
         console.log(`Adatgyűjtés indul: ${home} vs ${away}...`);
+        // A v54.3-as (javított) DataFetch hívása
         const { 
             rawStats, 
             richContext,
@@ -163,20 +165,26 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         // Először futtatjuk a normál becslést (ez adja a fallback-et ÉS a módosítókat)
         const { mu_h: estimated_h, mu_a: estimated_a } = estimateXG(home, away, rawStats, sport, form, leagueAverages, advancedData, rawData, psyProfileHome, psyProfileAway);
         
-        // === JAVÍTÁS (v54.4): Manuális xG felülbírálási logika ===
+        // === JAVÍTÁS (v54.5): 4-komponensű xG felülbírálási logika ===
         let mu_h: number;
         let mu_a: number;
         let xgSource: IAnalysisResponse['analysisData']['xgSource'];
         
         // 3-szintű prioritás
-        if (typeof manual_xg_home === 'number' && typeof manual_xg_away === 'number') {
-            // 1. PRIORITÁS: Manuális felülbírálás
-            mu_h = manual_xg_home;
-            mu_a = manual_xg_away;
-            xgSource = 'Manual';
-            console.log(`MANUÁLIS XG FELÜLBÍRÁLÁS: H=${mu_h}, A=${mu_a}`);
+        if (typeof manual_H_xG === 'number' && 
+            typeof manual_H_xGA === 'number' && 
+            typeof manual_A_xG === 'number' && 
+            typeof manual_A_xGA === 'number') 
+        {
+            // 1. PRIORITÁS: Manuális Komponens felülbírálás
+            // (Hazai Támadás + Vendég Védekezés) / 2
+            mu_h = (manual_H_xG + manual_A_xGA) / 2;
+            // (Vendég Támadás + Hazai Védekezés) / 2
+            mu_a = (manual_A_xG + manual_H_xGA) / 2;
+            xgSource = 'Manual (Components)';
+            console.log(`MANUÁLIS XG FELÜLBÍRÁLÁS (Komponensekből): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
         } else if (advancedData?.home?.xg != null && advancedData?.away?.xg != null) {
-            // 2. PRIORITÁS: API-ból (Sofascore) kapott valós xG
+            // 2. PRIORITÁS: API-ból (Sofascore/API-Football) kapott valós xG
             // (Az estimateXG már ezt használta, ha volt)
             mu_h = estimated_h; 
             mu_a = estimated_a;
@@ -208,7 +216,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         
         const quantInput = {
             simJson: sim,
-            realXgJson: advancedData,
+            // JAVÍTÁS (v54.5): A 'realXgJson' most a *végleges* xG adatot kapja meg
+            realXgJson: { home: mu_h, away: mu_a, source: xgSource },
             keyPlayerRatingsJson: rawData.detailedPlayerStats.key_players_ratings,
             valueBetsJson: valueBets
         };
@@ -245,11 +254,11 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         // --- 7. Válasz Elküldése és Naplózás ---
         const debugInfo = {
             playerDataFetched: (rawData?.detailedPlayerStats?.key_players_ratings?.home) ? 'Igen (Sofascore)' : 'Nem (Fallback)',
-            realXgUsed: (advancedData?.home?.xg != null) ? 'Igen (Sofascore/API-Football)' : (xgSource === 'Manual' ? 'Manual Override' : 'Nem (Becsült)'),
+            realXgUsed: xgSource, // A v54.5-ös xgSource-t használjuk
             fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
         };
         
-        // A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA (JSON API v54.4)
+        // A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA (JSON API v54.5)
         const jsonResponse: IAnalysisResponse = { 
             analysisData: {
                 committeeResults: committeeResults,
@@ -275,7 +284,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         console.log(`Elemzés befejezve és cache mentve (${analysisCacheKey})`);
 
         if (params.sheetUrl && typeof params.sheetUrl === 'string') {
-            // (A Google Sheet mentés refaktorálásra vár, jelenleg HTML-t nem mentünk)
             saveAnalysisToSheet(params.sheetUrl, {
                 sport, 
                 home, 
