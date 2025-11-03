@@ -1,22 +1,74 @@
-// --- AI_Service.ts (v53.0 - Dialektikus Chain-of-Thought) ---
-// MÓDOSÍTÁS: A rendszer átalakítva egy "Committee of Experts" (Szakértői Bizottság)
-// modellre, amely egy Kvantitatív (Quant) és egy Taktikai (Scout)
-// nézőpont konfliktusára épül.
+// --- AI_Service.ts (v54.5 - JSON Parse Retry Logic) ---
+// MÓDOSÍTÁS: A rendszer kiegészítve egy alkalmazás-szintű
+// retry (újrapróbálkozás) logikával, hogy kivédje a Gemini
+// API nem-determinisztikus JSON-formázási hibáit (pl. truncation).
 
 import { _callGemini } from './DataFetch.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
 import type { ICanonicalPlayerStats, ICanonicalRawData } from './src/types/canonical.d.ts';
 
+// === ÚJ SEGÉDFÜGGVÉNY (v54.5): Robusztus AI hívó JSON parse retry logikával ===
+
+/**
+ * Behívja a _callGemini-t és ellenőrzi a JSON-feldolgozást.
+ * Ha a JSON.parse hibát dob (pl. a Gemini hibás/hiányos JSON-t küldött),
+ * automatikusan újrapróbálja a hívást.
+ */
+async function _callGeminiWithJsonRetry(
+    prompt: string, 
+    stepName: string, // Logoláshoz (pl. "Step 1 - Quant")
+    maxRetries: number = 2 // Alap hívás + 2 újrapróbálkozás
+): Promise<any> {
+    
+    let attempts = 0;
+    
+    while (attempts <= maxRetries) {
+        attempts++;
+        try {
+            // 1. Hívjuk az alap Gemini függvényt
+            const jsonString = await _callGemini(prompt, true); // true = JSON kényszerítése
+            
+            // 2. Megpróbáljuk feldolgozni
+            const result = JSON.parse(jsonString);
+            
+            // 3. Siker
+            if (attempts > 1) {
+                console.log(`[AI_Service] Sikeres JSON feldolgozás (${stepName}) a(z) ${attempts}. próbálkozásra.`);
+            }
+            return result;
+
+        } catch (e: any) {
+            // 4. Hiba kezelése
+            if (e instanceof SyntaxError) { // Ez a JSON.parse hiba
+                console.warn(`[AI_Service] FIGYELMEZTETÉS: Gemini JSON parse hiba (${stepName}), ${attempts}/${maxRetries+1}. próbálkozás. Hiba: ${e.message}`);
+                if (attempts > maxRetries) {
+                    console.error(`[AI_Service] KRITIKUS HIBA: A Gemini JSON feldolgozása végleg sikertelen (${stepName}) ${attempts-1} próbálkozás után.`);
+                    throw new Error(`AI Hiba (${stepName}): A modell hibás JSON struktúrát adott vissza, ami nem feldolgozható. Hiba: ${e.message}`);
+                }
+                // Várakozás az újrapróbálkozás előtt
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+            } else {
+                // Ez egy egyéb hiba (pl. hálózati), továbbdobjuk
+                console.error(`[AI_Service] Kritikus nem-parse hiba (${stepName}): ${e.message}`);
+                throw e;
+            }
+        }
+    }
+    // Ez a sor elvileg elérhetetlen, de a TypeScript fordítónak kell
+    throw new Error(`AI Hiba (${stepName}): Ismeretlen hiba az újrapróbálkozási ciklusban.`);
+}
+
+
 // --- 1. LÉPÉS: A KVANTITATÍV ELEMZŐ (A "QUANT") ---
 const PROMPT_STEP_1_QUANT = `
-TASK: You are 'Quant 7', an elite quantitative sports analyst. You only trust objective data. You are skeptical of narrative and context.
+TASK: You are 'Quant 7', an elite quantitative sports analyst.
+You only trust objective data. You are skeptical of narrative and context.
 Your job is to analyze the provided statistical data (Simulation, xG, Player Ratings) and identify the most probable outcome based *only* on the numbers.
 DO NOT analyze tactics or injuries unless they are numerically represented in the data.
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
-
 [DATA INPUTS]:
 1. Simulation (Sim): {simJson}
-2. Real xG Data (from Sofascore/API-Football): {realXgJson}
+2. Real xG Data (from Sofascore/API-Football or Manual Override): {realXgJson}
 3. Key Player Ratings (Avg. per position, from Sofascore): {keyPlayerRatingsJson}
 4. Value Bets (Calculated): {valueBetsJson}
 
@@ -35,11 +87,11 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 
 // --- 2. LÉPÉS: A TAKTIKAI FELDERÍTŐ (A "SCOUT") ---
 const PROMPT_STEP_2_SCOUT = `
-TASK: You are 'Scout 3', an expert tactical scout. You trust what you see (context, tactics, injuries), not what the spreadsheet says.
+TASK: You are 'Scout 3', an expert tactical scout.
+You trust what you see (context, tactics, injuries), not what the spreadsheet says.
 Your job is to analyze the provided *qualitative* data (injuries, team news, tactical styles) and identify the most likely *narrative* of the match.
 DO NOT mention xG or simulation results. Focus on *why* the numbers might be wrong.
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
-
 [DATA INPUTS]:
 1. Raw Data (Full Context): {rawDataJson}
 2. Confirmed Absentees (from Sofascore): {detailedPlayerStatsJson}
@@ -53,21 +105,22 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
     "<1. kulcsfontosságú kontextuális adat (pl. 'A hazai kulcsjátékos (Kovács) sérülése (confirmed_out) kritikus, a védelem instabil lesz.')>",
     "<2. kulcsfontosságú kontextuális adat (pl. 'A vendég csapat stílusa (magas letámadás) közvetlen ellenszere a hazai lassú építkezésnek.')>",
     "<3. kulcsfontosságú adat (pl. 'A piaci mozgás (-5%) a vendégcsapatot favorizálja, ellentmondva a tabellának.')>"
-  ],
+   ],
   "contextual_risks": "<Listázd az 1-2 legnagyobb kockázatot (pl. 'Derbi meccs, a feszültség magas, sok lap várható.')>"
 }
 `;
 
 // --- 3. LÉPÉS: A VEZETŐ STRATÉGA (A "SYNTHESIS") ---
 const PROMPT_STEP_3_STRATEGIST = `
-TASK: You are the Head Strategist. Your decision is final.
+TASK: You are the Head Strategist.
+Your decision is final.
 You have received two conflicting reports:
 1. QUANT REPORT (Data-driven): {step1QuantJson}
 2. SCOUT REPORT (Context-driven): {step2ScoutJson}
 
-Your job is to *resolve the conflict* between these two reports. Acknowledge their findings but provide a superior, synthesized final decision.
+Your job is to *resolve the conflict* between these two reports.
+Acknowledge their findings but provide a superior, synthesized final decision.
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
-
 [DATA INPUTS]:
 1. Quant Report (Step 1): {step1QuantJson}
 2. Scout Report (Step 2): {step2ScoutJson}
@@ -81,7 +134,7 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
   "micromodels": {
     "btts_analysis": "<BTTS elemzés a Quant és Scout adatok alapján>\\nBizalom: [Alacsony/Közepes/Magas]",
     "goals_ou_analysis": "<Gól O/U elemzés (a {sim_mainTotalsLine} vonal alapján)>\\nBizalom: [Alacsony/Közepes/Magas]"
-  },
+   },
   
   "final_confidence_report": "**<SCORE/10>** - Részletes indoklás. Vessd össze a {modelConfidence} (stat) bizalmat a Scout által jelzett kockázatokkal (pl. sérülések, piaci mozgás). A végső pontszám tükrözze a Quant és a Scout közötti összhangot vagy annak hiányát.>",
   
@@ -117,46 +170,41 @@ interface Step3Input {
 }
 
 
-// --- HELPER a promptok kitöltéséhez (Változatlan, de típusosított) ---
+// --- HELPER a promptok kitöltéséhez (Változatlan) ---
 function fillPromptTemplate(template: string, data: any): string {
     if (!template || typeof template !== 'string') return '';
     try {
         return template.replace(/\{([\w_]+)\}/g, (match, key) => {
             let value: any;
             
-            // Közvetlen kulcs keresése az adat objektumban
             if (data && typeof data === 'object' && data.hasOwnProperty(key)) {
                  value = data[key];
             } 
-            // Speciális kezelés JSON stringekhez
             else if (key.endsWith('Json')) {
                 const baseKey = key.replace('Json', '');
                 if (data && data.hasOwnProperty(baseKey) && data[baseKey] !== undefined) {
                     try { return JSON.stringify(data[baseKey]); } 
                     catch (e: any) { console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál`); return '{}'; }
-                } else { return '{}'; } // Üres JSON, ha nincs adat
+                } else { return '{}'; } 
             }
-            // Ha a kulcs nincs meg sehol
             else { 
                  console.warn(`Hiányzó kulcs a prompt kitöltéséhez: ${key}`);
                 return "N/A";
             }
 
-            // Érték formázása
             if (value === null || value === undefined) { return "N/A"; }
             if (typeof value === 'object') {
                  try { return JSON.stringify(value); } catch (e) { return "[object]"; }
             }
-            // Minden más stringgé alakítva
             return String(value);
         });
     } catch(e: any) {
          console.error(`Váratlan hiba a fillPromptTemplate során: ${e.message}`);
-         return template; // Hiba esetén az eredeti sablont adjuk vissza
+         return template; 
     }
 }
 
-// === LÁNCOLT AI HÍVÓK (v53.0) ===
+// === LÁNCOLT AI HÍVÓK (v54.5 - Retry logikával) ===
 
 /**
  * 1. LÉPÉS: Quant Elemzés
@@ -164,8 +212,8 @@ function fillPromptTemplate(template: string, data: any): string {
 export async function runStep1_GetQuant(data: Step1Input): Promise<any> {
     try {
         const filledPrompt = fillPromptTemplate(PROMPT_STEP_1_QUANT, data);
-        const jsonString = await _callGemini(filledPrompt);
-        return JSON.parse(jsonString);
+        // JAVÍTÁS: A robusztus hívót használjuk
+        return await _callGeminiWithJsonRetry(filledPrompt, "Step 1 - Quant");
     } catch (e: any) {
         console.error(`AI Hiba (Step 1 - Quant): ${e.message}`);
         return { error: `AI Hiba (Step 1 - Quant): ${e.message}` };
@@ -178,8 +226,8 @@ export async function runStep1_GetQuant(data: Step1Input): Promise<any> {
 export async function runStep2_GetScout(data: Step2Input): Promise<any> {
     try {
         const filledPrompt = fillPromptTemplate(PROMPT_STEP_2_SCOUT, data);
-        const jsonString = await _callGemini(filledPrompt);
-        return JSON.parse(jsonString);
+        // JAVÍTÁS: A robusztus hívót használjuk
+        return await _callGeminiWithJsonRetry(filledPrompt, "Step 2 - Scout");
     } catch (e: any) {
         console.error(`AI Hiba (Step 2 - Scout): ${e.message}`);
         return { error: `AI Hiba (Step 2 - Scout): ${e.message}` };
@@ -191,12 +239,9 @@ export async function runStep2_GetScout(data: Step2Input): Promise<any> {
  */
 export async function runStep3_GetStrategy(data: Step3Input): Promise<any> {
     try {
-        // Kiegészítés a kalibrációs térképpel (bár a prompt már nem kéri, a háttérben maradhat)
-        // data.calibrationMapJson = getConfidenceCalibrationMap(); 
-        
         const filledPrompt = fillPromptTemplate(PROMPT_STEP_3_STRATEGIST, data);
-        const jsonString = await _callGemini(filledPrompt);
-        return JSON.parse(jsonString);
+        // JAVÍTÁS: A robusztus hívót használjuk (ez volt a hibás lépés a logban)
+        return await _callGeminiWithJsonRetry(filledPrompt, "Step 3 - Strategy");
     } catch (e: any) {
         console.error(`AI Hiba (Step 3 - Strategy): ${e.message}`);
         // Kritikus hiba esetén is adjunk vissza egy alap ajánlást
@@ -226,7 +271,7 @@ export async function getChatResponse(context: string, history: ChatMessage[], q
         const historyString = (history || [])
              .map(msg => `${msg.role === 'user' ? 'Felhasználó' : 'AI'}: ${msg.parts?.[0]?.text || ''}`)
             .join('\n');
-            
+        
         const prompt = `You are an elite sports analyst AI assistant specialized in the provided match analysis.
 [CONTEXT of the analysis]:
 --- START CONTEXT ---
@@ -242,17 +287,17 @@ Answer concisely and accurately in Hungarian based ONLY on the provided Analysis
 Do not provide betting advice. Do not make up information not present in the context.
 If the answer isn't in the context or history, politely state that the information is not available in the analysis.`;
         
-        const rawAnswer = await _callGemini(prompt, false); // JSON kényszerítés kikapcsolva
+        // A chat funkció nem kényszerít JSON-t, ezért a sima _callGemini-t hívja
+        const rawAnswer = await _callGemini(prompt, false); 
         
         return rawAnswer ? { answer: rawAnswer } : { error: "Az AI nem tudott válaszolni." };
-
     } catch (e: any) {
         console.error(`Chat hiba: ${e.message}`, e.stack);
         return { error: `Chat AI hiba: ${e.message}` };
     }
 }
 
-// --- FŐ EXPORT --- (v53.0 - Frissítve a Dialektikus CoT lépésekre)
+// --- FŐ EXPORT --- (v54.5 - Frissítve a Dialektikus CoT lépésekre)
 export default {
     runStep1_GetQuant,
     runStep2_GetScout,
