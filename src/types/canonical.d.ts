@@ -1,3 +1,6 @@
+// FÁJL: src/types/canonical.d.ts
+// (v54.7 - Időjárás és Bíró típussal frissítve)
+
 // Ezen interfészek definiálják a rendszeren belüli "adatszerződést".
 // A Providerek (pl. apiSportsProvider) felelőssége, hogy az API válaszaikat
 // ezen interfészeknek megfelelő objektumokká alakítsák.
@@ -8,11 +11,11 @@
  * Ez az interfész azonnal észlelte volna a 'gp' vs 'GP' hibát.
  */
 export interface ICanonicalStats {
-  gp: number;                // Games Played (Lejátszott meccsek)
-  gf: number;                // Goals For (Lőtt gólok / Pontok)
-  ga: number;                // Goals Against (Kapott gólok / Pontok)
-  form: string | null;       // Forma string (pl. "WWLDW")
-  [key: string]: any;        // Egyéb, nem szigorúan típusos statisztikák
+  gp: number;           // Games Played (Lejátszott meccsek)
+  gf: number;           // Goals For (Lőtt gólok / Pontok)
+  ga: number;           // Goals Against (Kapott gólok / Pontok)
+  form: string | null;  // Forma string (pl. "WWLDW")
+  [key: string]: any;  // Egyéb, nem szigorúan típusos statisztikák
 }
 
 /**
@@ -56,8 +59,24 @@ export interface ICanonicalOdds {
 }
 
 /**
+ * === ÚJ (v54.7) ===
+ * Strukturált időjárási adatokat definiál,
+ * amelyeket a getWeatherForFixture (és később valós API-k) szolgáltatnak.
+ * A 'null' értékek megengedettek, ha az adat nem elérhető (pl. a meccs túl messze van).
+ */
+export interface IStructuredWeather {
+    description: string;
+    temperature_celsius: number | null;
+    humidity_percent: number | null;
+    wind_speed_kmh: number | null;
+    precipitation_mm: number | null;
+}
+
+/**
  * A "nyers" adatcsomag, amelyet a CoT (Chain-of-Thought) elemzéshez
  * és a Model.ts-hez gyűjtünk.
+ * === FRISSÍTVE (v54.7) ===
+ * Kiegészítve a 'referee' és 'contextual_factors' mezőkkel.
  */
 export interface ICanonicalRawData {
   stats: {
@@ -80,6 +99,19 @@ export interface ICanonicalRawData {
     home: ICanonicalPlayer[];
     away: ICanonicalPlayer[];
   };
+  
+  // --- v54.7 Kiegészítések ---
+  referee: {
+    name: string | null;
+    style: string | null; // Jövőbeli használatra
+  };
+  contextual_factors: {
+    stadium_location: string | null;
+    structured_weather: IStructuredWeather; // Az új interfész használata
+    pitch_condition: string | null; // Jövőbeli használatra
+  };
+  // --- Kiegészítés vége ---
+
   [key: string]: any; // Egyéb AI által generált adatok (pl. tactics)
 }
 
@@ -102,7 +134,7 @@ export interface ICanonicalRichContext {
     away_overall: string | null;
     [key: string]: any;
   };
-  rawData: ICanonicalRawData;
+  rawData: ICanonicalRawData; // Ez már tartalmazza a v54.7-es adatokat
   leagueAverages: { [key: string]: any };
   oddsData: ICanonicalOdds | null;
   fromCache: boolean;
