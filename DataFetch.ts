@@ -1,9 +1,11 @@
 // DataFetch.ts (v52.13 - TS2551 Case-Sensitivity Fix)
 // MÓDOSÍTÁS: A 'sofascoreData' feldolgozása javítva,
 // a helyes 'xG_away' (nagy 'G') tulajdonság használatával.
+
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
 import path from 'path';
+
 // Kanonikus típusok importálása
 import type { ICanonicalRichContext } from './src/types/canonical.d.ts';
 
@@ -70,6 +72,7 @@ export async function getRichContextualData(
     const teamNames = [homeTeamName, awayTeamName].sort();
     // A cache kulcs verzióját v52.7-re emeljük az új adatforrás miatt
     const ck = `rich_context_v52.7_sofascore_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
+    
     const cached = scriptCache.get<ICanonicalRichContext>(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
@@ -77,6 +80,7 @@ export async function getRichContextualData(
     }
     
     console.log(`Nincs cache (${ck}), friss adatok lekérése...`);
+    
     try {
         
         // 1. Válaszd ki a megfelelő sport providert (Odds, H2H, Alap statok)
@@ -90,7 +94,7 @@ export async function getRichContextualData(
             leagueName,
             utcKickoff
         };
-
+        
         // === MÓDOSÍTÁS: PÁRHUZAMOS HÍVÁS ===
         const [
             // Az 'apiSportsProvider' adja az Odds-okat, H2H-t, és a fallback statisztikákat
@@ -98,11 +102,11 @@ export async function getRichContextualData(
             // A 'sofascoreProvider' adja a megbízható xG-t és játékos-értékeléseket
             sofascoreData 
         ] = await Promise.all([
-             sportProvider.fetchMatchData(providerOptions),
+            sportProvider.fetchMatchData(providerOptions),
             // Csak foci esetén hívjuk a Sofascore-t
             sport === 'soccer' ? fetchSofascoreData(homeTeamName, awayTeamName) : Promise.resolve(null)
         ]);
-
+        
         // === EGYESÍTÉS (MERGE) ===
         const finalResult: ICanonicalRichContext = baseResult;
 
@@ -134,6 +138,7 @@ export async function getRichContextualData(
         console.log(`Sikeres adat-egyesítés (v52.13), cache mentve (${ck}).`);
         
         return { ...finalResult, fromCache: false };
+
     } catch (e: any) {
          console.error(`KRITIKUS HIBA a getRichContextualData (v52.13 - Factory) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
         throw new Error(`Adatgyűjtési hiba (v52.13): ${e.message}`);
