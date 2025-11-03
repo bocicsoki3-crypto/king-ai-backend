@@ -298,8 +298,7 @@ app.post('/runLearning', protect, async (req: Request, res: Response) => {
         }
         console.log(`Eredmény-elszámolás kész. Frissítve: ${settlementResult.updated} sor.`);
 
-        console.log("Öntanulási folyamat 
-(2. Lépés: Kalibráció és Rating frissítés) indul...");
+        console.log("Öntanulási folyamat (2. Lépés: Kalibráció és Rating frissítés) indul...");
         const [powerRatingResult, calibrationResult] = await Promise.all([
             Promise.resolve(updatePowerRatings()),
             runConfidenceCalibration()
