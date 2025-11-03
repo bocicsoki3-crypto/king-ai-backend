@@ -1,9 +1,11 @@
-// DataFetch.ts (v54.3 - SSOT Refaktor)
-// MÓDOSÍTÁS: Az '_getFixturesFromEspn' export átirányítva
-// az 'apiSportsProvider.getFixturesFromApiSports' függvényre.
+// DataFetch.ts (v52.13 - TS2551 Case-Sensitivity Fix)
+// MÓDOSÍTÁS: A 'sofascoreData' feldolgozása javítva,
+// a helyes 'xG_away' (nagy 'G') tulajdonság használatával.
+
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
 import path from 'path';
+
 // Kanonikus típusok importálása
 import type { ICanonicalRichContext } from './src/types/canonical.d.ts';
 
@@ -17,13 +19,13 @@ import { fetchSofascoreData } from './providers/sofascoreProvider.js';
 
 // Importáljuk a megosztott segédfüggvényeket
 import {
-    _callGemini as commonCallGemini
-    // === JAVÍTÁS (v54.3) ===
-    // Az _getFixturesFromEspn import eltávolítva a common/utils.ts-ből
-    // === JAVÍTÁS VÉGE ===
+    _callGemini as commonCallGemini,
+    _getFixturesFromEspn as commonGetFixtures
 } from './providers/common/utils.js';
+
 // --- FŐ CACHE INICIALIZÁLÁS ---
 const scriptCache = new NodeCache({ stdTTL: 3600 * 2, checkperiod: 600, useClones: false });
+
 // Típusdefiníció a providerek számára
 interface IDataProvider {
     fetchMatchData: (options: any) => Promise<ICanonicalRichContext>;
@@ -32,10 +34,10 @@ interface IDataProvider {
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v54.3 (SSOT Refaktor)
+* VERZIÓ: v52.13 (TS2551 Fix)
 * - A 'getRichContextualData' most már párhuzamosan hívja meg a sport-specifikus
 * providert (oddsokért) és a Sofascore providert (xG/játékos adatokért).
-* - Az _getFixturesFromEspn export átirányítva az apiSportsProvider.getFixturesFromApiSports-ra.
+* - Az eredményeket egyesíti, priorizálva a Sofascore adatait.
 **************************************************************/
 
 /**
@@ -64,19 +66,13 @@ export async function getRichContextualData(
     homeTeamName: string, 
     awayTeamName: string, 
     leagueName: string, 
-    utcKickoff: string,
-    // === ÚJ (v54.3) SSOT Paraméterek ===
-    // Ezeket az AnalysisFlow.ts továbbítja, hogy elkerüljük a név-egyeztetést
-    apiFootballLeagueId?: number,
-    apiFootballHomeId?: number,
-    apiFootballAwayId?: number,
-    apiFootballFixtureId?: number
-    // === VÉGE ===
+    utcKickoff: string
 ): Promise<ICanonicalRichContext> {
     
     const teamNames = [homeTeamName, awayTeamName].sort();
     // A cache kulcs verzióját v52.7-re emeljük az új adatforrás miatt
     const ck = `rich_context_v52.7_sofascore_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
+    
     const cached = scriptCache.get<ICanonicalRichContext>(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
@@ -84,6 +80,7 @@ export async function getRichContextualData(
     }
     
     console.log(`Nincs cache (${ck}), friss adatok lekérése...`);
+    
     try {
         
         // 1. Válaszd ki a megfelelő sport providert (Odds, H2H, Alap statok)
@@ -95,13 +92,7 @@ export async function getRichContextualData(
             homeTeamName,
             awayTeamName,
             leagueName,
-            utcKickoff,
-            // === ÚJ (v54.3) SSOT ID-k továbbítása ===
-            apiFootballLeagueId,
-            apiFootballHomeId,
-            apiFootballAwayId,
-            apiFootballFixtureId
-            // === VÉGE ===
+            utcKickoff
         };
         
         // === MÓDOSÍTÁS: PÁRHUZAMOS HÍVÁS ===
@@ -111,14 +102,14 @@ export async function getRichContextualData(
             // A 'sofascoreProvider' adja a megbízható xG-t és játékos-értékeléseket
             sofascoreData 
         ] = await Promise.all([
-       
             sportProvider.fetchMatchData(providerOptions),
             // Csak foci esetén hívjuk a Sofascore-t
             sport === 'soccer' ? fetchSofascoreData(homeTeamName, awayTeamName) : Promise.resolve(null)
         ]);
+        
         // === EGYESÍTÉS (MERGE) ===
         const finalResult: ICanonicalRichContext = baseResult;
-        
+
         // 2. Sofascore xG Adat felülírása (Ha létezik)
         // === JAVÍTÁS (TS2551) ===
         // A 'xg_away' (kis 'g') cserélve 'xG_away'-re (nagy 'G'), hogy megfeleljen a provider típusának.
@@ -147,18 +138,15 @@ export async function getRichContextualData(
         console.log(`Sikeres adat-egyesítés (v52.13), cache mentve (${ck}).`);
         
         return { ...finalResult, fromCache: false };
+
     } catch (e: any) {
          console.error(`KRITIKUS HIBA a getRichContextualData (v52.13 - Factory) során (${homeTeamName} vs ${awayTeamName}): ${e.message}`, e.stack);
-         throw new Error(`Adatgyűjtési hiba (v52.13): ${e.message}`);
+        throw new Error(`Adatgyűjtési hiba (v52.13): ${e.message}`);
     }
 }
 
 
 // --- KÖZÖS FUNKCIÓK EXPORTÁLÁSA ---
-// === JAVÍTÁS (v54.3) ===
-// Az _getFixturesFromEspn helyett az apiSportsProvider SSOT függvényét exportáljuk
-// Az 'index.ts' (Source 699) mostantól automatikusan az API-Football-t hívja.
-export const _getFixturesFromEspn = apiSportsProvider.fetchMatchData;
-// === JAVÍTÁS VÉGE ===
-
+// Ezeket exportáljuk, hogy más modulok (pl. index.ts) is elérhessék.
+export const _getFixturesFromEspn = commonGetFixtures;
 export const _callGemini = commonCallGemini;
