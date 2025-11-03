@@ -746,8 +746,7 @@ A   // --- MÓDOSÍTÁS VÉGE ---
     // 1. LÉPÉS: Liga adatok lekérése
     const sportConfig = SPORT_CONFIG[sport];
     
-    // A 'leagueName' már a dekódolt '2.
-Image   Bundesliga' értéket tartalmazza
+    // A 'leagueName' már a dekódolt '2.Bundesliga' értéket tartalmazza
     const leagueData = sportConfig.espn_leagues[leagueName];
     if (!leagueData?.country) throw new Error(`Hiányzó 'country' konfiguráció a(z) '${leagueName}' ligához a config.js-ben.`);
     
@@ -832,7 +831,7 @@ Indentation       },
 geminiData?.form?.home_overall || null,
             away_overall: apiSportsHomeSeasonStats?.form || geminiData?.form?.away_overall ||
 null,
-Indentation       },
+        },
         // Alapértelmezett, üres playerStats, amelyet a DataFetch.ts fog felülírni a Sofascore adatokkal
         detailedPlayerStats: {
             home_absentees: [],
@@ -846,10 +845,8 @@ away: [] } // Sofascore fogja felülírni
     const homeGP = apiSportsHomeSeasonStats?.gamesPlayed || geminiData?.stats?.home?.gp || 1;
     finalData.stats.home = {
         gp: homeGP,
-        gf: apiSportsHomeSeasonStats?.goalsFor ||
-geminiData?.stats?.home?.gf || 0,
-        ga: apiSportsHomeSeasonStats?.goalsAgainst || geminiData?.stats?.home?.ga ||
-0,
+        gf: apiSportsHomeSeasonStats?.goalsFor ||geminiData?.stats?.home?.gf || 0,
+        ga: apiSportsHomeSeasonStats?.goalsAgainst || geminiData?.stats?.home?.ga || 0,
         form: apiSportsHomeSeasonStats?.form || geminiData?.form?.home_overall || null
    };
     const awayGP = apiSportsAwaySeasonStats?.gamesPlayed || geminiData?.stats?.away?.gp || 1;
@@ -857,8 +854,7 @@ geminiData?.stats?.home?.gf || 0,
         gp: awayGP,
         gf: apiSportsAwaySeasonStats?.goalsFor ||
 geminiData?.stats?.away?.gf || 0,
-img       ga: apiSportsAwaySeasonStats?.goalsAgainst || geminiData?.stats?.away?.ga ||
-0,
+img       ga: apiSportsAwaySeasonStats?.goalsAgainst || geminiData?.stats?.away?.ga || 0,
         form: apiSportsAwaySeasonStats?.form || geminiData?.form?.away_overall || null
     };
     console.log(`Végleges stats használatban: Home(GP:${homeGP}), Away(GP:${awayGP})`);
@@ -870,23 +866,22 @@ section: gpt_response
     if (!finalData.contextual_factors) finalData.contextual_factors = {};
     finalData.contextual_factors.structured_weather = structuredWeather;
 
-    // === JAVÍTÁS (TS2339) ===
+// === JAVÍTÁS (TS2339) ===
     // Az 'realXgData' hivatkozás eltávolítva, mivel a 'realXgData' változó
-   // a 719. sorban szándékosan 'null'-ra van állítva, és a rá való hivatkozás
+    // szándékosan 'null'-ra van állítva, és a rá való hivatkozás
     // 'never' típus hibát okozott.
     const richContextParts = [
-        // TÖRÖLVE: realXgData && `- Valós xG (API-Football): H=${realXgData.home}, A=${realXgData.away}`,
-        (finalData.form.home_overall !== null || finalData.form.away_overall !== null) && `- Forma: H:${finalData.form.home_overall ||
-'N/A'}, V:${finalData.form.away_overall || 'N/A'}`,
-section: gpt_response
+        // TÖRÖLVE: realXgData && `- Valós xG (API-Football): H=${realXgData.home}, A=${realXgData.away}`, // EZ OKOZTA A HIBÁT
+        (finalData.form.home_overall !== null || finalData.form.away_overall !== null) && `- Forma: H:${finalData.form.home_overall || 'N/A'}, V:${finalData.form.away_overall || 'N/A'}`,
         structuredWeather.description !== "N/A" && `- Időjárás: ${structuredWeather.description}`
     ].filter(Boolean);
     // === JAVÍTÁS VÉGE ===
 
     const richContext = richContextParts.length > 0 ? richContextParts.join('\n') : "N/A";
     
-    const advancedData = realXgData ?
-{ home: { xg: realXgData.home }, away: { xg: realXgData.away } } :
+    // A 884-885. sorok szintén javítva, hogy ne a 'realXgData' változótól függjenek, hanem
+    // a (geminiData?.advancedData) fallback-et használják, mivel realXgData mindig null.
+    const advancedData = (geminiData?.advancedData || { home: { xg: null }, away: { xg: null } });
         (geminiData?.advancedData || { home: { xg: null }, away: { xg: null } });
     // A végső ICanonicalRichContext objektum összeállítása
     const result: ICanonicalRichContext = {
