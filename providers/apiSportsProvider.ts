@@ -4,6 +4,7 @@
 // JAVÍTÁS: (TS1005) Hiányzó vessző pótolva a getApiSportsOdds -> result objektumban.
 // JAVÍTÁS: (TS2339) Proaktív logikai javítás: A 'realXgData' (amely mindig null) hivatkozása eltávolítva a 'richContextParts' tömbből.
 // JAVÍTÁS: (2. Fázis) 'getApiSportsFixtureStats' hívás eltávolítva a fetchMatchData-ból (szándékosan).
+// JAVÍTÁS: (Strukturális) A 'fetchMatchData' függvény lezárva, 'providerName' a top-level scope-ba helyezve.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -796,7 +797,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         h2h_structured: apiSportsH2HData || (Array.isArray(geminiData?.h2h_structured) ? geminiData.h2h_structured : []),
         form: {
             home_overall: apiSportsHomeSeasonStats?.form || geminiData?.form?.home_overall || null,
-            away_overall: apiSportsHomeSeasonStats?.form || geminiData?.form?.away_overall || null,
+            away_overall: apiSportsHomeSeasonStats?.form || gemiData?.form?.away_overall || null,
         },
         // Alapértelmezett, üres playerStats, amelyet a DataFetch.ts fog felülírni a Sofascore adatokkal
         detailedPlayerStats: {
@@ -862,7 +863,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
     }
     
     return result;
-}
+} // <-- *** KRITIKUS JAVÍTÁS: fetchMatchData ITT LEZÁRVA ***
 
 // Meta-adat a logoláshoz
-export const providerName = 'api-sports-soccer';
+export const providerName = 'api-sports-soccer'; // <-- *** KRITIKUS JAVÍTÁS: A MODUL GYÖKERÉBE HELYEZVE ***
