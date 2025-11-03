@@ -1,7 +1,7 @@
 // DataFetch.ts (v54.3 - Teljes Dekódolási Javítás)
 // MÓDOSÍTÁS: A 'utcKickoff' paraméter dekódolása hozzáadva
 // a 'getRichContextualData' függvényhez, hogy elkerüljük
-// az "Érvénytelen utcKickoff"  hibát.
+// az "Érvénytelen utcKickoff" hibát.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -65,10 +65,11 @@ export async function getRichContextualData(
 ): Promise<ICanonicalRichContext> {
     
     // === JAVÍTÁS KEZDETE: Teljes dekódolás ===
+    // Itt dekódolunk mindent, amit a kliens kódolva küldhet.
     const decodedLeagueName = decodeURIComponent(decodeURIComponent(leagueName));
     const decodedHomeTeam = decodeURIComponent(decodeURIComponent(homeTeamName));
     const decodedAwayTeam = decodeURIComponent(decodeURIComponent(awayTeamName));
-    const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(utcKickoff)); // HIÁNYZÓ SOR
+    const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(utcKickoff)); // EZ VOLT A HIÁNYZÓ SOR
     // === JAVÍTÁS VÉGE ===
 
     const teamNames = [decodedHomeTeam, decodedAwayTeam].sort();
