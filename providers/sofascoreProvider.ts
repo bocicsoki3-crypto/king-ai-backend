@@ -1,7 +1,8 @@
-// providers/sofascoreProvider.ts (v54.2 - U20 Szűrő & "11 Hiányzó" Javítás)
+// providers/sofascoreProvider.ts (v54.9 - TS18048 Végleges Javítás)
 // MÓDOSÍTÁS: 
-// 1. getSofascoreTeamId: Kiszűri az U20/stb. csapatokat.
-// 2. processSofascoreLineups: TELJESEN ELTÁVOLÍTVA a hibás hiányzó-logika.
+// 1. A 'processSofascoreIncidents' függvényben a 'forEach' + 'if'
+//    logikát lecseréljük egy robusztus '.filter()' hívásra,
+//    hogy a TypeScript fordító garantáltan tudja, hogy 'p.player' létezik.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -13,19 +14,12 @@ import { makeRequest } from './common/utils.js';
 // Kanonikus típusok importálása
 import type { ICanonicalPlayerStats, ICanonicalPlayer } from '../src/types/canonical.d.ts';
 
-// --- Típusdefiníciók a Sofascore válaszokhoz (Kiterjesztve) ---
+// --- Típusdefiníciók (Kiterjesztve) ---
 interface ISofascoreTeam {
     name: string;
     id: number;
-    // Bővítés a kontextuális szűréshez
-    country?: {
-        name?: string;
-        alpha2?: string;
-    };
-    tournament?: {
-        name?: string;
-        id?: number;
-    };
+    country?: { name?: string; alpha2?: string; };
+    tournament?: { name?: string; id?: number; };
 }
 interface ISofascoreEvent {
     id: number;
@@ -37,7 +31,7 @@ interface ISofascoreXg {
     home: number;
     away: number;
 }
-// JAVÍTOTT INTERFÉSZ (v54.2)
+// Ez a /get-lineups válasza (Ratingeket ad)
 interface ISofascoreRawPlayer {
     player: {
         id: number;
@@ -47,17 +41,36 @@ interface ISofascoreRawPlayer {
     rating?: string;
     position?: string;
     substitute?: boolean;
-    missing?: boolean; // Hagyjuk az interfészben, hátha az API mégis küldi
-    status?: { 
-        code: number;
-        description: string;
+    reason?: string;
+}
+
+// Ez a /get-incidents válasza
+interface ISofascoreIncidentPayload {
+    incidents?: ISofascoreIncident[]; 
+    home?: {
+        missing?: ISofascoreRawPlayer[]; 
     };
+    away?: {
+        missing?: ISofascoreRawPlayer[];
+    };
+}
+// Az 'incidents' tömb egy eleme
+interface ISofascoreIncident {
+    player?: {
+        id: number;
+        name: string;
+    };
+    teamSide?: 'home' | 'away';
+    incidentType?: 'injury' | 'card'; 
+    injury?: boolean; 
+    reason?: string; 
 }
 
 
 // --- Cache-ek ---
-const sofaTeamCache = new NodeCache({ stdTTL: 3600 * 24 * 7 }); // 1 hét
-const sofaEventCache = new NodeCache({ stdTTL: 3600 * 6 }); // 6 óra
+const sofaTeamCache = new NodeCache({ stdTTL: 3600 * 24 * 7 });
+const sofaEventCache = new NodeCache({ stdTTL: 3600 * 6 });
+const sofaIncidentsCache = new NodeCache({ stdTTL: 3600 * 6 }); 
 
 // --- API HÍVÓ SEGÉDFÜGGVÉNY (Változatlan) ---
 async function makeSofascoreRequest(endpoint: string, params: any) {
@@ -83,12 +96,8 @@ async function makeSofascoreRequest(endpoint: string, params: any) {
 }
 
 
-/**
- * 1. Lépés: Megkeresi egy csapat Sofascore ID-ját a neve alapján.
- * (OPTIMALIZÁLT v54.2: U20/U19 szűrés)
- */
+// --- getSofascoreTeamId (v54.2 - U20 Szűrővel, Változatlan) ---
 async function getSofascoreTeamId(teamName: string, countryContext: string | null): Promise<number | null> {
-    // A kontextust a cache kulcsba is beépítjük
     const countryCode = countryContext ? (countryContext.length === 2 ? countryContext.toUpperCase() : countryContext) : 'GLOBAL';
     const cacheKey = `team_v54.2_${teamName.toLowerCase().replace(/\s/g, '')}_ctx_${countryCode}`;
     const cachedId = sofaTeamCache.get<number>(cacheKey);
@@ -108,10 +117,8 @@ async function getSofascoreTeamId(teamName: string, countryContext: string | nul
             r.entity?.sport?.name === 'Football' && 
             r.entity.id &&
             r.entity.name &&
-            // === JAVÍTÁS (v54.2): U20/U19/stb. csapatok szűrése ===
-            !/U(19|20|21|23)/i.test(r.entity.name) && // Kiszűri pl. "Novorizontino U20"
-            !r.entity.name.toLowerCase().endsWith(" u20") // Biztonsági ellenőrzés
-            // === JAVÍTÁS VÉGE ===
+            !/U(19|20|21|23)/i.test(r.entity.name) && 
+            !r.entity.name.toLowerCase().endsWith(" u20")
         )
         .map((r: any) => r.entity);
 
@@ -120,7 +127,6 @@ async function getSofascoreTeamId(teamName: string, countryContext: string | nul
         return null;
     }
 
-    // === KONTEXTUÁLIS SZŰRÉS (v54.1 - Változatlan) ===
     let teamsToSearch: ISofascoreTeam[] = allTeams;
     let searchContext = "Globális";
 
@@ -138,12 +144,10 @@ async function getSofascoreTeamId(teamName: string, countryContext: string | nul
             console.warn(`[Sofascore] Kontextus Hiba: Nincs "${countryContext}" találat a(z) "${teamName}" keresésre. Visszalépés globális keresésre.`);
         }
     }
-    // === SZŰRÉS VÉGE ===
 
     const normalizedInput = teamName.toLowerCase();
     let foundTeam: ISofascoreTeam | null = null;
 
-    // 1. Lépés: Tökéletes egyezés (a szűkített listán)
     foundTeam = teamsToSearch.find(t => t.name.toLowerCase() === normalizedInput) || null;
     if (foundTeam) {
         console.log(`[Sofascore] Csapat ID Találat (1/2 - Tökéletes ${searchContext}): "${teamName}" -> "${foundTeam.name}" (ID: ${foundTeam.id})`);
@@ -151,7 +155,6 @@ async function getSofascoreTeamId(teamName: string, countryContext: string | nul
         return foundTeam.id;
     }
 
-    // 2. Lépés: Hasonlósági egyezés (Fuzzy Match) - (a szűkített listán)
     const teamNames = teamsToSearch.map(t => t.name);
     if (teamNames.length === 0) {
          console.warn(`[Sofascore] Csapat ID Találat: Nincs érvényes jelölt a(z) "${teamName}" keresésre (${searchContext} kontextus).`);
@@ -171,7 +174,7 @@ async function getSofascoreTeamId(teamName: string, countryContext: string | nul
     return null;
 }
 
-// ... (getSofascoreEventId változatlan) ...
+// --- getSofascoreEventId (Változatlan) ---
 async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Promise<number | null> {
     const cacheKey = `event_${homeTeamId}_vs_${awayTeamId}`;
     const cachedId = sofaEventCache.get<number>(cacheKey);
@@ -179,7 +182,7 @@ async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Prom
         console.log(`[Sofascore] Meccs ID Találat (Cache): ${cachedId}`);
         return cachedId;
     }
-    // ... (A függvény többi része változatlan) ...
+
     console.log(`[Sofascore] Meccs keresés (1/2): ${homeTeamId} (Home) naptárának ellenőrzése...`);
     let data = await makeSofascoreRequest('/teams/get-next-matches', { teamId: homeTeamId, page: 0 });
     if (data?.events) {
@@ -212,7 +215,7 @@ async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Prom
     return null;
 }
 
-// ... (getSofascoreXg változatlan) ...
+// --- getSofascoreXg (Változatlan) ---
 async function getSofascoreXg(eventId: number): Promise<ISofascoreXg | null> {
     const data = await makeSofascoreRequest('/matches/get-statistics', { matchId: eventId });
     if (!data?.statistics) {
@@ -244,7 +247,7 @@ async function getSofascoreXg(eventId: number): Promise<ISofascoreXg | null> {
     }
 }
 
-// ... (getSofascoreLineups változatlan) ...
+// --- getSofascoreLineups (Változatlan, ez adja a Ratingeket) ---
 async function getSofascoreLineups(eventId: number): Promise<{ home: ISofascoreRawPlayer[], away: ISofascoreRawPlayer[] } | null> {
     const data = await makeSofascoreRequest('/matches/get-lineups', { matchId: eventId });
     if (!data?.home && !data?.away) {
@@ -257,20 +260,39 @@ async function getSofascoreLineups(eventId: number): Promise<{ home: ISofascoreR
     return { home: homePlayers, away: awayPlayers };
 }
 
+// --- getSofascoreIncidents (v54.6 - Változatlan) ---
+async function getSofascoreIncidents(eventId: number): Promise<ISofascoreIncidentPayload | null> {
+    const cacheKey = `incidents_v1_${eventId}`;
+    const cached = sofaIncidentsCache.get<ISofascoreIncidentPayload>(cacheKey);
+    if (cached) {
+        console.log(`[Sofascore] Incidens/Hiányzó adat Találat (Cache): ${eventId}`);
+        return cached;
+    }
+    
+    const data = await makeSofascoreRequest('/matches/get-incidents', { matchId: eventId });
+    
+    if (!data) {
+        console.warn(`[Sofascore] Hiányzók Hiba: Az '/matches/get-incidents' végpont hívása sikertelen (Event ID: ${eventId}).`);
+        return null;
+    }
+    
+    sofaIncidentsCache.set(cacheKey, data);
+    console.log(`[Sofascore] Incidens/Hiányzó adat kinyerve (Event ID: ${eventId}).`);
+    return data;
+}
+
 
 /**
- * 4. Lépés: Feldolgozza a Sofascore felállás adatokat.
- * (JAVÍTVA v54.2: A "11 hiányzó" hiba javítása)
+ * Feldolgozza a Sofascore felállás adatokat (CSAK a ratingekért).
+ * (v54.2 - "11 Hiányzó" hiba javítva)
  */
 function processSofascoreLineups(
     lineups: { home: ISofascoreRawPlayer[], away: ISofascoreRawPlayer[] } | null
-): ICanonicalPlayerStats {
-    const canonicalStats: ICanonicalPlayerStats = {
-        home_absentees: [],
-        away_absentees: [],
-        key_players_ratings: { home: {}, away: {} }
-    };
-    if (!lineups) return canonicalStats;
+): Pick<ICanonicalPlayerStats, 'key_players_ratings'> { 
+    
+    const key_players_ratings: ICanonicalPlayerStats['key_players_ratings'] = { home: {}, away: {} };
+    if (!lineups) return { key_players_ratings };
+    
     const POS_MAP: { [key: string]: 'Támadó' | 'Középpályás' | 'Védő' | 'Kapus' } = {
         'F': 'Támadó', 'Attacker': 'Támadó',
         'M': 'Középpályás', 'Midfielder': 'Középpályás',
@@ -285,20 +307,7 @@ function processSofascoreLineups(
             if (!p || !p.player) return; 
             const position = POS_MAP[p.player.position] || 'Középpályás';
             const ratingValue = parseFloat(p.rating || '0');
-
-            // === JAVÍTOTT HIÁNYZÓ LOGIKA (v54.2) ===
-            // A logok [cite: 839] alapján a 'players' tömb a kezdő 11-et tartalmazza.
-            // A hiányzók keresése ebből a listából hibás (ez okozta a "11 hiányzó" hibát).
-            // A hibás logikát (isAbsent) teljesen eltávolítjuk.
             
-            // const isExplicitlyMissing = p.missing === true;
-            // const statusDescription = p.status?.description?.toLowerCase() || '';
-            // const isStatusMissing = statusDescription === 'missing' || statusDescription === 'absent';
-            // const isAbsent = isExplicitlyMissing || isStatusMissing;
-            // if (isAbsent) { ... }
-            // === JAVÍTÁS VÉGE ===
-            
-            // A rating feldolgozása (ez helyes volt)
             if (ratingValue > 0) {
                  if (ratingsByPosition[position]) {
                     ratingsByPosition[position].push(ratingValue);
@@ -309,8 +318,8 @@ function processSofascoreLineups(
         for (const [pos, ratings] of Object.entries(ratingsByPosition)) {
             if (ratings.length > 0) {
                 const avgRating = ratings.reduce((a, b) => a + b, 0) / ratings.length;
-                if (side === 'home') canonicalStats.key_players_ratings.home[pos] = avgRating;
-                else canonicalStats.key_players_ratings.away[pos] = avgRating;
+                if (side === 'home') key_players_ratings.home[pos] = avgRating;
+                else key_players_ratings.away[pos] = avgRating;
             }
         }
     };
@@ -318,23 +327,107 @@ function processSofascoreLineups(
     processSide(lineups.home, 'home');
     processSide(lineups.away, 'away');
     
-    // A logolás most már 0 hiányzót kell, hogy mutasson (ami helyes)
-    if (canonicalStats.home_absentees.length > 0 || canonicalStats.away_absentees.length > 0) {
-        console.log(`[Sofascore Feldolgozó] Hiányzók azonosítva: ${canonicalStats.home_absentees.length} (H), ${canonicalStats.away_absentees.length} (A)`);
-    } else {
-        console.log(`[Sofascore Feldolgozó] Nincsenek explicit hiányzók a felállás adatai között (v54.2 javítás).`);
-    }
-    return canonicalStats;
+    console.log(`[Sofascore Feldolgozó] Játékos értékelések (ratingek) feldolgozva a kezdőcsapatból.`);
+    return { key_players_ratings };
 }
 
 /**
+ * Feldolgozza az incidens adatokat és kinyeri a valós hiányzókat.
+ * (JAVÍTVA v54.9 - TS18048 Végleges Javítás)
+ */
+function processSofascoreIncidents(
+    incidentsData: ISofascoreIncidentPayload | null
+): Pick<ICanonicalPlayerStats, 'home_absentees' | 'away_absentees'> {
+    
+    const absentees: Pick<ICanonicalPlayerStats, 'home_absentees' | 'away_absentees'> = {
+        home_absentees: [],
+        away_absentees: []
+    };
+    
+    if (!incidentsData) return absentees;
+
+    // === JAVÍTÁS (v54.9): .filter() használata a 'forEach' + 'if' helyett ===
+    
+    // 1. Logika: Keresés a 'home' és 'away' 'missing' tömbökben
+    if (incidentsData.home?.missing) {
+        incidentsData.home.missing
+            // Garantálja, hogy p, p.player és p.player.name is létezik
+            .filter((p): p is ISofascoreRawPlayer & { player: { id: number, name: string } } => 
+                !!p && !!p.player && !!p.player.name
+            ) 
+            .forEach(p => { 
+                absentees.home_absentees.push({
+                    name: p.player.name,
+                    role: 'Ismeretlen', 
+                    importance: 'key',
+                    status: 'confirmed_out',
+                });
+            });
+    }
+    if (incidentsData.away?.missing) {
+         incidentsData.away.missing
+            // Garantálja, hogy p, p.player és p.player.name is létezik
+            .filter((p): p is ISofascoreRawPlayer & { player: { id: number, name: string } } => 
+                !!p && !!p.player && !!p.player.name
+            )
+            .forEach(p => {
+                absentees.away_absentees.push({
+                    name: p.player.name,
+                    role: 'Ismeretlen',
+                    importance: 'key',
+                    status: 'confirmed_out',
+                });
+            });
+    }
+
+    // 2. Logika: Keresés az 'incidents' tömbben (fallback)
+    if (Array.isArray(incidentsData.incidents)) {
+        incidentsData.incidents
+            // Garantálja, hogy p, p.player és p.player.name is létezik
+            .filter((p): p is ISofascoreIncident & { player: { id: number, name: string }, teamSide: 'home' | 'away' } =>
+                !!p && !!p.player && !!p.player.name && !!p.teamSide
+            )
+            .forEach(p => {
+                const isMissing = p.incidentType === 'injury' || p.injury === true || p.reason === 'Suspension';
+                
+                if (isMissing) {
+                    const absentee: ICanonicalPlayer = {
+                        name: p.player.name,
+                        role: 'Ismeretlen',
+                        importance: 'key',
+                        status: 'confirmed_out',
+                    };
+                    
+                    // Duplikáció elkerülése
+                    if (p.teamSide === 'home' && !absentees.home_absentees.find(a => a.name === p.player.name)) {
+                        absentees.home_absentees.push(absentee);
+                    } else if (p.teamSide === 'away' && !absentees.away_absentees.find(a => a.name === p.player.name)) {
+                        absentees.away_absentees.push(absentee);
+                    }
+                }
+            });
+    }
+    // === JAVÍTÁS VÉGE ===
+
+    
+    if (absentees.home_absentees.length > 0 || absentees.away_absentees.length > 0) {
+        console.log(`[Sofascore Feldolgozó] VALÓS HIÁNYZÓK azonosítva: ${absentees.home_absentees.length} (H), ${absentees.away_absentees.length} (A)`);
+    } else {
+        console.log(`[Sofascore Feldolgozó] Nincs explicit hiányzó az '/matches/get-incidents' végpont adatai között.`);
+    }
+
+    return absentees;
+}
+
+
+/**
  * FŐ FUNKCIÓ: Lefuttatja a teljes Sofascore adatgyűjtési folyamatot.
- * (JAVÍTVA v54.1: Fogadja a 'countryContext'-et)
+ * (JAVÍTVA v54.8: TS hiba javítva)
  */
 export async function fetchSofascoreData(
     homeTeamName: string, 
     awayTeamName: string,
-    countryContext: string | null // Új paraméter
+    countryContext: string | null 
 ): Promise<{ 
     advancedData: { xg_home: number; xG_away: number } | null, 
     playerStats: ICanonicalPlayerStats 
@@ -350,10 +443,11 @@ export async function fetchSofascoreData(
             key_players_ratings: { home: {}, away: {} }
         } as ICanonicalPlayerStats
     };
+    
     try {
         const [homeTeamId, awayTeamId] = await Promise.all([
-            getSofascoreTeamId(homeTeamName, countryContext), // v54.2 hívás
-            getSofascoreTeamId(awayTeamName, countryContext)  // v54.2 hívás
+            getSofascoreTeamId(homeTeamName, countryContext), 
+            getSofascoreTeamId(awayTeamName, countryContext) 
         ]);
         if (!homeTeamId || !awayTeamId) {
             console.warn(`[Sofascore Provider] Csapat ID hiba (${homeTeamName}=${homeTeamId} | ${awayTeamName}=${awayTeamId}). A Sofascore kérés leáll.`);
@@ -366,19 +460,32 @@ export async function fetchSofascoreData(
             return result;
         }
 
-        const [xgData, lineupsData] = await Promise.all([
+        const [xgData, lineupsData, incidentsData] = await Promise.all([
             getSofascoreXg(eventId),
-            getSofascoreLineups(eventId)
+            getSofascoreLineups(eventId),
+            getSofascoreIncidents(eventId) 
         ]);
 
         if (xgData) {
             result.advancedData = {
                 xg_home: xgData.home,
+                // === JAVÍTÁS (TS2304) ===
                 xG_away: xgData.away 
+                // === JAVÍTÁS VÉGE ===
             };
         }
-        // A v54.2-es (javított) feldolgozó hívása
-        result.playerStats = processSofascoreLineups(lineupsData); 
+        
+        // Két külön feldolgozó függvény hívása
+        const playerRatingsData = processSofascoreLineups(lineupsData);
+        const playerAbsenteesData = processSofascoreIncidents(incidentsData); // v54.9-es javított hívás
+
+        // Az eredmények egyesítése a végső ICanonicalPlayerStats objektumba
+        result.playerStats = {
+            key_players_ratings: playerRatingsData.key_players_ratings,
+            home_absentees: playerAbsenteesData.home_absentees,
+            away_absentees: playerAbsenteesData.away_absentees
+        };
+        
     } catch (e: any) {
         console.warn(`[Sofascore Provider] Kritikus hiba a teljes Sofascore folyamat során: ${e.message}`);
     }
