@@ -1,7 +1,11 @@
-// DataFetch.ts (v54.3 - Teljes Dekódolási Javítás)
-// MÓDOSÍTÁS: A 'utcKickoff' paraméter dekódolása hozzáadva
-// a 'getRichContextualData' függvényhez, hogy elkerüljük
-// az "Érvénytelen utcKickoff" hibát.
+// FÁJL: DataFetch.ts
+// VERZIÓ: v54.10 (Kritikus xG Prioritási Lánc Javítás)
+// MÓDOSÍTÁS:
+// 1. A 'getRichContextualData' most már egy 'options' objektumot fogad,
+//    amely tartalmazza az opcionális 'manual_xg_home'/'manual_xg_away' mezőket.
+// 2. Az "EGYESÍTÉS" szekció teljesen újraírva, hogy betartsa a
+//    P1 (Manuális) > P2 (Sofascore) > P3 (API-Sports) > P4 (Becsült)
+//    xG prioritási sorrendet.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -31,9 +35,22 @@ interface IDataProvider {
     providerName: string;
 }
 
+// === JAVÍTÁS (v54.10) ===
+// Új interfész a kiterjesztett funkció opciókhoz
+export interface IDataFetchOptions {
+    sport: string;
+    homeTeamName: string; // URL-kódoltan érkezik
+    awayTeamName: string; // URL-kódoltan érkezik
+    leagueName: string;   // URL-kódoltan érkezik
+    utcKickoff: string;   // URL-kódoltan érkezik
+    manual_xg_home?: number | null; // A P1 prioritású adat
+    manual_xg_away?: number | null; // A P1 prioritású adat
+}
+// === JAVÍTÁS VÉGE ===
+
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v54.3 (utcKickoff Fix)
+* VERZIÓ: v54.10 (xG Prioritási Lánc Fix)
 **************************************************************/
 
 /**
@@ -54,27 +71,25 @@ function getProvider(sport: string): IDataProvider {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FUNKCIÓ (v54.3 - Teljes Dekódolás Javítás)
+ * FŐ ADATGYŰJTŐ FUNKCIÓ (v54.10 - xG Prioritási Lánc Javítás)
  */
 export async function getRichContextualData(
-    sport: string, 
-    homeTeamName: string, // Ez URL-kódoltan érkezik
-    awayTeamName: string, // Ez URL-kódoltan érkezik
-    leagueName: string, // Ez URL-kódoltan érkezik
-    utcKickoff: string // Ez URL-kódoltan érkezik (a hiba forrása)
+    // === JAVÍTÁS (v54.10): A funkció most már az új interfészt használja ===
+    options: IDataFetchOptions 
 ): Promise<ICanonicalRichContext> {
     
     // === JAVÍTÁS KEZDETE: Teljes dekódolás ===
     // Itt dekódolunk mindent, amit a kliens kódolva küldhet.
-    const decodedLeagueName = decodeURIComponent(decodeURIComponent(leagueName));
-    const decodedHomeTeam = decodeURIComponent(decodeURIComponent(homeTeamName));
-    const decodedAwayTeam = decodeURIComponent(decodeURIComponent(awayTeamName));
-    const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(utcKickoff)); // EZ VOLT A HIÁNYZÓ SOR
+    const decodedLeagueName = decodeURIComponent(decodeURIComponent(options.leagueName));
+    const decodedHomeTeam = decodeURIComponent(decodeURIComponent(options.homeTeamName));
+    const decodedAwayTeam = decodeURIComponent(decodeURIComponent(options.awayTeamName));
+    const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(options.utcKickoff));
+    // A manuális xG adatokat (options.manual_xg_home) nem kell dekódolni
     // === JAVÍTÁS VÉGE ===
 
     const teamNames = [decodedHomeTeam, decodedAwayTeam].sort();
-    // A cache kulcs verzióját v54.3-ra emeljük
-    const ck = `rich_context_v54.3_sofascore_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
+    // A cache kulcs verzióját v54.10-re emeljük
+    const ck = `rich_context_v54.10_sofascore_${options.sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
     const cached = scriptCache.get<ICanonicalRichContext>(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
@@ -85,11 +100,11 @@ export async function getRichContextualData(
     try {
         
         // 1. Válaszd ki a megfelelő sport providert
-        const sportProvider = getProvider(sport);
-        console.log(`Adatgyűjtés indul (Provider: ${sportProvider.providerName || sport}): ${decodedHomeTeam} vs ${decodedAwayTeam}...`);
+        const sportProvider = getProvider(options.sport);
+        console.log(`Adatgyűjtés indul (Provider: ${sportProvider.providerName || options.sport}): ${decodedHomeTeam} vs ${decodedAwayTeam}...`);
 
         // Ország kontextus kinyerése (a dekódolt névvel)
-        const sportConfig = SPORT_CONFIG[sport];
+        const sportConfig = SPORT_CONFIG[options.sport];
         const leagueData = sportConfig?.espn_leagues[decodedLeagueName]; 
         const countryContext = leagueData?.country || null; 
         if (!countryContext) {
@@ -97,11 +112,13 @@ export async function getRichContextualData(
         }
         
         const providerOptions = {
-            sport,
+            sport: options.sport,
             homeTeamName: decodedHomeTeam,
             awayTeamName: decodedAwayTeam,
             leagueName: decodedLeagueName,
             utcKickoff: decodedUtcKickoff // JAVÍTVA: A dekódolt időpontot adjuk tovább
+            // A manuális xG-t NEM adjuk tovább a providereknek,
+            // az az itteni egyesítési logikához kell.
         };
 
         // Párhuzamos hívás (Kontextussal és dekódolt nevekkel)
@@ -110,24 +127,52 @@ export async function getRichContextualData(
             sofascoreData 
         ] = await Promise.all([
              sportProvider.fetchMatchData(providerOptions), 
-            sport === 'soccer' 
+            options.sport === 'soccer' 
                 ? fetchSofascoreData(decodedHomeTeam, decodedAwayTeam, countryContext) 
                 : Promise.resolve(null)
         ]);
 
-        // === EGYESÍTÉS (MERGE) ===
+        // === EGYESÍTÉS (v54.10 JAVÍTÁS - xG PRIORITÁSI LÁNC) ===
         const finalResult: ICanonicalRichContext = baseResult;
 
-        // 2. Sofascore xG Adat felülírása (Ha létezik)
-        if (sofascoreData && sofascoreData.advancedData?.xg_home != null && sofascoreData.advancedData?.xG_away != null) {
-            console.log(`[DataFetch] Felülírás: API-Football xG felülírva a Sofascore xG-vel.`);
-            finalResult.advancedData.home['xg'] = sofascoreData.advancedData.xg_home;
-            finalResult.advancedData.away['xg'] = sofascoreData.advancedData.xG_away; 
-        } else {
-            console.warn(`[DataFetch] Sofascore xG adat nem elérhető. Az 'apiSportsProvider' becslése (vagy hibája) marad érvényben.`);
-        }
+        let finalHomeXg: number | null = null;
+        let finalAwayXg: number | null = null;
+        let xgSource: string = "N/A";
 
-        // 3. Sofascore Játékos Adat felülírása (Ha létezik)
+        // 1. PRIORITÁS: Manuális (User-Provided) xG
+        if (options.manual_xg_home != null && options.manual_xg_away != null) {
+            finalHomeXg = options.manual_xg_home;
+            finalAwayXg = options.manual_xg_away;
+            xgSource = "P1: Manual (User-Provided)";
+        }
+        // 2. PRIORITÁS: Sofascore valós xG
+        // (Javítva a 'xG_away' elírás 'xg_away'-re)
+        else if (sofascoreData?.advancedData?.xg_home != null && sofascoreData?.advancedData?.xg_away != null) {
+            finalHomeXg = sofascoreData.advancedData.xg_home;
+            finalAwayXg = sofascoreData.advancedData.xg_away;
+            xgSource = "P2: Sofascore (Real)";
+        }
+        // 3. PRIORITÁS: API-Sports valós xG
+        else if (baseResult?.advancedData?.home?.xg != null && baseResult?.advancedData?.away?.xg != null) {
+            finalHomeXg = baseResult.advancedData.home.xg;
+            finalAwayXg = baseResult.advancedData.away.xg;
+            xgSource = "P3: API-Sports (Real)";
+        }
+        // 4. PRIORITÁS: Visszaesés (Becslés)
+        else {
+            xgSource = "P4: N/A (Fallback to Model Estimation)";
+        }
+        
+        // Végleges xG beállítása a 'finalResult' objektumon
+        // A 'Model.ts' majd ez alapján dönt, hogy kell-e becsülnie vagy sem.
+        finalResult.advancedData = {
+            home: { ...finalResult.advancedData.home, xg: finalHomeXg },
+            away: { ...finalResult.advancedData.away, xg: finalAwayXg }
+        };
+        
+        console.log(`[DataFetch] xG Forrás meghatározva: ${xgSource}. (H:${finalHomeXg ?? 'N/A'}, A:${finalAwayXg ?? 'N/A'})`);
+        
+        // 3. Sofascore Játékos Adat felülírása (Ez a logika helyes volt)
         if (sofascoreData && sofascoreData.playerStats) {
             console.log(`[DataFetch] Felülírás: Az 'apiSportsProvider' szimulált játékos-adatai felülírva a Sofascore adataival (Hiányzók: ${sofascoreData.playerStats.home_absentees.length}H / ${sofascoreData.playerStats.away_absentees.length}A).`);
             finalResult.rawData.detailedPlayerStats = sofascoreData.playerStats;
@@ -140,13 +185,13 @@ export async function getRichContextualData(
 
         // 4. Mentsd az egyesített eredményt a fő cache-be
         scriptCache.set(ck, finalResult);
-        console.log(`Sikeres adat-egyesítés (v54.3), cache mentve (${ck}).`);
+        console.log(`Sikeres adat-egyesítés (v54.10), cache mentve (${ck}).`);
         
         return { ...finalResult, fromCache: false };
     } catch (e: any) {
-         console.error(`KRITIKUS HIBA a getRichContextualData (v54.3 - Factory) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
+         console.error(`KRITIKUS HIBA a getRichContextualData (v54.10 - Factory) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
         // A stack trace-t is továbbadjuk a pontosabb hibakereséshez
-        throw new Error(`Adatgyűjtési hiba (v54.3): ${e.message} \nStack: ${e.stack}`);
+        throw new Error(`Adatgyűjtési hiba (v54.10): ${e.message} \nStack: ${e.stack}`);
     }
 }
 
