@@ -1,10 +1,10 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v54.12 (Sofascore 'xG_away' Típusjavítás)
+// VERZIÓ: v54.14 (Kritikus 'home_absenteS' elírás javítása a logolásban)
 // MÓDOSÍTÁS:
 // 1. A 'getRichContextualData' (v54.10) egy 'options' objektumot fogad.
 // 2. Az "EGYESÍTÉS" szekció betartja a P1 > P2 > P3 > P4 láncot.
-// 3. (v54.12) A Sofascore P2 prioritás javítva, hogy a 'xG_away' (nagy G)
-//    kulcsot használja, ahogy azt a TS2551 hiba jelzi.
+// 3. (v54.12) A Sofascore P2 prioritás a 'xG_away' (nagy G) kulcsot használja.
+// 4. (v54.14) Javítva a 'home_absenteS' elírás a 168. sor körüli logban.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -47,7 +47,7 @@ export interface IDataFetchOptions {
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v54.12 (xG Prioritási Lánc Fix)
+* VERZIÓ: v54.14 (xG Prioritási Lánc Fix)
 **************************************************************/
 
 function getProvider(sport: string): IDataProvider {
@@ -64,7 +64,7 @@ function getProvider(sport: string): IDataProvider {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FUNKCIÓ (v54.12)
+ * FŐ ADATGYŰJTŐ FUNKCIÓ (v54.14)
  */
 export async function getRichContextualData(
     options: IDataFetchOptions 
@@ -77,8 +77,8 @@ export async function getRichContextualData(
     const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(options.utcKickoff));
 
     const teamNames = [decodedHomeTeam, decodedAwayTeam].sort();
-    // A cache kulcs verzióját v54.12-re emeljük
-    const ck = `rich_context_v54.12_sofascore_${options.sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
+    // A cache kulcs verzióját v54.14-re emeljük
+    const ck = `rich_context_v54.14_sofascore_${options.sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
     const cached = scriptCache.get<ICanonicalRichContext>(ck);
     if (cached) {
         console.log(`Cache találat (${ck})`);
@@ -118,27 +118,21 @@ export async function getRichContextualData(
                 : Promise.resolve(null)
         ]);
 
-        // === EGYESÍTÉS (v54.12 JAVÍTÁS - xG PRIORITÁSI LÁNC) ===
+        // === EGYESÍTÉS (v54.14 JAVÍTÁS - xG PRIORITÁSI LÁNC) ===
         const finalResult: ICanonicalRichContext = baseResult;
 
         let finalHomeXg: number | null = null;
         let finalAwayXg: number | null = null;
         let xgSource: string = "N/A";
 
-        // 1. PRIORITÁS: Manuális xG
-        // (Ezt az 'AnalysisFlow.ts' (v54.12) kezeli, miután ez a függvény visszatér)
-        // Mi a P2 > P3 logikát futtatjuk le.
-
-        // === JAVÍTÁS (v54.12): Visszaállítás 'xG_away'-re (nagy G) ===
-        // Ez oldja meg a TS2551 hibát.
-        // 2. PRIORITÁS: Sofascore valós xG
+        // 1. PRIORITÁS: Manuális xG (Ezt az 'AnalysisFlow.ts' kezeli)
+        
+        // 2. PRIORITÁS: Sofascore valós xG (v54.12 javítás - 'xG_away')
         if (sofascoreData?.advancedData?.xg_home != null && sofascoreData?.advancedData?.xG_away != null) {
             finalHomeXg = sofascoreData.advancedData.xg_home;
-            finalAwayXg = sofascoreData.advancedData.xG_away; // JAVÍTVA (nagy G)
+            finalAwayXg = sofascoreData.advancedData.xG_away; // (nagy G)
             xgSource = "P2: Sofascore (Real)";
         }
-        // === JAVÍTÁS VÉGE ===
-
         // 3. PRIORITÁS: API-Sports valós xG
         else if (baseResult?.advancedData?.home?.xg != null && baseResult?.advancedData?.away?.xg != null) {
             finalHomeXg = baseResult.advancedData.home.xg;
@@ -150,12 +144,7 @@ export async function getRichContextualData(
             xgSource = "P4: N/A (Fallback to Model Estimation)";
         }
         
-        // Végleges xG beállítása
-        finalResult.advancedData = {
-            home: { ...finalResult.advancedData.home, xG: finalHomeXg }, // 'xG'-t használunk, de a Model 'xg'-t vár...
-            away: { ...finalResult.advancedData.away, xG: finalAwayXg }  // ... javítsuk 'xg'-re (kis g)
-        };
-        // JAVÍTÁS: A kanonikus modell (ICanonicalRichContext) 'advancedData.home.xg' (kis g)-t vár.
+        // Végleges xG beállítása (kis 'xg'-vel a kanonikus modellnek megfelelően)
         finalResult.advancedData.home['xg'] = finalHomeXg;
         finalResult.advancedData.away['xg'] = finalAwayXg;
         
@@ -163,7 +152,11 @@ export async function getRichContextualData(
         
         // 3. Sofascore Játékos Adat felülírása (Logika helyes)
         if (sofascoreData && sofascoreData.playerStats) {
-            console.log(`[DataFetch] Felülírás: Az 'apiSportsProvider' szimulált játékos-adatai felülírva a Sofascore adataival (Hiányzók: ${sofascoreData.playerStats.home_absenteS.length}H / ${sofascoreData.playerStats.away_absentees.length}A).`);
+            
+            // === JAVÍTÁS (v54.14): Az 'home_absenteS' elírás javítása ===
+            console.log(`[DataFetch] Felülírás: Az 'apiSportsProvider' szimulált játékos-adatai felülírva a Sofascore adataival (Hiányzók: ${sofascoreData.playerStats.home_absentees.length}H / ${sofascoreData.playerStats.away_absentees.length}A).`);
+            // === JAVÍTÁS VÉGE ===
+
             finalResult.rawData.detailedPlayerStats = sofascoreData.playerStats;
             finalResult.rawData.absentees = {
                 home: sofascoreData.playerStats.home_absentees,
@@ -174,12 +167,12 @@ export async function getRichContextualData(
 
         // 4. Cache mentése
         scriptCache.set(ck, finalResult);
-        console.log(`Sikeres adat-egyesítés (v54.12), cache mentve (${ck}).`);
+        console.log(`Sikeres adat-egyesítés (v54.14), cache mentve (${ck}).`);
         
         return { ...finalResult, fromCache: false };
     } catch (e: any) {
-         console.error(`KRITIKUS HIBA a getRichContextualData (v54.12 - Factory) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
-        throw new Error(`Adatgyűjtési hiba (v54.12): ${e.message} \nStack: ${e.stack}`);
+         console.error(`KRITIKUS HIBA a getRichContextualData (v54.14 - Factory) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
+        throw new Error(`Adatgyűjtési hiba (v54.14): ${e.message} \nStack: ${e.stack}`);
     }
 }
 
