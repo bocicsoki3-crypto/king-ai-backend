@@ -1,14 +1,12 @@
-// --- index.ts (v52.7 - Hash Generátorral) ---
+// --- index.ts (v54.4 - Manual xG Override) ---
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
-// JAVÍTÁS: A 'bcrypt.js'-t importáljuk, ahogy a 38. lépésben javítottuk
-import bcrypt from 'bcryptjs'; 
+import bcrypt from 'bcryptjs';
 import path from 'path'; 
 import { fileURLToPath } from 'url'; 
 import { PORT } from './config.js';
-
 // Importáljuk a típusosított fő funkciókat
 import { runFullAnalysis } from './AnalysisFlow.js';
 import { _getFixturesFromEspn } from './DataFetch.js';
@@ -26,20 +24,13 @@ const app: Express = express();
 app.use(cors());
 app.use(express.json()); // JSON body parser
 
-// === Statikus Fájl Kiszolgálás Eltávolítva (v52.6) ===
-// const publicPath = path.join(__dirname, 'public'); // ELTÁVOLÍTVA
-// app.use(express.static(publicPath)); // ELTÁVOLÍTVA
-
 // --- Logoló Middleware ---
 app.use((req: Request, res: Response, next: NextFunction) => {
-    // Most már minden kérést logolunk, mivel nincs statikus fájl
     console.log(`[${new Date().toISOString()}] Kérés érkezett: ${req.method} ${req.originalUrl}`);
     next();
 });
 
 // --- API Útvonalak (Routes) ---
-
-// app.get('/', (req: Request, res: Response) => { ... }); // ELTÁVOLÍTVA (ENOENT hiba okozója)
 
 // Hitelesítés
 app.post('/login', async (req: Request, res: Response) => {
@@ -57,7 +48,7 @@ app.post('/login', async (req: Request, res: Response) => {
            { user: 'autentikalt_felhasznalo' }, 
             process.env.JWT_SECRET as string, 
             { expiresIn: '24h' }
-        );
+         );
         res.status(200).json({ token: token });
     } catch (e: any) {
         console.error(`Hiba a /login végpont-on: ${e.message}`);
@@ -65,7 +56,7 @@ app.post('/login', async (req: Request, res: Response) => {
     }
 });
 
-// === DIAGNOSZTIKAI VÉGPONT (A 35. LÉPÉSBŐL) ===
+// === Diagnosztikai Végpontok (/checkhash, /generatehash) ===
 app.get('/checkhash', async (req: Request, res: Response) => {
     try {
         const serverHash = process.env.APP_PASSWORD_HASH;
@@ -79,7 +70,6 @@ app.get('/checkhash', async (req: Request, res: Response) => {
             return res.status(200).json({
                 message: "Diagnosztika: A szerver által látott HASH.",
                 server_hash_value: serverHash,
-                hash_is_correct_format: serverHash === "$2b$10$3g0.iG/3E.ZB50wK.1MvXOvjZJULfWJ07J75WlD6cEdMUH/h3aLwe"
             });
         }
         const isMatch = await bcrypt.compare(testPassword, serverHash);
@@ -94,31 +84,25 @@ app.get('/checkhash', async (req: Request, res: Response) => {
     }
 });
 
-// === ÚJ HASH GENERÁTOR VÉGPONT (A 39. LÉPÉSBŐL) ===
 app.get('/generatehash', async (req: Request, res: Response) => {
     try {
         const passwordToHash = req.query.password as string;
         if (!passwordToHash) {
             return res.status(400).json({ error: "Hiányzó ?password=... query paraméter." });
         }
-        
         console.log(`Hash generálása a "${passwordToHash}" jelszóhoz...`);
         const salt = await bcrypt.genSalt(10);
         const newHash = await bcrypt.hash(passwordToHash, salt);
-        
         console.log(`Új hash generálva: ${newHash}`);
-        
         res.status(200).json({
             message: "Új hash sikeresen generálva.",
             password_provided: passwordToHash,
             NEW_HASH_VALUE: newHash
-        });
-
+         });
     } catch (e: any) {
         res.status(500).json({ error: `Hash generálási hiba: ${e.message}` });
     }
 });
-// === HASH GENERÁTOR VÉGE ===
 
 // Védelmi Middleware
 const protect = (req: Request, res: Response, next: NextFunction) => {
@@ -133,13 +117,14 @@ const protect = (req: Request, res: Response, next: NextFunction) => {
              return res.status(500).json({ error: "Szerver konfigurációs hiba." });
         }
         jwt.verify(token, process.env.JWT_SECRET as string);
-        next(); 
+        next();
     } catch (e) {
         return res.status(401).json({ error: "Hitelesítés sikertelen (Érvénytelen vagy lejárt token)." });
     }
 };
 
-// ... (minden más védett végpont (/getFixtures, /runAnalysis, stb.) változatlan) ...
+// --- Védett API Végpontok ---
+
 app.get('/getFixtures', protect, async (req: Request, res: Response) => {
     try {
         const sport = req.query.sport as string;
@@ -150,7 +135,7 @@ app.get('/getFixtures', protect, async (req: Request, res: Response) => {
         const fixtures = await _getFixturesFromEspn(sport, days);
         res.status(200).json({
             fixtures: fixtures,
-            odds: {} 
+            odds: {} // Odds adat jelenleg nincs az ESPN-től
         });
     } catch (e: any) {
         console.error(`Hiba a /getFixtures végpont-on: ${e.message}`, e.stack);
@@ -160,17 +145,47 @@ app.get('/getFixtures', protect, async (req: Request, res: Response) => {
 
 app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
     try {
-        const { home, away, force, sheetUrl, utcKickoff, leagueName, sport, openingOdds = {} } = req.body;
+        // === JAVÍTÁS (v54.4): Új mezők olvasása a body-ból ===
+        const { 
+            home, 
+            away, 
+            force, 
+            sheetUrl, 
+            utcKickoff, 
+            leagueName, 
+            sport, 
+            openingOdds = {},
+            manual_xg_home, // ÚJ (Opcionális)
+            manual_xg_away  // ÚJ (Opcionális)
+        } = req.body;
+        // === JAVÍTÁS VÉGE ===
+
         if (!home || !away || !sport || !utcKickoff || !leagueName) { 
             return res.status(400).json({ error: "Hiányzó 'sport', 'home', 'away', 'utcKickoff' vagy 'leagueName' paraméter." });
         }
-        const params = { home, away, force, sheetUrl, utcKickoff, leagueName };
+        
+        // Átadjuk az új paramétereket az elemzési folyamatnak
+        const params = { 
+            home, 
+            away, 
+            force, 
+            sheetUrl, 
+            utcKickoff, 
+            leagueName,
+            manual_xg_home, // ÚJ
+            manual_xg_away  // ÚJ
+        };
+        
         const result = await runFullAnalysis(params, sport, openingOdds);
+        
         if ('error' in result) {
             console.error(`Elemzési hiba (AnalysisFlow): ${result.error}`);
             return res.status(500).json({ error: result.error });
         }
-        res.status(200).json(result);
+        
+        // A v54.0 refaktor óta 'result' a teljes JSON objektumot tartalmazza
+        res.status(200).json(result); 
+
     } catch (e: any) {
         console.error(`Hiba a /runAnalysis végpont-on: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (runAnalysis): ${e.message}` });
@@ -241,6 +256,7 @@ app.post('/askChat', protect, async (req: Request, res: Response) => {
     }
 });
 
+// Admin végpontok
 app.post('/runLearning', protect, async (req: Request, res: Response) => {
     try {
         const providedKey = req.body.key || req.headers['x-admin-key'];
@@ -274,7 +290,7 @@ app.post('/runLearning', protect, async (req: Request, res: Response) => {
              console.error("Hiba a bizalmi kalibráció során:", learningResult.confidence_calibration.error);
         }
         res.status(200).json(learningResult);
-    } catch (e: any) {
+     } catch (e: any) {
         console.error(`Hiba a /runLearning végpont-on: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (runLearning): ${e.message}` });
     }
