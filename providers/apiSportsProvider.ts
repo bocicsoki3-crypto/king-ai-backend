@@ -797,7 +797,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         h2h_structured: apiSportsH2HData || (Array.isArray(geminiData?.h2h_structured) ? geminiData.h2h_structured : []),
         form: {
             home_overall: apiSportsHomeSeasonStats?.form || geminiData?.form?.home_overall || null,
-            away_overall: apiSportsHomeSeasonStats?.form || gemiData?.form?.away_overall || null,
+            away_overall: apiSportsHomeSeasonStats?.form || geminiData?.form?.away_overall || null, // JAVÍTVA: gemiData -> geminiData
         },
         // Alapértelmezett, üres playerStats, amelyet a DataFetch.ts fog felülírni a Sofascore adatokkal
         detailedPlayerStats: {
