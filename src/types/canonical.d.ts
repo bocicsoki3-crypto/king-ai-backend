@@ -1,5 +1,5 @@
 // FÁJL: src/types/canonical.d.ts
-// (v54.8 - Robusztus kontextus és opcionális időjárás)
+// (v54.9 - 'match_tension_index' javítása string-re)
 
 // Ezen interfészek definiálják a rendszeren belüli "adatszerződést".
 // A Providerek (pl. apiSportsProvider) felelőssége, hogy az API válaszaikat
@@ -10,7 +10,7 @@
  * A csapatok alapvető statisztikai adatai, amelyeket a Model.ts vár.
  */
 export interface ICanonicalStats {
-  gp: number;           // Games Played (Lejátszott meccsek)
+  gp: number;           // Games Played (Lejátszzott meccsek)
   gf: number;           // Goals For (Lőtt gólok / Pontok)
   ga: number;           // Goals Against (Kapott gólok / Pontok)
   form: string | null;  // Forma string (pl. "WWLDW")
@@ -58,26 +58,24 @@ export interface ICanonicalOdds {
 }
 
 /**
- * === MÓDOSÍTVA (v54.8) ===
  * Strukturált időjárási adatokat definiál.
  * A mezők opcionálisak (?), hogy a nem-foci providerek is
  * megfeleljenek az interfésznek anélkül, hogy teljes adatot adnának.
- * Ez megoldja a TS2739 hibát (missing properties) a newHockey/Basketball providerekben.
  */
 export interface IStructuredWeather {
     description: string;
     temperature_celsius: number | null;
-    humidity_percent?: number | null;  // Opcionális lett
-    wind_speed_kmh?: number | null;    // Opcionális lett
-    precipitation_mm?: number | null;  // Opcionális lett
+    humidity_percent?: number | null;
+    wind_speed_kmh?: number | null;
+    precipitation_mm?: number | null;
 }
 
 /**
  * A "nyers" adatcsomag, amelyet a CoT (Chain-of-Thought) elemzéshez
  * és a Model.ts-hez gyűjtünk.
- * === MÓDOSÍTVA (v54.8) ===
- * Kiegészítve a 'weather' és 'match_tension_index' mezőkkel,
- * amelyeket a Model.ts (TS2339) elvár.
+ * === MÓDOSÍTVA (v54.9) ===
+ * A 'match_tension_index' típusa 'number'-ről 'string'-re módosítva,
+ * hogy megfeleljen a Model.ts várakozásainak (.toLowerCase()).
  */
 export interface ICanonicalRawData {
   stats: {
@@ -101,7 +99,6 @@ export interface ICanonicalRawData {
     away: ICanonicalPlayer[];
   };
   
-  // --- v54.8 Módosítás ---
   referee: {
     name: string | null;
     style: string | null;
@@ -109,16 +106,14 @@ export interface ICanonicalRawData {
   contextual_factors: {
     stadium_location: string | null;
     pitch_condition: string | null;
-    
-    // A Model.ts (TS2339) által igényelt, hiányzó mezők:
     weather: string | null; 
-    match_tension_index: number | null;
+    
+    // === JAVÍTÁS (v54.9) ===
+    // Típus 'number'-ről 'string'-re cserélve
+    match_tension_index: string | null;
 
-    // A v54.7-ben bevezetett mező:
     structured_weather: IStructuredWeather;
   };
-  // --- Módosítás vége ---
-
   [key: string]: any;
 }
 
@@ -141,7 +136,7 @@ export interface ICanonicalRichContext {
     away_overall: string | null;
     [key: string]: any;
   };
-  rawData: ICanonicalRawData; // Ez már tartalmazza a v54.8-as adatokat
+  rawData: ICanonicalRawData; // Ez már tartalmazza a v54.9-es adatokat
   leagueAverages: { [key: string]: any };
   oddsData: ICanonicalOdds | null;
   fromCache: boolean;
