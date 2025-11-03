@@ -1,5 +1,5 @@
 // FÁJL: src/types/canonical.d.ts
-// (v54.7 - Időjárás és Bíró típussal frissítve)
+// (v54.8 - Robusztus kontextus és opcionális időjárás)
 
 // Ezen interfészek definiálják a rendszeren belüli "adatszerződést".
 // A Providerek (pl. apiSportsProvider) felelőssége, hogy az API válaszaikat
@@ -8,7 +8,6 @@
 
 /**
  * A csapatok alapvető statisztikai adatai, amelyeket a Model.ts vár.
- * Ez az interfész azonnal észlelte volna a 'gp' vs 'GP' hibát.
  */
 export interface ICanonicalStats {
   gp: number;           // Games Played (Lejátszott meccsek)
@@ -59,60 +58,68 @@ export interface ICanonicalOdds {
 }
 
 /**
- * === ÚJ (v54.7) ===
- * Strukturált időjárási adatokat definiál,
- * amelyeket a getWeatherForFixture (és később valós API-k) szolgáltatnak.
- * A 'null' értékek megengedettek, ha az adat nem elérhető (pl. a meccs túl messze van).
+ * === MÓDOSÍTVA (v54.8) ===
+ * Strukturált időjárási adatokat definiál.
+ * A mezők opcionálisak (?), hogy a nem-foci providerek is
+ * megfeleljenek az interfésznek anélkül, hogy teljes adatot adnának.
+ * Ez megoldja a TS2739 hibát (missing properties) a newHockey/Basketball providerekben.
  */
 export interface IStructuredWeather {
     description: string;
     temperature_celsius: number | null;
-    humidity_percent: number | null;
-    wind_speed_kmh: number | null;
-    precipitation_mm: number | null;
+    humidity_percent?: number | null;  // Opcionális lett
+    wind_speed_kmh?: number | null;    // Opcionális lett
+    precipitation_mm?: number | null;  // Opcionális lett
 }
 
 /**
  * A "nyers" adatcsomag, amelyet a CoT (Chain-of-Thought) elemzéshez
  * és a Model.ts-hez gyűjtünk.
- * === FRISSÍTVE (v54.7) ===
- * Kiegészítve a 'referee' és 'contextual_factors' mezőkkel.
+ * === MÓDOSÍTVA (v54.8) ===
+ * Kiegészítve a 'weather' és 'match_tension_index' mezőkkel,
+ * amelyeket a Model.ts (TS2339) elvár.
  */
 export interface ICanonicalRawData {
   stats: {
     home: ICanonicalStats;
     away: ICanonicalStats;
   };
-  apiFootballData?: { // Szolgáltató-specifikus adatok (opcionális)
+  apiFootballData?: {
     fixtureId: number | string | null;
     leagueId: number | string | null;
     [key: string]: any;
   };
-  detailedPlayerStats: ICanonicalPlayerStats; // A 2. Javaslatból
+  detailedPlayerStats: ICanonicalPlayerStats;
   h2h_structured: any[] | null;
   form: {
     home_overall: string | null;
     away_overall: string | null;
     [key: string]: any;
   };
-  absentees: { // Az 'detailedPlayerStats'-ból származtatva
+  absentees: {
     home: ICanonicalPlayer[];
     away: ICanonicalPlayer[];
   };
   
-  // --- v54.7 Kiegészítések ---
+  // --- v54.8 Módosítás ---
   referee: {
     name: string | null;
-    style: string | null; // Jövőbeli használatra
+    style: string | null;
   };
   contextual_factors: {
     stadium_location: string | null;
-    structured_weather: IStructuredWeather; // Az új interfész használata
-    pitch_condition: string | null; // Jövőbeli használatra
-  };
-  // --- Kiegészítés vége ---
+    pitch_condition: string | null;
+    
+    // A Model.ts (TS2339) által igényelt, hiányzó mezők:
+    weather: string | null; 
+    match_tension_index: number | null;
 
-  [key: string]: any; // Egyéb AI által generált adatok (pl. tactics)
+    // A v54.7-ben bevezetett mező:
+    structured_weather: IStructuredWeather;
+  };
+  // --- Módosítás vége ---
+
+  [key: string]: any;
 }
 
 /**
@@ -124,8 +131,8 @@ export interface ICanonicalRichContext {
     home: ICanonicalStats;
     away: ICanonicalStats;
   };
-  richContext: string; // A szöveges kontextus
-  advancedData: { // xG és egyéb adatok
+  richContext: string;
+  advancedData: {
     home: { [key: string]: any };
     away: { [key: string]: any };
   };
@@ -134,23 +141,21 @@ export interface ICanonicalRichContext {
     away_overall: string | null;
     [key: string]: any;
   };
-  rawData: ICanonicalRawData; // Ez már tartalmazza a v54.7-es adatokat
+  rawData: ICanonicalRawData; // Ez már tartalmazza a v54.8-as adatokat
   leagueAverages: { [key: string]: any };
   oddsData: ICanonicalOdds | null;
   fromCache: boolean;
 }
 
 /**
- * === ÚJ (v52.2) ===
- * A 'FixtureResult' típus központosítása a TS2719 hiba javítására.
- * Ezt használja az 'apiSportsProvider.ts' és a 'settlementService.ts' is.
+ * A 'FixtureResult' típus központosítása.
  */
 export type FixtureResult = {
     home: number;
     away: number;
-    status: 'FT'; // Befejezett meccs, van eredmény
+    status: 'FT';
 } | {
-    status: string; // Bármilyen más státusz (pl. 'HT', 'NS', 'PST')
+    status: string;
     home?: undefined;
     away?: undefined;
-} | null; // Hiba vagy nem található
+} | null;
