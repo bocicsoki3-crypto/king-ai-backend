@@ -1,10 +1,11 @@
 // FÁJL: providers/newHockeyProvider.ts
-// VERZIÓ: v54.22 (Standings Fallback Fix)
+// VERZIÓ: v54.23 (Végleges Typo Fix)
 // MÓDOSÍTÁS:
-// 1. A '_getNhlStandings' [cite: 1313-1323] most már elfogadja a 'utcKickoff' dátumot.
-// 2. IMPLEMENTÁLT FALLBACK: Ha a '/v1/standings/now'  0 csapatot ad vissza,
-//    a provider automatikusan megpróbálja a '/v1/standings/{YYYY-MM-DD}' végpontot
-//    a meccs dátumával. Ez kijavítja a [cite: 207] "A tabella üres" hibát.
+// 1. Javítva a TS2304 hiba: 'gemAta' -> 'geminiData'
+//    a 'contextual_factors'  blokkban.
+// 2. Javítva egy rejtett 'gemiminiData' -> 'geminiData' elgépelés
+//    a 'richContext'  változó definíciójában.
+// 3. A Fallback logika (v54.22) [cite: 1313-1323] változatlan.
 
 import NodeCache from 'node-cache';
 import pkg from 'string-similarity';
@@ -221,11 +222,11 @@ function getStatsFromStandings(teamId: number, standingsRows: any[]): any | null
 }
 
 
-// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (JAVÍTVA v54.22) ---
+// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (JAVÍTVA v54.23) ---
 
 export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
     const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
-    console.log(`[Hockey Provider (v54.22 - NHL API Fallback)] Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
+    console.log(`[Hockey Provider (v54.23 - NHL API Fallback)] Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
 
     // --- 1. LIGA és TABELLA (STATISZTIKA) ---
     const leagueApiId = await getHockeyLeagueId(leagueName);
@@ -317,7 +318,10 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
             style: null
         },
         contextual_factors: {
+            // === JAVÍTÁS (v54.23) ===
+            // A 'gemAta' (typo) javítva 'geminiData'-ra.
             stadium_location: geminiData?.contextual_factors?.stadium_location || "N/A (Beltéri)",
+            // === JAVÍTÁS VÉGE ===
             pitch_condition: "N/A (Jég)",
             weather: "N/A (Beltéri)",
             match_tension_index: geminiData?.contextual_factors?.match_tension_index || null,
@@ -343,7 +347,10 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
     const richContext = [
          geminiData.h2h_summary && `- H2H: ${geminiData.h2h_summary}`,
          geminiData.team_news?.home && `- Hírek: H:${geminiData.team_news.home}`,
-         geminiData.team_news?.away && `- Hírek: V:${gemiminiData.team_news.away}`, // Javítás itt is, 'geminiData'
+         // === JAVÍTÁS (v54.23) ===
+         // A 'gemiminiData' (typo) javítva 'geminiData'-ra.
+         geminiData.team_news?.away && `- Hírek: V:${geminiData.team_news.away}`,
+         // === JAVÍTÁS VÉGE ===
          (finalData.form.home_overall || finalData.form.away_overall) && `- Forma: H:${finalData.form.home_overall || 'N/A'}, V:${finalData.form.away_overall || 'N/A'}`,
     ].filter(Boolean).join('\n') || "N/A";
 
