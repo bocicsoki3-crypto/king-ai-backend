@@ -1,11 +1,9 @@
 // FÁJL: providers/newHockeyProvider.ts
-// VERZIÓ: v54.20 (Hivatalos NHL API Integráció)
+// VERZIÓ: v54.21 (TS2304 'gemAta' Typo Fix)
 // MÓDOSÍTÁS:
-// 1. A korlátozott 'ice-hockey-data.p.rapidapi.com' (RapidAPI)  használata eltávolítva.
-// 2. Az API hívások átirányítva a hivatalos, ingyenes NHL API-ra ('https://api-web.nhle.com/v1').
-// 3. A 'getHockeyStats' [cite: 1343-1349] helyett az új '_getNhlStandings' olvassa a '/v1/standings/now' végpontot.
-// 4. A 'findHockeyFixture' [cite: 1335-1343] helyett az új '_findNhlFixture' olvassa a '/v1/schedule/{date}' végpontot.
-// 5. A rendszer most már a hivatalos NHL API-ból származó valós GP/GF/GA adatokkal táplálja a Model.ts (v54.19) P4-es becslő logikáját .
+// 1. A 'fetchMatchData'  funkcióban a 'gemAta'  elgépelés javítva 'geminiData'-ra,
+//    ami a TS2304 build hibát okozta.
+// 2. A provider továbbra is a hivatalos, ingyenes NHL API-t ('https://api-web.nhle.com/v1') [cite: 1313-1315] használja.
 
 import NodeCache from 'node-cache';
 import pkg from 'string-similarity';
@@ -38,7 +36,7 @@ const hockeyStatsCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 3600 });
 
 // --- ÚJ NHL API KONFIGURÁCIÓ ---
 const NHL_API_BASE_URL = 'https://api-web.nhle.com/v1';
-const NHL_LEAGUE_ID = 'NHL'; // A 'leagueName' [cite: 1282] alapján
+const NHL_LEAGUE_ID = 'NHL'; // A 'leagueName' alapján
 
 /**
  * Módosított API hívó, amely a hivatalos NHL API-t hívja (nincs szükség kulcsra).
@@ -132,13 +130,13 @@ async function getHockeyTeamId(teamName: string): Promise<number | null> {
         abbrev: row.teamAbbrev.default
     }));
 
-    // Keresés a 'config.js'-ben [cite: 1271] definiált rövid nevek (pl. "Senators") alapján
+    // Keresés a 'config.js'-ben definiált rövid nevek (pl. "Senators") alapján
     const mappedName = SPORT_CONFIG.hockey.espn_leagues["NHL"].slug === 'nhl' 
         ? (teamName.split(' ').pop() || teamName) // Pl. "Ottawa Senators" -> "Senators"
         : teamName;
 
     const searchNames = teams.map(t => t.name).concat(teams.map(t => t.abbrev));
-    // Az ESPN nevet (pl. "Senators") [cite: 1271] keressük az NHL API nevei között
+    // Az ESPN nevet (pl. "Senators") keressük az NHL API nevei között
     const bestMatch = findBestMatch(mappedName, searchNames); 
 
     if (bestMatch.bestMatch.rating > 0.7) {
@@ -198,16 +196,16 @@ function getStatsFromStandings(teamId: number, standingsRows: any[]): any | null
 }
 
 
-// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (JAVÍTVA v54.20) ---
+// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (JAVÍTVA v54.21) ---
 
 export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
     const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
-    console.log(`[Hockey Provider (v54.20 - NHL API)] Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
+    console.log(`[Hockey Provider (v54.21 - NHL API)] Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
 
     // --- 1. LIGA és TABELLA (STATISZTIKA) ---
     const leagueApiId = await getHockeyLeagueId(leagueName);
     if (!leagueApiId) {
-        throw new Error(`[NHL API] Ez a provider csak az "NHL" ligát támogatja[cite: 1282]. Kapott: "${leagueName}". Az elemzés leáll.`);
+        throw new Error(`[NHL API] Ez a provider csak az "NHL" ligát támogatja. Kapott: "${leagueName}". Az elemzés leáll.`);
     }
 
     // Egyszerre lekérjük a teljes tabellát, ez tartalmazza a statisztikákat ÉS a csapat ID-ket
@@ -230,23 +228,23 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
     // --- 4. STATISZTIKÁK EGYSÉGESÍTÉSE (KANONIKUS MODELL) ---
     // Az NHL API 'standings' adatai alapján
     const unifiedHomeStats: ICanonicalStats = {
-        gp: homeStatsApi?.gamesPlayed || 1, // Biztosítjuk, hogy a GP > 0 [cite: 323]
+        gp: homeStatsApi?.gamesPlayed || 1, // Biztosítjuk, hogy a GP > 0
         gf: homeStatsApi?.goalsFor || 0,
         ga: homeStatsApi?.goalsAgainst || 0,
         // Az NHL API 'streakCode' (pl. "W2") vagy 'l10Record' (pl. "6-3-1")
         // formátumot ad, ami nem kompatibilis a 'getFormPoints' [cite: 382-386] "WWLDW" elvárásával.
-        // A 'null' átadása biztosítja, hogy a Model.ts  helyesen kezeli a helyzetet.
+        // A 'null' átadása biztosítja, hogy a Model.ts [cite: 321-447] helyesen kezeli a helyzetet.
         form: null 
     };
     const unifiedAwayStats: ICanonicalStats = {
-        gp: awayStatsApi?.gamesPlayed || 1, // Biztosítjuk, hogy a GP > 0 [cite: 323]
+        gp: awayStatsApi?.gamesPlayed || 1, // Biztosítjuk, hogy a GP > 0
         gf: awayStatsApi?.goalsFor || 0,
         ga: awayStatsApi?.goalsAgainst || 0,
         form: null
     };
 
     // --- 5. GEMINI HÍVÁS (Kontextus) ---
-    // A 'newHockeyProvider' (v54.9)  logikáját követve
+    // A 'newHockeyProvider' (v54.9) [cite: 213-295] logikáját követve
     const geminiJsonString = await _callGemini(PROMPT_V43(
          sport, homeTeamName, awayTeamName,
          unifiedHomeStats,
@@ -276,7 +274,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
             home: { ...unifiedHomeStats, ...(geminiData.stats?.home || {}) },
             away: { ...unifiedAwayStats, ...(geminiData.stats?.away || {}) }
         },
-        apiFootballData: { // Átnevezhetnénk 'apiProviderData'-ra, de a kanonikus modell [cite: 1207] ezt várja
+        apiFootballData: { // Átnevezhetnénk 'apiProviderData'-ra, de a kanonikus modell ezt várja
             fixtureId: fixtureId,
             leagueId: leagueApiId,
             homeTeamId: homeTeamId,
@@ -299,10 +297,13 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
             style: null
         },
         contextual_factors: {
-            stadium_location: gemAta?.contextual_factors?.stadium_location || "N/A (Beltéri)",
+            // === JAVÍTÁS (v54.21) ===
+            // A 'gemAta'  (typo) javítva 'geminiData'-ra.
+            stadium_location: geminiData?.contextual_factors?.stadium_location || "N/A (Beltéri)",
+            // === JAVÍTÁS VÉGE ===
             pitch_condition: "N/A (Jég)",
             weather: "N/A (Beltéri)",
-            match_tension_index: geminiData?.contextual_factors?.match_tension_index || null, // A v54.9-nek megfelelően string [cite: 1212]
+            match_tension_index: geminiData?.contextual_factors?.match_tension_index || null, // A v54.9-nek megfelelően string
             structured_weather: defaultStructuredWeather
         },
         ...geminiData
