@@ -119,6 +119,7 @@ export const APIFOOTBALL_TEAM_NAME_MAP: { [key: string]: string } = {
     'atletico junior': 'Junior',
     'independiente santa fe': 'Santa Fe',
     'independiente medellin': 'Independiente Medellin',
+    'blackburn rovers': 'Blackburn'
     
     // Jégkorong (Ez a régi, API-Sports térkép itt maradhat referenciaként, de az újat használjuk)
     'senators': 'Ottawa Senators',
