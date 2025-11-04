@@ -1,12 +1,10 @@
 // FÁJL: providers/newHockeyProvider.ts
-// VERZIÓ: v54.24 (SPOF és P1/P4 Logika Javítás)
+// VERZIÓ: v54.25 (API Paraméter Fix)
 // MÓDOSÍTÁS:
-// 1. A csapat ID keresés és a statisztika lekérés szétválasztva a SPOF  elkerülése érdekében.
-// 2. ÚJ FUNKCIÓ: '_getNhlTeamList' egy stabil, szezonfüggetlen végpontot hív a csapat ID-k és nevek lekéréséhez.
-// 3. 'getHockeyTeamId' [cite: 1317-1323] most már az új '_getNhlTeamList'-re támaszkodik, nem a '_getNhlStandings'-re .
-// 4. 'fetchMatchData' [cite: 1324-1358] MÓDOSÍTVA: A '_getNhlStandings'  (statisztika) hívása
-//    OPCIONÁLIS lett. Csak akkor hívódik meg, ha NINCS P1 (manuális) adat megadva.
-// 5. Ez biztosítja, hogy a P1 (manuális) elemzések szezonon kívül is lefutnak (a log hiba  javítva).
+// 1. Javítva a TS2304 / 400-as build hiba .
+// 2. Az '_getNhlTeamList' funkcióban a 'makeHockeyRequest' hívásból
+//    eltávolítva a hibás { sort: "teamName", limit: -1 } paraméterek,
+//    amelyek az API 400-as hibáját ("Invalid path 'teamName'")  okozták.
 
 import NodeCache from 'node-cache';
 import pkg from 'string-similarity';
@@ -64,7 +62,7 @@ async function makeHockeyRequest(url: string, params: any = {}) {
 
 /**
  * Lekéri és cache-eli a teljes NHL tabellát (STATISZTIKÁKHOZ).
- * JAVÍTVA (v54.22): Fallback logikát tartalmaz a '/standings/{date}' végpontra.
+ * (v54.22): Fallback logikát tartalmaz a '/standings/{date}' végpontra.
  */
 async function _getNhlStandings(utcKickoff: string): Promise<any[]> {
     const matchDate = new Date(utcKickoff).toISOString().split('T')[0]; // YYYY-MM-DD
@@ -99,7 +97,6 @@ async function _getNhlStandings(utcKickoff: string): Promise<any[]> {
             data = await makeHockeyRequest(sourceEndpoint, {});
         } catch (e: any) {
              console.error(`[NHL API] A statisztika fallback hívás ('${sourceEndpoint}') is sikertelen: ${e.message}`);
-             // Ez már nem dob hibát, csak 0 statisztikát ad vissza
              data = null;
         }
     }
@@ -122,6 +119,7 @@ async function _getNhlStandings(utcKickoff: string): Promise<any[]> {
 
 /**
  * ÚJ (v54.24): Lekéri a stabil, szezonfüggetlen csapatlistát (CSAPAT ID-KHEZ).
+ * JAVÍTVA (v54.25): Eltávolítva a hibás 'sort' és 'limit' paraméterek.
  */
 async function _getNhlTeamList(): Promise<{ id: number; name: string; abbrev: string; }[]> {
     const cacheKey = 'nhl_team_list_v1_stable';
@@ -135,7 +133,12 @@ async function _getNhlTeamList(): Promise<{ id: number; name: string; abbrev: st
     console.log(`[NHL API] Csapatlista (ID azonosításhoz) lekérése (${url})...`);
     
     try {
-        const data = await makeHockeyRequest(url, { sort: "teamName", limit: -1 });
+        // === JAVÍTÁS (v54.25) ===
+        // A { sort: "teamName", limit: -1 } paraméterek eltávolítva,
+        // mivel ez okozta a 400-as Bad Request hibát.
+        const data = await makeHockeyRequest(url, {});
+        // === JAVÍTÁS VÉGE ===
+
         if (!data?.data || data.data.length === 0) {
              throw new Error("Az NHL API ('/team') 0 csapatot adott vissza.");
         }
@@ -152,6 +155,7 @@ async function _getNhlTeamList(): Promise<{ id: number; name: string; abbrev: st
 
     } catch (e: any) {
         console.error(`[NHL API] A stabil csapatlista ('${url}') lekérése sikertelen: ${e.message}`);
+        // A [cite: 1656-1661] logban látható hibát dobjuk tovább
         throw new Error(`[NHL API] A csapat ID-k feloldásához szükséges csapatlista lekérése sikertelen: ${e.message}`);
     }
 }
@@ -178,7 +182,7 @@ async function getHockeyLeagueId(leagueName: string): Promise<string | null> {
 
 /**
  * Megkeresi a csapat ID-t a ESPN név alapján a stabil csapatlistából.
- * JAVÍTVA (v54.24): Most már a '_getNhlTeamList'-re támaszkodik.
+ * (v54.24): A '_getNhlTeamList'-re támaszkodik.
  */
 async function getHockeyTeamId(teamName: string): Promise<number | null> {
     const cacheKey = `hockey_team_nhl_v2_${teamName.toLowerCase().replace(/\s/g, '')}`;
@@ -256,7 +260,7 @@ function getStatsFromStandings(teamId: number, standingsRows: any[]): any | null
 
 export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
     const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff, manual_H_xG, manual_A_xG } = options;
-    console.log(`[Hockey Provider (v54.24 - SPOF Fix)] Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
+    console.log(`[Hockey Provider (v54.25 - SPOF Fix)] Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
 
     // --- 1. LIGA és CSAPAT ID-k (Stabil) ---
     const leagueApiId = await getHockeyLeagueId(leagueName);
@@ -305,7 +309,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
 
     // --- 4. STATISZTIKÁK EGYSÉGESÍTÉSE (KANONIKUS MODELL) ---
     // Ha a 'homeStatsApi' null (mert P1-et használunk, vagy hiba történt),
-    // a 'gp: 1' biztosítja, hogy a Model.ts  ne osszon nullával.
+    // a 'gp: 1' biztosítja, hogy a Model.ts ne osszon nullával.
     const unifiedHomeStats: ICanonicalStats = {
         gp: homeStatsApi?.gamesPlayed || 1,
         gf: homeStatsApi?.goalsFor || 0,
@@ -360,7 +364,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
             ...geminiData.form
         },
         detailedPlayerStats: { 
-            home_absentees: [], 
+            home_absentee : [], // 'home_absentees'
             away_absentees: [], 
             key_players_ratings: { home: {}, away: {} } 
         },
