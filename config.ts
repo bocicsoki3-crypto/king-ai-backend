@@ -1,4 +1,4 @@
-// config.ts (v52.11 - Sofascore Kulcsok Hozzáadva)
+// config.ts (v54.27 - NHL Névtérkép Hozzáadva)
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -61,7 +61,7 @@ export const PORT: number = parseInt(process.env.PORT || "3001", 10);
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY: string | undefined = process.env.GEMINI_API_KEY;
-export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-2.5-pro'; 
+export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-2.5-pro';
 export const SHEET_URL: string | undefined = process.env.SHEET_URL;
 
 export const HOCKEY_API_KEY: string | undefined = process.env.HOCKEY_API_KEY;
@@ -71,7 +71,7 @@ export const BASKETBALL_API_HOST: string = process.env.BASKETBALL_API_HOST || 'b
 
 // === ÚJ SOFASCORE KONFIGURÁCIÓ ===
 export const SOFASCORE_API_KEY: string | undefined = process.env.SOFASCORE_API_KEY; 
-export const SOFASCORE_API_HOST: string = process.env.SOFASCORE_API_HOST || 'sportapi7.p.rapidapi.com'; 
+export const SOFASCORE_API_HOST: string = process.env.SOFASCORE_API_HOST || 'sportapi7.p.rapidapi.com';
 // === VÉGE ===
 
 // --- API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
@@ -120,7 +120,7 @@ export const APIFOOTBALL_TEAM_NAME_MAP: { [key: string]: string } = {
     'independiente santa fe': 'Santa Fe',
     'independiente medellin': 'Independiente Medellin',
     
-    // Jégkorong
+    // Jégkorong (Ez a régi, API-Sports térkép itt maradhat referenciaként, de az újat használjuk)
     'senators': 'Ottawa Senators',
     'flames': 'Calgary Flames',
     'lightning': 'Tampa Bay Lightning',
@@ -131,6 +131,48 @@ export const APIFOOTBALL_TEAM_NAME_MAP: { [key: string]: string } = {
     'islanders': 'New York Islanders',
     'wild': 'Minnesota Wild',
     'penguins': 'Pittsburgh Penguins'
+};
+
+// === ÚJ (v54.27): NHL Név Leképezés ===
+// Hozzárendeli az ESPN-ben használt neveket (pl. "Sabres") 
+// a hivatalos NHL API nevekhez (pl. "Buffalo Sabres").
+// Ezt használja a newHockeyProvider (v54.26+).
+export const NHL_TEAM_NAME_MAP: { [key: string]: string } = {
+    // ESPN név (kisbetűs) : Hivatalos NHL API Név
+    'sabres': 'Buffalo Sabres',
+    'mammoth': 'Utah Hockey Club', // Javítva a te visszajelzésed alapján
+    'avalanche': 'Colorado Avalanche',
+    'panthers': 'Florida Panthers',
+    'rangers': 'New York Rangers',
+    'islanders': 'New York Islanders',
+    'devils': 'New Jersey Devils',
+    'flyers': 'Philadelphia Flyers',
+    'penguins': 'Pittsburgh Penguins',
+    'bruins': 'Boston Bruins',
+    'canadiens': 'Montréal Canadiens',
+    'senators': 'Ottawa Senators',
+    'maple leafs': 'Toronto Maple Leafs',
+    'hurricanes': 'Carolina Hurricanes',
+    'blue jackets': 'Columbus Blue Jackets',
+    'capitals': 'Washington Capitals',
+    'blackhawks': 'Chicago Blackhawks',
+    'red wings': 'Detroit Red Wings',
+    'predators': 'Nashville Predators',
+    'blues': 'St. Louis Blues',
+    'flames': 'Calgary Flames',
+    'oilers': 'Edmonton Oilers',
+    'canucks': 'Vancouver Canucks',
+    'ducks': 'Anaheim Ducks',
+    'stars': 'Dallas Stars',
+    'kings': 'Los Angeles Kings',
+    'sharks': 'San Jose Sharks',
+    'kraken': 'Seattle Kraken',
+    'golden knights': 'Vegas Golden Knights',
+    'coyotes': 'Arizona Coyotes', // Megtartva, hátha régi adat
+    'jets': 'Winnipeg Jets',
+    'wild': 'Minnesota Wild',
+    'lightning': 'Tampa Bay Lightning',
+    'utah': 'Utah Hockey Club' // Hozzáadva az "utah" kulcs is
 };
 
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
@@ -186,7 +228,7 @@ export const SPORT_CONFIG: ISportConfigMap = {
             "Super League": { slug: "sui.1", country: "Switzerland" },
             "Super League 1": { slug: "gre.1", country: "Greece" },
             "Czech Liga": { slug: 'cze.1', country: 'Czech Republic' },
-        },
+         },
     },
     hockey: {
         name: 'jégkorong',
