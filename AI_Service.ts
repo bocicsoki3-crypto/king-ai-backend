@@ -1,10 +1,12 @@
-// --- AI_Service.ts (v54.30 - "A Próféta" Implementálása) ---
+// --- AI_Service.ts (v54.41 - Gólvonal Hallucináció Javítása) ---
 // MÓDOSÍTÁS:
-// 1. A 'PROMPT_STEP_3_STRATEGIST'  (Kérés: "A Próféta" )
-//    kiegészítve egy új, kötelező 'prophetic_timeline' mezővel.
-// 2. Az AI utasítva, hogy a Quant  és Scout  jelentések
-//    alapján írjon egy valósághű narratívát.
-// 3. A hibakezelő 'catch' blokk  frissítve az új mezővel.
+// 1. A 'PROMPT_STEP_3_STRATEGIST' 'goals_ou_analysis'
+//    utasítása kiegészítve egy KRITIKUS paranccsal,
+//    amely arra kényszeríti az AI-t, hogy kizárólag a
+//    '{sim_mainTotalsLine}' változót használja,
+//    megelőzve a "6.5-ös" vonal elemzését
+//    foci meccseknél.
+// 2. Tartalmazza a 'prophetic_timeline' (Próféta) mezőt is.
 
 import { _callGemini } from './DataFetch.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
@@ -99,7 +101,7 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 `;
 
 // --- 3. LÉPÉS: A VEZETŐ STRATÉGA (A "SYNTHESIS") ---
-// === JAVÍTÁS (v54.30) Kérés: "A Próféta"  ===
+// === JAVÍTÁS (v54.41) Gólvonal Hallucináció Javítása ===
 const PROMPT_STEP_3_STRATEGIST = `
 TASK: You are the Head Strategist.
 Your decision is final.
@@ -115,16 +117,19 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 2. Scout Report (Step 2): {step2ScoutJson}
 3. Model Confidence (Statistical): {modelConfidence}/10
 4. Simulation (Full Sim): {simJson}
+5. The correct main totals line to analyze: {sim_mainTotalsLine}
 
 [OUTPUT STRUCTURE]:
 {
-  "prophetic_timeline": "<(A PRÓFÉTA)  Egy 2-3 mondatos, valósághű narratíva a meccs várható lefolyásáról. Szintetizáld a Quant (xG, sim)  és a Scout (taktika, hiányzók)  adatait. Példa: 'A meccs tapogatózóan indul, de a Scout által jelzett hazai védelmi hiba miatt a vendégek szereznek vezetést az első félidőben. A második félidőben a Quant által jelzett hazai xG fölény érvényesül, és a 70. perc környékén kiegyenlítenek.'>",
+  "prophetic_timeline": "<(A PRÓFÉTA) Egy 2-3 mondatos, valósághű narratíva a meccs várható lefolyásáról. Szintetizáld a Quant (xG, sim) és a Scout (taktika, hiányzók) adatait. Példa: 'A meccs tapogatózóan indul, de a Scout által jelzett hazai védelmi hiba miatt a vendégek szereznek vezetést az első félidőben. A második félidőben a Quant által jelzett hazai xG fölény érvényesül, és a 70. perc környékén kiegyenlítenek.'>",
   
   "strategic_conflict_resolution": "<Egy 2-3 bekezdéses elemzés. Szintetizáld a Quant és a Scout jelentését. Ha ellentmondanak (pl. Quant a Hazait, Scout a Vendéget favorizálja), oldd fel az ellentmondást (pl. 'A Quant helyesen azonosította a hazai statisztikai fölényt, de a Scout jelentése a kulcsjátékos sérüléséről felülírja ezt. A kockázat túl magas.')>",
   
   "micromodels": {
     "btts_analysis": "<BTTS elemzés. Ha nem foci (pl. simJson.pBTTS N/A), írj 'N/A'-t.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]",
-    "goals_ou_analysis": "<Gól O/U elemzés (a {sim_mainTotalsLine} vonal alapján)>\\nBizalom: [Alacsony/Közepes/Magas]",
+    
+    "goals_ou_analysis": "<Gól O/U elemzés. **KRITIKUS: Kizárólag a {sim_mainTotalsLine} gólvonalat (pl. 2.5, 3.5, 6.5) elemezd!** Ne használj semmilyen más gólvonalat a 'simJson'-ból. Az elemzésednek erre a vonalra kell vonatkoznia.>\\nBizalom: [Alacsony/Közepes/Magas]",
+    
     "corner_analysis": "<Szöglet O/U elemzés. Csak ha a simJson.mu_corners_sim > 0 (azaz focinál). Különben írj 'N/A'-t.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]",
     "card_analysis": "<Lap O/U elemzés. Csak ha a simJson.mu_cards_sim > 0 (azaz focinál). Különben írj 'N/A'-t.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]"
   },
@@ -237,9 +242,7 @@ export async function runStep3_GetStrategy(data: Step3Input): Promise<any> {
         console.error(`AI Hiba (Step 3 - Strategy): ${e.message}`);
         // Kritikus hiba esetén is adjunk vissza egy alap ajánlást
         return {
-            // === JAVÍTÁS (v54.30) Hozzáadva a hibakezeléshez ===
             prophetic_timeline: `AI Hiba (Step 3): A Próféta nem tudott jósolni. ${e.message}`,
-            // === JAVÍTÁS VÉGE ===
             strategic_conflict_resolution: `AI Hiba (Step 3): ${e.message}`,
             micromodels: {},
             final_confidence_report: "**1.0/10** - AI Hiba (Step 3)",
@@ -285,7 +288,7 @@ If the answer isn't in the context or history, politely state that the informati
         return rawAnswer ? { answer: rawAnswer } : { error: "Az AI nem tudott válaszolni." };
     } catch (e: any) {
         console.error(`Chat hiba: ${e.message}`, e.stack);
-        return { error: `Chat AI hiba: ${e.message}` };
+        return { error: `Chat AI Hiba: ${e.message}` };
     }
 }
 
