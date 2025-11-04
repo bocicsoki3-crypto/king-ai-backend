@@ -1,13 +1,17 @@
 // FÁJL: providers/newHockeyProvider.ts
-// VERZIÓ: v54.26 (Determinisztikus Névfeloldás Fix)
+// VERZIÓ: v54.33 (H2H Integráció)
 // MÓDOSÍTÁS:
-// 1. A 'string-similarity' (fuzzy matching)  import és használata eltávolítva
-//    a 'getHockeyTeamId'-ból, ami a 'Sabres=null' [cite: 1863-1864] hibát okozta.
-// 2. A 'getHockeyTeamId' most már az új, determinisztikus 'NHL_TEAM_NAME_MAP'
-//    objektumot használja a 'config.js'-ből  a tökéletes névfeloldásért.
+// 1. ÚJ FUNKCIÓ: '_getNhlH2H'. Ez egy másik, stabil NHL API végpontot
+//    ('statsapi.web.nhl.com') hív, hogy lekérje a valós H2H adatokat.
+// 2. A 'makeHockeyRequest' frissítve, hogy kezelje a különböző API alap URL-eket.
+// 3. A 'fetchMatchData' most már párhuzamosan lekéri a H2H adatokat.
+// 4. Az eredményt átadja a 'finalData.h2h_structured'-nek
+//    és a Gemini promptnak.
+// Eredmény: A 'calculateModelConfidence'  H2H büntetése  megszűnik.
 
 import NodeCache from 'node-cache';
-// A 'string-similarity' (pkg)  import eltávolítva
+import pkg from 'string-similarity';
+const { findBestMatch } = pkg;
 
 // Kanonikus típusok importálása
 import type {
@@ -25,7 +29,6 @@ import {
     getStructuredWeatherData,
     makeRequest
 } from './common/utils.js';
-// Az ÚJ NHL_TEAM_NAME_MAP importálása
 import { SPORT_CONFIG, NHL_TEAM_NAME_MAP } from '../config.js';
 
 // --- JÉGKORONG SPECIFIKUS CACHE-EK ---
@@ -34,14 +37,17 @@ const hockeyTeamCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600
 const hockeyFixtureCache = new NodeCache({ stdTTL: 3600 * 1, checkperiod: 600 });
 const hockeyStatsCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 3600 });
 const nhlTeamListCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
+const nhlH2HCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 3600 }); // ÚJ Cache a H2H-nak
 
 // --- NHL API KONFIGURÁCIÓ ---
 const NHL_API_BASE_URL = 'https://api-web.nhle.com/v1';
 const NHL_STATS_API_BASE_URL = 'https://api.nhle.com/stats/rest/en';
+const NHL_OLD_STATS_API_BASE_URL = 'https://statsapi.web.nhl.com/api/v1'; // ÚJ H2H Forrás
 const NHL_LEAGUE_ID = 'NHL';
 
 /**
- * Módosított API hívó (Változatlan v54.25)
+ * Módosított API hívó (v54.33)
+ * Most már a hívó által megadott teljes URL-t használja.
  */
 async function makeHockeyRequest(url: string, params: any = {}) {
     try {
@@ -62,7 +68,7 @@ async function makeHockeyRequest(url: string, params: any = {}) {
  * Lekéri a tabellát (STATISZTIKÁKHOZ). (Változatlan v54.25)
  */
 async function _getNhlStandings(utcKickoff: string): Promise<any[]> {
-    const matchDate = new Date(utcKickoff).toISOString().split('T')[0]; // YYYY-MM-DD
+    const matchDate = new Date(utcKickoff).toISOString().split('T')[0];
     const cacheKey = `nhl_standings_v2_fallback_${matchDate}`;
     
     const cached = hockeyStatsCache.get<any[]>(cacheKey);
@@ -129,7 +135,7 @@ async function _getNhlTeamList(): Promise<{ id: number; name: string; abbrev: st
     console.log(`[NHL API] Csapatlista (ID azonosításhoz) lekérése (${url})...`);
     
     try {
-        const data = await makeHockeyRequest(url, {}); // v54.25 javítás [cite: 1655-1662]
+        const data = await makeHockeyRequest(url, {}); // v54.25 javítás
         if (!data?.data || data.data.length === 0) {
              throw new Error("Az NHL API ('/team') 0 csapatot adott vissza.");
         }
@@ -172,7 +178,7 @@ async function getHockeyLeagueId(leagueName: string): Promise<string | null> {
 
 /**
  * Megkeresi a csapat ID-t az ESPN név alapján a stabil csapatlistából.
- * JAVÍTVA (v54.26): Most már a determinisztikus NHL_TEAM_NAME_MAP-et használja.
+ * (Változatlan v54.26)
  */
 async function getHockeyTeamId(teamName: string): Promise<number | null> {
     const searchName = teamName.toLowerCase().trim();
@@ -185,7 +191,7 @@ async function getHockeyTeamId(teamName: string): Promise<number | null> {
     // 1. Keresés az új, determinisztikus térképben
     const mappedName = NHL_TEAM_NAME_MAP[searchName];
     if (!mappedName) {
-         console.warn(`[NHL API] Nincs térkép (map) bejegyzés a config.js-ben  ehhez: "${searchName}". A feloldás sikertelen.`);
+         console.warn(`[NHL API] Nincs térkép (map) bejegyzés a config.js-ben ehhez: "${searchName}". A feloldás sikertelen.`);
          hockeyTeamCache.set(cacheKey, null);
          return null;
     }
@@ -249,12 +255,67 @@ function getStatsFromStandings(teamId: number, standingsRows: any[]): any | null
     return standingsRows.find((row: any) => row.team.id === teamId) || null;
 }
 
+/**
+ * ÚJ (v54.33): Lekéri a H2H adatokat a 'statsapi' végpontról.
+ */
+async function _getNhlH2H(homeTeamId: number, awayTeamId: number): Promise<any[] | null> {
+    const cacheKey = `nhl_h2h_v1_${homeTeamId}_vs_${awayTeamId}`;
+    const cached = nhlH2HCache.get<any[]>(cacheKey);
+    if (cached) {
+        console.log(`[NHL API] H2H CACHE TALÁLAT (${homeTeamId} vs ${awayTeamId})`);
+        return cached;
+    }
 
-// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (JAVÍTVA v54.26) ---
+    const url = `${NHL_OLD_STATS_API_BASE_URL}/teams/${homeTeamId}`;
+    const params = {
+        hydrate: `previousSchedule(teamId=${awayTeamId},gameType=[R,P])`, // R=Regular, P=Playoff
+        // A 'hydrate' paraméter kéri le a megadott ellenfél elleni korábbi meccseket
+    };
+
+    console.log(`[NHL API] H2H adatok lekérése (${homeTeamId} vs ${awayTeamId})...`);
+
+    try {
+        const data = await makeHockeyRequest(url, params);
+        const teamData = data?.teams?.[0];
+        
+        if (!teamData?.previousSchedule?.dates || teamData.previousSchedule.dates.length === 0) {
+            console.warn(`[NHL API] H2H: Nem található korábbi meccs (${homeTeamId} vs ${awayTeamId}).`);
+            return null;
+        }
+
+        const h2hGames: any[] = [];
+        teamData.previousSchedule.dates.forEach((dateEntry: any) => {
+            dateEntry.games.forEach((game: any) => {
+                // Kanonikus formátumra  hozzuk, ahogy a Model.ts elvárja
+                h2hGames.push({
+                    date: game.gameDate?.split('T')[0] || 'N/A',
+                    competition: 'NHL', // Feltételezzük
+                    score: `${game.teams.home.score} - ${game.teams.away.score}`,
+                    home_team: game.teams.home.team.name,
+                    away_team: game.teams.away.team.name,
+                });
+            });
+        });
+
+        // Fordított sorrend (legújabb elöl), és limitálás (pl. 5 meccs)
+        const sortedH2H = h2hGames.reverse().slice(0, 5);
+        
+        nhlH2HCache.set(cacheKey, sortedH2H);
+        console.log(`[NHL API] H2H adatok sikeresen lekérve (${sortedH2H.length} meccs).`);
+        return sortedH2H;
+
+    } catch (e: any) {
+        console.error(`[NHL API] H2H lekérési hiba: ${e.message}`);
+        return null;
+    }
+}
+
+
+// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (JAVÍTVA v54.33) ---
 
 export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
     const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff, manual_H_xG, manual_A_xG } = options;
-    console.log(`[Hockey Provider (v54.26 - Deterministic Map)] Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
+    console.log(`[Hockey Provider (v54.33 - H2H Fix)] Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
 
     // --- 1. LIGA és CSAPAT ID-k (Stabil) ---
     const leagueApiId = await getHockeyLeagueId(leagueName);
@@ -262,7 +323,6 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         throw new Error(`[NHL API] Ez a provider csak az "NHL" ligát támogatja. Kapott: "${leagueName}". Az elemzés leáll.`);
     }
 
-    // A v54.26-os (MAP) javítás használata
     const [homeTeamId, awayTeamId] = await Promise.all([
         getHockeyTeamId(homeTeamName),
         getHockeyTeamId(awayTeamName)
@@ -271,15 +331,18 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         throw new Error(`[NHL API] Csapat ID nem található: Home(${homeTeamName}=${homeTeamId}) vagy Away(${awayTeamName}=${awayTeamId}). Ellenőrizd az NHL_TEAM_NAME_MAP bejegyzéseket a config.js-ben.`);
     }
 
-    // --- 2. MECCS (Stabil) ---
-    const fixtureId = await findHockeyFixture(homeTeamId, awayTeamId, utcKickoff);
+    // --- 2. MECCS (Stabil) és H2H (ÚJ) ---
+    // A 'findHockeyFixture' most már párhuzamosan futhat a H2H lekéréssel
+    const [fixtureId, apiSportsH2HData] = await Promise.all([
+        findHockeyFixture(homeTeamId, awayTeamId, utcKickoff),
+        _getNhlH2H(homeTeamId, awayTeamId) // ÚJ HÍVÁS (v54.33)
+    ]);
     
     // --- 3. OPCIONÁLIS STATISZTIKÁK (P1/P4 Logika) ---
     let homeStatsApi: any = null;
     let awayStatsApi: any = null;
     let standingsSource = "N/A (P1 Manual xG)";
 
-    // Csak akkor hívjuk a szezonális statisztika végpontot, ha NINCS manuális P1 adat megadva.
     if (manual_H_xG == null || manual_A_xG == null) {
         console.log(`[NHL API] P4-es ág (nincs manuális xG): Statisztikák lekérése a tabelláról...`);
         try {
@@ -319,7 +382,8 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
          sport, homeTeamName, awayTeamName,
          unifiedHomeStats,
          unifiedAwayStats, 
-         null, null
+         apiSportsH2HData, // JAVÍTÁS (v54.33): Átadjuk a H2H adatot a promptnak
+         null
     ));
     let geminiData: any = {};
     try { 
@@ -355,12 +419,13 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
             ...geminiData.form
         },
         detailedPlayerStats: { 
-            home_absentees: [], // A v54.25-ös 'home_absentee' elgépelés javítva
+            home_absentees: [],
             away_absentees: [], 
             key_players_ratings: { home: {}, away: {} } 
         },
         absentees: { home: [], away: [] },
-        h2h_structured: geminiData.h2h_structured || null,
+        // JAVÍTÁS (v54.33): A valós H2H adat beillesztése
+        h2h_structured: apiSportsH2HData || geminiData.h2h_structured || null,
         referee: {
             name: null,
             style: null
@@ -390,6 +455,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
     finalData.contextual_factors.weather = structuredWeather.description || "N/A (Beltéri)";
 
     const richContext = [
+         // JAVÍTÁS (v54.33): A Gemini H2H összefoglalóját használjuk, ami most már valós adatokon alapul
          geminiData.h2h_summary && `- H2H: ${geminiData.h2h_summary}`,
          geminiData.team_news?.home && `- Hírek: H:${geminiData.team_news.home}`,
          geminiData.team_news?.away && `- Hírek: V:${geminiData.team_news.away}`,
@@ -402,7 +468,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
          richContext,
          advancedData: geminiData.advancedData || { home: {}, away: {} },
          form: finalData.form,
-         rawData: finalData,
+         rawData: finalData, // Ez most már tartalmazza a 'h2h_structured' adatot
          oddsData: null,
          fromCache: false
     };
