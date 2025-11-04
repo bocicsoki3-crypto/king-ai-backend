@@ -119,7 +119,7 @@ export const APIFOOTBALL_TEAM_NAME_MAP: { [key: string]: string } = {
     'atletico junior': 'Junior',
     'independiente santa fe': 'Santa Fe',
     'independiente medellin': 'Independiente Medellin',
-    'blackburn rovers': 'Blackburn Rovers',// Hozzáadva a log alapján
+    'blackburn rovers': 'Blackburn',
     'slavia prague': 'Slavia Praha',
     'birmingham city': 'Birmingham',
 };
