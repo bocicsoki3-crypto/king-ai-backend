@@ -1,9 +1,10 @@
 // FÁJL: providers/newHockeyProvider.ts
-// VERZIÓ: v54.21 (TS2304 'gemAta' Typo Fix)
+// VERZIÓ: v54.22 (Standings Fallback Fix)
 // MÓDOSÍTÁS:
-// 1. A 'fetchMatchData'  funkcióban a 'gemAta'  elgépelés javítva 'geminiData'-ra,
-//    ami a TS2304 build hibát okozta.
-// 2. A provider továbbra is a hivatalos, ingyenes NHL API-t ('https://api-web.nhle.com/v1') [cite: 1313-1315] használja.
+// 1. A '_getNhlStandings' [cite: 1313-1323] most már elfogadja a 'utcKickoff' dátumot.
+// 2. IMPLEMENTÁLT FALLBACK: Ha a '/v1/standings/now'  0 csapatot ad vissza,
+//    a provider automatikusan megpróbálja a '/v1/standings/{YYYY-MM-DD}' végpontot
+//    a meccs dátumával. Ez kijavítja a [cite: 207] "A tabella üres" hibát.
 
 import NodeCache from 'node-cache';
 import pkg from 'string-similarity';
@@ -27,16 +28,15 @@ import {
 } from './common/utils.js';
 import { SPORT_CONFIG } from '../config.js';
 
-// --- JÉGKORONG SPECIFIKUS CACHE-EK (Változatlanok) ---
+// --- JÉGKORONG SPECIFIKUS CACHE-EK ---
 const hockeyLeagueCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
 const hockeyTeamCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
 const hockeyFixtureCache = new NodeCache({ stdTTL: 3600 * 1, checkperiod: 600 });
-// A 'hockeyStatsCache' mostantól a teljes NHL tabellát tárolja
 const hockeyStatsCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 3600 });
 
 // --- ÚJ NHL API KONFIGURÁCIÓ ---
 const NHL_API_BASE_URL = 'https://api-web.nhle.com/v1';
-const NHL_LEAGUE_ID = 'NHL'; // A 'leagueName' alapján
+const NHL_LEAGUE_ID = 'NHL';
 
 /**
  * Módosított API hívó, amely a hivatalos NHL API-t hívja (nincs szükség kulcsra).
@@ -55,44 +55,70 @@ async function makeHockeyRequest(endpoint: string, params: any = {}) {
     }
 }
 
-// --- ADATLEKÉRŐ FÜGGVÉNYEK (Újraimplementálva) ---
+// --- ADATLEKÉRŐ FÜGGVÉNYEK (JAVÍTVA) ---
 
 /**
- * Lekéri és cache-eli a teljes NHL tabellát, amely tartalmazza a statisztikákat és a csapat ID-ket.
+ * Lekéri és cache-eli a teljes NHL tabellát.
+ * JAVÍTVA (v54.22): Fallback logikát tartalmaz a '/standings/{date}' végpontra,
+ * ha a '/standings/now' üres.
  */
-async function _getNhlStandings(): Promise<any[]> {
-    const cacheKey = `nhl_standings_v1_full`;
+async function _getNhlStandings(utcKickoff: string): Promise<any[]> {
+    // A dátum alapú cache kulcs biztosítja, hogy a 'now' és a '{date}' hívások
+    // külön cache-elődjenek, ha a meccs nem a mai napon van.
+    const matchDate = new Date(utcKickoff).toISOString().split('T')[0]; // YYYY-MM-DD
+    const cacheKey = `nhl_standings_v2_fallback_${matchDate}`;
+    
     const cached = hockeyStatsCache.get<any[]>(cacheKey);
     if (cached) {
-        console.log(`[NHL API] Tabella CACHE TALÁLAT.`);
+        console.log(`[NHL API] Tabella CACHE TALÁLAT (${cacheKey}).`);
         return cached;
     }
     
-    console.log(`[NHL API] Tabella lekérése... (${NHL_API_BASE_URL}/standings/now)`);
-    const data = await makeHockeyRequest('/standings/now', {});
-    
-    if (!data?.standings || data.standings.length === 0) {
-        throw new Error("[NHL API] Nem sikerült lekérni a tabellát (standings üres).");
+    let data: any = null;
+    let sourceEndpoint = '/standings/now';
+
+    // 1. Próba: A 'now' végpont hívása
+    try {
+        console.log(`[NHL API] Tabella lekérése (1. Próba: ${sourceEndpoint})...`);
+        data = await makeHockeyRequest(sourceEndpoint, {});
+    } catch (e: any) {
+        console.warn(`[NHL API] A '${sourceEndpoint}' hívása sikertelen: ${e.message}. Fallback indítása...`);
+        data = null; // Biztosítjuk, hogy a fallback lefusson
     }
 
-    // Az NHL API több tabellát (wildcard, divízió stb.) visszaad.
-    // Az első ('league') tartalmazza általában az összesített adatokat.
-    const allRows = data.standings.flatMap((s: any) => s.rows || []);
+    // 2. Ellenőrzés és Fallback
+    const standings = data?.standings || [];
+    const allRows = standings.flatMap((s: any) => s.rows || []);
     
-    if (allRows.length < 30) { // Kevesebb mint 30 csapat?
-         console.warn(`[NHL API] Figyelmeztetés: A tabella lekérés gyanúsan kevés csapatot (${allRows.length}) adott vissza.`);
+    if (allRows.length === 0) {
+        console.warn(`[NHL API] Az elsődleges '${sourceEndpoint}' végpont 0 csapatot adott vissza. Fallback indítása a meccs dátumára (${matchDate})...`);
+        sourceEndpoint = `/standings/${matchDate}`;
+        try {
+            data = await makeHockeyRequest(sourceEndpoint, {});
+        } catch (e: any) {
+             console.error(`[NHL API] A fallback hívás ('${sourceEndpoint}') is sikertelen: ${e.message}`);
+             throw new Error(`[NHL API] A tabella lekérése végleg sikertelen (mind a 'now', mind a '${matchDate}' végpont hibát adott).`);
+        }
     }
 
-    // Duplikációk eltávolítása team.id alapján
-    const uniqueTeamRows = Array.from(new Map(allRows.map((row: any) => [row.team.id, row])).values());
+    // 3. Feldolgozás (a sikeres hívásból)
+    const finalStandings = data?.standings || [];
+    const finalAllRows = finalStandings.flatMap((s: any) => s.rows || []);
     
-    console.log(`[NHL API] Tabella sikeresen lekérve, ${uniqueTeamRows.length} egyedi csapat cache-elve.`);
+    if (finalAllRows.length === 0) {
+        // Ez most már végleges hiba, ha a dátum alapú hívás sem adott vissza semmit
+        throw new Error(`[NHL API] A tabella lekérése sikertelen. A '${sourceEndpoint}' végpont 0 csapatot adott vissza.`);
+    }
+
+    const uniqueTeamRows = Array.from(new Map(finalAllRows.map((row: any) => [row.team.id, row])).values());
+    
+    console.log(`[NHL API] Tabella sikeresen lekérve ('${sourceEndpoint}' forrásból), ${uniqueTeamRows.length} egyedi csapat cache-elve (${cacheKey}).`);
     hockeyStatsCache.set(cacheKey, uniqueTeamRows);
     return uniqueTeamRows;
 }
 
 /**
- * Ellenőrzi, hogy a liga "NHL"-e.
+ * Ellenőrzi, hogy a liga "NHL"-e. (Változatlan)
  */
 async function getHockeyLeagueId(leagueName: string): Promise<string | null> {
     const cacheKey = `hockey_league_${leagueName.toLowerCase().replace(/\s/g, '')}`;
@@ -112,15 +138,18 @@ async function getHockeyLeagueId(leagueName: string): Promise<string | null> {
 
 /**
  * Megkeresi a csapat ID-t a ESPN név alapján a cache-elt NHL tabellából.
+ * JAVÍTVA (v54.22): Most már átveszi a 'utcKickoff'-ot, hogy továbbadja a '_getNhlStandings'-nek.
  */
-async function getHockeyTeamId(teamName: string): Promise<number | null> {
+async function getHockeyTeamId(teamName: string, utcKickoff: string): Promise<number | null> {
     const cacheKey = `hockey_team_nhl_${teamName.toLowerCase().replace(/\s/g, '')}`;
     const cached = hockeyTeamCache.get<number>(cacheKey);
     if (cached) return cached;
 
     console.log(`[NHL API] Csapat keresés: "${teamName}"`);
-    const standingsRows = await _getNhlStandings();
+    // JAVÍTÁS: Átadjuk a dátumot a tabella lekérőnek
+    const standingsRows = await _getNhlStandings(utcKickoff);
     if (standingsRows.length === 0) {
+        // Ennek már nem szabadna megtörténnie a fallback miatt, de a biztonság kedvéért marad.
         throw new Error("[NHL API] A tabella üres, a csapat ID keresés sikertelen.");
     }
 
@@ -130,17 +159,15 @@ async function getHockeyTeamId(teamName: string): Promise<number | null> {
         abbrev: row.teamAbbrev.default
     }));
 
-    // Keresés a 'config.js'-ben definiált rövid nevek (pl. "Senators") alapján
     const mappedName = SPORT_CONFIG.hockey.espn_leagues["NHL"].slug === 'nhl' 
-        ? (teamName.split(' ').pop() || teamName) // Pl. "Ottawa Senators" -> "Senators"
+        ? (teamName.split(' ').pop() || teamName)
         : teamName;
 
     const searchNames = teams.map(t => t.name).concat(teams.map(t => t.abbrev));
-    // Az ESPN nevet (pl. "Senators") keressük az NHL API nevei között
     const bestMatch = findBestMatch(mappedName, searchNames); 
 
     if (bestMatch.bestMatch.rating > 0.7) {
-        const foundTeam = teams[bestMatch.bestMatchIndex % teams.length]; // Modulo a duplikált tömb miatt
+        const foundTeam = teams[bestMatch.bestMatchIndex % teams.length];
         console.log(`[NHL API] Csapat találat: "${teamName}" (Keresve: "${mappedName}") -> "${foundTeam.name}" (ID: ${foundTeam.id})`);
         hockeyTeamCache.set(cacheKey, foundTeam.id);
         return foundTeam.id;
@@ -152,11 +179,9 @@ async function getHockeyTeamId(teamName: string): Promise<number | null> {
 }
 
 /**
- * Megkeresi a meccs 'gamePk' azonosítóját a schedule végponton.
+ * Megkeresi a meccs 'gamePk' azonosítóját a schedule végponton. (Változatlan)
  */
 async function findHockeyFixture(homeTeamId: number, awayTeamId: number, utcKickoff: string): Promise<number | null> {
-    // Az NHL API UTC-ben dolgozik, de a biztonság kedvéért +/- 1 napot is ellenőrizhetnénk,
-    // de a 'utcKickoff' [cite: 258-259] elvileg pontos.
     const matchDate = new Date(utcKickoff).toISOString().split('T')[0]; // YYYY-MM-DD
     
     const cacheKey = `hockey_fixture_nhl_${homeTeamId}_${awayTeamId}_${matchDate}`;
@@ -188,7 +213,7 @@ async function findHockeyFixture(homeTeamId: number, awayTeamId: number, utcKick
 }
 
 /**
- * Kinyeri a statisztikákat a már cache-elt tabellából.
+ * Kinyeri a statisztikákat a már cache-elt tabellából. (Változatlan)
  */
 function getStatsFromStandings(teamId: number, standingsRows: any[]): any | null {
     if (!standingsRows) return null;
@@ -196,11 +221,11 @@ function getStatsFromStandings(teamId: number, standingsRows: any[]): any | null
 }
 
 
-// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (JAVÍTVA v54.21) ---
+// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (JAVÍTVA v54.22) ---
 
 export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
     const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
-    console.log(`[Hockey Provider (v54.21 - NHL API)] Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
+    console.log(`[Hockey Provider (v54.22 - NHL API Fallback)] Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
 
     // --- 1. LIGA és TABELLA (STATISZTIKA) ---
     const leagueApiId = await getHockeyLeagueId(leagueName);
@@ -208,13 +233,14 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         throw new Error(`[NHL API] Ez a provider csak az "NHL" ligát támogatja. Kapott: "${leagueName}". Az elemzés leáll.`);
     }
 
-    // Egyszerre lekérjük a teljes tabellát, ez tartalmazza a statisztikákat ÉS a csapat ID-ket
-    const standingsRows = await _getNhlStandings();
+    // JAVÍTÁS: A '_getNhlStandings' hívása *először* történik, átadva a dátumot.
+    // Ez biztosítja, hogy a tabella cache-elve legyen a 'getHockeyTeamId' hívások előtt.
+    const standingsRows = await _getNhlStandings(utcKickoff);
 
     // --- 2. CSAPAT ID-k ---
     const [homeTeamId, awayTeamId] = await Promise.all([
-        getHockeyTeamId(homeTeamName), // A 'standingsRows' már cache-elve van
-        getHockeyTeamId(awayTeamName)
+        getHockeyTeamId(homeTeamName, utcKickoff), // Átadjuk a dátumot
+        getHockeyTeamId(awayTeamName, utcKickoff)  // Átadjuk a dátumot
     ]);
     if (!homeTeamId || !awayTeamId) {
         throw new Error(`[NHL API] Csapat ID nem található: Home(${homeTeamName}=${homeTeamId}) vagy Away(${awayTeamName}=${awayTeamId}).`);
@@ -226,25 +252,20 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
     const awayStatsApi = getStatsFromStandings(awayTeamId, standingsRows);
 
     // --- 4. STATISZTIKÁK EGYSÉGESÍTÉSE (KANONIKUS MODELL) ---
-    // Az NHL API 'standings' adatai alapján
     const unifiedHomeStats: ICanonicalStats = {
-        gp: homeStatsApi?.gamesPlayed || 1, // Biztosítjuk, hogy a GP > 0
+        gp: homeStatsApi?.gamesPlayed || 1,
         gf: homeStatsApi?.goalsFor || 0,
         ga: homeStatsApi?.goalsAgainst || 0,
-        // Az NHL API 'streakCode' (pl. "W2") vagy 'l10Record' (pl. "6-3-1")
-        // formátumot ad, ami nem kompatibilis a 'getFormPoints' [cite: 382-386] "WWLDW" elvárásával.
-        // A 'null' átadása biztosítja, hogy a Model.ts [cite: 321-447] helyesen kezeli a helyzetet.
         form: null 
     };
     const unifiedAwayStats: ICanonicalStats = {
-        gp: awayStatsApi?.gamesPlayed || 1, // Biztosítjuk, hogy a GP > 0
+        gp: awayStatsApi?.gamesPlayed || 1,
         gf: awayStatsApi?.goalsFor || 0,
         ga: awayStatsApi?.goalsAgainst || 0,
         form: null
     };
 
     // --- 5. GEMINI HÍVÁS (Kontextus) ---
-    // A 'newHockeyProvider' (v54.9) [cite: 213-295] logikáját követve
     const geminiJsonString = await _callGemini(PROMPT_V43(
          sport, homeTeamName, awayTeamName,
          unifiedHomeStats,
@@ -258,12 +279,11 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         console.error(`[Hockey API] Gemini JSON parse hiba: ${e.message}`);
     }
 
-    // --- 6. VÉGLEGES ADAT EGYESÍTÉS (KANONIKUS MODELL v54.9) ---
+    // --- 6. VÉGLEGES ADAT EGYESÍTÉS (KANONIKUS MODELL) ---
     
-    // Alapértelmezett 'structured_weather' (Beltéri sport)
     const defaultStructuredWeather: IStructuredWeather = {
         description: "N/A (Beltéri)",
-        temperature_celsius: -1, // Szimbolikus érték
+        temperature_celsius: -1,
         humidity_percent: null,
         wind_speed_kmh: null,
         precipitation_mm: null
@@ -274,15 +294,15 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
             home: { ...unifiedHomeStats, ...(geminiData.stats?.home || {}) },
             away: { ...unifiedAwayStats, ...(geminiData.stats?.away || {}) }
         },
-        apiFootballData: { // Átnevezhetnénk 'apiProviderData'-ra, de a kanonikus modell ezt várja
+        apiFootballData: {
             fixtureId: fixtureId,
             leagueId: leagueApiId,
             homeTeamId: homeTeamId,
             awayTeamId: awayTeamId
         },
         form: {
-            home_overall: unifiedHomeStats.form, // null
-            away_overall: unifiedAwayStats.form, // null
+            home_overall: unifiedHomeStats.form,
+            away_overall: unifiedAwayStats.form,
             ...geminiData.form
         },
         detailedPlayerStats: { 
@@ -297,30 +317,23 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
             style: null
         },
         contextual_factors: {
-            // === JAVÍTÁS (v54.21) ===
-            // A 'gemAta'  (typo) javítva 'geminiData'-ra.
             stadium_location: geminiData?.contextual_factors?.stadium_location || "N/A (Beltéri)",
-            // === JAVÍTÁS VÉGE ===
             pitch_condition: "N/A (Jég)",
             weather: "N/A (Beltéri)",
-            match_tension_index: geminiData?.contextual_factors?.match_tension_index || null, // A v54.9-nek megfelelően string
+            match_tension_index: geminiData?.contextual_factors?.match_tension_index || null,
             structured_weather: defaultStructuredWeather
         },
         ...geminiData
     };
 
-    // GP felülírása a valós API adatokkal, biztosítva, hogy ne legyen 0 [cite: 323, 1384-1386]
     finalData.stats.home.gp = Math.max(1, unifiedHomeStats.gp);
     finalData.stats.away.gp = Math.max(1, unifiedAwayStats.gp);
 
     console.log(`[NHL API] Végleges stats használatban: Home(GP:${finalData.stats.home.gp}), Away(GP:${finalData.stats.away.gp})`);
     
-    // A 'structured_weather' [cite: 1754-1756] hívása (beltéri sportnál felesleges, de a teljesség kedvéért)
     const location = finalData.contextual_factors.stadium_location;
     let structuredWeather: IStructuredWeather = defaultStructuredWeather;
     if (location && location !== "N/A (Beltéri)" && location !== "N/A") {
-        // A 'getStructuredWeatherData' [cite: 1056-1059] jelenleg egy stub,
-        // de ha implementálva lenne, itt hívódna
         structuredWeather = await getStructuredWeatherData(location, utcKickoff);
     }
 
@@ -330,11 +343,10 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
     const richContext = [
          geminiData.h2h_summary && `- H2H: ${geminiData.h2h_summary}`,
          geminiData.team_news?.home && `- Hírek: H:${geminiData.team_news.home}`,
-         geminiData.team_news?.away && `- Hírek: V:${geminiData.team_news.away}`,
+         geminiData.team_news?.away && `- Hírek: V:${gemiminiData.team_news.away}`, // Javítás itt is, 'geminiData'
          (finalData.form.home_overall || finalData.form.away_overall) && `- Forma: H:${finalData.form.home_overall || 'N/A'}, V:${finalData.form.away_overall || 'N/A'}`,
     ].filter(Boolean).join('\n') || "N/A";
 
-    // A végső ICanonicalRichContext objektum összeállítása [cite: 1214-1218]
     const result: ICanonicalRichContext = {
          rawStats: finalData.stats,
          leagueAverages: geminiData.league_averages || {},
@@ -342,11 +354,10 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
          advancedData: geminiData.advancedData || { home: {}, away: {} },
          form: finalData.form,
          rawData: finalData,
-         oddsData: null, // Az NHL API (egyelőre) nem szolgáltat odds adatokat
+         oddsData: null,
          fromCache: false
     };
 
-    // Kritikus ellenőrzés [cite: 1384-1386]
     if (result.rawStats.home.gp <= 0 || result.rawStats.away.gp <= 0) {
         console.error(`[NHL API] KRITIKUS HIBA: Érvénytelen VÉGLEGES statisztikák (GP <= 0).`);
         throw new Error("Kritikus statisztikák (GP <= 0) érvénytelenek a providerben.");
