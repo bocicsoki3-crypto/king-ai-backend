@@ -1,4 +1,4 @@
-// config.ts (v54.27 - NHL Névtérkép Hozzáadva)
+// config.ts (v54.38 - Közvetlen Hoki API Kulcs Hozzáadva)
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -51,7 +51,7 @@ interface IApiHostConfig {
  */
 interface IApiHostMap {
   soccer: IApiHostConfig;
-  hockey: IApiHostConfig;
+  hockey: IApiHostConfig; // Ez a RapidAPI-s, de már nem fogjuk használni a hokihoz
   basketball: IApiHostConfig;
   [key: string]: IApiHostConfig; // Lehetővé teszi a [sport] indexelést
 }
@@ -64,17 +64,23 @@ export const GEMINI_API_KEY: string | undefined = process.env.GEMINI_API_KEY;
 export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-2.5-pro';
 export const SHEET_URL: string | undefined = process.env.SHEET_URL;
 
-export const HOCKEY_API_KEY: string | undefined = process.env.HOCKEY_API_KEY;
-export const HOCKEY_API_HOST: string = process.env.HOCKEY_API_HOST || 'ice-hockey-data.p.rapidapi.com';
+// === FOCI (RapidAPI) ===
+// (Ez változatlan marad)
+export const APIFOOTBALL_KEY_1: string | undefined = process.env.APIFOOTBALL_KEY_1;
+
+// === JÉGKORONG (Közvetlen API-SPORTS) ===
+export const APISPORTS_HOCKEY_HOST: string = process.env.APISPORTS_HOCKEY_HOST || 'v1.hockey.api-sports.io';
+export const APISPORTS_HOCKEY_KEY: string | undefined = process.env.APISPORTS_HOCKEY_KEY;
+
+// === KOSÁRLABDA (Hagyományos RapidAPI - Még nincs használatban) ===
 export const BASKETBALL_API_KEY: string | undefined = process.env.BASKETBALL_API_KEY;
 export const BASKETBALL_API_HOST: string = process.env.BASKETBALL_API_HOST || 'basketball-api.p.rapidapi.com';
 
-// === ÚJ SOFASCORE KONFIGURÁCIÓ ===
+// === SOFASCORE (RapidAPI) ===
 export const SOFASCORE_API_KEY: string | undefined = process.env.SOFASCORE_API_KEY; 
 export const SOFASCORE_API_HOST: string = process.env.SOFASCORE_API_HOST || 'sportapi7.p.rapidapi.com';
-// === VÉGE ===
 
-// --- API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
+// --- API HOST TÉRKÉP (KULCSROTÁCIÓVAL - CSAK FOCI) ---
 // Típusosítva az IApiHostMap interfész alapján
 export const API_HOSTS: IApiHostMap = {
     soccer: {
@@ -83,29 +89,23 @@ export const API_HOSTS: IApiHostMap = {
             process.env.APIFOOTBALL_KEY_1,
             process.env.APIFOOTBALL_KEY_2,
             process.env.APIFOOTBALL_KEY_3
-        ].filter(Boolean) as string[] // Kiszűri az üres/undefined kulcsokat
+        ].filter(Boolean) as string[]
     },
+    // Ezeket már nem használjuk, de a struktúra miatt itt maradnak
     hockey: {
         host: process.env.APIHOCKEY_HOST || 'api-hockey.p.rapidapi.com',
-        keys: [
-            process.env.APIHOCKEY_KEY_1,
-            process.env.APIHOCKEY_KEY_2,
-            process.env.APIHOCKEY_KEY_3
-        ].filter(Boolean) as string[]
+        keys: [process.env.APIHOCKEY_KEY_1].filter(Boolean) as string[]
     },
     basketball: {
         host: process.env.APIBASKETBALL_HOST || 'api-basketball.p.rapidapi.com',
-        keys: [
-            process.env.APIBASKETBALL_KEY_1,
-            process.env.APIBASKETBALL_KEY_2,
-            process.env.APIBASKETBALL_KEY_3
-        ].filter(Boolean) as string[]
+        keys: [process.env.APIBASKETBALL_KEY_1].filter(Boolean) as string[]
     }
 };
 
 // --- CSAPATNÉV HOZZÁRENDELÉSEK ---
+
+// FOCI TÉRKÉP (Változatlan)
 export const APIFOOTBALL_TEAM_NAME_MAP: { [key: string]: string } = {
-    // Foci
     'spurs': 'Tottenham Hotspur',
     'tottenham': 'Tottenham Hotspur',
     'man utd': 'Manchester United',
@@ -119,29 +119,13 @@ export const APIFOOTBALL_TEAM_NAME_MAP: { [key: string]: string } = {
     'atletico junior': 'Junior',
     'independiente santa fe': 'Santa Fe',
     'independiente medellin': 'Independiente Medellin',
-    'blackburn rovers': 'Blackburn',
-    
-    // Jégkorong (Ez a régi, API-Sports térkép itt maradhat referenciaként, de az újat használjuk)
-    'senators': 'Ottawa Senators',
-    'flames': 'Calgary Flames',
-    'lightning': 'Tampa Bay Lightning',
-    'stars': 'Dallas Stars',
-    'flyers': 'Philadelphia Flyers',
-    'predators': 'Nashville Predators',
-    'hurricanes': 'Carolina Hurricanes',
-    'islanders': 'New York Islanders',
-    'wild': 'Minnesota Wild',
-    'penguins': 'Pittsburgh Penguins'
+    'blackburn rovers': 'Blackburn Rovers' // Hozzáadva a log alapján
 };
 
-// === ÚJ (v54.27): NHL Név Leképezés ===
-// Hozzárendeli az ESPN-ben használt neveket (pl. "Sabres") 
-// a hivatalos NHL API nevekhez (pl. "Buffalo Sabres").
-// Ezt használja a newHockeyProvider (v54.26+).
+// JÉGKORONG TÉRKÉP (v54.27)
 export const NHL_TEAM_NAME_MAP: { [key: string]: string } = {
-    // ESPN név (kisbetűs) : Hivatalos NHL API Név
     'sabres': 'Buffalo Sabres',
-    'mammoth': 'Utah Hockey Club', // Javítva a te visszajelzésed alapján
+    'mammoth': 'Utah Hockey Club',
     'avalanche': 'Colorado Avalanche',
     'panthers': 'Florida Panthers',
     'rangers': 'New York Rangers',
@@ -169,11 +153,11 @@ export const NHL_TEAM_NAME_MAP: { [key: string]: string } = {
     'sharks': 'San Jose Sharks',
     'kraken': 'Seattle Kraken',
     'golden knights': 'Vegas Golden Knights',
-    'coyotes': 'Arizona Coyotes', // Megtartva, hátha régi adat
+    'coyotes': 'Arizona Coyotes',
     'jets': 'Winnipeg Jets',
     'wild': 'Minnesota Wild',
     'lightning': 'Tampa Bay Lightning',
-    'utah': 'Utah Hockey Club' // Hozzáadva az "utah" kulcs is
+    'utah': 'Utah Hockey Club'
 };
 
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
