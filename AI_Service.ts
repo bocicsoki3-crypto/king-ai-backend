@@ -1,14 +1,16 @@
-// --- AI_Service.ts (v54.5 - JSON Parse Retry Logic) ---
-// MÓDOSÍTÁS: A rendszer kiegészítve egy alkalmazás-szintű
-// retry (újrapróbálkozás) logikával, hogy kivédje a Gemini
-// API nem-determinisztikus JSON-formázási hibáit (pl. truncation).
+// --- AI_Service.ts (v54.29 - Foci Mikromodell Bővítés) ---
+// MÓDOSÍTÁS:
+// 1. A 'PROMPT_STEP_3_STRATEGIST'  (Kérés 6 )
+//    'micromodels'  szekciója kiegészítve a 'corner_analysis'
+//    és 'card_analysis' mezőkkel.
+// 2. A prompt utasítva, hogy ezeket csak akkor töltse ki, ha
+//    a 'simJson'  tartalmaz releváns adatokat (azaz focinál).
 
 import { _callGemini } from './DataFetch.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
 import type { ICanonicalPlayerStats, ICanonicalRawData } from './src/types/canonical.d.ts';
 
 // === ÚJ SEGÉDFÜGGVÉNY (v54.5): Robusztus AI hívó JSON parse retry logikával ===
-
 /**
  * Behívja a _callGemini-t és ellenőrzi a JSON-feldolgozást.
  * Ha a JSON.parse hibát dob (pl. a Gemini hibás/hiányos JSON-t küldött),
@@ -21,7 +23,6 @@ async function _callGeminiWithJsonRetry(
 ): Promise<any> {
     
     let attempts = 0;
-    
     while (attempts <= maxRetries) {
         attempts++;
         try {
@@ -36,7 +37,7 @@ async function _callGeminiWithJsonRetry(
                 console.log(`[AI_Service] Sikeres JSON feldolgozás (${stepName}) a(z) ${attempts}. próbálkozásra.`);
             }
             return result;
-
+            
         } catch (e: any) {
             // 4. Hiba kezelése
             if (e instanceof SyntaxError) { // Ez a JSON.parse hiba
@@ -105,12 +106,13 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
     "<1. kulcsfontosságú kontextuális adat (pl. 'A hazai kulcsjátékos (Kovács) sérülése (confirmed_out) kritikus, a védelem instabil lesz.')>",
     "<2. kulcsfontosságú kontextuális adat (pl. 'A vendég csapat stílusa (magas letámadás) közvetlen ellenszere a hazai lassú építkezésnek.')>",
     "<3. kulcsfontosságú adat (pl. 'A piaci mozgás (-5%) a vendégcsapatot favorizálja, ellentmondva a tabellának.')>"
-   ],
+  ],
   "contextual_risks": "<Listázd az 1-2 legnagyobb kockázatot (pl. 'Derbi meccs, a feszültség magas, sok lap várható.')>"
 }
 `;
 
 // --- 3. LÉPÉS: A VEZETŐ STRATÉGA (A "SYNTHESIS") ---
+// === JAVÍTÁS (v54.29) Kérés 6: Szöglet és Lapok Mikromodell  ===
 const PROMPT_STEP_3_STRATEGIST = `
 TASK: You are the Head Strategist.
 Your decision is final.
@@ -132,9 +134,11 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
   "strategic_conflict_resolution": "<Egy 2-3 bekezdéses elemzés. Szintetizáld a Quant és a Scout jelentését. Ha ellentmondanak (pl. Quant a Hazait, Scout a Vendéget favorizálja), oldd fel az ellentmondást (pl. 'A Quant helyesen azonosította a hazai statisztikai fölényt, de a Scout jelentése a kulcsjátékos sérüléséről felülírja ezt. A kockázat túl magas.')>",
   
   "micromodels": {
-    "btts_analysis": "<BTTS elemzés a Quant és Scout adatok alapján>\\nBizalom: [Alacsony/Közepes/Magas]",
-    "goals_ou_analysis": "<Gól O/U elemzés (a {sim_mainTotalsLine} vonal alapján)>\\nBizalom: [Alacsony/Közepes/Magas]"
-   },
+    "btts_analysis": "<BTTS elemzés. Ha nem foci (pl. simJson.pBTTS N/A), írj 'N/A'-t.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]",
+    "goals_ou_analysis": "<Gól O/U elemzés (a {sim_mainTotalsLine} vonal alapján)>\\nBizalom: [Alacsony/Közepes/Magas]",
+    "corner_analysis": "<Szöglet O/U elemzés. Csak ha a simJson.mu_corners_sim > 0 (azaz focinál). Különben írj 'N/A'-t.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]",
+    "card_analysis": "<Lap O/U elemzés. Csak ha a simJson.mu_cards_sim > 0 (azaz focinál). Különben írj 'N/A'-t.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]"
+  },
   
   "final_confidence_report": "**<SCORE/10>** - Részletes indoklás. Vessd össze a {modelConfidence} (stat) bizalmat a Scout által jelzett kockázatokkal (pl. sérülések, piaci mozgás). A végső pontszám tükrözze a Quant és a Scout közötti összhangot vagy annak hiányát.>",
   
@@ -145,6 +149,7 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
   }
 }
 `;
+// === JAVÍTÁS VÉGE ===
 
 
 // --- TÍPUSOK a bemeneti adatokhoz ---
@@ -184,12 +189,12 @@ function fillPromptTemplate(template: string, data: any): string {
                 const baseKey = key.replace('Json', '');
                 if (data && data.hasOwnProperty(baseKey) && data[baseKey] !== undefined) {
                     try { return JSON.stringify(data[baseKey]); } 
-                    catch (e: any) { console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál`); return '{}'; }
+                     catch (e: any) { console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál`); return '{}'; }
                 } else { return '{}'; } 
             }
             else { 
                  console.warn(`Hiányzó kulcs a prompt kitöltéséhez: ${key}`);
-                return "N/A";
+                 return "N/A";
             }
 
             if (value === null || value === undefined) { return "N/A"; }
@@ -212,7 +217,6 @@ function fillPromptTemplate(template: string, data: any): string {
 export async function runStep1_GetQuant(data: Step1Input): Promise<any> {
     try {
         const filledPrompt = fillPromptTemplate(PROMPT_STEP_1_QUANT, data);
-        // JAVÍTÁS: A robusztus hívót használjuk
         return await _callGeminiWithJsonRetry(filledPrompt, "Step 1 - Quant");
     } catch (e: any) {
         console.error(`AI Hiba (Step 1 - Quant): ${e.message}`);
@@ -226,7 +230,6 @@ export async function runStep1_GetQuant(data: Step1Input): Promise<any> {
 export async function runStep2_GetScout(data: Step2Input): Promise<any> {
     try {
         const filledPrompt = fillPromptTemplate(PROMPT_STEP_2_SCOUT, data);
-        // JAVÍTÁS: A robusztus hívót használjuk
         return await _callGeminiWithJsonRetry(filledPrompt, "Step 2 - Scout");
     } catch (e: any) {
         console.error(`AI Hiba (Step 2 - Scout): ${e.message}`);
@@ -240,7 +243,6 @@ export async function runStep2_GetScout(data: Step2Input): Promise<any> {
 export async function runStep3_GetStrategy(data: Step3Input): Promise<any> {
     try {
         const filledPrompt = fillPromptTemplate(PROMPT_STEP_3_STRATEGIST, data);
-        // JAVÍTÁS: A robusztus hívót használjuk (ez volt a hibás lépés a logban)
         return await _callGeminiWithJsonRetry(filledPrompt, "Step 3 - Strategy");
     } catch (e: any) {
         console.error(`AI Hiba (Step 3 - Strategy): ${e.message}`);
@@ -288,8 +290,7 @@ Do not provide betting advice. Do not make up information not present in the con
 If the answer isn't in the context or history, politely state that the information is not available in the analysis.`;
         
         // A chat funkció nem kényszerít JSON-t, ezért a sima _callGemini-t hívja
-        const rawAnswer = await _callGemini(prompt, false); 
-        
+        const rawAnswer = await _callGemini(prompt, false);
         return rawAnswer ? { answer: rawAnswer } : { error: "Az AI nem tudott válaszolni." };
     } catch (e: any) {
         console.error(`Chat hiba: ${e.message}`, e.stack);
