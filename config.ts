@@ -120,6 +120,7 @@ export const APIFOOTBALL_TEAM_NAME_MAP: { [key: string]: string } = {
     'independiente santa fe': 'Santa Fe',
     'independiente medellin': 'Independiente Medellin',
     'blackburn rovers': 'Blackburn Rovers' // Hozzáadva a log alapján
+    'slavia prague': 'Slavia Praha',
 };
 
 // JÉGKORONG TÉRKÉP (v54.27)
