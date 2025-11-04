@@ -1,12 +1,10 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v54.16 (TS2339 Javítások)
+// VERZIÓ: v54.18 (Kritikus Tizedesvessző (',') és '0' Kezelési Hiba Javítása)
 // MÓDOSÍTÁS:
-// 1. A 'getRichContextualData' hívása (v54.15) változatlan.
-// 2. (TS2339 Javítás) Importálja az 'IDataFetchResponse'-t
-//    és a 'getRichContextualData' desztrukturálásakor ezt használja.
-// 3. (TS2339 Javítás) Az 'estimateXG' hívásának desztrukturálása
-//    javítva: már nem vár 'xgSource'-t vissza, mivel az már
-//    a 'getRichContextualData'-ból megérkezett.
+// 1. A 'dataFetchOptions' objektum létrehozásánál a 'Number()'
+//    konverzió ELŐTT explicit módon lecseréljük a ','-t '.'-ra.
+// 2. Az ellenőrzés '!= null'-ra módosult, hogy a '0'
+//    értéket helyesen kezelje (a v54.17-es hiba javítása).
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -21,9 +19,11 @@ import type {
 import { findMainTotalsLine } from './providers/common/utils.js';
 
 // Adatgyűjtő funkciók
-// === JAVÍTÁS (v54.16): Importáljuk az új interfészt is ===
-import { getRichContextualData, type IDataFetchOptions, type IDataFetchResponse } from './DataFetch.js';
-// === JAVÍTÁS VÉGE ===
+import { 
+    getRichContextualData, 
+    type IDataFetchOptions, 
+    type IDataFetchResponse 
+} from './DataFetch.js'; // v54.16 importok
 
 import {
     estimateXG,
@@ -34,7 +34,7 @@ import {
     calculateValue,
     analyzeLineMovement,
     analyzePlayerDuels
-} from './Model.js';
+} from './Model.js'; // A te v52.8-as kódod importálása
 // AI Szolgáltatás Importok
 import {
     runStep1_GetQuant,
@@ -49,9 +49,8 @@ const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v54.16):
-* - Az xG prioritási logika a DataFetch.ts-ben van.
-* - A hívások és típusok javítva.
+* VÁLTOZÁS (v54.18):
+* - A '0' (nulla) és ',' (tizedesvessző) xG értékek átadása javítva.
 **************************************************************/
 
 // Az új, strukturált JSON válasz (v54.0)
@@ -79,6 +78,35 @@ interface IAnalysisResponse {
 interface IAnalysisError {
     error: string;
 }
+
+// === JAVÍTÁS (v54.18): Segédfüggvény a tizedesvesszők kezelésére ===
+/**
+ * Biztonságosan konvertál egy stringet (akár ','-vel) számmá.
+ * Helyesen kezeli a 0-t, null-t, és a "0,9" formátumot.
+ */
+function safeConvertToNumber(value: any): number | null {
+    if (value == null || value === '') { // Kezeli a null, undefined, ""
+        return null;
+    }
+    
+    let strValue = String(value);
+    
+    // A kritikus hiba javítása: ',' -> '.'
+    strValue = strValue.replace(',', '.');
+    
+    const num = Number(strValue);
+    
+    // Ha a konverzió után 'NaN', akkor adjon null-t vissza
+    if (isNaN(num)) {
+        console.warn(`[AnalysisFlow] HIBÁS BEMENET: Nem sikerült számmá alakítani: "${value}"`);
+        return null;
+    }
+    
+    // Helyesen adja vissza a 0-t vagy a konvertált számot
+    return num;
+}
+// === JAVÍTÁS VÉGE ===
+
 
 export async function runFullAnalysis(params: any, sport: string, openingOdds: any): Promise<IAnalysisResponse | IAnalysisError> {
     let analysisCacheKey = 'unknown_analysis';
@@ -113,8 +141,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         
-        // Cache kulcs (v54.16 - DataFetch kezeli az xG-t)
-        analysisCacheKey = `analysis_v54.16_json_api_${sport}_${safeHome}_vs_${safeAway}`; 
+        // Cache kulcs (v54.18)
+        analysisCacheKey = `analysis_v54.18_json_api_${sport}_${safeHome}_vs_${safeAway}`; 
 
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
@@ -137,7 +165,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         // --- 2. Fő Adatgyűjtés ---
         console.log(`Adatgyűjtés indul: ${home} vs ${away}...`);
 
-        // === JAVÍTÁS (v54.15): A 'getRichContextualData' hívás javítása ===
+        // === JAVÍTÁS (v54.18): A 'safeConvertToNumber' segédfüggvény használata ===
         const dataFetchOptions: IDataFetchOptions = {
             sport: sport,
             homeTeamName: home,
@@ -147,18 +175,17 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             forceNew: forceNew,
             
             // P1 (Direkt)
-            manual_xg_home: manual_xg_home ? Number(manual_xg_home) : null,
-            manual_xg_away: manual_xg_away ? Number(manual_xg_away) : null,
+            manual_xg_home: safeConvertToNumber(manual_xg_home),
+            manual_xg_away: safeConvertToNumber(manual_xg_away),
 
             // P1 (Komponens)
-            manual_H_xG: manual_H_xG ? Number(manual_H_xG) : null,
-            manual_H_xGA: manual_H_xGA ? Number(manual_H_xGA) : null,
-            manual_A_xG: manual_A_xG ? Number(manual_A_xG) : null,
-            manual_A_xGA: manual_A_xGA ? Number(manual_A_xGA) : null
+            manual_H_xG: safeConvertToNumber(manual_H_xG),
+            manual_H_xGA: safeConvertToNumber(manual_H_xGA),
+            manual_A_xG: safeConvertToNumber(manual_A_xG),
+            manual_A_xGA: safeConvertToNumber(manual_A_xGA)
         };
+        // === JAVÍTÁS VÉGE ===
         
-        // === JAVÍTÁS (v54.16): Helyes típus (IDataFetchResponse) használata ===
-        // Ez megoldja a TS2339 (1. hiba) problémát.
         const { 
             rawStats, 
             richContext,
@@ -167,9 +194,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             rawData, 
             leagueAverages = {}, 
             oddsData,
-            xgSource // Ezt most már a DataFetch adja vissza
+            xgSource // Ezt a DataFetch (v54.16+) adja vissza
         }: IDataFetchResponse = await getRichContextualData(dataFetchOptions);
-        // === JAVÍTÁS VÉGE ===
 
         console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
         
@@ -200,22 +226,27 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         // --- 4. Statisztikai Modellezés ---
         console.log(`Modellezés indul: ${home} vs ${away}...`);
 
-        // === JAVÍTÁS (v54.16): xG Logika Átstrukturálása ===
-        // Az 'estimateXG' feladata most már csak a P4 (Becslés) biztosítása,
-        // HA az 'advancedData.home.xg' null.
-
-        // === JAVÍTÁS (v54.16): Helyes desztrukturálás ===
-        // Ez megoldja a TS2339 (2. hiba) problémát.
-        // Az 'estimateXG' NEM adja vissza az 'xgSource'-t, az már megvan.
+        // === JAVÍTÁS (v54.18): 'estimateXG' hívás szinkronizálása a v52.8-as Model.ts-sel ===
+        // A te 'Model.ts' (v52.8) fájlod 10 paramétert vár.
+        // A 9. a 'psyProfileAway', a 10. a 'currentSimProbs'.
+        // A 'v54.16'-os javaslatom hibás volt, ami 11 paramétert küldött.
+        
+        // A DataFetch.ts (v54.16+) már elvégezte a P1/P2/P3/P4 logikát.
+        // Az 'advancedData' már a VÉGLEGES xG-t tartalmazza (vagy null-t).
+        // Az 'estimateXG' (v52.8) felül van írva, hogy ezt használja.
+        
+        // A te 'Model.ts' (v52.8) fájlod 'estimateXG' funkciója NEM adja vissza az 'xgSource'-t.
         const { mu_h, mu_a } = estimateXG(
             home, away, rawStats, sport, form, leagueAverages, 
-            advancedData, // Ezt kapja meg (P1, P2, v P3)
-            rawData, psyProfileHome, psyProfileAway, 
-            xgSource // Ezt is megkapja a DataFetch-től
+            advancedData, // Ez tartalmazza a P1/P2/P3 xG-t (vagy null-t)
+            rawData, 
+            psyProfileHome, 
+            psyProfileAway, 
+            null // currentSimProbs
         );
         // === JAVÍTÁS VÉGE ===
 
-        const finalXgSource = xgSource; // A változó átnevezése a kód többi részével való kompatibilitás miatt
+        const finalXgSource = xgSource; // Ezt az 'xgSource'-t használjuk (a DataFetch-től kapott)
         
         console.log(`${finalXgSource.toUpperCase()} XG HASZNÁLATBAN: H=${mu_h}, A=${mu_a}`);
 
