@@ -122,7 +122,7 @@ export const APIFOOTBALL_TEAM_NAME_MAP: { [key: string]: string } = {
     'blackburn rovers': 'Blackburn',
     'slavia prague': 'Slavia Praha',
     'birmingham city': 'Birmingham',
-    'west bromwich albion': ' West Brom',
+    'west bromwich albion': 'West Brom',
 };
 
 // JÉGKORONG TÉRKÉP (v54.27)
