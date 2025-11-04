@@ -1,61 +1,48 @@
-// --- AI_Service.ts (v54.29 - Foci Mikromodell Bővítés) ---
+// --- AI_Service.ts (v54.30 - "A Próféta" Implementálása) ---
 // MÓDOSÍTÁS:
-// 1. A 'PROMPT_STEP_3_STRATEGIST'  (Kérés 6 )
-//    'micromodels'  szekciója kiegészítve a 'corner_analysis'
-//    és 'card_analysis' mezőkkel.
-// 2. A prompt utasítva, hogy ezeket csak akkor töltse ki, ha
-//    a 'simJson'  tartalmaz releváns adatokat (azaz focinál).
+// 1. A 'PROMPT_STEP_3_STRATEGIST'  (Kérés: "A Próféta" )
+//    kiegészítve egy új, kötelező 'prophetic_timeline' mezővel.
+// 2. Az AI utasítva, hogy a Quant  és Scout  jelentések
+//    alapján írjon egy valósághű narratívát.
+// 3. A hibakezelő 'catch' blokk  frissítve az új mezővel.
 
 import { _callGemini } from './DataFetch.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
 import type { ICanonicalPlayerStats, ICanonicalRawData } from './src/types/canonical.d.ts';
 
-// === ÚJ SEGÉDFÜGGVÉNY (v54.5): Robusztus AI hívó JSON parse retry logikával ===
-/**
- * Behívja a _callGemini-t és ellenőrzi a JSON-feldolgozást.
- * Ha a JSON.parse hibát dob (pl. a Gemini hibás/hiányos JSON-t küldött),
- * automatikusan újrapróbálja a hívást.
- */
+// === Robusztus AI hívó JSON parse retry logikával (v54.5) ===
 async function _callGeminiWithJsonRetry(
     prompt: string, 
-    stepName: string, // Logoláshoz (pl. "Step 1 - Quant")
-    maxRetries: number = 2 // Alap hívás + 2 újrapróbálkozás
+    stepName: string, 
+    maxRetries: number = 2
 ): Promise<any> {
     
     let attempts = 0;
     while (attempts <= maxRetries) {
         attempts++;
         try {
-            // 1. Hívjuk az alap Gemini függvényt
-            const jsonString = await _callGemini(prompt, true); // true = JSON kényszerítése
-            
-            // 2. Megpróbáljuk feldolgozni
+            const jsonString = await _callGemini(prompt, true);
             const result = JSON.parse(jsonString);
             
-            // 3. Siker
             if (attempts > 1) {
                 console.log(`[AI_Service] Sikeres JSON feldolgozás (${stepName}) a(z) ${attempts}. próbálkozásra.`);
             }
             return result;
             
         } catch (e: any) {
-            // 4. Hiba kezelése
-            if (e instanceof SyntaxError) { // Ez a JSON.parse hiba
+            if (e instanceof SyntaxError) {
                 console.warn(`[AI_Service] FIGYELMEZTETÉS: Gemini JSON parse hiba (${stepName}), ${attempts}/${maxRetries+1}. próbálkozás. Hiba: ${e.message}`);
                 if (attempts > maxRetries) {
                     console.error(`[AI_Service] KRITIKUS HIBA: A Gemini JSON feldolgozása végleg sikertelen (${stepName}) ${attempts-1} próbálkozás után.`);
                     throw new Error(`AI Hiba (${stepName}): A modell hibás JSON struktúrát adott vissza, ami nem feldolgozható. Hiba: ${e.message}`);
                 }
-                // Várakozás az újrapróbálkozás előtt
                 await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
             } else {
-                // Ez egy egyéb hiba (pl. hálózati), továbbdobjuk
                 console.error(`[AI_Service] Kritikus nem-parse hiba (${stepName}): ${e.message}`);
                 throw e;
             }
         }
     }
-    // Ez a sor elvileg elérhetetlen, de a TypeScript fordítónak kell
     throw new Error(`AI Hiba (${stepName}): Ismeretlen hiba az újrapróbálkozási ciklusban.`);
 }
 
@@ -112,7 +99,7 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 `;
 
 // --- 3. LÉPÉS: A VEZETŐ STRATÉGA (A "SYNTHESIS") ---
-// === JAVÍTÁS (v54.29) Kérés 6: Szöglet és Lapok Mikromodell  ===
+// === JAVÍTÁS (v54.30) Kérés: "A Próféta"  ===
 const PROMPT_STEP_3_STRATEGIST = `
 TASK: You are the Head Strategist.
 Your decision is final.
@@ -131,6 +118,8 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 
 [OUTPUT STRUCTURE]:
 {
+  "prophetic_timeline": "<(A PRÓFÉTA)  Egy 2-3 mondatos, valósághű narratíva a meccs várható lefolyásáról. Szintetizáld a Quant (xG, sim)  és a Scout (taktika, hiányzók)  adatait. Példa: 'A meccs tapogatózóan indul, de a Scout által jelzett hazai védelmi hiba miatt a vendégek szereznek vezetést az első félidőben. A második félidőben a Quant által jelzett hazai xG fölény érvényesül, és a 70. perc környékén kiegyenlítenek.'>",
+  
   "strategic_conflict_resolution": "<Egy 2-3 bekezdéses elemzés. Szintetizáld a Quant és a Scout jelentését. Ha ellentmondanak (pl. Quant a Hazait, Scout a Vendéget favorizálja), oldd fel az ellentmondást (pl. 'A Quant helyesen azonosította a hazai statisztikai fölényt, de a Scout jelentése a kulcsjátékos sérüléséről felülírja ezt. A kockázat túl magas.')>",
   
   "micromodels": {
@@ -248,6 +237,9 @@ export async function runStep3_GetStrategy(data: Step3Input): Promise<any> {
         console.error(`AI Hiba (Step 3 - Strategy): ${e.message}`);
         // Kritikus hiba esetén is adjunk vissza egy alap ajánlást
         return {
+            // === JAVÍTÁS (v54.30) Hozzáadva a hibakezeléshez ===
+            prophetic_timeline: `AI Hiba (Step 3): A Próféta nem tudott jósolni. ${e.message}`,
+            // === JAVÍTÁS VÉGE ===
             strategic_conflict_resolution: `AI Hiba (Step 3): ${e.message}`,
             micromodels: {},
             final_confidence_report: "**1.0/10** - AI Hiba (Step 3)",
@@ -289,7 +281,6 @@ Answer concisely and accurately in Hungarian based ONLY on the provided Analysis
 Do not provide betting advice. Do not make up information not present in the context.
 If the answer isn't in the context or history, politely state that the information is not available in the analysis.`;
         
-        // A chat funkció nem kényszerít JSON-t, ezért a sima _callGemini-t hívja
         const rawAnswer = await _callGemini(prompt, false);
         return rawAnswer ? { answer: rawAnswer } : { error: "Az AI nem tudott válaszolni." };
     } catch (e: any) {
