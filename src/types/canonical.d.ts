@@ -1,11 +1,12 @@
 // FÁJL: src/types/canonical.d.ts
-// VERZIÓ: v55.4 (Szintaktikai Végleges Javítás)
+// VERZIÓ: v58.0 (Coach (Edző) Interfész Bővítés)
 // MÓDOSÍTÁS:
-// 1. Az 'IStructuredWeather' interfész frissítve (v55.2). 
-// 2. A 'precipitation_mm' és 'wind_speed_kmh' mezők már nem opcionálisak (?)
-//    (de lehetnek 'null'), hogy megfeleljenek a 'Model.ts' elvárásainak. [cite: 2665-2666]
-// 3. JAVÍTVA: Minden kódtörzsön belüli, szintaktikai hibát okozó
-//    '' és '' hivatkozás eltávolítva.
+// 1. Az 'ICanonicalRawData' -> 'contextual_factors'  interfész kiegészítve
+//    egy új 'coach' objektummal, hogy tárolni tudjuk a
+//    vezetőedzők nevét (a v58.0-ás terv alapján).
+// 2. Ez az első lépés a Bíró  és Edző  faktorok
+//    implementálásához a 'Model.ts'-ben .
+// 3. JAVÍTVA: Minden szintaktikai hibát okozó hivatkozás eltávolítva.
 
 // Ezen interfészek definiálják a rendszeren belüli "adatszerződést".
 // A Providerek (pl. apiSportsProvider) felelőssége, hogy az API válaszaikat
@@ -64,14 +65,12 @@ export interface ICanonicalOdds {
 }
 
 /**
- * === JAVÍTOTT (v55.4) INTERFÉSZ ===
- * Strukturált időjárási adatokat definiál.
- * A mezők már nem opcionálisak (?), hogy a Model.ts helyesen tudja olvasni őket.
+ * Strukturált időjárási adatokat definiál (v55.4).
  */
 export interface IStructuredWeather {
     description: string;
     temperature_celsius: number | null;
-    humidity_percent?: number | null; // Ez maradhat opcionális
+    humidity_percent?: number | null;
     wind_speed_kmh: number | null;   // KÖTELEZŐ (vagy null)
     precipitation_mm: number | null; // KÖTELEZŐ (vagy null)
     source?: 'Open-Meteo' | 'N/A'; // Opcionális debug mező
@@ -81,6 +80,7 @@ export interface IStructuredWeather {
 /**
  * A "nyers" adatcsomag, amelyet a CoT (Chain-of-Thought) elemzéshez
  * és a Model.ts-hez gyűjtünk.
+ * === MÓDOSÍTVA (v58.0) ===
  */
 export interface ICanonicalRawData {
   stats: {
@@ -105,15 +105,21 @@ export interface ICanonicalRawData {
   };
   referee: {
     name: string | null;
-    style: string | null;
+    style: string | null; // Ezt fogjuk feltölteni a v58.1-ben
   };
   contextual_factors: {
     stadium_location: string | null;
     pitch_condition: string | null;
     weather: string | null;
-    // Típus 'number'-ről 'string'-re cserélve (v54.9)
     match_tension_index: string | null;
-    structured_weather: IStructuredWeather; // Ez már a v55.4-es (javított) típust használja
+    structured_weather: IStructuredWeather; 
+    
+    // === ÚJ (v58.0) ===
+    coach: {
+        home_name: string | null;
+        away_name: string | null;
+    };
+    // === VÉGE ===
   };
   [key: string]: any;
 }
@@ -129,15 +135,15 @@ export interface ICanonicalRichContext {
   };
   richContext: string;
   advancedData: {
-    home: { [key: string]: any };
-    away: { [key: string]: any };
+    home: { [key:string]: any };
+    away: { [key:string]: any };
   };
   form: {
     home_overall: string | null;
     away_overall: string | null;
     [key: string]: any;
   };
-  rawData: ICanonicalRawData; // Ez már tartalmazza a v55.4-es időjárás típust
+  rawData: ICanonicalRawData; // Ez már tartalmazza a v58.0-ás coach típust
   leagueAverages: { [key: string]: any };
   oddsData: ICanonicalOdds | null;
   fromCache: boolean;
