@@ -1,5 +1,5 @@
 // FÁJL: providers/newBasketballProvider.ts
-// VERZIÓ: v55.6 (Szintaktikai Végleges Javítás)
+// VERZIÓ: v55.7 (Szintaktikai Végleges Javítás)
 // MÓDOSÍTÁS:
 // 1. A 'defaultStructuredWeather' kiegészítve a hiányzó,
 //    de a v55.4-es 'ICanonicalWeather' interfész  által megkövetelt
@@ -18,17 +18,17 @@ import type {
     ICanonicalRawData,
     ICanonicalOdds,
     IStructuredWeather // Szükséges a helyi inicializáláshoz
-} from '../src/types/canonical.d.ts'; [cite: 772-775]
+} from '../src/types/canonical.d.ts';
 import {
     BASKETBALL_API_KEY,
     BASKETBALL_API_HOST
-} from '../config.js'; [cite: 775-776]
+} from '../config.js';
 // Importáljuk a megosztott segédfüggvényeket
 import {
     _callGemini,
     PROMPT_V43,
     getStructuredWeatherData // Ez a placeholder, amit később cserélünk
-} from './common/utils.js'; [cite: 776-778]
+} from './common/utils.js';
 
 /**
  * 🏀 Kosárlabda Adatlekérő Függvény
@@ -39,7 +39,7 @@ import {
 export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
   const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
   if (!BASKETBALL_API_KEY || !BASKETBALL_API_HOST) {
-    throw new Error('[Basketball API] Kritikus konfigurációs hiba: Hiányzó BASKETBALL_API_KEY vagy BASKETBALL_API_HOST a config.js-ben.'); [cite: 779-780]
+    throw new Error('[Basketball API] Kritikus konfigurációs hiba: Hiányzó BASKETBALL_API_KEY vagy BASKETBALL_API_HOST a config.js-ben.');
   }
   
   console.log(`[Basketball Provider]: Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
@@ -75,7 +75,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
       console.error(`[Basketball API] Gemini JSON parse hiba: ${e.message}`);
   }
 
-  // --- 4. VÉGLEGES ADAT EGYESÍTÉS (KANONIKUS MODELL v55.6) ---
+  // --- 4. VÉGLEGES ADAT EGYESÍTÉS (KANONIKUS MODELL v55.7) ---
   
   // === JAVÍTÁS (v55.5): A v55.4-es interfésznek megfelelő placeholder ===
   const defaultStructuredWeather: IStructuredWeather = {
@@ -116,7 +116,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         pitch_condition: "N/A (Parketta)",
         weather: "N/A (Beltéri)", // Alapértelmezett
         match_tension_index: geminiData?.contextual_factors?.match_tension_index || null,
-        structured_weather: defaultStructuredWeather // Alapértelmezett (Javított v55.6)
+        structured_weather: defaultStructuredWeather // Alapértelmezett (Javított v55.7)
       },
       ...geminiData
   };
