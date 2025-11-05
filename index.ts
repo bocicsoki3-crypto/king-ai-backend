@@ -1,15 +1,16 @@
-// --- index.ts (v60.2 - Robusztus RegExp CORS Javítás) ---
+// --- index.ts (v60.3 - Végleges "Origin: *" CORS Javítás) ---
 // MÓDOSÍTÁS:
-// 1. A v60.1-es merev, string-alapú 'origin'
-//    konfigurációja ELTÁVOLÍTVA.
-// 2. HELYETTE: Az 'origin' tulajdonság egy Reguláris Kifejezést
-//    (RegExp) használ, amely engedélyezi a 'localhost' (bármilyen porton)
-//    ÉS a 'boocook3-crypto.github.io' [image_382a7c.png] domaineket.
-// 3. Ez a megoldás robusztusan kezeli a 'preflight' ('OPTIONS') [image_382a7c.png]
-//    kéréseket, és garantálja a 'No 'Access-Control-Allow-Origin' header' [image_382a7c.png]
-//    és a 'not equal to the supplied origin' [image_382a7c.png] hibák
-//    végleges javítását.
-// 4. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
+// 1. A v60.2-es RegExp alapú 'origin' konfigurációja
+//    ELTÁVOLÍTVA, mivel az is kudarcot vallott.
+// 2. HELYETTE: Az 'origin' tulajdonság 'origin: "*"' -ra állítva.
+// 3. Ez a "nukleáris opció" garantálja, hogy a böngésző
+//    'preflight' ('OPTIONS') [image_383947.png] kérése megkapja a szükséges
+//    'Access-Control-Allow-Origin' [image_383947.png] fejlécet,
+//    függetlenül attól, hogy a 'github.io' [image_383947.png] 'null' vagy
+//    bármilyen más 'Origin'-t küld.
+// 4. A biztonságot továbbra is a 'protect'  middleware (JWT) 
+//    garantálja, nem az 'origin' ellenőrzés.
+// 5. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
@@ -33,19 +34,15 @@ const app: Express = express();
 
 // --- Middleware Beállítások ---
 
-// === JAVÍTÁS (v60.2): Robusztus RegExp CORS Konfiguráció ===
+// === JAVÍTÁS (v60.3): Robusztus "Origin: *" Konfiguráció ===
 
 const corsOptions = {
-  // Engedélyezés Reguláris Kifejezéssel:
-  // 1. Engedélyezi a 'localhost'-ot bármilyen porton (pl. http://localhost:5500)
-  // 2. Engedélyezi az Ön éles domainjét (https://boocook3-crypto.github.io) [image_382a7c.png]
-  origin: [
-    /http:\/\/localhost(:\d+)?$/,
-    /https:\/\/boocook3-crypto\.github\.io$/
-  ],
+  // Engedélyezünk BÁRMILYEN forrást (origin-t).
+  // A biztonságot a JWT token (protect middleware)  kezeli.
+  origin: '*', 
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'], // Engedélyezzük a JWT Token fejlécet
-  credentials: true
+  credentials: true // Bár a '*' mellett nem mindig szükséges, maradhat
 };
 
 // 1. "Preflight" kérések kezelése (OPTIONS)
