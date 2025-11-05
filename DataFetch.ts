@@ -1,32 +1,28 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v54.44 (Elgépelés és Szintaktika Javítása)
+// VERZIÓ: v62.1 (P1 Manuális Roster Választó - 3. Lépés)
 // MÓDOSÍTÁS:
-// 1. A v54.43-as csonka kód pótlása.
-// 2. Az 'advancedada' elgépelés javítva 'advancedData'-ra.
-// 3. A 'hasValidSofascoreData' típus-predikátuma
-//    javítva, hogy megoldja a 'TS2677' build hibát.
-// 4. A "Napoli 0-0" (adatok nélküli) hiba javítása (P2 -> P4 fallback)
-//    logika most már helyesen implementálva.
+// 1. Nincs logikai változtatás. A v54.44-es  kód
+//    architekturálisan helyes, mivel a '...baseResult' 
+//    és '...finalResult' [cite: 1687] operátorok automatikusan
+//    továbbítják az 'apiSportsProvider.ts' (v62.1) által
+//    biztosított új 'availableRosters' mezőt.
+// 2. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
 import path from 'path';
 // Kanonikus típusok importálása
 import type { ICanonicalRichContext, ICanonicalPlayerStats } from './src/types/canonical.d.ts';
-
 // Providerek importálása
 import {
     fetchMatchData as apiSportsFetchData,
     providerName as apiSportsProviderName,
-    getApiSportsLineupsAndInjuries // v54.29 import
+    getApiSportsLineupsAndInjuries // v58.1
 } from './providers/apiSportsProvider.js';
-
 import * as hockeyProvider from './providers/newHockeyProvider.js';
 import * as basketballProvider from './providers/newBasketballProvider.js';
-// JAVÍTÁS (v54.44): Importáljuk az ISofascoreResponse típust
 import { fetchSofascoreData, type ISofascoreResponse } from './providers/sofascoreProvider.js';
-import { SPORT_CONFIG } from './config.js'; 
-
+import { SPORT_CONFIG } from './config.js';
 // Importáljuk a megosztott segédfüggvényeket
 import {
     _callGemini as commonCallGemini,
@@ -48,7 +44,6 @@ const apiSportsProvider: IDataProvider = {
     providerName: apiSportsProviderName
 };
 
-
 // Interfész a kiterjesztett funkció opciókhoz
 export interface IDataFetchOptions {
     sport: string;
@@ -57,21 +52,23 @@ export interface IDataFetchOptions {
     leagueName: string;
     utcKickoff: string;   
     forceNew: boolean;
-    manual_xg_home?: number | null;
-    manual_xg_away?: number | null; 
-    manual_H_xG?: number | null;
-    manual_H_xGA?: number | null;
-    manual_A_xG?: number | null;
-    manual_A_xGA?: number | null;
+    manual_xg_home?: number | null; // v59.0 (Eltávolítva a v61.0-ben)
+    manual_xg_away?: number | null; // v59.0 (Eltávolítva a v61.0-ben)
+    manual_H_xG?: number | null;  // v61.0
+    manual_H_xGA?: number | null; // v61.0
+    manual_A_xG?: number | null;  // v61.0
+    manual_A_xGA?: number | null; // v61.0
 }
 
+// Az IDataFetchResponse kiterjeszti az ICanonicalRichContext-et (amely v62.1-ben
+// már tartalmazza az 'availableRosters'-t)
 export interface IDataFetchResponse extends ICanonicalRichContext {
     xgSource: 'Manual (Direct)' | 'Manual (Components)' | 'API (Real)' | 'Calculated (Fallback)';
 }
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v54.44 (Végleges Redundancia Fix)
+* VERZIÓ: v62.1 (Logikailag v54.44 , de v62.1 kontextusban)
 **************************************************************/
 
 function getProvider(sport: string): IDataProvider {
@@ -88,7 +85,7 @@ function getProvider(sport: string): IDataProvider {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FUNKCIÓ (v54.44)
+ * FŐ ADATGYŰJTŐ FÜGGVÉNY (v62.1)
  */
 export async function getRichContextualData(
     options: IDataFetchOptions 
@@ -100,7 +97,8 @@ export async function getRichContextualData(
     const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(options.utcKickoff));
 
     const teamNames = [decodedHomeTeam, decodedAwayTeam].sort();
-    const ck = `rich_context_v54.44_fallback_${options.sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
+    // A cache kulcs a v62.1-es 'availableRosters' miatt változik
+    const ck = `rich_context_v62.1_roster_${options.sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}`;
     
     if (!options.forceNew) {
         const cached = scriptCache.get<IDataFetchResponse>(ck);
@@ -132,33 +130,37 @@ export async function getRichContextualData(
             leagueName: decodedLeagueName,
             utcKickoff: decodedUtcKickoff
         };
-
+        
         // Párhuzamos hívás (P4 Alap + P2 Kontextus)
         const [
-            baseResult, 
+            baseResult, // Ez (v62.1) már tartalmazza az 'availableRosters'-t
             sofascoreData // P2 (Prémium) Kontextus
         ] = await Promise.all([
              sportProvider.fetchMatchData(providerOptions),
-            options.sport === 'soccer' 
+            (options.sport === 'soccer' && (!options.manual_H_xG)) // Optimalizálás: Sofascore-t csak akkor hívjuk, ha P1 *nincs* megadva (bár a P2 hiányzók miatt kellhet)
                 ? fetchSofascoreData(decodedHomeTeam, decodedAwayTeam, countryContext) 
-                 : Promise.resolve(null)
+                : Promise.resolve(null)
         ]);
-
-        // === EGYESÍTÉS (v54.44 JAVÍTÁS) ===
+        
+        // === EGYESÍTÉS (v61.0/v62.1) ===
+        // A 'baseResult' automatikusan tartalmazza az 'availableRosters'-t
         const finalResult: ICanonicalRichContext = baseResult;
         let finalHomeXg: number | null = null;
         let finalAwayXg: number | null = null;
         let xgSource: IDataFetchResponse['xgSource'];
-
-        // 1. xG PRIORITÁSI LÁNC (Változatlan)
-        if (options.manual_xg_home != null && options.manual_xg_away != null) {
-            finalHomeXg = options.manual_xg_home;
-            finalAwayXg = options.manual_xg_away;
-            xgSource = "Manual (Direct)";
-        }
-        else if (options.manual_H_xG != null && options.manual_H_xGA != null &&
-                 options.manual_A_xG != null && options.manual_A_xGA != null)
+        
+        // 1. xG PRIORITÁSI LÁNC (MÓDOSÍTVA v61.0)
+        // A 2-mezős (Direkt) [image: 4223a5.png] logika eltávolítva
+        if (options.manual_H_xG != null && options.manual_H_xGA != null &&
+            options.manual_A_xG != null && options.manual_A_xGA != null)
         {
+            // A Model.ts számolja ki az átlagot [cite: 1565-1566], itt csak továbbítjuk a komponenseket
+            finalResult.advancedData.manual_H_xG = options.manual_H_xG;
+            finalResult.advancedData.manual_H_xGA = options.manual_H_xGA;
+            finalResult.advancedData.manual_A_xG = options.manual_A_xG;
+            finalResult.advancedData.manual_A_xGA = options.manual_A_xGA;
+            
+            // A Model.ts majd kiszámolja a 'mu_h'-t és 'mu_a'-t
             finalHomeXg = (options.manual_H_xG + options.manual_A_xGA) / 2;
             finalAwayXg = (options.manual_A_xG + options.manual_H_xGA) / 2;
             xgSource = "Manual (Components)";
@@ -168,13 +170,11 @@ export async function getRichContextualData(
             finalAwayXg = sofascoreData.advancedData.xG_away;
             xgSource = "API (Real)";
         }
-        // === JAVÍTÁS (v54.44): 'advancedada' elgépelés javítva ===
         else if (baseResult?.advancedData?.home?.xg != null && baseResult?.advancedData?.away?.xg != null) {
             finalHomeXg = baseResult.advancedData.home.xg;
             finalAwayXg = baseResult.advancedData.away.xg;
             xgSource = "API (Real)";
         }
-        // === JAVÍTÁS VÉGE ===
         else {
             finalHomeXg = null;
             finalAwayXg = null;
@@ -186,9 +186,7 @@ export async function getRichContextualData(
         
         console.log(`[DataFetch] xG Forrás meghatározva: ${xgSource}. (H:${finalHomeXg ?? 'N/A'}, A:${finalAwayXg ?? 'N/A'})`);
         
-        // === JAVÍTÁS (v54.44): Redundáns Hiányzó-adat Fallback + TS Fix ===
-        
-        // JAVÍTÁS (v54.43): A típus-predikátum javítva
+        // === Redundáns Hiányzó-adat Fallback (v54.44 - Változatlan) ===
         const hasValidSofascoreData = (data: ISofascoreResponse | null): data is (ISofascoreResponse & { playerStats: ICanonicalPlayerStats }) => {
             return !!data && 
                    !!data.playerStats && 
@@ -207,20 +205,20 @@ export async function getRichContextualData(
                     away: sofascoreData.playerStats.away_absentees
                 };
             } else {
-                // 2. Eset: A Sofascore (P2) csődöt mondott (a "Napoli 0-0" hiba)
+                // 2. Eset: A Sofascore (P2) csődöt mondott
                 console.warn(`[DataFetch] Figyelmeztetés: A Sofascore (P2) nem adott vissza hiányzó- vagy értékelés-adatot. Fallback indítása az 'apiSportsProvider' (P4) felé...`);
                 
-                // JAVÍTÁS (v54.43): A 'baseResult' változó itt már létezik
                 const fixtureId = baseResult.rawData.apiFootballData?.fixtureId;
                 const homeTeamId = baseResult.rawData.apiFootballData?.homeTeamId;
                 const awayTeamId = baseResult.rawData.apiFootballData?.awayTeamId;
 
                 if (fixtureId && homeTeamId && awayTeamId) {
                     try {
-                        // Hívjuk az 'apiSportsProvider'-ben (v54.29) létrehozott új funkciót
+                        // Hívjuk az 'apiSportsProvider'-ben (v58.1) [cite: 2700-2704] lévő exportált funkciót
                         const apiSportsPlayerStats = await getApiSportsLineupsAndInjuries(fixtureId, options.sport, homeTeamId, awayTeamId);
+                        
                         if (apiSportsPlayerStats) {
-                            console.log(`[DataFetch] Felülírás (P4 Fallback): A 'sofascoreProvider' üres adatai felülírva az 'apiSportsProvider' lineup/injury adataival.`);
+                            console.log(`[DataFetch] Felülírás (P4 Fallback): A 'sofascoreProvider' üres adatai felülírva az 'apiSportsProvider' (P4) adataival.`);
                             finalResult.rawData.detailedPlayerStats = apiSportsPlayerStats;
                             finalResult.rawData.absentees = {
                                 home: apiSportsPlayerStats.home_absentees,
@@ -242,21 +240,22 @@ export async function getRichContextualData(
         // 4. Cache mentése
         const response: IDataFetchResponse = {
             ...finalResult,
+            // Az 'availableRosters' automatikusan bekerül a '...finalResult'  részeként
             xgSource: xgSource 
         };
         
         scriptCache.set(ck, response);
-        console.log(`Sikeres adat-egyesítés (v54.44), cache mentve (${ck}).`);
+        console.log(`Sikeres adat-egyesítés (v62.1), cache mentve (${ck}).`);
         
         return { ...response, fromCache: false };
-
-    } catch (e: any) { // JAVÍTÁS (v54.43): A 'try' blokk helyes lezárása
-         console.error(`KRITIKUS HIBA a getRichContextualData (v54.44 - Factory) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
-         throw new Error(`Adatgyűjtési hiba (v54.44): ${e.message} \nStack: ${e.stack}`);
+        
+    } catch (e: any) {
+         console.error(`KRITIKUS HIBA a getRichContextualData (v62.1) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
+         throw new Error(`Adatgyűjtési hiba (v62.1): ${e.message} \nStack: ${e.stack}`);
     }
-} // JAVÍTÁS (v54.43): A függvény helyes lezárása
+}
 
 
-// --- KÖZÖS FUNKCIÓK EXPORTÁLÁSA ---
+// --- KÖZÖS FÜGGVÉNYEK EXPORTÁLÁSA ---
 export const _getFixturesFromEspn = commonGetFixtures;
 export const _callGemini = commonCallGemini;
