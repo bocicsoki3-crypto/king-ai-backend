@@ -1,40 +1,156 @@
-## Szerepkör: Szenior Full-Stack Szoftverarchitekta (Node.js/TypeScript)
+// FÁJL: src/types/canonical.d.ts
+// (v54.9 - 'match_tension_index' javítása string-re)
 
-Te egy világszínvonalú, "tökéletes kivitelező" (perfect executor) szoftverarchitekta vagy. Fő szakterületed a Node.js és a TypeScript.
+// Ezen interfészek definiálják a rendszeren belüli "adatszerződést".
+// A Providerek (pl. apiSportsProvider) felelőssége, hogy az API válaszaikat
+// ezen interfészeknek megfelelő objektumokká alakítsák.
+// A Fogyasztók (pl. Model, AnalysisFlow) ezen interfészekre támaszkodnak.
 
----
+/**
+ * A csapatok alapvető statisztikai adatai, amelyeket a Model.ts vár.
+ */
+export interface ICanonicalStats {
+  gp: number;           // Games Played (Lejátszzott meccsek)
+  gf: number;           // Goals For (Lőtt gólok / Pontok)
+  ga: number;           // Goals Against (Kapott gólok / Pontok)
+  form: string | null;  // Forma string (pl. "WWLDW")
+  [key: string]: any;  // Egyéb, nem szigorúan típusos statisztikák
+}
 
-### Alapvető Képességek és Elvárások
+/**
+ * Egyetlen játékos státusza (a 2. Javaslat alapján).
+ */
+export interface ICanonicalPlayer {
+  name: string;
+  role: string;
+  importance: 'key' | 'regular' | 'substitute';
+  status: 'confirmed_out' | 'doubtful' | 'active';
+  rating_last_5?: number;    // Opcionális, de javasolt
+}
 
-**1. Hibátlan Kódgenerálás:**
-* Minden generált kód szintaktikailag helyes, tiszta, optimális és "production-ready".
-* A kód azonnal futtatható.
-* Nincsenek TODO-k vagy placeholder-ek. Minden kód végleges.
+/**
+ * A 2. Javaslatból származó részletes játékos- és hiányzó-adatok.
+ */
+export interface ICanonicalPlayerStats {
+  home_absentees: ICanonicalPlayer[];
+  away_absentees: ICanonicalPlayer[];
+  key_players_ratings: {
+    home: { [role: string]: number };
+    away: { [role: string]: number };
+  };
+}
 
-**2. Technológiai Mélység:**
-* **Node.js:** Mesteri szintű aszinkron programozás, stream-ek, C++ addon-ok, 'worker thread'-ek.
-* **TypeScript:** Mesteri szintű 'generic'-ek, 'decorator'-ok, 'utility' típusok, 'conditional' típusok.
-* **Keretrendszerek:** Automatikus javaslat és használat (NestJS, Express, Koa, Fastify). A választást mindig megindoklod az adott feladat (pl. CPU-intenzív vs. I/O-intenzív) alapján.
-* **Adatbázisok:** Mély SQL (PostgreSQL) és NoSQL (MongoDB, Redis) ismeretek.
-* **ORM-ek:** Mesteri szintű Prisma és TypeORM használat.
+/**
+ * A piaci szorzók kanonikus formája.
+ */
+export interface ICanonicalOdds {
+  current: { name: string; price: number }[];
+  allMarkets: {
+    key: string;
+    outcomes: {
+      name: string;
+      price: number;
+      point?: number | null;
+    }[];
+  }[];
+  fullApiData: any; // A nyers API válasz tárolása (pl. 'findMainTotalsLine' számára)
+  fromCache: boolean;
+}
 
-**3. Előrelátó Tervezés:**
-* Minden kódnál mérlegeled a skálázhatóságot, karbantarthatóságot és a biztonsági kockázatokat.
-* Proaktívan javasolsz jobb architektúrát (microservices, monorepo, eseményvezérelt, CQRS).
-* Minden "edge case"-t és hibalehetőséget anticipálsz és kezelsz.
+/**
+ * Strukturált időjárási adatokat definiál.
+ * A mezők opcionálisak (?), hogy a nem-foci providerek is
+ * megfeleljenek az interfésznek anélkül, hogy teljes adatot adnának.
+ */
+export interface IStructuredWeather {
+    description: string;
+    temperature_celsius: number | null;
+    humidity_percent?: number | null;
+    wind_speed_kmh?: number | null;
+    precipitation_mm?: number | null;
+}
 
-**4. API Integráció Mesterfokon:**
-* REST és GraphQL API-k integrálása triviális.
-* Minden API hívásnál proaktívan részletezed:
-    * Végpont és HTTP metódus (pl. `POST /api/v2/auth/token`).
-    * Szükséges 'header'-ek (pl. `Authorization: Bearer <token>`, `Content-Type: application/json`).
-    * Kérés (request) body/query sémája (TypeScript 'interface' vagy JSON séma).
-    * Válasz (response) sémája (sikeres és hibaesetben is).
-    * Autentikációs mechanizmus (OAuth2, JWT, API Kulcs).
-    * Hibakezelés és 'retry' logika.
+/**
+ * A "nyers" adatcsomag, amelyet a CoT (Chain-of-Thought) elemzéshez
+ * és a Model.ts-hez gyűjtünk.
+ * === MÓDOSÍTVA (v54.9) ===
+ * A 'match_tension_index' típusa 'number'-ről 'string'-re módosítva,
+ * hogy megfeleljen a Model.ts várakozásainak (.toLowerCase()).
+ */
+export interface ICanonicalRawData {
+  stats: {
+    home: ICanonicalStats;
+    away: ICanonicalStats;
+  };
+  apiFootballData?: {
+    fixtureId: number | string | null;
+    leagueId: number | string | null;
+    [key: string]: any;
+  };
+  detailedPlayerStats: ICanonicalPlayerStats;
+  h2h_structured: any[] | null;
+  form: {
+    home_overall: string | null;
+    away_overall: string | null;
+    [key: string]: any;
+  };
+  absentees: {
+    home: ICanonicalPlayer[];
+    away: ICanonicalPlayer[];
+  };
+  
+  referee: {
+    name: string | null;
+    style: string | null;
+  };
+  contextual_factors: {
+    stadium_location: string | null;
+    pitch_condition: string | null;
+    weather: string | null; 
+    
+    // === JAVÍTÁS (v54.9) ===
+    // Típus 'number'-ről 'string'-re cserélve
+    match_tension_index: string | null;
 
----
+    structured_weather: IStructuredWeather;
+  };
+  [key: string]: any;
+}
 
-### Munkamódszer
+/**
+ * A fő adatcsomag, amelyet a getRichContextualData visszaad
+ * és az AnalysisFlow.ts felhasznál.
+ */
+export interface ICanonicalRichContext {
+  rawStats: {
+    home: ICanonicalStats;
+    away: ICanonicalStats;
+  };
+  richContext: string;
+  advancedData: {
+    home: { [key: string]: any };
+    away: { [key: string]: any };
+  };
+  form: {
+    home_overall: string | null;
+    away_overall: string | null;
+    [key: string]: any;
+  };
+  rawData: ICanonicalRawData; // Ez már tartalmazza a v54.9-es adatokat
+  leagueAverages: { [key: string]: any };
+  oddsData: ICanonicalOdds | null;
+  fromCache: boolean;
+}
 
-Mindig teljes, működő kódrészleteket adsz, importokkal és típusdefiníciókkal együtt. A válaszaid egy az egyben beilleszthetők egy valós projektbe.
+/**
+ * A 'FixtureResult' típus központosítása.
+ */
+export type FixtureResult = {
+    home: number;
+    away: number;
+    status: 'FT';
+} | {
+    status: string;
+    home?: undefined;
+    away?: undefined;
+} | null;
