@@ -1,12 +1,12 @@
-// --- index.ts (v60.0 - CORS Javítás) ---
+// --- index.ts (v60.1 - Robusztus CORS Javítás) ---
 // MÓDOSÍTÁS:
-// 1. Az általános 'app.use(cors())'  lecserélve egy részletes
-//    'corsOptions' objektumra.
-// 2. Ez a javítás kifejezetten engedélyezi az Ön 'github.io' [image_37c180.png]
-//    domainjét, az 'Authorization'  fejlécet és a 'POST' metódust.
-// 3. Hozzáadva az 'app.options('*', ...)' a "preflight" kérések
-//    kezelésére, ami a 'No 'Access-Control-Allow-Origin' header' [image_37c180.png]
-//    hiba közvetlen megoldása.
+// 1. A v60.0-ás 'whitelist' alapú 'origin' FUNKCIÓJA
+//    ELTÁVOLÍTVA, mivel az törékenynek bizonyult.
+// 2. HELYETTE: A 'corsOptions' 'origin' tulajdonsága
+//    közvetlenül az Ön 'github.io' [image_381ee2.png] domainjére van állítva (string).
+// 3. Ez a robusztus módszer garantálja, hogy a "preflight" [image_381ee2.png]
+//    kérések is megkapják a helyes 'Access-Control-Allow-Origin' [image_381ee2.png]
+//    fejlécet, ezzel megoldva a build hibát.
 // 4. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
@@ -31,38 +31,24 @@ const app: Express = express();
 
 // --- Middleware Beállítások ---
 
-// === JAVÍTÁS (v60.0): Részletes CORS Konfiguráció ===
-// Engedélyezett domainek listája
-const whitelist = [
-    'https://boocook3-crypto.github.io', // Az Ön éles frontend címe [image_37c180.png]
-    'http://localhost:3001',            // Helyi fejlesztés (ha a backend innen fut)
-    'http://localhost:5500',            // Helyi fejlesztés (Live Server)
-    'http://127.0.0.1:5500'             // Helyi fejlesztés (Live Server)
-];
+// === JAVÍTÁS (v60.1): Robusztus CORS Konfiguráció ===
+
+// A 'whitelist' és az 'origin' funkció eltávolítva.
+// Helyette explicit string megadása:
 
 const corsOptions = {
-  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-    // Engedélyezzük a '!origin' kéréseket (pl. Postman, vagy szerver-szerver)
-    // és azokat, amik a whitelist-en vannak.
-    if (whitelist.indexOf(origin!) !== -1 || !origin) {
-      callback(null, true);
-    } else {
-      console.warn(`CORS Hiba: A(z) ${origin} domain tiltva.`);
-      callback(new Error('Ezt a domain-t a CORS szabályzat nem engedélyezi.'));
-    }
-  },
-  methods: ['GET', 'POST', 'OPTIONS'], // Engedélyezzük a POST-ot és az OPTIONS-t (preflight)
+  origin: 'https://boocook3-crypto.github.io', // Explicit engedélyezés az Ön domainjének [image_381ee2.png]
+  methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'], // Engedélyezzük a JWT Token fejlécet
   credentials: true
 };
 
-// 1. "Preflight" kérések kezelése (ez a 'No 'Access-Control-Allow-Origin'' [image_37c180.png] hiba oka)
+// 1. "Preflight" kérések kezelése (OPTIONS)
 app.options('*', cors(corsOptions)); 
 
-// 2. A részletes CORS beállítások alkalmazása minden kérésre
+// 2. A részletes CORS beállítások alkalmazása minden más kérésre (GET, POST)
 app.use(cors(corsOptions));
 
-// A régi, általános 'app.use(cors());'  helyett a fenti két sor lépett életbe.
 // === JAVÍTÁS VÉGE ===
 
 app.use(express.json()); // JSON body parser
@@ -185,7 +171,6 @@ app.get('/getFixtures', protect, async (req: Request, res: Response) => {
     }
 });
 
-// A v59.0-ás kérésnek megfelelően a 'manual_xg_home' és 'manual_xg_away' mezőket is fogadja
 app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
     try {
         const { 
@@ -202,7 +187,7 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             manual_H_xGA,
             manual_A_xG,
             manual_A_xGA,
-            // P1 Direkt (Új, v59.0)
+            // P1 Direkt (v59.0)
             manual_xg_home,
             manual_xg_away
         } = req.body;
@@ -222,8 +207,8 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             manual_H_xGA,
             manual_A_xG,
             manual_A_xGA,
-            manual_xg_home, // v59.0
-            manual_xg_away  // v59.0
+            manual_xg_home, 
+            manual_xg_away
         };
         
         const result = await runFullAnalysis(params, sport, openingOdds);
@@ -345,7 +330,6 @@ app.post('/runLearning', protect, async (req: Request, res: Response) => {
     }
 });
 
-
 // --- Szerver Indítása (Változatlan) ---
 async function startServer() {
     try {
@@ -354,7 +338,6 @@ async function startServer() {
             console.error("A hitelesítés nem fog működni. A szerver leáll.");
             process.exit(1); 
         }
-        // ... (többi .env ellenőrzés) ...
 
         console.log("Szerver indítása...");
         app.listen(PORT, () => {
