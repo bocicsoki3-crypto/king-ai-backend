@@ -1,15 +1,13 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v58.4 (xG Struktúra Javítás - TS2322)
+// VERZIÓ: v62.1 (P1 Manuális Roster Választó - 2. Lépés)
 // MÓDOSÍTÁS:
-// 1. A 'fetchMatchData'  függvény végén az 'advancedData' 
-//    objektum összeállítása javítva.
-// 2. A hibás, lapos '{ xg: ..., xga: ... }' struktúra helyett
-//    a helyes, 'Model.ts'  által várt
-//    '{ home: { xg: ... }, away: { xg: ... } }'  struktúrát használjuk.
-// 3. Ez a javítás MEGOLDJA a 'TS2322: is not assignable to type...' [image_3660df.png]
-//    build hibát ebben a fájlban.
-// 4. A v58.1-es Edző/Bíró  és a v56.2-es "Öngyógyító"
-//    Liga/Csapat  logika érintetlen marad.
+// 1. A '_getApiSportsLineupData'  függvény (amely a '/v3/fixtures/lineups' 
+//    végpontot hívja) átalakítva, hogy kinyerje a teljes
+//    kezdőcsapatot ('startXI')  és a cseréket ('substitutes') .
+// 2. Ezek a listák 'IPlayerStub' formátumra alakítva.
+// 3. A 'LineupDataPayload'  kiegészítve 'home_roster' és 'away_roster' mezőkkel.
+// 4. A 'fetchMatchData'  most már feltölti a 'finalData.availableRosters'
+//    és a 'result.availableRosters' mezőket a kliens számára.
 // 5. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
 
 import axios, { type AxiosRequestConfig } from 'axios';
@@ -23,7 +21,8 @@ import type {
     ICanonicalRawData,
     ICanonicalOdds,
     FixtureResult,
-    IStructuredWeather
+    IStructuredWeather,
+    IPlayerStub // ÚJ (v62.1)
 } from '../src/types/canonical.d.ts';
 import {
     SPORT_CONFIG,
@@ -38,7 +37,7 @@ import {
     getStructuredWeatherData // v55.9 valós implementáció
 } from './common/utils.js';
 
-// --- API-SPORTS SPECIFIKUS CACHE-EK ---
+// --- API-SPORTS SPECIFIKUS CACHE-EK (Változatlan) ---
 const apiSportsOddsCache = new NodeCache({ stdTTL: 60 * 10, checkperiod: 60 * 2, useClones: false });
 const apiSportsTeamIdCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
 const apiSportsLeagueIdCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
@@ -50,7 +49,7 @@ const apiSportsNameMappingCache = new NodeCache({ stdTTL: 3600 * 24 * 30, checkp
 const apiSportsRosterCache = new NodeCache({ stdTTL: 3600 * 24, checkperiod: 3600 * 6 });
 const apiSportsCountryLeagueCache = new NodeCache({ stdTTL: 3600 * 24, checkperiod: 3600 * 6 });
 const apiSportsLineupCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 3600 });
-const apiSportsRefereeCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 }); // v58.1
+const apiSportsRefereeCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
 
 // --- API-SPORTS KULCSROTÁCIÓS LOGIKA (Változatlan) ---
 let keyIndexes: { [key: string]: number } = { soccer: 0, hockey: 0, basketball: 0 };
@@ -595,12 +594,16 @@ async function getApiSportsFixtureStats(fixtureId: number | string | null, sport
     }
 }
 
-// --- _getApiSportsLineupData (v58.1 - Változatlan) ---
+// === MÓDOSÍTOTT (v62.1): Edző és Játékoskeret lekérése ===
 type LineupDataPayload = {
     playerStats: ICanonicalPlayerStats;
     coachData: {
         home_name: string | null;
         away_name: string | null;
+    };
+    rosters: { // ÚJ (v62.1)
+        home: IPlayerStub[];
+        away: IPlayerStub[];
     };
 };
 async function _getApiSportsLineupData(
@@ -613,47 +616,86 @@ async function _getApiSportsLineupData(
         console.log(`[API-SPORTS LineupData] Lekérés kihagyva (Sport nem foci, vagy hiányzó FixtureID).`);
         return null;
     }
-    const cacheKey = `apisports_lineups_v2_full_${fixtureId}`;
+    
+    const cacheKey = `apisports_lineups_v3_roster_${fixtureId}`;
     const cached = apiSportsLineupCache.get<LineupDataPayload>(cacheKey);
     if (cached) {
-        console.log(`[API-SPORTS LineupData] Cache találat: ${cacheKey}`);
+        console.log(`[API-SPORTS LineupData] Cache találat (v3): ${cacheKey}`);
         return cached;
     }
-    console.log(`[API-SPORTS LineupData] Edzők/Felállások lekérése (FixtureID: ${fixtureId})...`);
+
+    console.log(`[API-SPORTS LineupData] Edzők/Keretek lekérése (FixtureID: ${fixtureId})...`);
     const endpoint = `/v3/fixtures/lineups`;
     const params = { fixture: fixtureId };
+
     try {
         const response = await makeRequestWithRotation(sport, endpoint, { params });
         if (!response?.data?.response || response.data.response.length === 0) {
             console.warn(`[API-SPORTS LineupData] Nem érkezett adat a ${fixtureId} fixture-höz.`);
             return null;
         }
+        
         const data = response.data.response;
         const homeData = data.find((t: any) => t.team?.id === homeTeamId);
         const awayData = data.find((t: any) => t.team?.id === awayTeamId);
+        
         if (!homeData || !awayData) {
             console.warn(`[API-SPORTS LineupData] Nem sikerült a hazai/vendég adat szétválasztása (ID: ${fixtureId}).`);
             return null;
         }
+
+        // A P4 fallback (getApiSportsLineupsAndInjuries) logikája
         const playerStats: ICanonicalPlayerStats = {
-            home_absentees: [],
+            home_absentees: [], // Az API-Sports /lineups nem ad megbízható hiányzó-listát
             away_absentees: [],
             key_players_ratings: { home: {}, away: {} }
         };
+        
+        // Edzők adatainak kinyerése (v58.1)
         const coachData = {
             home_name: homeData.coach?.name || null,
             away_name: awayData.coach?.name || null
         };
-        console.log(`[API-SPORTS LineupData] Adat feldolgozva. (Edzők: H:${coachData.home_name}, A:${coachData.away_name})`);
-        const result: LineupDataPayload = { playerStats, coachData };
+
+        // ÚJ (v62.1): Játékoskeretek (Rosters) kinyerése
+        const mapPlayerToStub = (p: any): IPlayerStub | null => {
+            if (!p?.player?.id || !p?.player?.name) return null;
+            return {
+                id: p.player.id,
+                name: p.player.name,
+                pos: p.player.pos || 'N/A' // Pozíció (G, D, M, F)
+            };
+        };
+        
+        const homeRoster: IPlayerStub[] = [
+            ...(homeData.startXI || []).map(mapPlayerToStub),
+            ...(homeData.substitutes || []).map(mapPlayerToStub)
+        ].filter((p): p is IPlayerStub => p !== null); // Kiszűrjük a null értékeket
+
+        const awayRoster: IPlayerStub[] = [
+            ...(awayData.startXI || []).map(mapPlayerToStub),
+            ...(awayData.substitutes || []).map(mapPlayerToStub)
+        ].filter((p): p is IPlayerStub => p !== null);
+
+        
+        console.log(`[API-SPORTS LineupData] Adat feldolgozva. (Edzők: H:${coachData.home_name}, A:${coachData.away_name}). (Keret: H:${homeRoster.length}, A:${awayRoster.length})`);
+        
+        const result: LineupDataPayload = { 
+            playerStats, 
+            coachData,
+            rosters: { home: homeRoster, away: awayRoster }
+        };
+        
         apiSportsLineupCache.set(cacheKey, result);
         return result;
+        
     } catch (error: any) {
         console.error(`[API-SPORTS LineupData] Hiba (ID: ${fixtureId}): ${error.message}`);
         return null;
     }
 }
-// Export a P4 fallback-hez (v58.1)
+// Export a P4 fallback-hez (MÓDOSÍTVA v62.1)
+// Ez a függvény most már csak a P4-es hiányzókhoz kell, de a _getApiSportsLineupData-ra támaszkodik
 export async function getApiSportsLineupsAndInjuries(
     fixtureId: number | string | null,
     sport: string,
@@ -663,6 +705,8 @@ export async function getApiSportsLineupsAndInjuries(
     const data = await _getApiSportsLineupData(fixtureId, sport, homeTeamId, awayTeamId);
     return data ? data.playerStats : null;
 }
+// === MÓDOSÍTÁS VÉGE ===
+
 
 // --- _getApiSportsRefereeStyle (v58.1 - Változatlan) ---
 async function _getApiSportsRefereeStyle(
@@ -735,7 +779,7 @@ async function getWeatherForFixture(
 }
 
 
-// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (MÓDOSÍTVA v58.4) ---
+// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (MÓDOSÍTVA v62.1) ---
 export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
     const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
     const seasonDate = new Date(utcKickoff);
@@ -743,7 +787,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         seasonDate.getFullYear() - 1 : seasonDate.getFullYear();
     if (isNaN(originSeason)) throw new Error(`Érvénytelen utcKickoff: ${utcKickoff}`);
     
-    console.log(`Adatgyűjtés indul (v58.4 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
+    console.log(`Adatgyűjtés indul (v62.1 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
     
     // 1. LÉPÉS: Liga adatok lekérése (v56.2 Öngyógyító)
     const sportConfig = SPORT_CONFIG[sport];
@@ -779,7 +823,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
 
     console.log(`API-SPORTS (${sport}): Adatok párhuzamos lekérése... (FixtureID: ${fixtureId})`);
     
-    // 4. LÉPÉS: Statisztikák (v58.1)
+    // 4. LÉPÉS: Statisztikák (v62.1)
     const [
         fetchedOddsData,
         apiSportsH2HData,
@@ -787,7 +831,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         apiSportsAwaySeasonStats,
         realFixtureStats,
         structuredWeather,
-        lineupData
+        lineupData // Ez már a v62.1-es 'LineupDataPayload'-ot tartalmazza
     ] = await Promise.all([
         getApiSportsOdds(fixtureId, sport), 
         getApiSportsH2H(homeTeamId, awayTeamId, 5, sport),
@@ -798,7 +842,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         _getApiSportsLineupData(fixtureId, sport, homeTeamId, awayTeamId)
     ]);
     
-    // 5. LÉPÉS (ÚJ v58.1): Bíró Stílus lekérése
+    // 5. LÉPÉS (v58.1): Bíró Stílus lekérése
     const refereeStyle = await _getApiSportsRefereeStyle(refereeData, leagueId, foundSeason, sport);
     
     console.log(`API-SPORTS (${sport}): Párhuzamos lekérések befejezve.`);
@@ -806,7 +850,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
     const realXgData = realFixtureStats || null; 
     const geminiData: any = {};
     
-    // --- VÉGLEGES ADAT EGYESÍTÉS (MÓDOSÍTVA v58.1) ---
+    // --- VÉGLEGES ADAT EGYESÍTÉS (MÓDOSÍTVA v62.1) ---
     const finalData: ICanonicalRawData = {
         stats: {
             home: {} as ICanonicalStats, 
@@ -845,6 +889,11 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
                 home_name: lineupData?.coachData?.home_name || null,
                 away_name: lineupData?.coachData?.away_name || null
             }
+        },
+        // ÚJ (v62.1): Keretek hozzáadása
+        availableRosters: {
+            home: lineupData?.rosters?.home || [],
+            away: lineupData?.rosters?.away || []
         }
     };
     
@@ -873,12 +922,10 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
     ].filter(Boolean);
     const richContext = richContextParts.length > 0 ? richContextParts.join('\n') : "N/A";
     
-    // === JAVÍTÁS (v58.4): A TS2322 hiba javítása ===
-    // A 'Model.ts'  a { home: { xg: ... }, away: { xg: ... } }  struktúrát várja.
+    // JAVÍTVA (v58.4): Helyes xG struktúra
     const advancedData = realXgData ?
         { home: { xg: realXgData.home }, away: { xg: realXgData.away } } :
         { home: { xg: null }, away: { xg: null } };
-    // === JAVÍTÁS VÉGE ===
     
     const result: ICanonicalRichContext = {
          rawStats: finalData.stats,
@@ -888,7 +935,12 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
          form: finalData.form,
          rawData: finalData,
          oddsData: fetchedOddsData, 
-         fromCache: false
+         fromCache: false,
+         // ÚJ (v62.1): Keretek hozzáadása a kliens oldali válaszhoz
+         availableRosters: {
+            home: lineupData?.rosters?.home || [],
+            away: lineupData?.rosters?.away || []
+        }
     };
     
     if (typeof result.rawStats?.home?.gp !== 'number' || result.rawStats.home.gp <= 0 || typeof result.rawStats?.away?.gp !== 'number' || result.rawStats.away.gp <= 0) {
