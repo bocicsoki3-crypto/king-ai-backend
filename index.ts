@@ -1,14 +1,14 @@
 // --- index.ts (v60.3 - Végleges "Origin: *" CORS Javítás) ---
 // MÓDOSÍTÁS:
 // 1. A v60.2-es RegExp alapú 'origin' konfigurációja
-//    ELTÁVOLÍTVA, mivel az is kudarcot vallott.
+//    ELTÁVOLÍTVA.
 // 2. HELYETTE: Az 'origin' tulajdonság 'origin: "*"' -ra állítva.
 // 3. Ez a "nukleáris opció" garantálja, hogy a böngésző
-//    'preflight' ('OPTIONS') [image_383947.png] kérése megkapja a szükséges
-//    'Access-Control-Allow-Origin' [image_383947.png] fejlécet,
-//    függetlenül attól, hogy a 'github.io' [image_383947.png] 'null' vagy
+//    'preflight' ('OPTIONS') kérése megkapja a szükséges
+//    'Access-Control-Allow-Origin' fejlécet,
+//    függetlenül attól, hogy a 'github.io'  'null' vagy
 //    bármilyen más 'Origin'-t küld.
-// 4. A biztonságot továbbra is a 'protect'  middleware (JWT) 
+// 4. A biztonságot továbbra is a 'protect' middleware (JWT)
 //    garantálja, nem az 'origin' ellenőrzés.
 // 5. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
 
@@ -38,11 +38,11 @@ const app: Express = express();
 
 const corsOptions = {
   // Engedélyezünk BÁRMILYEN forrást (origin-t).
-  // A biztonságot a JWT token (protect middleware)  kezeli.
+  // A biztonságot a JWT token (protect middleware) kezeli.
   origin: '*', 
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'], // Engedélyezzük a JWT Token fejlécet
-  credentials: true // Bár a '*' mellett nem mindig szükséges, maradhat
+  credentials: true
 };
 
 // 1. "Preflight" kérések kezelése (OPTIONS)
@@ -153,8 +153,9 @@ const protect = (req: Request, res: Response, next: NextFunction) => {
     }
 };
 
-// --- Védett API Végpontok (Változatlan) ---
+// --- Védett API Végpontok ---
 
+// === getFixtures (Változatlan) ===
 app.get('/getFixtures', protect, async (req: Request, res: Response) => {
     try {
         const sport = req.query.sport as string;
@@ -173,6 +174,7 @@ app.get('/getFixtures', protect, async (req: Request, res: Response) => {
     }
 });
 
+// === runAnalysis (v62.1-es mezőkkel) ===
 app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
     try {
         const { 
@@ -184,12 +186,13 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             leagueName, 
             sport, 
             openingOdds = {},
+            // P1 Komponens (v61.0)
             manual_H_xG,
             manual_H_xGA,
             manual_A_xG,
             manual_A_xGA,
-            manual_xg_home,
-            manual_xg_away
+            // P1 Manuális Hiányzók (ÚJ v62.1)
+            manual_absentees 
         } = req.body;
 
         if (!home || !away || !sport || !utcKickoff || !leagueName) { 
@@ -207,8 +210,7 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             manual_H_xGA,
             manual_A_xG,
             manual_A_xGA,
-            manual_xg_home, 
-            manual_xg_away
+            manual_absentees // <- ÚJ (v62.1)
         };
         
         const result = await runFullAnalysis(params, sport, openingOdds);
@@ -225,6 +227,7 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
     }
 });
 
+// === getHistory (Változatlan) ===
 app.get('/getHistory', protect, async (req: Request, res: Response) => {
     try {
         const historyData = await getHistoryFromSheet();
@@ -238,6 +241,7 @@ app.get('/getHistory', protect, async (req: Request, res: Response) => {
     }
 });
 
+// === getAnalysisDetail (Változatlan) ===
 app.get('/getAnalysisDetail', protect, async (req: Request, res: Response) => {
     try {
         const id = req.query.id as string;
@@ -255,6 +259,7 @@ app.get('/getAnalysisDetail', protect, async (req: Request, res: Response) => {
     }
 });
 
+// === deleteHistoryItem (Változatlan) ===
 app.post('/deleteHistoryItem', protect, async (req: Request, res: Response) => {
     try {
         const id = req.body.id as string;
@@ -272,6 +277,7 @@ app.post('/deleteHistoryItem', protect, async (req: Request, res: Response) => {
     }
 });
 
+// === askChat (Változatlan) ===
 app.post('/askChat', protect, async (req: Request, res: Response) => {
     try {
         const { context, history, question } = req.body;
