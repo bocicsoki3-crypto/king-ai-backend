@@ -1,23 +1,24 @@
 // FÁJL: providers/sofascoreProvider.ts
-// VERZIÓ: v54.11 (Típus Hiba és Export Javítás)
+// VERZIÓ: v56.3 (Szigorúbb Névfeloldás)
 // MÓDOSÍTÁS:
-// 1. Az 'ISofascoreResponse' interfész EXPORTÁLVA,
-//    hogy a DataFetch.ts (v54.44) importálhassa.
-// 2. A 'rating_last_5' értékadása '|| null'-ról
-//    '|| undefined'-ra javítva, hogy megfeleljen
-//    a 'ICanonicalPlayer' típusnak (TS2322).
+// 1. A 'getSofascoreTeamId'  függvény logikája szigorítva,
+//    hogy a 'Log napló.txt'-ben [Log napló.txt] látott "Real Sociedad II" -> "Real Sociedad C"
+//    hiba  ne fordulhasson elő többet.
+// 2. A 'FUZZY_THRESHOLD'  értéke 0.4-ről 0.7-re emelve.
+// 3. Egy új "Suffix Filter" (Utótag Szűrő) hozzáadva, amely
+//    bünteti a "II", "B", "C", "U23" stb. közötti hibás egyezéseket.
+// 4. JAVÍTVA: Minden szintaktikai hibát okozó '' hivatkozás eltávolítva.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
 import pkg from 'string-similarity';
 const { findBestMatch } = pkg;
-
 import { SOFASCORE_API_KEY, SOFASCORE_API_HOST } from '../config.js';
 import { makeRequest } from './common/utils.js';
 // Kanonikus típusok importálása
 import type { ICanonicalPlayerStats, ICanonicalPlayer } from '../src/types/canonical.d.ts';
 
-// === JAVÍTÁS (v54.44): Típus exportálása ===
+// Típus exportálása a DataFetch.ts (v54.44) számára
 export interface ISofascoreResponse {
     advancedData: { 
         xg_home: number;
@@ -25,7 +26,6 @@ export interface ISofascoreResponse {
     } | null;
     playerStats: ICanonicalPlayerStats;
 }
-// === JAVÍTÁS VÉGE ===
 
 // --- Típusdefiníciók (Kiterjesztve) ---
 interface ISofascoreTeam {
@@ -105,38 +105,51 @@ async function makeSofascoreRequest(endpoint: string, params: any) {
 }
 
 
-// --- getSofascoreTeamId (Változatlan) ---
+// === JAVÍTOTT (v56.3) getSofascoreTeamId ===
+// Szigorúbb keresési logikával
 async function getSofascoreTeamId(teamName: string, countryContext: string | null): Promise<number | null> {
     const countryCode = countryContext ? (countryContext.length === 2 ? countryContext.toUpperCase() : countryContext) : 'GLOBAL';
-    const cacheKey = `team_v54.2_${teamName.toLowerCase().replace(/\s/g, '')}_ctx_${countryCode}`;
+    const cacheKey = `team_v56.3_strict_${teamName.toLowerCase().replace(/\s/g, '')}_ctx_${countryCode}`;
     const cachedId = sofaTeamCache.get<number>(cacheKey);
     if (cachedId) return cachedId;
     
-    console.log(`[Sofascore] Csapat keresés (v54.2 Kontextuális: ${countryCode}): "${teamName}"`);
+    console.log(`[Sofascore] Csapat keresés (v56.3 Szigorú: ${countryCode}): "${teamName}"`);
     const data = await makeSofascoreRequest('/search', { q: teamName });
     if (!data?.results || !Array.isArray(data.results) || data.results.length === 0) {
         console.warn(`[Sofascore] Csapatkeresés sikertelen: "${teamName}". Nincs 'results' tömb (Endpoint: /search).`);
         return null;
     }
 
+    // Utótag szűrő (pl. II, B, C, U23)
+    const getSuffix = (name: string): string => {
+        const lower = name.toLowerCase();
+        if (lower.endsWith(" ii")) return "ii";
+        if (lower.endsWith(" b")) return "b";
+        if (lower.endsWith(" c")) return "c";
+        if (lower.endsWith(" u23")) return "u23";
+        if (lower.endsWith(" u21")) return "u21";
+        if (lower.endsWith(" u20")) return "u20";
+        if (lower.endsWith(" u19")) return "u19";
+        return "none";
+    };
+
     const allTeams: ISofascoreTeam[] = data.results
         .filter((r: any) => 
             r.type === 'team' && 
             r.entity?.sport?.name === 'Football' && 
             r.entity.id &&
-            r.entity.name &&
-            !/U(19|20|21|23)/i.test(r.entity.name) && 
-            !r.entity.name.toLowerCase().endsWith(" u20")
+            r.entity.name
         )
         .map((r: any) => r.entity);
-
+    
     if (allTeams.length === 0) {
-        console.warn(`[Sofascore] Csapatkeresés: Nincs 'Football' típusú (nem U20) 'team' találat erre: "${teamName}"`);
+        console.warn(`[Sofascore] Csapatkeresés: Nincs 'Football' típusú 'team' találat erre: "${teamName}"`);
         return null;
     }
 
     let teamsToSearch: ISofascoreTeam[] = allTeams;
     let searchContext = "Globális";
+    
     if (countryContext) {
         const lowerCountryContext = countryContext.toLowerCase();
         const filteredTeams = allTeams.filter(t => 
@@ -152,15 +165,18 @@ async function getSofascoreTeamId(teamName: string, countryContext: string | nul
     }
 
     const normalizedInput = teamName.toLowerCase();
+    const inputSuffix = getSuffix(normalizedInput);
+
+    // 1. Próba: Tökéletes Egyezés
     let foundTeam: ISofascoreTeam | null = null;
-    
     foundTeam = teamsToSearch.find(t => t.name.toLowerCase() === normalizedInput) || null;
     if (foundTeam) {
-        console.log(`[Sofascore] Csapat ID Találat (1/2 - Tökéletes ${searchContext}): "${teamName}" -> "${foundTeam.name}" (ID: ${foundTeam.id})`);
+        console.log(`[Sofascore] Csapat ID Találat (1/3 - Tökéletes ${searchContext}): "${teamName}" -> "${foundTeam.name}" (ID: ${foundTeam.id})`);
         sofaTeamCache.set(cacheKey, foundTeam.id);
         return foundTeam.id;
     }
 
+    // 2. Próba: Szigorú Hasonlósági Keresés (Fuzzy Search)
     const teamNames = teamsToSearch.map(t => t.name);
     if (teamNames.length === 0) {
          console.warn(`[Sofascore] Csapat ID Találat: Nincs érvényes jelölt a(z) "${teamName}" keresésre (${searchContext} kontextus).`);
@@ -168,17 +184,31 @@ async function getSofascoreTeamId(teamName: string, countryContext: string | nul
     }
 
     const bestMatch = findBestMatch(teamName, teamNames);
-    const FUZZY_THRESHOLD = 0.4;
+    const FUZZY_THRESHOLD = 0.7; // <-- JAVÍTÁS (v56.3): 0.4-ről 0.7-re emelve
+    
     if (bestMatch.bestMatch.rating >= FUZZY_THRESHOLD) {
-        foundTeam = teamsToSearch[bestMatch.bestMatchIndex];
-        console.log(`[Sofascore] Csapat ID Találat (2/2 - Hasonlóság ${searchContext} >= ${FUZZY_THRESHOLD}): "${teamName}" -> "${foundTeam.name}" (ID: ${foundTeam.id}, Rating: ${bestMatch.bestMatch.rating})`);
-        sofaTeamCache.set(cacheKey, foundTeam.id);
-        return foundTeam.id;
+        const potentialTeam = teamsToSearch[bestMatch.bestMatchIndex];
+        const potentialSuffix = getSuffix(potentialTeam.name);
+
+        // 3. Próba: Utótag Szűrő (Suffix Filter)
+        // Ha az input "II" és a találat "C", akkor elutasítjuk
+        if (inputSuffix !== "none" && potentialSuffix !== "none" && inputSuffix !== potentialSuffix) {
+             console.warn(`[Sofascore] Csapat ID Találat ELUTASÍTVA (3/3 - Utótag Konfliktus): "${teamName}" (Input: ${inputSuffix}) hasonló ehhez: "${potentialTeam.name}" (Találat: ${potentialSuffix}), de az utótagok nem egyeznek. (Rating: ${bestMatch.bestMatch.rating})`);
+        } else {
+            // Elfogadva (vagy nincs utótag, vagy egyezik)
+            foundTeam = potentialTeam;
+            console.log(`[Sofascore] Csapat ID Találat (2/3 - Hasonlóság ${searchContext} >= ${FUZZY_THRESHOLD}): "${teamName}" -> "${foundTeam.name}" (ID: ${foundTeam.id}, Rating: ${bestMatch.bestMatch.rating})`);
+            sofaTeamCache.set(cacheKey, foundTeam.id);
+            return foundTeam.id;
+        }
     }
     
-    console.warn(`[Sofascore] Csapat ID Találat: Sikertelen egyeztetés (${searchContext} kontextus). Alacsony egyezés (${bestMatch.bestMatch.rating}) erre: "${teamName}"`);
+    console.warn(`[Sofascore] Csapat ID Találat: Sikertelen egyeztetés (${searchContext} kontextus). Alacsony egyezés (${bestMatch.bestMatch.rating} < ${FUZZY_THRESHOLD}) vagy Utótag Konfliktus erre: "${teamName}"`);
+    sofaTeamCache.set(cacheKey, -1); // Negatív cache-elés
     return null;
 }
+// === JAVÍTÁS VÉGE ===
+
 
 // --- getSofascoreEventId (Változatlan) ---
 async function getSofascoreEventId(homeTeamId: number, awayTeamId: number): Promise<number | null> {
@@ -268,7 +298,6 @@ async function getSofascoreLineups(eventId: number): Promise<{ home: ISofascoreR
         }
         return players.filter(p => p.player && p.player.id);
     };
-
     return {
         home: extractPlayers(data.home),
         away: extractPlayers(data.away)
@@ -297,13 +326,11 @@ async function getSofascoreIncidents(eventId: number): Promise<ISofascoreInciden
         home: { missing: data.home?.missing || [] },
         away: { missing: data.away?.missing || [] }
     };
-    
     sofaIncidentsCache.set(cacheKey, payload);
     return payload;
 }
 
-// --- processSofascoreData (v54.11 - JAVÍTVA) ---
-// Feldolgozza a lineup és incident adatokat a kanonikus ICanonicalPlayerStats formátumra
+// --- processSofascoreData (Változatlan, v54.11) ---
 function processSofascoreData(
     lineups: { home: ISofascoreRawPlayer[], away: ISofascoreRawPlayer[] } | null,
     incidents: ISofascoreIncidentPayload | null
@@ -314,7 +341,6 @@ function processSofascoreData(
         away_absentees: [],
         key_players_ratings: { home: {}, away: {} }
     };
-
     const playerRatingMap: Map<number, { rating: number, position: string }> = new Map();
     const allPlayers: ISofascoreRawPlayer[] = [];
     if (lineups) {
@@ -325,7 +351,7 @@ function processSofascoreData(
         if (p.player && p.player.id && p.rating) {
             const ratingNum = parseFloat(p.rating);
             if (!isNaN(ratingNum)) {
-                let canonicalPos = p.player.position; // G, D, M, F
+                let canonicalPos = p.player.position;
                 if (p.position) {
                     if (p.position === 'Attacker') canonicalPos = 'F';
                     if (p.position === 'Midfielder') canonicalPos = 'M';
@@ -339,9 +365,7 @@ function processSofascoreData(
 
     const processMissingPlayers = (team: 'home' | 'away', missingList: ISofascoreRawPlayer[] | undefined) => {
         if (!missingList || !Array.isArray(missingList)) return;
-        
         const validMissingList = missingList.filter(p => p && p.player && p.player.id);
-
         for (const p of validMissingList) {
             const ratingData = playerRatingMap.get(p.player.id);
             const player: ICanonicalPlayer = {
@@ -349,10 +373,8 @@ function processSofascoreData(
                 role: p.player.position,
                 importance: ratingData ? 'key' : (p.reason ? 'regular' : 'regular'),
                 status: 'confirmed_out',
-                // === JAVÍTÁS (v54.11): 'null' -> 'undefined' a TS2322 hiba javítására ===
                 rating_last_5: ratingData?.rating || undefined
             };
-            
             if (team === 'home') {
                 finalStats.home_absentees.push(player);
             } else {
@@ -363,25 +385,22 @@ function processSofascoreData(
     
     processMissingPlayers('home', incidents?.home?.missing);
     processMissingPlayers('away', incidents?.away?.missing);
-
+    
     if (incidents?.incidents) {
         for (const incident of incidents.incidents) {
             if ((incident.incidentType === 'injury' || incident.injury) && incident.player && incident.teamSide) {
                 const existing = (incident.teamSide === 'home' ? finalStats.home_absentees : finalStats.away_absentees);
                 if (existing.some(p => p.name === incident.player!.name)) {
-                    continue; 
+                    continue;
                 }
-                
                 const ratingData = playerRatingMap.get(incident.player.id);
                 const player: ICanonicalPlayer = {
                     name: incident.player.name,
                     role: ratingData?.position || 'Ismeretlen',
                     importance: ratingData ? 'key' : 'regular',
                     status: 'confirmed_out',
-                    // === JAVÍTÁS (v54.11): 'null' -> 'undefined' a TS2322 hiba javítására ===
                     rating_last_5: ratingData?.rating || undefined
                 };
-                
                 if (incident.teamSide === 'home') {
                     finalStats.home_absentees.push(player);
                 } else {
@@ -403,12 +422,12 @@ export async function fetchSofascoreData(
 ): Promise<ISofascoreResponse | null> {
     
     const [homeTeamId, awayTeamId] = await Promise.all([
-        getSofascoreTeamId(homeTeamName, countryContext),
-        getSofascoreTeamId(awayTeamName, countryContext)
+        getSofascoreTeamId(homeTeamName, countryContext), // Ez már a v56.3-as szigorú verzió
+        getSofascoreTeamId(awayTeamName, countryContext)  // Ez már a v56.3-as szigorú verzió
     ]);
-
-    if (!homeTeamId || !awayTeamId) {
-        console.warn(`[Sofascore] Folyamat megszakítva: Nem található mindkét csapat ID (H: ${homeTeamId}, A: ${awayTeamId}).`);
+    
+    if (!homeTeamId || !awayTeamId || homeTeamId === -1 || awayTeamId === -1) {
+        console.warn(`[Sofascore] Folyamat megszakítva: Nem található mindkét csapat ID (H: ${homeTeamId}, A: ${awayTeamId}). A szigorú v56.3-as keresés meghiúsult.`);
         return null;
     }
     
@@ -434,7 +453,7 @@ export async function fetchSofascoreData(
     const advancedData = (xgData && xgData.home != null && xgData.away != null)
         ? { xg_home: xgData.home, xG_away: xgData.away }
         : null;
-
+    
     if (!advancedData) {
         console.warn(`[Sofascore] Hiányzó xG adat (Event ID: ${eventId}). 'advancedData' null lesz.`);
     }
