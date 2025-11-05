@@ -1,23 +1,24 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v55.1 (Egyesített AI Hívás)
+// VERZIÓ: v62.1 (P1 Manuális Roster Választó - 4. Lépés)
 // MÓDOSÍTÁS:
-// 1. Az elavult, 3-lépéses AI hívások (runStep1_GetQuant, runStep2_GetScout,
-//    runStep3_GetStrategy) eltávolítva.
-// 2. Az importok frissítve, hogy csak az új, egyesített
-//    'runStep_UnifiedAnalysis' függvényt importálják az 'AI_Service.ts'-ből.
-// 3. A 'runFullAnalysis' frissítve, hogy a teljes adathalmazt
-//    (P1 xG, súlyozott xG, hiányzók, kontextus) egyetlen
-//    'unifiedInput' objektumként adja át az új MI függvénynek.
+// 1. A 'getRichContextualData'  hívás válaszából
+//    kinyerésre kerül az új 'availableRosters' mező.
+// 2. Az 'availableRosters' mező hozzáadva a kliensnek
+//    küldött 'jsonResponse'  objektumhoz.
+// 3. Ez biztosítja, hogy a 'script.js' megkapja a
+//    keretadatokat a legördülő listák felépítéséhez.
+// 4. A v61.0-ás (4-komponensű P1) bevitel kezelése érintetlen marad.
+// 5. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
-
 // Kanonikus típusok importálása
 import type {
     ICanonicalRichContext,
     ICanonicalRawData,
     ICanonicalStats,
-    ICanonicalOdds
+    ICanonicalOdds,
+    IPlayerStub // ÚJ (v62.1)
 } from './src/types/canonical.d.ts';
 // A 'findMainTotalsLine'-t a központi 'utils' fájlból importáljuk
 import { findMainTotalsLine } from './providers/common/utils.js';
@@ -46,17 +47,18 @@ import { saveAnalysisToSheet } from './sheets.js';
 
 // Gyorsítótár inicializálása
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
+
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v55.1):
-* - A '0' (nulla) és ',' (tizedesvessző) xG értékek átadása javítva.
-* - A 3-lépéses AI "vita" eltávolítva, helyette 1-lépéses holisztikus hívás.
+* VÁLTOZÁS (v62.1):
+* - A 4-komponensű P1 adatokat kezeli.
+* - Továbbítja az 'availableRosters' adatot a kliensnek.
 **************************************************************/
 
-// Az új, strukturált JSON válasz (v54.0)
+// Az új, strukturált JSON válasz (MÓDOSÍTVA v62.1)
 interface IAnalysisResponse {
     analysisData: {
-        committeeResults: any; 
+        committeeResults: any;
         matchData: {
             home: string;
             away: string;
@@ -71,6 +73,13 @@ interface IAnalysisResponse {
         sim: any; 
         recommendation: any;
         xgSource: 'Manual (Direct)' | 'Manual (Components)' | 'API (Real)' | 'Calculated (Fallback)';
+        
+        // === ÚJ (v62.1) ===
+        availableRosters: {
+            home: IPlayerStub[];
+            away: IPlayerStub[];
+        };
+        // === VÉGE ===
     };
     debugInfo: any;
 }
@@ -79,7 +88,7 @@ interface IAnalysisError {
     error: string;
 }
 
-// === JAVÍTÁS (v54.18): Segédfüggvény a tizedesvesszők kezelésére ===
+// === Segédfüggvény a tizedesvesszők kezelésére (Változatlan) ===
 /**
  * Biztonságosan konvertál egy stringet (akár ','-vel) számmá.
  * Helyesen kezeli a 0-t, null-t, és a "0,9" formátumot.
@@ -111,8 +120,9 @@ function safeConvertToNumber(value: any): number | null {
 export async function runFullAnalysis(params: any, sport: string, openingOdds: any): Promise<IAnalysisResponse | IAnalysisError> {
     let analysisCacheKey = 'unknown_analysis';
     let fixtureIdForSaving: number | string | null = null;
+    
     try {
-        // === xG Komponensek és Direkt xG beolvasása ===
+        // === v61.0: Csak a 4-komponensű P1 adatokat olvassuk ===
         const { 
             home: rawHome, 
             away: rawAway, 
@@ -124,10 +134,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             manual_H_xG, 
             manual_H_xGA,
             manual_A_xG, 
-            manual_A_xGA,
-            // P1 (Direkt)
-            manual_xg_home,
-             manual_xg_away
+            manual_A_xGA
+            // A 'manual_xg_home/away' (2-mezős) [image: 4223a5.png] már nem olvasott
         } = params;
         // === Olvasás Vége ===
 
@@ -141,8 +149,9 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         
-        // Cache kulcs (v55.1)
-        analysisCacheKey = `analysis_v55.1_unified_${sport}_${safeHome}_vs_${safeAway}`;
+        // Cache kulcs (v62.1)
+        analysisCacheKey = `analysis_v62.1_roster_${sport}_${safeHome}_vs_${safeAway}`;
+        
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
             if (cachedResult) {
@@ -163,6 +172,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
 
         // --- 2. Fő Adatgyűjtés ---
         console.log(`Adatgyűjtés indul: ${home} vs ${away}...`);
+        
         const dataFetchOptions: IDataFetchOptions = {
             sport: sport,
             homeTeamName: home,
@@ -171,27 +181,27 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             utcKickoff: utcKickoff,
             forceNew: forceNew,
   
-            // P1 (Direkt) - Az Ön "Tiszta xG"-je
-            manual_xg_home: safeConvertToNumber(manual_xg_home),
-            manual_xg_away: safeConvertToNumber(manual_xg_away),
-
-            // P1 (Komponens)
+            // P1 (Komponens) (v61.0)
             manual_H_xG: safeConvertToNumber(manual_H_xG),
             manual_H_xGA: safeConvertToNumber(manual_H_xGA),
             manual_A_xG: safeConvertToNumber(manual_A_xG),
             manual_A_xGA: safeConvertToNumber(manual_A_xGA)
         };
         
+        // === MÓDOSÍTVA (v62.1): 'availableRosters' kinyerése ===
         const { 
             rawStats, 
             richContext,
-            advancedData, // Ez tartalmazza az Ön P1-es "Tiszta xG"-jét
+            advancedData,
             form, 
             rawData, 
             leagueAverages = {}, 
             oddsData,
-            xgSource // Ez a DataFetch (v54.16+) adja vissza
+            xgSource,
+            availableRosters // <- ÚJ (v62.1)
         }: IDataFetchResponse = await getRichContextualData(dataFetchOptions);
+        // === MÓDOSÍTÁS VÉGE ===
+        
         console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
         
         if (rawData && rawData.apiFootballData && rawData.apiFootballData.fixtureId) {
@@ -217,25 +227,25 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const duelAnalysis = analyzePlayerDuels(rawData?.detailedPlayerStats?.key_players_ratings, sport);
         const psyProfileHome = calculatePsychologicalProfile(home, away, rawData);
         const psyProfileAway = calculatePsychologicalProfile(away, home, rawData);
-
-        // --- 4. Statisztikai Modellezés (v55.1 Hibrid Logikával) ---
+        
+        // --- 4. Statisztikai Modellezés (v61.0 Logikával) ---
         console.log(`Modellezés indul: ${home} vs ${away}...`);
-        // Az 'estimateXG' (v55.1) most már az 'advancedData'-t (az Ön tiszta xG-jét)
-        // bázisként használja, és arra alkalmazza a kontextuális módosítókat.
+        
+        // Az 'estimateXG' (v61.0) most már az 'advancedData'-t (a 4 P1 komponenst)
+        // használja a bázis kiszámításához [cite: 1565-1566] és a "dupla számítás" [cite: 2622-2624] elkerüléséhez.
         const { mu_h, mu_a } = estimateXG(
             home, away, rawStats, sport, form, leagueAverages, 
-            advancedData, // Ez tartalmazza az Ön P1-es "tiszta xG"-jét
+            advancedData, // Ez tartalmazza az Ön P1-es 4-komponensű [cite: 2711-2713] adatait
             rawData, 
             psyProfileHome, 
             psyProfileAway, 
             null // currentSimProbs
         );
 
-        const finalXgSource = xgSource; // pl. "Manual (Direct)"
+        const finalXgSource = xgSource;
         console.log(`${finalXgSource.toUpperCase()} XG ALAPON SÚLYOZOTT VÉGLEGES XG: H=${mu_h}, A=${mu_a}`);
         
         const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
-        // A szimuláció már a végleges, súlyozott xG-vel fut (mu_h, mu_a)
         const sim = simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData);
         sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a;
         sim.mu_corners_sim = mu_corners;
@@ -252,10 +262,12 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const unifiedInput = {
             // Quant adatok
             simJson: sim,
-            // A "Tiszta xG" (P1) átadása az MI-nek, hogy lássa a kiindulási alapot
+            // A "Tiszta xG" (P1 Komponens) átadása
             realXgJson: { 
-                home: advancedData?.home?.xg ?? null, 
-                away: advancedData?.away?.xg ?? null 
+                manual_H_xG: advancedData?.manual_H_xG ?? null,
+                manual_H_xGA: advancedData?.manual_H_xGA ?? null,
+                manual_A_xG: advancedData?.manual_A_xG ?? null,
+                manual_A_xGA: advancedData?.manual_A_xGA ?? null
             },
             xgSource: finalXgSource,
             keyPlayerRatingsJson: rawData.detailedPlayerStats.key_players_ratings,
@@ -269,30 +281,26 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             sim_mainTotalsLine: sim.mainTotalsLine
         };
         
-        // Az elavult 3 lépés helyett egyetlen hívás:
         const committeeResults = await runStep_UnifiedAnalysis(unifiedInput);
+        
         if (committeeResults.error) {
-            // Kezeljük az esetleges hibát
             console.error("Az egyesített AI elemzés hibát adott vissza:", committeeResults.error);
-            // Hagyjuk, hogy a hibás objektum továbbmenjen, a UI kezeli
         }
         
-        // A 'committeeResults' már a végleges, Stratéga által generált JSON objektum
         const masterRecommendation = committeeResults.master_recommendation;
         console.log(`Egyesített elemzés és ajánlás megkapva: ${JSON.stringify(masterRecommendation)}`);
 
         // --- 6. Válasz Elküldése és Naplózás ---
         const debugInfo = {
-            playerDataFetched: (rawData?.detailedPlayerStats?.key_players_ratings?.home) ?
-                'Igen (Sofascore)' : 'Nem (Fallback)',
+            playerDataFetched: (rawData?.detailedPlayerStats?.key_players_ratings?.home) ? 'Igen (Sofascore)' : 'Nem (Fallback)',
             realXgUsed: finalXgSource,
             fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
         };
         
-        // A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA
+        // === A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA (MÓDOSÍTVA v62.1) ===
         const jsonResponse: IAnalysisResponse = { 
             analysisData: {
-                committeeResults: committeeResults, // Ez tartalmazza az összes új mezőt (pl. strategic_synthesis)
+                committeeResults: committeeResults,
                 matchData: {
                     home, 
                     away, 
@@ -305,12 +313,17 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 valueBets: valueBets,
                 modelConfidence: modelConfidence,
                 sim: sim,
-                 recommendation: masterRecommendation,
-                xgSource: finalXgSource
+                recommendation: masterRecommendation,
+                xgSource: finalXgSource,
+                
+                // === ÚJ (v62.1) ===
+                // A keretadatok hozzáadása a kliens oldali válaszhoz
+                availableRosters: availableRosters 
             },
             debugInfo: debugInfo 
         };
-        
+        // === MÓDOSÍTÁS VÉGE ===
+
         scriptCache.set(analysisCacheKey, jsonResponse);
         console.log(`Elemzés befejezve és cache mentve (${analysisCacheKey})`);
 
@@ -330,7 +343,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         }
 
         return jsonResponse;
-
+        
     } catch (error: any) {
         const homeParam = params?.home || 'N/A';
         const awayParam = params?.away || 'N/A';
