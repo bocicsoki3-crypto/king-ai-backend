@@ -1,12 +1,14 @@
 // FÁJL: src/types/canonical.d.ts
-// VERZIÓ: v58.0 (Coach (Edző) Interfész Bővítés)
+// VERZIÓ: v62.1 (P1 Manuális Roster Választó - 1. Lépés)
 // MÓDOSÍTÁS:
-// 1. Az 'ICanonicalRawData' -> 'contextual_factors'  interfész kiegészítve
-//    egy új 'coach' objektummal, hogy tárolni tudjuk a
-//    vezetőedzők nevét (a v58.0-ás terv alapján).
-// 2. Ez az első lépés a Bíró  és Edző  faktorok
-//    implementálásához a 'Model.ts'-ben .
-// 3. JAVÍTVA: Minden szintaktikai hibát okozó hivatkozás eltávolítva.
+// 1. ÚJ INTERFÉSZ: 'IPlayerStub' hozzáadva, hogy definiálja
+//    a választható játékosok listájának elemeit.
+// 2. Az 'ICanonicalRawData'  és az 'ICanonicalRichContext' 
+//    interfészek kiegészítve egy új, 'availableRosters' mezővel.
+// 3. Ez az új mező fogja tárolni a teljes csapatkeretet,
+//    amelyet a 'script.js' megjelenít a P1-es
+//    hiányzó-kiválasztáshoz.
+// 4. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
 
 // Ezen interfészek definiálják a rendszeren belüli "adatszerződést".
 // A Providerek (pl. apiSportsProvider) felelőssége, hogy az API válaszaikat
@@ -33,6 +35,16 @@ export interface ICanonicalPlayer {
   importance: 'key' | 'regular' | 'substitute';
   status: 'confirmed_out' | 'doubtful' | 'active';
   rating_last_5?: number;    // Opcionális, de javasolt
+}
+
+/**
+ * === ÚJ (v62.1) ===
+ * Egyszerűsített játékos-objektum a P1-es keret-kiválasztóhoz.
+ */
+export interface IPlayerStub {
+    id: number;
+    name: string;
+    pos: string; // Pozíció (G, D, M, F)
 }
 
 /**
@@ -71,16 +83,16 @@ export interface IStructuredWeather {
     description: string;
     temperature_celsius: number | null;
     humidity_percent?: number | null;
-    wind_speed_kmh: number | null;   // KÖTELEZŐ (vagy null)
-    precipitation_mm: number | null; // KÖTELEZŐ (vagy null)
-    source?: 'Open-Meteo' | 'N/A'; // Opcionális debug mező
+    wind_speed_kmh: number | null;
+    precipitation_mm: number | null;
+    source?: 'Open-Meteo' | 'N/A';
 }
 
 
 /**
  * A "nyers" adatcsomag, amelyet a CoT (Chain-of-Thought) elemzéshez
  * és a Model.ts-hez gyűjtünk.
- * === MÓDOSÍTVA (v58.0) ===
+ * === MÓDOSÍTVA (v62.1) ===
  */
 export interface ICanonicalRawData {
   stats: {
@@ -105,7 +117,7 @@ export interface ICanonicalRawData {
   };
   referee: {
     name: string | null;
-    style: string | null; // Ezt fogjuk feltölteni a v58.1-ben
+    style: string | null; // v58.1
   };
   contextual_factors: {
     stadium_location: string | null;
@@ -113,20 +125,27 @@ export interface ICanonicalRawData {
     weather: string | null;
     match_tension_index: string | null;
     structured_weather: IStructuredWeather; 
-    
-    // === ÚJ (v58.0) ===
-    coach: {
+    coach: { // v58.1
         home_name: string | null;
         away_name: string | null;
     };
-    // === VÉGE ===
   };
+  
+  // === ÚJ (v62.1) ===
+  // A teljes elérhető keret a P1-es kiválasztáshoz
+  availableRosters: {
+    home: IPlayerStub[];
+    away: IPlayerStub[];
+  };
+  // === VÉGE ===
+
   [key: string]: any;
 }
 
 /**
  * A fő adatcsomag, amelyet a getRichContextualData visszaad
  * és az AnalysisFlow.ts felhasznál.
+ * === MÓDOSÍTVA (v62.1) ===
  */
 export interface ICanonicalRichContext {
   rawStats: {
@@ -143,10 +162,18 @@ export interface ICanonicalRichContext {
     away_overall: string | null;
     [key: string]: any;
   };
-  rawData: ICanonicalRawData; // Ez már tartalmazza a v58.0-ás coach típust
+  rawData: ICanonicalRawData; // Ez már tartalmazza a v62.1-es mezőket
   leagueAverages: { [key: string]: any };
   oddsData: ICanonicalOdds | null;
   fromCache: boolean;
+
+  // === ÚJ (v62.1) ===
+  // Ezt küldjük a kliensnek a lista feltöltéséhez
+  availableRosters: {
+    home: IPlayerStub[];
+    away: IPlayerStub[];
+  };
+  // === VÉGE ===
 }
 
 /**
