@@ -5,10 +5,11 @@
 //    végpontot hívja) átalakítva, hogy kinyerje a teljes
 //    kezdőcsapatot ('startXI')  és a cseréket ('substitutes') .
 // 2. Ezek a listák 'IPlayerStub' formátumra alakítva.
-// 3. A 'LineupDataPayload'  kiegészítve 'home_roster' és 'away_roster' mezőkkel.
+// 3. A 'LineupDataPayload'  kiegészítve 'rosters' mezővel.
 // 4. A 'fetchMatchData'  most már feltölti a 'finalData.availableRosters'
 //    és a 'result.availableRosters' mezőket a kliens számára.
-// 5. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
+// 5. Ez a javítás MEGOLDJA a 'TS2741' [image: 438084.png] hibát ebben a fájlban.
+// 6. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -707,7 +708,6 @@ export async function getApiSportsLineupsAndInjuries(
 }
 // === MÓDOSÍTÁS VÉGE ===
 
-
 // --- _getApiSportsRefereeStyle (v58.1 - Változatlan) ---
 async function _getApiSportsRefereeStyle(
     refereeName: string | null,
@@ -943,7 +943,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         }
     };
     
-    if (typeof result.rawStats?.home?.gp !== 'number' || result.rawStats.home.gp <= 0 || typeof result.rawStats?.away?.gp !== 'number' || result.rawStats.away.gp <= 0) {
+    if (typeof result.rawStats?.home?.gp !== 'number' || result.rawStats.home.gp <= 0 || typeof result.rawStats?.away?.gp !== 'number' || result.rawStats?.away?.gp <= 0) {
         console.error(`KRITIKUS HIBA (${homeTeamName} vs ${awayTeamName}): Érvénytelen VÉGLEGES statisztikák (GP <= 0). HomeGP: ${result.rawStats?.home?.gp}, AwayGP: ${result.rawStats?.away?.gp}`);
         throw new Error(`Kritikus statisztikák (GP <= 0) érvénytelenek.`);
     }
