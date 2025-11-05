@@ -1,12 +1,14 @@
-// --- index.ts (v60.1 - Robusztus CORS Javítás) ---
+// --- index.ts (v60.2 - Robusztus RegExp CORS Javítás) ---
 // MÓDOSÍTÁS:
-// 1. A v60.0-ás 'whitelist' alapú 'origin' FUNKCIÓJA
-//    ELTÁVOLÍTVA, mivel az törékenynek bizonyult.
-// 2. HELYETTE: A 'corsOptions' 'origin' tulajdonsága
-//    közvetlenül az Ön 'github.io' [image_381ee2.png] domainjére van állítva (string).
-// 3. Ez a robusztus módszer garantálja, hogy a "preflight" [image_381ee2.png]
-//    kérések is megkapják a helyes 'Access-Control-Allow-Origin' [image_381ee2.png]
-//    fejlécet, ezzel megoldva a build hibát.
+// 1. A v60.1-es merev, string-alapú 'origin'
+//    konfigurációja ELTÁVOLÍTVA.
+// 2. HELYETTE: Az 'origin' tulajdonság egy Reguláris Kifejezést
+//    (RegExp) használ, amely engedélyezi a 'localhost' (bármilyen porton)
+//    ÉS a 'boocook3-crypto.github.io' [image_382a7c.png] domaineket.
+// 3. Ez a megoldás robusztusan kezeli a 'preflight' ('OPTIONS') [image_382a7c.png]
+//    kéréseket, és garantálja a 'No 'Access-Control-Allow-Origin' header' [image_382a7c.png]
+//    és a 'not equal to the supplied origin' [image_382a7c.png] hibák
+//    végleges javítását.
 // 4. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
@@ -31,13 +33,16 @@ const app: Express = express();
 
 // --- Middleware Beállítások ---
 
-// === JAVÍTÁS (v60.1): Robusztus CORS Konfiguráció ===
-
-// A 'whitelist' és az 'origin' funkció eltávolítva.
-// Helyette explicit string megadása:
+// === JAVÍTÁS (v60.2): Robusztus RegExp CORS Konfiguráció ===
 
 const corsOptions = {
-  origin: 'https://boocook3-crypto.github.io', // Explicit engedélyezés az Ön domainjének [image_381ee2.png]
+  // Engedélyezés Reguláris Kifejezéssel:
+  // 1. Engedélyezi a 'localhost'-ot bármilyen porton (pl. http://localhost:5500)
+  // 2. Engedélyezi az Ön éles domainjét (https://boocook3-crypto.github.io) [image_382a7c.png]
+  origin: [
+    /http:\/\/localhost(:\d+)?$/,
+    /https:\/\/boocook3-crypto\.github\.io$/
+  ],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'], // Engedélyezzük a JWT Token fejlécet
   credentials: true
@@ -182,12 +187,10 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             leagueName, 
             sport, 
             openingOdds = {},
-            // P1 Komponens (Régi)
             manual_H_xG,
             manual_H_xGA,
             manual_A_xG,
             manual_A_xGA,
-            // P1 Direkt (v59.0)
             manual_xg_home,
             manual_xg_away
         } = req.body;
@@ -297,7 +300,6 @@ app.post('/runLearning', protect, async (req: Request, res: Response) => {
             console.warn("Sikertelen ÖNTANULÁSI kísérlet (hibás admin kulcs).");
             return res.status(401).json({ error: "Hitelesítés sikertelen. Admin kulcs szükséges." });
         }
-        
          console.log("Öntanulási folyamat indítása (1. Lépés: Eredmény-elszámolás)...");
         const settlementResult = await runSettlementProcess();
         if (settlementResult.error) {
@@ -305,25 +307,21 @@ app.post('/runLearning', protect, async (req: Request, res: Response) => {
              return res.status(500).json({ error: "Hiba az eredmény-elszámolás során.", details: settlementResult.error });
         }
         console.log(`Eredmény-elszámolás kész. Frissítve: ${settlementResult.updated} sor.`);
-        
         console.log("Öntanulási folyamat (2. Lépés: Kalibráció és Rating frissítés) indul...");
         const [powerRatingResult, calibrationResult] = await Promise.all([
             Promise.resolve(updatePowerRatings()),
             runConfidenceCalibration()
         ]);
-        
         const learningResult = {
             message: "Öntanuló modulok sikeresen lefutottak.",
             settlement: settlementResult,
             power_ratings: powerRatingResult || { updated: false, message:"Nem volt elég adat a frissítéshez." },
             confidence_calibration: calibrationResult || { error: "Ismeretlen hiba a kalibráció során." }
         };
-        
         if (learningResult.confidence_calibration.error) {
              console.error("Hiba a bizalmi kalibráció során:", learningResult.confidence_calibration.error);
         }
         res.status(200).json(learningResult);
-        
      } catch (e: any) {
         console.error(`Hiba a /runLearning végpont-on: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (runLearning): ${e.message}` });
