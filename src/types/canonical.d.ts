@@ -1,78 +1,80 @@
 // FÁJL: src/types/canonical.d.ts
-// VERZIÓ: v55.2 (Időjárás Interfész Javítás)
+// VERZIÓ: v55.3 (Szintaktikai Javítások)
 // MÓDOSÍTÁS:
-// 1. Az 'IStructuredWeather' interfész  frissítve.
+[cite_start]// 1. Az 'IStructuredWeather' interfész [cite: 2664-2666] frissítve (v55.2).
 // 2. A 'precipitation_mm' és 'wind_speed_kmh' mezők már nem opcionálisak (?)
-//    (de lehetnek 'null'), hogy megfeleljenek a 'Model.ts'  elvárásainak.
+[cite_start]//    (de lehetnek 'null'), hogy megfeleljenek a 'Model.ts' [cite: 1670-1678] elvárásainak.
 // 3. 'source' mező hozzáadva a hibakereséshez.
+// 4. JAVÍTVA: A v55.2-ben vétett szintaktikai hibák (rossz helyen lévő kommentek
+//    és forráshivatkozások) javítva.
 
 // Ezen interfészek definiálják a rendszeren belüli "adatszerződést".
-[cite: 765] // A Providerek (pl. apiSportsProvider) felelőssége, hogy az API válaszaikat
+// A Providerek (pl. apiSportsProvider) felelőssége, hogy az API válaszaikat
 // ezen interfészeknek megfelelő objektumokká alakítsák.
-[cite: 766] // A Fogyasztók (pl. Model, AnalysisFlow) ezen interfészekre támaszkodnak.
+// A Fogyasztók (pl. Model, AnalysisFlow) ezen interfészekre támaszkodnak.
 
 /**
  * A csapatok alapvető statisztikai adatai, amelyeket a Model.ts vár.
-[cite: 767] */
+[cite_start][cite: 2652] */
 export interface ICanonicalStats {
-  gp: number;           // Games Played (Lejátszzott meccsek) [cite: 767]
-  gf: number;           // Goals For (Lőtt gólok / Pontok) [cite: 768]
-  ga: number;           // Goals Against (Kapott gólok / Pontok) [cite: 769]
-  form: string | null;  // Forma string (pl. "WWLDW") [cite: 770]
-  [key: string]: any;  // Egyéb, nem szigorúan típusos statisztikák [cite: 770]
+  gp: number;           [cite_start]// Games Played (Lejátszzott meccsek) [cite: 2653]
+  gf: number;           [cite_start]// Goals For (Lőtt gólok / Pontok) [cite: 2654]
+  ga: number;           [cite_start]// Goals Against (Kapott gólok / Pontok) [cite: 2655]
+  form: string | null;  [cite_start]// Forma string (pl. "WWLDW") [cite: 2655]
+  [key: string]: any;  [cite_start]// Egyéb, nem szigorúan típusos statisztikák [cite: 2656]
 }
 
 /**
- * Egyetlen játékos státusza (a 2. Javaslat alapján).
-[cite: 771] */
+ * Egyetlen játékos státusza.
+[cite_start][cite: 2656] */
 export interface ICanonicalPlayer {
-  name: string; [cite: 771]
-  role: string; [cite: 771]
-  importance: 'key' | 'regular' | 'substitute'; [cite: 771]
-  status: 'confirmed_out' | 'doubtful' | 'active'; [cite: 771-772]
-  rating_last_5?: number;    // Opcionális, de javasolt [cite: 772]
+  [cite_start]name: string; [cite: 2657]
+  [cite_start]role: string; [cite: 2657]
+  importance: 'key' | 'regular' | [cite_start]'substitute'; [cite: 2657]
+  status: 'confirmed_out' | 'doubtful' | [cite_start]'active'; [cite: 2657-2658]
+  rating_last_5?: number;    [cite_start]// Opcionális, de javasolt [cite: 2658]
 }
 
 /**
- * A 2. Javaslatból származó részletes játékos- és hiányzó-adatok.
-[cite: 773] */
+ * Részletes játékos- és hiányzó-adatok.
+[cite_start][cite: 2658] */
 export interface ICanonicalPlayerStats {
-  home_absentees: ICanonicalPlayer[]; [cite: 773]
-  away_absentees: ICanonicalPlayer[]; [cite: 773]
+  [cite_start]home_absentees: ICanonicalPlayer[]; [cite: 2659]
+  [cite_start]away_absentees: ICanonicalPlayer[]; [cite: 2659]
   key_players_ratings: {
-    home: { [role: string]: number }; [cite: 773]
-    away: { [role: string]: number }; [cite: 774]
+    [cite_start]home: { [role: string]: number }; [cite: 2659]
+    [cite_start]away: { [role: string]: number }; [cite: 2660]
   };
 }
 
 /**
  * A piaci szorzók kanonikus formája.
-[cite: 775] */
+[cite_start][cite: 2660] */
 export interface ICanonicalOdds {
-  current: { name: string; price: number }[]; [cite: 775]
+  [cite_start]current: { name: string; price: number }[]; [cite: 2661]
   allMarkets: {
-    key: string; [cite: 775]
+    [cite_start]key: string; [cite: 2661]
     outcomes: {
-      name: string; [cite: 776]
-      price: number; [cite: 776]
-      point?: number | null; [cite: 777]
+      [cite_start]name: string; [cite: 2662]
+      [cite_start]price: number; [cite: 2662]
+      [cite_start]point?: number | null; [cite: 2662]
     }[];
   }[];
-  fullApiData: any; // A nyers API válasz tárolása (pl. 'findMainTotalsLine' számára) [cite: 777]
-  fromCache: boolean; [cite: 777]
+  fullApiData: any; [cite_start]// A nyers API válasz tárolása (pl. 'findMainTotalsLine' számára) [cite: 2662]
+  [cite_start]fromCache: boolean; [cite: 2663]
 }
 
 /**
- * === JAVÍTOTT (v55.2) INTERFÉSZ ===
- * Strukturált időjárási adatokat definiál.
- * A mezők már nem opcionálisak (?), hogy a Model.ts  helyesen tudja olvasni őket.
+ * === JAVÍTOTT (v55.3) INTERFÉSZ ===
+ * [cite_start]Strukturált időjárási adatokat definiál. [cite: 2663]
+ * [cite_start]A mezők már nem opcionálisak (?), hogy a Model.ts helyesen tudja olvasni őket. [cite: 2664-2665]
  */
 export interface IStructuredWeather {
-    description: string;
-    temperature_celsius: number | null;
-    humidity_percent?: number | null; // Ez maradhat opcionális
-    wind_speed_kmh: number | null;   // KÖTELEZŐ (vagy null)
-    precipitation_mm: number | null; // KÖTELEZŐ (vagy null)
+    [cite_start]description: string; [cite: 2665]
+    [cite_start]temperature_celsius: number | null; [cite: 2665]
+    [cite_start]humidity_percent?: number | null; [cite: 2665]
+    wind_speed_kmh: number | null;   [cite_start]// KÖTELEZŐ (vagy null) [cite: 2665-2666]
+    precipitation_mm: number | null; [cite_start]// KÖTELEZŐ (vagy null) [cite: 2666]
     source?: 'Open-Meteo' | 'N/A'; // Opcionális debug mező
 }
 
@@ -80,43 +82,43 @@ export interface IStructuredWeather {
 /**
  * A "nyers" adatcsomag, amelyet a CoT (Chain-of-Thought) elemzéshez
  * és a Model.ts-hez gyűjtünk.
-[cite: 781] * === MÓDOSÍTVA (v54.9) ===
+ * === MÓDOSÍTVA (v54.9) ===
  * A 'match_tension_index' típusa 'number'-ről 'string'-re módosítva,
  * hogy megfeleljen a Model.ts várakozásainak (.toLowerCase()).
-[cite: 781-782] */
+[cite_start][cite: 2666-2667] */
 export interface ICanonicalRawData {
   stats: {
-    home: ICanonicalStats; [cite: 782]
-    away: ICanonicalStats; [cite: 782]
+    [cite_start]home: ICanonicalStats; [cite: 2668]
+    [cite_start]away: ICanonicalStats; [cite: 2668]
   };
   apiFootballData?: {
-    fixtureId: number | string | null; [cite: 783]
-    leagueId: number | string | null; [cite: 783]
-    [key: string]: any; [cite: 783]
+    [cite_start]fixtureId: number | string | null; [cite: 2669]
+    [cite_start]leagueId: number | string | null; [cite: 2669]
+    [cite_start][key: string]: any; [cite: 2669]
   };
-  detailedPlayerStats: ICanonicalPlayerStats; [cite: 784]
-  h2h_structured: any[] | null; [cite: 784]
+  [cite_start]detailedPlayerStats: ICanonicalPlayerStats; [cite: 2670]
+  [cite_start]h2h_structured: any[] | null; [cite: 2670]
   form: {
-    home_overall: string | null; [cite: 784]
-    away_overall: string | null; [cite: 784]
-    [key: string]: any; [cite: 785]
+    [cite_start]home_overall: string | null; [cite: 2670]
+    [cite_start]away_overall: string | null; [cite: 2670]
+    [cite_start][key: string]: any; [cite: 2671]
   };
   absentees: {
-    home: ICanonicalPlayer[]; [cite: 785]
-    away: ICanonicalPlayer[]; [cite: 785]
+    [cite_start]home: ICanonicalPlayer[]; [cite: 2671]
+    [cite_start]away: ICanonicalPlayer[]; [cite: 2671]
   };
   referee: {
-    name: string | null; [cite: 786]
-    style: string | null; [cite: 786]
+    [cite_start]name: string | null; [cite: 2672]
+    [cite_start]style: string | null; [cite: 2672]
   };
   contextual_factors: {
-    stadium_location: string | null; [cite: 787]
-    pitch_condition: string | null; [cite: 787]
-    weather: string | null; [cite: 787]
+    [cite_start]stadium_location: string | null; [cite: 2673]
+    [cite_start]pitch_condition: string | null; [cite: 2673]
+    [cite_start]weather: string | null; [cite: 2673]
     // === JAVÍTÁS (v54.9) ===
-    // Típus 'number'-ről 'string'-re cserélve [cite: 788]
-    match_tension_index: string | null; [cite: 789]
-    structured_weather: IStructuredWeather; // Ez már a v55.2-es (javított) típust használja
+    [cite_start]// Típus 'number'-ről 'string'-re cserélve [cite: 2674]
+    [cite_start]match_tension_index: string | null; [cite: 2674]
+    structured_weather: IStructuredWeather; [cite_start]// Ez már a v55.3-as (javított) típust használja [cite: 2675]
   };
   [key: string]: any;
 }
@@ -124,37 +126,37 @@ export interface ICanonicalRawData {
 /**
  * A fő adatcsomag, amelyet a getRichContextualData visszaad
  * és az AnalysisFlow.ts felhasznál.
-[cite: 790] */
+[cite_start][cite: 2675] */
 export interface ICanonicalRichContext {
   rawStats: {
-    home: ICanonicalStats; [cite: 790]
-    away: ICanonicalStats; [cite: 790]
+    [cite_start]home: ICanonicalStats; [cite: 2676]
+    [cite_start]away: ICanonicalStats; [cite: 2676]
   };
-  richContext: string; [cite: 791]
+  [cite_start]richContext: string; [cite: 2676]
   advancedData: {
-    home: { [key: string]: any }; [cite: 791]
-    away: { [key: string]: any }; [cite: 791]
+    [cite_start]home: { [key: string]: any }; [cite: 2677]
+    [cite_start]away: { [key: string]: any }; [cite: 2677]
   };
   form: {
-    home_overall: string | null; [cite: 792]
-    away_overall: string | null; [cite: 792]
-    [key: string]: any; [cite: 792]
+    [cite_start]home_overall: string | null; [cite: 2678]
+    [cite_start]away_overall: string | null; [cite: 2678]
+    [cite_start][key: string]: any; [cite: 2678]
   };
-  rawData: ICanonicalRawData; // Ez már tartalmazza a v55.2-es időjárás típust [cite: 793]
-  leagueAverages: { [key: string]: any }; [cite: 793]
-  oddsData: ICanonicalOdds | null; [cite: 793]
-  fromCache: boolean; [cite: 794]
+  rawData: ICanonicalRawData; [cite_start]// Ez már tartalmazza a v55.3-es időjárás típust [cite: 2678]
+  [cite_start]leagueAverages: { [key: string]: any }; [cite: 2679]
+  [cite_start]oddsData: ICanonicalOdds | null; [cite: 2679]
+  [cite_start]fromCache: boolean; [cite: 2679]
 }
 
 /**
  * A 'FixtureResult' típus központosítása.
-[cite: 794] */
+[cite_start][cite: 2680] */
 export type FixtureResult = {
-    home: number; [cite: 794]
-    away: number; [cite: 794]
-    status: 'FT'; [cite: 794]
+    [cite_start]home: number; [cite: 2680]
+    [cite_start]away: number; [cite: 2680]
+    [cite_start]status: 'FT'; [cite: 2680]
 } | {
-    status: string; [cite: 795]
-    home?: undefined; [cite: 795]
-    away?: undefined; [cite: 795]
+    [cite_start]status: string; [cite: 2681]
+    [cite_start]home?: undefined; [cite: 2681]
+    [cite_start]away?: undefined; [cite: 2681]
 } | null;
