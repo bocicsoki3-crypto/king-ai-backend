@@ -1,6 +1,13 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v54.18 (Kritikus Tizedesvessző (',') és '0' Kezelési Hiba Javítása)
-// (Ez a verzió nem tartalmazza a hibás 'runStep4_GetProphet' importot)
+// VERZIÓ: v55.1 (Egyesített AI Hívás)
+// MÓDOSÍTÁS:
+// 1. Az elavult, 3-lépéses AI hívások (runStep1_GetQuant, runStep2_GetScout,
+//    runStep3_GetStrategy) eltávolítva.
+// 2. Az importok frissítve, hogy csak az új, egyesített
+//    'runStep_UnifiedAnalysis' függvényt importálják az 'AI_Service.ts'-ből.
+// 3. A 'runFullAnalysis' frissítve, hogy a teljes adathalmazt
+//    (P1 xG, súlyozott xG, hiányzók, kontextus) egyetlen
+//    'unifiedInput' objektumként adja át az új MI függvénynek.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -12,17 +19,14 @@ import type {
     ICanonicalStats,
     ICanonicalOdds
 } from './src/types/canonical.d.ts';
-
 // A 'findMainTotalsLine'-t a központi 'utils' fájlból importáljuk
 import { findMainTotalsLine } from './providers/common/utils.js';
-
 // Adatgyűjtő funkciók
 import { 
     getRichContextualData, 
     type IDataFetchOptions, 
     type IDataFetchResponse 
 } from './DataFetch.js';
-
 // v54.16 importok
 import {
     estimateXG,
@@ -34,28 +38,25 @@ import {
     analyzeLineMovement,
     analyzePlayerDuels
 } from './Model.js';
-
-// AI Szolgáltatás Importok (CSAK A 3 LÉPÉS)
+// AI Szolgáltatás Importok (v55.1 - CSAK AZ EGYESÍTETT LÉPÉS)
 import {
-    runStep1_GetQuant,
-    runStep2_GetScout,
-    runStep3_GetStrategy // A 'runStep4_GetProphet' eltávolítva
+    runStep_UnifiedAnalysis
 } from './AI_Service.js';
 import { saveAnalysisToSheet } from './sheets.js'; 
 
 // Gyorsítótár inicializálása
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
-
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v54.18):
+* VÁLTOZÁS (v55.1):
 * - A '0' (nulla) és ',' (tizedesvessző) xG értékek átadása javítva.
+* - A 3-lépéses AI "vita" eltávolítva, helyette 1-lépéses holisztikus hívás.
 **************************************************************/
 
 // Az új, strukturált JSON válasz (v54.0)
 interface IAnalysisResponse {
     analysisData: {
-        committeeResults: any; // Ez tartalmazza majd a 'prophetic_timeline'-t is
+        committeeResults: any; 
         matchData: {
             home: string;
             away: string;
@@ -110,7 +111,6 @@ function safeConvertToNumber(value: any): number | null {
 export async function runFullAnalysis(params: any, sport: string, openingOdds: any): Promise<IAnalysisResponse | IAnalysisError> {
     let analysisCacheKey = 'unknown_analysis';
     let fixtureIdForSaving: number | string | null = null;
-    
     try {
         // === xG Komponensek és Direkt xG beolvasása ===
         const { 
@@ -127,7 +127,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             manual_A_xGA,
             // P1 (Direkt)
             manual_xg_home,
-            manual_xg_away
+             manual_xg_away
         } = params;
         // === Olvasás Vége ===
 
@@ -141,9 +141,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         
-        // Cache kulcs (v54.18)
-        analysisCacheKey = `analysis_v54.18_json_api_${sport}_${safeHome}_vs_${safeAway}`;
-        
+        // Cache kulcs (v55.1)
+        analysisCacheKey = `analysis_v55.1_unified_${sport}_${safeHome}_vs_${safeAway}`;
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
             if (cachedResult) {
@@ -164,8 +163,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
 
         // --- 2. Fő Adatgyűjtés ---
         console.log(`Adatgyűjtés indul: ${home} vs ${away}...`);
-        
-        // === JAVÍTÁS (v54.18): A 'safeConvertToNumber' segédfüggvény használata ===
         const dataFetchOptions: IDataFetchOptions = {
             sport: sport,
             homeTeamName: home,
@@ -173,8 +170,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             leagueName: leagueName,
             utcKickoff: utcKickoff,
             forceNew: forceNew,
-            
-            // P1 (Direkt)
+  
+            // P1 (Direkt) - Az Ön "Tiszta xG"-je
             manual_xg_home: safeConvertToNumber(manual_xg_home),
             manual_xg_away: safeConvertToNumber(manual_xg_away),
 
@@ -184,19 +181,17 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             manual_A_xG: safeConvertToNumber(manual_A_xG),
             manual_A_xGA: safeConvertToNumber(manual_A_xGA)
         };
-        // === JAVÍTÁS VÉGE ===
         
         const { 
             rawStats, 
             richContext,
-            advancedData, // Ez már a VÉGLEGES, priorizált xG-t tartalmazza
+            advancedData, // Ez tartalmazza az Ön P1-es "Tiszta xG"-jét
             form, 
             rawData, 
             leagueAverages = {}, 
             oddsData,
-            xgSource // Ezt a DataFetch (v54.16+) adja vissza
+            xgSource // Ez a DataFetch (v54.16+) adja vissza
         }: IDataFetchResponse = await getRichContextualData(dataFetchOptions);
-        
         console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
         
         if (rawData && rawData.apiFootballData && rawData.apiFootballData.fixtureId) {
@@ -222,27 +217,25 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const duelAnalysis = analyzePlayerDuels(rawData?.detailedPlayerStats?.key_players_ratings, sport);
         const psyProfileHome = calculatePsychologicalProfile(home, away, rawData);
         const psyProfileAway = calculatePsychologicalProfile(away, home, rawData);
-        
-        // --- 4. Statisztikai Modellezés ---
+
+        // --- 4. Statisztikai Modellezés (v55.1 Hibrid Logikával) ---
         console.log(`Modellezés indul: ${home} vs ${away}...`);
-        
-        // === JAVÍTÁS (v54.18): 'estimateXG' hívás szinkronizálása a v52.8-as Model.ts-sel ===
+        // Az 'estimateXG' (v55.1) most már az 'advancedData'-t (az Ön tiszta xG-jét)
+        // bázisként használja, és arra alkalmazza a kontextuális módosítókat.
         const { mu_h, mu_a } = estimateXG(
             home, away, rawStats, sport, form, leagueAverages, 
-            advancedData, // Ez tartalmazza a P1/P2/P3 xG-t (vagy null-t)
+            advancedData, // Ez tartalmazza az Ön P1-es "tiszta xG"-jét
             rawData, 
             psyProfileHome, 
             psyProfileAway, 
             null // currentSimProbs
         );
-        // === JAVÍTÁS VÉGE ===
 
-        const finalXgSource = xgSource;
-        
-        console.log(`${finalXgSource.toUpperCase()} XG HASZNÁLATBAN: H=${mu_h}, A=${mu_a}`);
+        const finalXgSource = xgSource; // pl. "Manual (Direct)"
+        console.log(`${finalXgSource.toUpperCase()} XG ALAPON SÚLYOZOTT VÉGLEGES XG: H=${mu_h}, A=${mu_a}`);
         
         const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
-        
+        // A szimuláció már a végleges, súlyozott xG-vel fut (mu_h, mu_a)
         const sim = simulateMatchProgress(mu_h, mu_a, mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData);
         sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a;
         sim.mu_corners_sim = mu_corners;
@@ -252,52 +245,46 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const valueBets = calculateValue(sim, mutableOddsData, sport, home, away);
         
         console.log(`Modellezés kész: ${home} vs ${away}.`);
+
+        // --- 5. LÉPÉS: EGYESÍTETT (v55.1) AI ELEMZÉS ---
+        console.log(`Egyesített Holisztikus AI Elemzés indul...`);
         
-        // --- 5. LÉPÉS: DIALEKTIKUS AI ELEMZÉS ---
-        console.log(`Dialektikus AI Elemzés indul (Quant/Scout/Strategist)...`);
-        
-        const quantInput = {
+        const unifiedInput = {
+            // Quant adatok
             simJson: sim,
-            realXgJson: { home: mu_h, away: mu_a, source: finalXgSource },
+            // A "Tiszta xG" (P1) átadása az MI-nek, hogy lássa a kiindulási alapot
+            realXgJson: { 
+                home: advancedData?.home?.xg ?? null, 
+                away: advancedData?.away?.xg ?? null 
+            },
+            xgSource: finalXgSource,
             keyPlayerRatingsJson: rawData.detailedPlayerStats.key_players_ratings,
-            valueBetsJson: valueBets
-        };
-        const step1_Quant = await runStep1_GetQuant(quantInput);
-        if (step1_Quant.error) throw new Error(step1_Quant.error);
-        
-        const scoutInput = {
+            valueBetsJson: valueBets,
+            // Scout adatok
             rawDataJson: rawData,
             detailedPlayerStatsJson: rawData.detailedPlayerStats,
-            marketIntel: marketIntel
-        };
-        const step2_Scout = await runStep2_GetScout(scoutInput);
-        if (step2_Scout.error) throw new Error(step2_Scout.error);
-        
-        const strategyInput = {
-            step1QuantJson: step1_Quant,
-            step2ScoutJson: step2_Scout,
+            marketIntel: marketIntel,
+            // Stratéga adatok
             modelConfidence: modelConfidence,
-            simJson: sim,
             sim_mainTotalsLine: sim.mainTotalsLine
         };
-        // A 'runStep3_GetStrategy' hívása,
-        // amely most már tartalmazza a 'prophetic_timeline'-t
-        const step3_Strategy = await runStep3_GetStrategy(strategyInput);
         
-        // A '...step3_Strategy' spread operátor automatikusan
-        // beleteszi a 'prophetic_timeline'-t a 'committeeResults'-be.
-        const committeeResults = {
-            ...step1_Quant,
-            ...step2_Scout,
-            ...step3_Strategy 
-        };
+        // Az elavult 3 lépés helyett egyetlen hívás:
+        const committeeResults = await runStep_UnifiedAnalysis(unifiedInput);
+        if (committeeResults.error) {
+            // Kezeljük az esetleges hibát
+            console.error("Az egyesített AI elemzés hibát adott vissza:", committeeResults.error);
+            // Hagyjuk, hogy a hibás objektum továbbmenjen, a UI kezeli
+        }
         
+        // A 'committeeResults' már a végleges, Stratéga által generált JSON objektum
         const masterRecommendation = committeeResults.master_recommendation;
-        console.log(`Dialektikus elemzés és ajánlás megkapva: ${JSON.stringify(masterRecommendation)}`);
-        
+        console.log(`Egyesített elemzés és ajánlás megkapva: ${JSON.stringify(masterRecommendation)}`);
+
         // --- 6. Válasz Elküldése és Naplózás ---
         const debugInfo = {
-            playerDataFetched: (rawData?.detailedPlayerStats?.key_players_ratings?.home) ? 'Igen (Sofascore)' : 'Nem (Fallback)',
+            playerDataFetched: (rawData?.detailedPlayerStats?.key_players_ratings?.home) ?
+                'Igen (Sofascore)' : 'Nem (Fallback)',
             realXgUsed: finalXgSource,
             fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
         };
@@ -305,7 +292,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         // A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA
         const jsonResponse: IAnalysisResponse = { 
             analysisData: {
-                committeeResults: committeeResults, // Ez tartalmazza a 'prophetic_timeline'-t
+                committeeResults: committeeResults, // Ez tartalmazza az összes új mezőt (pl. strategic_synthesis)
                 matchData: {
                     home, 
                     away, 
@@ -318,7 +305,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 valueBets: valueBets,
                 modelConfidence: modelConfidence,
                 sim: sim,
-                recommendation: masterRecommendation,
+                 recommendation: masterRecommendation,
                 xgSource: finalXgSource
             },
             debugInfo: debugInfo 
@@ -343,12 +330,11 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         }
 
         return jsonResponse;
-        
+
     } catch (error: any) {
         const homeParam = params?.home || 'N/A';
         const awayParam = params?.away || 'N/A';
         const sportParam = sport || params?.sport || 'N/A';
-        
         console.error(`Súlyos hiba az elemzési folyamatban (${sportParam} - ${homeParam} vs ${awayParam}): ${error.message}`, error.stack);
         return { error: `Elemzési hiba: ${error.message}` };
     }
