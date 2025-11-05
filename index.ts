@@ -1,13 +1,20 @@
-// --- index.ts (v54.5 - Manual xG Components) ---
-// MÓDOSÍTÁS: A /runAnalysis végpont fogadja a 4-komponensű
-// manuális xG felülbírálási adatokat.
+// --- index.ts (v60.0 - CORS Javítás) ---
+// MÓDOSÍTÁS:
+// 1. Az általános 'app.use(cors())'  lecserélve egy részletes
+//    'corsOptions' objektumra.
+// 2. Ez a javítás kifejezetten engedélyezi az Ön 'github.io' [image_37c180.png]
+//    domainjét, az 'Authorization'  fejlécet és a 'POST' metódust.
+// 3. Hozzáadva az 'app.options('*', ...)' a "preflight" kérések
+//    kezelésére, ami a 'No 'Access-Control-Allow-Origin' header' [image_37c180.png]
+//    hiba közvetlen megoldása.
+// 4. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import path from 'path'; 
-import { fileURLToPath } from 'url'; 
+import { fileURLToPath } from 'url';
 import { PORT } from './config.js';
 // Importáljuk a típusosított fő funkciókat
 import { runFullAnalysis } from './AnalysisFlow.js';
@@ -23,7 +30,41 @@ const __dirname = path.dirname(__filename);
 const app: Express = express();
 
 // --- Middleware Beállítások ---
-app.use(cors());
+
+// === JAVÍTÁS (v60.0): Részletes CORS Konfiguráció ===
+// Engedélyezett domainek listája
+const whitelist = [
+    'https://boocook3-crypto.github.io', // Az Ön éles frontend címe [image_37c180.png]
+    'http://localhost:3001',            // Helyi fejlesztés (ha a backend innen fut)
+    'http://localhost:5500',            // Helyi fejlesztés (Live Server)
+    'http://127.0.0.1:5500'             // Helyi fejlesztés (Live Server)
+];
+
+const corsOptions = {
+  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+    // Engedélyezzük a '!origin' kéréseket (pl. Postman, vagy szerver-szerver)
+    // és azokat, amik a whitelist-en vannak.
+    if (whitelist.indexOf(origin!) !== -1 || !origin) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS Hiba: A(z) ${origin} domain tiltva.`);
+      callback(new Error('Ezt a domain-t a CORS szabályzat nem engedélyezi.'));
+    }
+  },
+  methods: ['GET', 'POST', 'OPTIONS'], // Engedélyezzük a POST-ot és az OPTIONS-t (preflight)
+  allowedHeaders: ['Content-Type', 'Authorization'], // Engedélyezzük a JWT Token fejlécet
+  credentials: true
+};
+
+// 1. "Preflight" kérések kezelése (ez a 'No 'Access-Control-Allow-Origin'' [image_37c180.png] hiba oka)
+app.options('*', cors(corsOptions)); 
+
+// 2. A részletes CORS beállítások alkalmazása minden kérésre
+app.use(cors(corsOptions));
+
+// A régi, általános 'app.use(cors());'  helyett a fenti két sor lépett életbe.
+// === JAVÍTÁS VÉGE ===
+
 app.use(express.json()); // JSON body parser
 
 // --- Logoló Middleware ---
@@ -34,7 +75,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // --- API Útvonalak (Routes) ---
 
-// Hitelesítés
+// Hitelesítés (Változatlan)
 app.post('/login', async (req: Request, res: Response) => {
     try {
         const { password } = req.body;
@@ -43,14 +84,14 @@ app.post('/login', async (req: Request, res: Response) => {
         }
         const isMatch = await bcrypt.compare(password, process.env.APP_PASSWORD_HASH);
         if (!isMatch) {
-            console.warn("Sikertelen bejelentkezési kísérlet (hibás jelszó).");
+             console.warn("Sikertelen bejelentkezési kísérlet (hibás jelszó).");
             return res.status(401).json({ error: "Hitelesítés sikertelen." });
         }
         const token = jwt.sign(
            { user: 'autentikalt_felhasznalo' }, 
             process.env.JWT_SECRET as string, 
             { expiresIn: '24h' }
-         );
+        );
         res.status(200).json({ token: token });
     } catch (e: any) {
         console.error(`Hiba a /login végpont-on: ${e.message}`);
@@ -58,7 +99,7 @@ app.post('/login', async (req: Request, res: Response) => {
     }
 });
 
-// === Diagnosztikai Végpontok (/checkhash, /generatehash) ===
+// === Diagnosztikai Végpontok (Változatlan) ===
 app.get('/checkhash', async (req: Request, res: Response) => {
     try {
         const serverHash = process.env.APP_PASSWORD_HASH;
@@ -85,7 +126,6 @@ app.get('/checkhash', async (req: Request, res: Response) => {
         res.status(500).json({ error: `Diagnosztikai hiba: ${e.message}` });
     }
 });
-
 app.get('/generatehash', async (req: Request, res: Response) => {
     try {
         const passwordToHash = req.query.password as string;
@@ -106,7 +146,7 @@ app.get('/generatehash', async (req: Request, res: Response) => {
     }
 });
 
-// Védelmi Middleware
+// --- Védelmi Middleware (Változatlan) ---
 const protect = (req: Request, res: Response, next: NextFunction) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1]; 
@@ -125,7 +165,7 @@ const protect = (req: Request, res: Response, next: NextFunction) => {
     }
 };
 
-// --- Védett API Végpontok ---
+// --- Védett API Végpontok (Változatlan) ---
 
 app.get('/getFixtures', protect, async (req: Request, res: Response) => {
     try {
@@ -145,9 +185,9 @@ app.get('/getFixtures', protect, async (req: Request, res: Response) => {
     }
 });
 
+// A v59.0-ás kérésnek megfelelően a 'manual_xg_home' és 'manual_xg_away' mezőket is fogadja
 app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
     try {
-        // === JAVÍTÁS (v54.5): 4-komponensű xG felülbírálás ===
         const { 
             home, 
             away, 
@@ -157,18 +197,20 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             leagueName, 
             sport, 
             openingOdds = {},
-            manual_H_xG,  // ÚJ (Opcionális)
-            manual_H_xGA, // ÚJ (Opcionális)
-            manual_A_xG,  // ÚJ (Opcionális)
-            manual_A_xGA  // ÚJ (Opcionális)
+            // P1 Komponens (Régi)
+            manual_H_xG,
+            manual_H_xGA,
+            manual_A_xG,
+            manual_A_xGA,
+            // P1 Direkt (Új, v59.0)
+            manual_xg_home,
+            manual_xg_away
         } = req.body;
-        // === JAVÍTÁS VÉGE ===
 
         if (!home || !away || !sport || !utcKickoff || !leagueName) { 
             return res.status(400).json({ error: "Hiányzó 'sport', 'home', 'away', 'utcKickoff' vagy 'leagueName' paraméter." });
         }
         
-        // Átadjuk az új paramétereket az elemzési folyamatnak
         const params = { 
             home, 
             away, 
@@ -176,10 +218,12 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             sheetUrl, 
             utcKickoff, 
             leagueName,
-            manual_H_xG,  // ÚJ
-            manual_H_xGA, // ÚJ
-            manual_A_xG,  // ÚJ
-            manual_A_xGA  // ÚJ
+            manual_H_xG,
+            manual_H_xGA,
+            manual_A_xG,
+            manual_A_xGA,
+            manual_xg_home, // v59.0
+            manual_xg_away  // v59.0
         };
         
         const result = await runFullAnalysis(params, sport, openingOdds);
@@ -189,8 +233,7 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             return res.status(500).json({ error: result.error });
         }
         
-        res.status(200).json(result); 
-
+        res.status(200).json(result);
     } catch (e: any) {
         console.error(`Hiba a /runAnalysis végpont-on: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (runAnalysis): ${e.message}` });
@@ -206,7 +249,7 @@ app.get('/getHistory', protect, async (req: Request, res: Response) => {
         res.status(200).json(historyData);
     } catch (e: any) {
         console.error(`Hiba a /getHistory végpont-on: ${e.message}`, e.stack);
-        res.status(500).json({ error: `Szerver hiba (getHistory): ${e.message}` });
+         res.status(500).json({ error: `Szerver hiba (getHistory): ${e.message}` });
     }
 });
 
@@ -219,7 +262,7 @@ app.get('/getAnalysisDetail', protect, async (req: Request, res: Response) => {
         const detailData = await getAnalysisDetailFromSheet(id);
         if (detailData.error) {
             return res.status(500).json(detailData);
-        }
+         }
         res.status(200).json(detailData);
     } catch (e: any) {
         console.error(`Hiba a /getAnalysisDetail végpont-on: ${e.message}`, e.stack);
@@ -252,7 +295,7 @@ app.post('/askChat', protect, async (req: Request, res: Response) => {
         }
         const chatData = await getChatResponse(context, history, question);
         if (chatData.error) {
-            return res.status(500).json(chatData);
+           return res.status(500).json(chatData);
         }
         res.status(200).json(chatData);
     } catch (e: any) {
@@ -261,7 +304,7 @@ app.post('/askChat', protect, async (req: Request, res: Response) => {
     }
 });
 
-// Admin végpontok
+// --- Admin végpontok (Változatlan) ---
 app.post('/runLearning', protect, async (req: Request, res: Response) => {
     try {
         const providedKey = req.body.key || req.headers['x-admin-key'];
@@ -270,20 +313,20 @@ app.post('/runLearning', protect, async (req: Request, res: Response) => {
             return res.status(401).json({ error: "Hitelesítés sikertelen. Admin kulcs szükséges." });
         }
         
-        console.log("Öntanulási folyamat indítása (1. Lépés: Eredmény-elszámolás)...");
+         console.log("Öntanulási folyamat indítása (1. Lépés: Eredmény-elszámolás)...");
         const settlementResult = await runSettlementProcess();
         if (settlementResult.error) {
              console.error("Hiba az eredmény-elszámolás során, a tanulás leáll:", settlementResult.error);
              return res.status(500).json({ error: "Hiba az eredmény-elszámolás során.", details: settlementResult.error });
         }
         console.log(`Eredmény-elszámolás kész. Frissítve: ${settlementResult.updated} sor.`);
-
+        
         console.log("Öntanulási folyamat (2. Lépés: Kalibráció és Rating frissítés) indul...");
         const [powerRatingResult, calibrationResult] = await Promise.all([
             Promise.resolve(updatePowerRatings()),
             runConfidenceCalibration()
         ]);
-
+        
         const learningResult = {
             message: "Öntanuló modulok sikeresen lefutottak.",
             settlement: settlementResult,
@@ -295,6 +338,7 @@ app.post('/runLearning', protect, async (req: Request, res: Response) => {
              console.error("Hiba a bizalmi kalibráció során:", learningResult.confidence_calibration.error);
         }
         res.status(200).json(learningResult);
+        
      } catch (e: any) {
         console.error(`Hiba a /runLearning végpont-on: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (runLearning): ${e.message}` });
@@ -302,7 +346,7 @@ app.post('/runLearning', protect, async (req: Request, res: Response) => {
 });
 
 
-// --- Szerver Indítása ---
+// --- Szerver Indítása (Változatlan) ---
 async function startServer() {
     try {
         if (!process.env.JWT_SECRET || !process.env.APP_PASSWORD_HASH) {
