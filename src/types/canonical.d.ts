@@ -1,13 +1,12 @@
 // FÁJL: src/types/canonical.d.ts
 // VERZIÓ: v62.1 (P1 Manuális Roster Választó - 1. Lépés)
 // MÓDOSÍTÁS:
-// 1. ÚJ INTERFÉSZ: 'IPlayerStub' hozzáadva, hogy definiálja
-//    a választható játékosok listájának elemeit.
-// 2. Az 'ICanonicalRawData'  és az 'ICanonicalRichContext' 
-//    interfészek kiegészítve egy új, 'availableRosters' mezővel.
-// 3. Ez az új mező fogja tárolni a teljes csapatkeretet,
-//    amelyet a 'script.js' megjelenít a P1-es
-//    hiányzó-kiválasztáshoz.
+// 1. ÚJ INTERFÉSZ: 'IPlayerStub' hozzáadva.
+// 2. 'ICanonicalRawData' [cite: 2666-2667] és 'ICanonicalRichContext' 
+//    kiegészítve az 'availableRosters' mezővel (TS2741 Hiba [image: 438084.png] javítása).
+// 3. 'ICanonicalRichContext' -> 'advancedData'  kiegészítve a
+//    'manual_H_xG', 'manual_H_xGA' stb.  mezőkkel
+//    (TS2339 Hiba [image: 438084.png] javítása).
 // 4. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
 
 // Ezen interfészek definiálják a rendszeren belüli "adatszerződést".
@@ -54,8 +53,8 @@ export interface ICanonicalPlayerStats {
   home_absentees: ICanonicalPlayer[];
   away_absentees: ICanonicalPlayer[];
   key_players_ratings: {
-    home: { [role: string]: number };
-    away: { [role: string]: number };
+    home: { [key: string]: number };
+    away: { [key: string]: number };
   };
 }
 
@@ -156,6 +155,13 @@ export interface ICanonicalRichContext {
   advancedData: {
     home: { [key:string]: any };
     away: { [key:string]: any };
+    
+    // === ÚJ (v62.1) A TS2339 [image: 438084.png] hiba javítása ===
+    manual_H_xG?: number | null;
+    manual_H_xGA?: number | null;
+    manual_A_xG?: number | null;
+    manual_A_xGA?: number | null;
+    // === VÉGE ===
   };
   form: {
     home_overall: string | null;
