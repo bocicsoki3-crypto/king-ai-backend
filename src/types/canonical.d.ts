@@ -1,37 +1,35 @@
 // FÁJL: src/types/canonical.d.ts
-// VERZIÓ: FÁZIS 1 (Tökéletes Foci Elemzés - Adatmodell Bővítés)
+// VERZIÓ: FÁZIS 1.1 (Tökéletes Foci Elemzés - Szintaktikai Javítás)
 // MÓDOSÍTÁS:
-// 1. Az 'ICanonicalPlayer' kiterjesztve az 'on_bench' státusszal,
-//    szűkített 'role' típussal, és 'metrics' objektummal (lapok, faultok).
-// 2. Az 'ICanonicalPlayerStats' kiterjesztve a 'home_bench' és 'away_bench' listákkal.
-// 3. Az 'ICanonicalRawData' kiterjesztve a 'manager_tactics' objektummal.
+// 1. A Fázis 1-es bővítések (bench, metrics, manager_tactics) implementálva.
+// 2. Az összes, előzőleg generált szintaktikai hiba (TS1005, TS1109, stb.)
+//    javítva a helyes behúzásokkal és sortörésekkel.
 
-[cite_start]// Ezen interfészek definiálják a rendszeren belüli "adatszerződést". [cite: 980]
-[cite_start]// A Providerek (pl. apiSportsProvider) felelőssége, hogy az API válaszaikat [cite: 981]
+// Ezen interfészek definiálják a rendszeren belüli "adatszerződést".
+// A Providerek (pl. apiSportsProvider) felelőssége, hogy az API válaszaikat
 // ezen interfészeknek megfelelő objektumokká alakítsák.
-[cite_start]// A Fogyasztók (pl. Model, AnalysisFlow) ezen interfészekre támaszkodnak. [cite: 982]
+// A Fogyasztók (pl. Model, AnalysisFlow) ezen interfészekre támaszkodnak.
 
 /**
  * A csapatok alapvető statisztikai adatai, amelyeket a Model.ts vár.
- [cite_start][cite: 983] */
+ */
 export interface ICanonicalStats {
   gp: number;           // Games Played (Lejátszzott meccsek)
-  [cite_start]gf: number; [cite: 984] // Goals For (Lőtt gólok / Pontok)
-  [cite_start]ga: number; [cite: 985] // Goals Against (Kapott gólok / Pontok)
-  [cite_start]form: string | null; [cite: 986] // Forma string (pl. "WWLDW")
-  [key: string]: any;  // Egyéb, nem szigorúan típusos statisztikák
+  gf: number;           // Goals For (Lőtt gólok / Pontok)
+  ga: number;           // Goals Against (Kapott gólok / Pontok)
+  form: string | null;  // Forma string (pl. "WWLDW")
+  [key: string]: any;   // Egyéb, nem szigorúan típusos statisztikák
 }
 
 /**
  * Egyetlen játékos státusza.
  * === BŐVÍTVE (FÁZIS 1) a "Tökéletes Foci Elemzés" Terv alapján ===
- [cite_start][cite: 987] */
+ */
 export interface ICanonicalPlayer {
   name: string;
   role: 'G' | 'D' | 'M' | 'F' | 'Ismeretlen'; // Típus szűkítve
   importance: 'key' | 'regular' | 'substitute' | 'bench'; // 'bench' hozzáadva
-  status: 'confirmed_out' | 'doubtful' |
- [cite_start][cite: 988] 'active' | 'on_bench'; // 'on_bench' hozzáadva
+  status: 'confirmed_out' | 'doubtful' | 'active' | 'on_bench'; // 'on_bench' hozzáadva
   rating_last_5?: number;    // Opcionális, de javasolt
 
   // === ÚJ (FÁZIS 1): Játékos-specifikus viselkedési metrikák ===
@@ -46,7 +44,7 @@ export interface ICanonicalPlayer {
 /**
  * Részletes játékos- és hiányzó-adatok.
  * === BŐVÍTVE (FÁZIS 1) a "Tökéletes Foci Elemzés" Terv alapján ===
- [cite_start][cite: 989] */
+ */
 export interface ICanonicalPlayerStats {
   home_absentees: ICanonicalPlayer[]; // Akik nincsenek a keretben
   away_absentees: ICanonicalPlayer[]; // Akik nincsenek a keretben
@@ -57,71 +55,70 @@ export interface ICanonicalPlayerStats {
 
   key_players_ratings: {
     home: { [role: string]: number };
- [cite_start][cite: 990] away: { [role: string]: number };
+    away: { [role: string]: number };
   };
 }
 
 /**
  * A piaci szorzók kanonikus formája.
- [cite_start][cite: 991] */
+ */
 export interface ICanonicalOdds {
   current: { name: string; price: number }[];
   allMarkets: {
     key: string;
- [cite_start][cite: 992] outcomes: {
+    outcomes: {
       name: string;
       price: number;
       point?: number | null;
     }[];
   }[];
-  [cite_start]fullApiData: any; [cite: 993] // A nyers API válasz tárolása (pl. 'findMainTotalsLine' számára)
+  fullApiData: any; // A nyers API válasz tárolása (pl. 'findMainTotalsLine' számára)
   fromCache: boolean;
 }
 
 /**
  * Strukturált időjárási adatokat definiál.
- [cite_start][cite: 994] * A mezők opcionálisak (?), hogy a nem-foci providerek is
+ * A mezők opcionálisak (?), hogy a nem-foci providerek is
  * megfeleljenek az interfésznek anélkül, hogy teljes adatot adnának.
- [cite_start][cite: 995] */
+ */
 export interface IStructuredWeather {
     description: string;
     temperature_celsius: number | null;
     humidity_percent?: number | null;
-    wind_speed_kmh?: number |
- [cite_start][cite: 996] null;
+    wind_speed_kmh?: number | null;
     precipitation_mm?: number | null;
 }
 
 /**
  * A "nyers" adatcsomag, amelyet a CoT (Chain-of-Thought) elemzéshez
  * és a Model.ts-hez gyűjtünk.
- [cite_start][cite: 997] * === MÓDOSÍTVA (v54.9) ===
+ * === MÓDOSÍTVA (v54.9) ===
  * A 'match_tension_index' típusa 'number'-ről 'string'-re módosítva,
  * hogy megfeleljen a Model.ts várakozásainak (.toLowerCase()).
  * === BŐVÍTVE (FÁZIS 1) a "Tökéletes Foci Elemzés" Terv alapján ===
- [cite_start][cite: 998] */
+ */
 export interface ICanonicalRawData {
   stats: {
     home: ICanonicalStats;
     away: ICanonicalStats;
   };
- [cite_start][cite: 999] apiFootballData?: {
+  apiFootballData?: {
     fixtureId: number | string | null;
     leagueId: number | string | null;
     [key: string]: any;
- [cite_start][cite: 1000] };
+  };
   detailedPlayerStats: ICanonicalPlayerStats; // Ez már a BŐVÍTETT Fázis 1-es típust használja
   h2h_structured: any[] | null;
   form: {
     home_overall: string | null;
     away_overall: string | null;
- [cite_start][cite: 1001] [key: string]: any;
+    [key: string]: any;
   };
   absentees: {
     home: ICanonicalPlayer[];
     away: ICanonicalPlayer[];
   };
- [cite_start][cite: 1002] referee: {
+  referee: {
     name: string | null;
     style: string | null;
   };
@@ -136,14 +133,14 @@ export interface ICanonicalRawData {
     away_primary_sub_role?: 'M' | 'F';
   };
 
- [cite_start][cite: 1003] contextual_factors: {
+  contextual_factors: {
     stadium_location: string | null;
     pitch_condition: string | null;
     weather: string | null;
- [cite_start][cite: 1004] // === JAVÍTÁS (v54.9) ===
+    // === JAVÍTÁS (v54.9) ===
     // Típus 'number'-ről 'string'-re cserélve
     match_tension_index: string | null;
- [cite_start][cite: 1005] structured_weather: IStructuredWeather;
+    structured_weather: IStructuredWeather;
   };
   [key: string]: any;
 }
@@ -151,27 +148,27 @@ export interface ICanonicalRawData {
 /**
  * A fő adatcsomag, amelyet a getRichContextualData visszaad
  * és az AnalysisFlow.ts felhasznál.
- [cite_start][cite: 1006] */
+ */
 export interface ICanonicalRichContext {
   rawStats: {
     home: ICanonicalStats;
     away: ICanonicalStats;
   };
   richContext: string;
- [cite_start][cite: 1007] advancedData: {
+  advancedData: {
     home: { [key: string]: any };
     away: { [key: string]: any };
   };
- [cite_start][cite: 1008] form: {
+  form: {
     home_overall: string | null;
     away_overall: string | null;
     [key: string]: any;
   };
-  [cite_start]rawData: ICanonicalRawData; [cite: 1009] // Ez már tartalmazza a Fázis 1-es adatokat
+  rawData: ICanonicalRawData; // Ez már tartalmazza a Fázis 1-es adatokat
   leagueAverages: { [key: string]: any };
   oddsData: ICanonicalOdds | null;
   fromCache: boolean;
- [cite_start][cite: 1010] }
+}
 
 /**
  * A 'FixtureResult' típus központosítása.
@@ -180,7 +177,7 @@ export type FixtureResult = {
     home: number;
     away: number;
     status: 'FT';
- [cite_start][cite: 1011] } | {
+} | {
     status: string;
     home?: undefined;
     away?: undefined;
