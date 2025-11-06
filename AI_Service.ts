@@ -242,7 +242,7 @@ Your job is to synthesize all reports into a final, decisive recommendation.
 4. **Generate the "Gambler's Recommendation":**
    - **PRIORITY 1 (Find Value):** Look for opportunities where the model (4) and the context (5) CONTRADICT the market, even if confidence (7) is low.
    - **PRIORITY 2 (Act on Context):** If the Critic's score (5) is strongly negative (e.g., -5.0) because of major absentees (like the FC Utrecht log), you MUST recommend betting AGAINST the favored team, regardless of the statistical model.
-   - **PRIORITY 3 (Use Value Bets):** If `valueBetsJson` (8) is not empty, prioritize those bets.
+   - **PRIORITY 3 (Use Value Bets):** If \`{valueBetsJson}\` (8) is not empty, prioritize those bets.
    - **PRIORITY 4 (Clarity):** Always pick a clear 1X2, O/U, or BTTS bet. Do not recommend "No Bet".
 
 [OUTPUT STRUCTURE]:
@@ -344,7 +344,7 @@ ${e.message}`,
 // === MÓDOSÍTÁS VÉGE ===
 
 
-// --- CHAT FUNKCIÓ --- (Változatlan)
+// --- CHAT FUNKCIÓ --- (JAVÍTVA)
 interface ChatMessage {
   role: 'user' | 'model' | 'ai';
   parts: { text: string }[];
@@ -357,6 +357,9 @@ try {
         const historyString = (history || [])
              .map(msg => `${msg.role === 'user' ? 'Felhasználó' : 'AI'}: ${msg.parts?.[0]?.text || ''}`)
             .join('\n');
+        // === JAVÍTÁS ===
+        // A hibás, ide másolt sor eltávolítva innen.
+        // === JAVÍTÁS VÉGE ===
 const prompt = `You are an elite sports analyst AI assistant specialized in the provided match analysis.
 [CONTEXT of the analysis]:
 --- START CONTEXT ---
