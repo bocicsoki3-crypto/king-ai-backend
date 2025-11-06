@@ -152,8 +152,7 @@ try {
             manual_A_xG, 
             manual_A_xGA,
             // P1 (Hiányzók)
-            manual_absentees // 
-<- MÓDOSÍTÁS (6 FŐS BIZOTTSÁG)
+            manual_absentees // <- MÓDOSÍTÁS (6 FŐS BIZOTTSÁG)
         
         } = params;
 // === Olvasás Vége ===
@@ -328,6 +327,8 @@ const criticReport = await runStep_Critic(criticInput);
 
         // === 6. ÜGYNÖK (STRATÉGA): Végső döntés ===
         console.log(`[Lánc 6/6] Stratéga Ügynök: Végső döntés meghozatala...`);
+        // === JAVÍTÁS (TS1005 / TS1128) ===
+        // A hibás 'strategistInput' objektum javítva.
 const strategistInput = {
             matchData: { home, away, sport, leagueName },
             quantReport: { pure_mu_h: pure_mu_h, pure_mu_a: pure_mu_a, source: quantSource },
@@ -338,15 +339,15 @@ const strategistInput = {
     modelConfidence: modelConfidence, // A Statisztikai bizalom
             final_confidence_score: parseFloat(finalConfidenceScore.toFixed(1)), // === MÓDOSÍTÁS (v63.1) === A kiszámolt Végső bizalom
             rawDataJson: rawData,
-            // === JAVÍTÁS (TS1005): A hiányzó kulcsok visszakerültek ===
             realXgJson: { // A P1 "Tiszta" xG átadása
                 manual_H_xG: advancedData?.manual_H_xG ?? null,
                 manual_H_xGA: advancedData?.manual_H_xGA ?? null,
                 manual_A_xG: advancedData?.manual_A_xG ?? null,
                 manual_A_xGA: advancedData?.manual_A_xGA ?? null
             }
-            // === JAVÍTÁS VÉGE ===
         };
+        // === JAVÍTÁS VÉGE ===
+
 const strategistReport = await runStep_Strategist(strategistInput);
         
         if (strategistReport.error) {
