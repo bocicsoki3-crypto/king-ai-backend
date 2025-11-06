@@ -340,14 +340,10 @@ const strategistInput = {
             rawDataJson: rawData,
             // === JAVÍTÁS (TS1005): A hiányzó kulcsok visszakerültek ===
             realXgJson: { // A P1 "Tiszta" xG átadása
-                manual_H_xG: advancedData?.manual_H_xG ??
-null,
-                manual_H_xGA: advancedData?.manual_H_xGA ??
-null,
-                manual_A_xG: advancedData?.manual_A_xG ??
-null,
-                manual_A_xGA: advancedData?.manual_A_xGA ??
-null
+                manual_H_xG: advancedData?.manual_H_xG ?? null,
+                manual_H_xGA: advancedData?.manual_H_xGA ?? null,
+                manual_A_xG: advancedData?.manual_A_xG ?? null,
+                manual_A_xGA: advancedData?.manual_A_xGA ?? null
             }
             // === JAVÍTÁS VÉGE ===
         };
