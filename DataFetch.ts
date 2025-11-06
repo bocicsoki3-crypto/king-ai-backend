@@ -238,17 +238,17 @@ finalResult.rawData.detailedPlayerStats = sofascoreData.playerStats;
 } else {
                 // 2. Eset: A Sofascore (P2) csődöt mondott
                 console.warn(`[DataFetch] Figyelmeztetés: A Sofascore (P2) nem adott vissza hiányzó- vagy értékelés-adatot. Fallback indítása az 'apiSportsProvider' (P4) felé...`);
-const fixtureId = baseResult.rawData.apiFootballData?.fixtureId;
-                const homeTeamId = baseResult.rawData.apiFootballData?.homeTeamId;
-                // === JAVÍTÁS (TS2552) ===
-                const awayTeamId = baseResult.rawData.apiFootballData?.awayTeamId;
-// 'baseBResult' -> 'baseResult'
-                // === JAVÍTÁS VÉGE ===
+// === JAVÍTOTT RÉSZLET (DataFetch.ts.txt) ===
                 if (fixtureId && homeTeamId && awayTeamId) {
                     try {
+                        // === JAVÍTÁS (TS2554): Kiolvassuk a szezont a baseResult-ból ===
+                        const foundSeason = baseResult.rawData.apiFootballData?.foundSeason;
+                        if (!foundSeason) {
+                             throw new Error("P4 Fallback hiba: hiányzó 'foundSeason'.");
+                        }
                         // Hívjuk az 'apiSportsProvider'-ben (v58.1) lévő exportált funkciót
    
-                     const apiSportsPlayerStats = await getApiSportsLineupsAndInjuries(fixtureId, options.sport, homeTeamId, awayTeamId);
+                     const apiSportsPlayerStats = await getApiSportsLineupsAndInjuries(fixtureId, options.sport, homeTeamId, awayTeamId, foundSeason); /* <-- AZ 5. ARGUMENTUM HOZZÁADVA */
 if (apiSportsPlayerStats) {
                             console.log(`[DataFetch] Felülírás (P4 Fallback): A 'sofascoreProvider' üres adatai felülírva az 'apiSportsProvider' (P4) adataival.`);
 finalResult.rawData.detailedPlayerStats = apiSportsPlayerStats;
