@@ -950,6 +950,7 @@ console.log(`API-SPORTS (${sport}): Párhuzamos lekérések befejezve.`);
         },
         apiFootballData: {
              homeTeamId, awayTeamId, leagueId, fixtureId, fixtureDate,
+            foundSeason: foundSeason,
            
   lineups: null, liveStats: null, 
             seasonStats: { home: apiSportsHomeSeasonStats, away: apiSportsAwaySeasonStats }
