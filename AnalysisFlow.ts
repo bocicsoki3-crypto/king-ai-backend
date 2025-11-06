@@ -338,6 +338,7 @@ const strategistInput = {
     modelConfidence: modelConfidence, // A Statisztikai bizalom
             final_confidence_score: parseFloat(finalConfidenceScore.toFixed(1)), // === MÓDOSÍTÁS (v63.1) === A kiszámolt Végső bizalom
             rawDataJson: rawData,
+            // === JAVÍTÁS (TS1005): A hiányzó kulcsok visszakerültek ===
             realXgJson: { // A P1 "Tiszta" xG átadása
                 manual_H_xG: advancedData?.manual_H_xG ??
 null,
@@ -348,6 +349,7 @@ null,
                 manual_A_xGA: advancedData?.manual_A_xGA ??
 null
             }
+            // === JAVÍTÁS VÉGE ===
         };
 const strategistReport = await runStep_Strategist(strategistInput);
         
