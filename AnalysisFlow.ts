@@ -4,8 +4,8 @@
 // 1. A 'runFullAnalysis' ÁTÍRVA, hogy a 'runStep_Critic' új kimenetét ('contradiction_score') kezelje.
 // 2. A Végső Bizalmi Pontszám ('final_confidence_score') most már
 //    a TypeScriptben kerül kiszámításra (5.5 Lépés).
-// 3. ÚJ LOGIKA (6. Lépés): A rendszer a 'finalConfidenceScore' alapján
-//    választ a 'Banker' (konzervatív) vagy a 'Gambler' (agresszív) prompt között.
+// 3. ÚJ LOGIKA (6. Lépés): A rendszer párhuzamosan futtatja
+//    a 'Banker' (konzervatív) és a 'Gambler' (agresszív) promptot.
 // 4. A 'runStep_Strategist' hívás módosítva, hogy paraméterként kapja a promptot.
 // 5. TÖRÖLVE: A 'runStep_UnifiedAnalysis' import és hívás.
 // 6. A P1 Manuális Hiányzók ('manual_absentees') most már helyesen kerülnek átadásra a 'DataFetch' (2. Ügynök) felé.
@@ -70,7 +70,10 @@ interface IAnalysisResponse {
             quant: { mu_h: number, mu_a: number, source: string };
 specialist: { mu_h: number, mu_a: number, log: any };
             critic: any;
-            strategist: any; // Ez most már a "Banker" VAGY a "Gambler" jelentése
+            strategist: { // === MÓDOSÍTVA (v64.0) ===
+                banker: any;
+                gambler: any;
+            };
         };
 matchData: {
             home: string;
@@ -86,7 +89,7 @@ string;
         modelConfidence: number; // Ez a Quant/Statisztikai bizalom (4. Ügynök)
         finalConfidenceScore: number; // === ÚJ (v63.1) === Ez a Súlyozott (Végső) bizalom
         sim: any; 
-        recommendation: any;
+        recommendation: any; // Ez az alapértelmezett (Banker) ajánlás lesz
         xgSource: 'Manual (Direct)' |
 'Manual (Components)' | 'API (Real)' | 'Calculated (Fallback)';
         // === ÚJ (v62.1) ===
@@ -153,7 +156,8 @@ try {
             manual_A_xG, 
             manual_A_xGA,
             // P1 (Hiányzók)
-            manual_absentees // <- MÓDOSÍTÁS (6 FŐS BIZOTTSÁG)
+            manual_absentees // 
+<- MÓDOSÍTÁS (6 FŐS BIZOTTSÁG)
         
         } = params;
 // === Olvasás Vége ===
@@ -327,22 +331,18 @@ const criticReport = await runStep_Critic(criticInput);
         // === MÓDOSÍTÁS VÉGE ===
 
 
-        // === MÓDOSÍTÁS (v64.0): 6. LÉPÉS (STRATÉGA) - Személyiségválasztás ===
-        const strategistPromptTemplate = finalConfidenceScore >= 6.0 ? PROMPT_STRATEGIST_BANKER_V64 : PROMPT_STRATEGIST_GAMBLER_V64;
-        const strategistStepName = finalConfidenceScore >= 6.0 ? "Step_Strategist (Banker)" : "Step_Strategist (Gambler)";
+        // === MÓDOSÍTÁS (v64.0): 6. LÉPÉS (STRATÉGA) - Párhuzamos futtatás ===
+        console.log(`[Lánc 6/6] Stratéga Ügynök: Párhuzamos személyiség-futtatás... (Banker vs. Gambler)`);
         
-        console.log(`[Lánc 6/6] Stratéga Ügynök kiválasztva: ${strategistStepName} (Bizalom: ${finalConfidenceScore.toFixed(1)})`);
-        
-const strategistInput = {
+        const baseStrategistInput = {
             matchData: { home, away, sport, leagueName },
             quantReport: { pure_mu_h: pure_mu_h, pure_mu_a: pure_mu_a, source: quantSource },
             specialistReport: { mu_h: mu_h, mu_a: mu_a, log: modifierLog },
             simulatorReport: sim,
             criticReport: criticReport, // Az 5. Ügynök jelentése
-        
-    modelConfidence: modelConfidence, // A Statisztikai bizalom
+            modelConfidence: modelConfidence, // A Statisztikai bizalom
             final_confidence_score: parseFloat(finalConfidenceScore.toFixed(1)), // A kiszámolt Végső bizalom
-            valueBetsJson: valueBets, // Átadjuk a Gamblernek
+            valueBetsJson: valueBets,
             rawDataJson: rawData,
             realXgJson: { // A P1 "Tiszta" xG átadása
                 manual_H_xG: advancedData?.manual_H_xG ?? null,
@@ -352,19 +352,27 @@ const strategistInput = {
             }
         };
 
-const strategistReport = await runStep_Strategist(
-            strategistInput, 
-            strategistPromptTemplate, 
-            strategistStepName
-        );
+        const [bankerReport, gamblerReport] = await Promise.all([
+            runStep_Strategist(
+                baseStrategistInput, 
+                PROMPT_STRATEGIST_BANKER_V64, 
+                "Step_Strategist (Banker)"
+            ),
+            runStep_Strategist(
+                baseStrategistInput, 
+                PROMPT_STRATEGIST_GAMBLER_V64, 
+                "Step_Strategist (Gambler)"
+            )
+        ]);
         // === MÓDOSÍTÁS VÉGE ===
         
-        if (strategistReport.error) {
-            console.error("A Stratéga (6. Ügynök) hibát adott vissza:", strategistReport.error);
+        if (bankerReport.error || gamblerReport.error) {
+            console.error("A Stratéga (6. Ügynök) hibát adott vissza:", bankerReport.error || gamblerReport.error);
 }
         
-        const masterRecommendation = strategistReport.master_recommendation;
-console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterRecommendation)}`);
+        // Az alapértelmezett ajánlás a "Bankár" (konzervatív) ajánlása
+        const masterRecommendation = bankerReport.master_recommendation;
+console.log(`Bizottsági Lánc Befejezve. Ajánlás (Bankár): ${JSON.stringify(masterRecommendation)}`);
 
         // --- 7. Válasz Elküldése és Naplózás ---
         const debugInfo = {
@@ -376,7 +384,7 @@ console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterReco
 'Ismeretlen'
         };
         
-        // === A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA (MÓDOSÍTVA v63.1) ===
+        // === A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA (MÓDOSÍTVA v64.0) ===
         const jsonResponse: IAnalysisResponse = { 
             analysisData: {
                 committee: {
@@ -384,7 +392,10 @@ console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterReco
             
         specialist: { mu_h: mu_h, mu_a: mu_a, log: modifierLog },
                     critic: criticReport,
-                    strategist: strategistReport // Ez most már a "Banker" VAGY a "Gambler" jelentése
+                    strategist: { // Most már mindkettőt tartalmazza
+                        banker: bankerReport,
+                        gambler: gamblerReport
+                    }
                 },
                 matchData: {
          
@@ -402,7 +413,7 @@ console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterReco
                 finalConfidenceScore: parseFloat(finalConfidenceScore.toFixed(1)), // Végső bizalom
          
        sim: sim,
-                recommendation: masterRecommendation,
+                recommendation: masterRecommendation, // Az alapértelmezett a Bankáré
                 xgSource: finalXgSource,
                 
                 // === (v62.1) ===
