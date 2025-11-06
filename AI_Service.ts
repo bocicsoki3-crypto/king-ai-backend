@@ -1,11 +1,12 @@
-// --- AI_Service.ts (v63.1 - Kvantitatív Kritikus & Súlyozó Stratéga) ---
-// MÓDOSÍTÁS (Fejlesztési Javaslat 2. és 3.):
-// 1. MÓDOSÍTVA: 'PROMPT_CRITIC_V63' (5. Ügynök) átalakítva, hogy a szöveges
-//    'key_contradictions' helyett egy számszerű 'contradiction_score'-t adjon vissza.
-// 2. MÓDOSÍTVA: 'PROMPT_STRATEGIST_V63' (6. Ügynök) átalakítva.
-// 3. A Stratéga már nem "generálja" a végső bizalmat, hanem
-//    "megkapja" azt ({final_confidence_score}) a TypeScript kódtól (AnalysisFlow).
-// 4. A Stratéga feladata most már a kapott pontszám *megindoklása*.
+// --- AI_Service.ts (v64.0 - Banker & Gambler Személyiségek) ---
+// MÓDOSÍTÁS (Fejlesztési Javaslat 4.):
+// 1. A 'PROMPT_STRATEGIST_V63' átnevezve 'PROMPT_STRATEGIST_BANKER_V64'-re,
+//    és kiegészítve konzervatív, tőkevédelmi utasításokkal.
+// 2. ÚJ PROMPT: 'PROMPT_STRATEGIST_GAMBLER_V64' létrehozva,
+//    amely az érték (value) és a kontextuális (P1) felülbírálásra fókuszál.
+// 3. MÓDOSÍTVA: A 'runStep_Strategist' függvény most már paraméterként
+//    kapja a promptot, hogy az 'AnalysisFlow' mindkét személyiséget hívhassa.
+// 4. A Kritikus (5. Ügynök) promptja változatlan (v63.1).
 
 import { _callGemini } from './DataFetch.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
@@ -119,11 +120,8 @@ return template;
 }
 
 
-// === TÖRÖLVE (v63.0): 'PROMPT_UNIFIED_STRATEGIST_V55' ===
-// Ez a prompt okozta a "Dupla Számítás" hibát.
-
-// === MÓDOSÍTOTT (v63.1): 5. ÜGYNÖK (A KRITIKUS) PROMPT ===
-// Most már 'contradiction_score'-t ad vissza.
+// === Változatlan (v63.1): 5. ÜGYNÖK (A KRITIKUS) PROMPT ===
+// Ez továbbra is a 'contradiction_score'-t adja vissza.
 const PROMPT_CRITIC_V63 = `
 TASK: You are 'The Critic', the 5th Agent in a 6-agent analysis chain.
 Your job is to find **CONTRADICTIONS** and **RISKS** between the simulation (Agent 4) and external factors (Market, Raw Data).
@@ -156,19 +154,17 @@ Ez ellentmond a szimulációnak (1), amely a statisztikák alapján még mindig 
 }
 `;
 
-// === MÓDOSÍTOTT (v63.1): 6. ÜGYNÖK (A STRATÉGA) PROMPT ===
-// Most már megkapja a 'final_confidence_score'-t és csak indokolnia kell.
-const PROMPT_STRATEGIST_V63 = `
-TASK: You are 'The Strategist', the 6th and FINAL Agent.
-You are the King.
-Your job is to synthesize ALL previous reports into a single, final, decisive analysis and recommendation.
-You resolve all contradictions.
+// === ÚJ (v64.0): 6. ÜGYNÖK (A BANKÁR) PROMPT ===
+// Ez az alapértelmezett, konzervatív Stratéga
+export const PROMPT_STRATEGIST_BANKER_V64 = `
+TASK: You are 'The Banker', the 6th and FINAL Agent.
+Your job is to synthesize all reports into a final, decisive recommendation.
+**YOUR PERSONALITY: You are a CONSERVATIVE risk manager. Your primary goal is capital protection.**
 
 [INPUTS - THE CHAIN OF THOUGHT]:
 1. Match Data: {matchData.home} vs {matchData.away} ({matchData.leagueName})
 2. Agent 1 (Quant) Report:
    - "Pure xG": H={quantReport.pure_mu_h}, A={quantReport.pure_mu_a}
-   - P1 Input Used: {realXgJson}
 3. Agent 3 (Specialist) Report:
    - "Final Weighted xG": H={specialistReport.mu_h}, A={specialistReport.mu_a}
 4. Agent 4 (Simulator) Report:
@@ -180,21 +176,20 @@ You resolve all contradictions.
 6. Statistical Model Confidence: {modelConfidence}/10
 7. **Final Calculated Confidence (Quant + Critic): {final_confidence_score}/10**
 
-[YOUR TASK - FINAL 
-DECISION]:
-Synthesize everything.
-- Start with the Critic's summary (5).
-- Acknowledge the Quant (2) vs Specialist (3) modification.
-- Address the Critic's risks (5).
-- Generate the Prophetic Timeline based ONLY on the FINAL Weighted xG (3) and Context (5).
-- **Your main task is to JUSTIFY the "Final Calculated Confidence" (7).** Explain HOW the "Statistical Confidence" (6) was adjusted by the "Critic's Report" (5) to reach the final score.
+[YOUR TASK - FINAL DECISION (BANKER)]:
+1. Synthesize everything, starting with the Critic's summary (5).
+2. Generate the Prophetic Timeline based on the Final Weighted xG (3) and Context (5).
+3. **Justify the "Final Calculated Confidence" (7).** Explain HOW the "Statistical Confidence" (6) was adjusted by the "Critic's Report" (5) to reach the final score.
+4. **Generate the "Banker's Recommendation":**
+   - **PRIORITY 1 (Capital Protection):** If the Final Confidence (7) is low (< 5.0) OR the Critic's Risks (5) are high, you MUST choose the safest possible recommendation. (e.g., If the tip is "Home Win", suggest "Home 1X" or "Home DNB". If the tip is "Over 2.5", suggest "Over 2.0" or avoid it).
+   - **PRIORITY 2 (Clarity):** Always pick a clear 1X2, O/U, or BTTS bet. Do not recommend "No Bet".
+
 [OUTPUT STRUCTURE]:
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
 {
-  "prophetic_timeline": "<(A PRÓFÉTA) Egy 2-3 mondatos, valósághű narratíva a meccs várható lefolyásáról. Szintetizáld a 'Final Weighted xG'-t (3) és a 'Critic's Tactical Summary'-t (5). Példa: 'A meccs tapogatózóan indul, de a Kritikus által jelzett (5) hiányzó hazai védő miatt a vendégek szereznek vezetést az első félidőben. A második félidőben a súlyozott xG (3) fölény érvényesül, és a 70. perc környékén kiegyenlítenek.'>",
+  "prophetic_timeline": "<(A PRÓFÉTA) Egy 2-3 mondatos, valósághű narratíva a meccs várható lefolyásáról. Szintetizáld a 'Final Weighted xG'-t (3) és a 'Critic's Tactical Summary'-t (5).>",
   
-  "strategic_synthesis": "<Egy 2-3 bekezdéses holisztikus elemzés. Magyarázd el a teljes láncot. Térj ki a 'Pure xG'-re (2), indokold meg, hogy a kontextus (3) miért módosította. **KRITIKUS: Kezeld a 'Critic's Risks'-t (5)!** Ha a piac 
-(5) és a modell (4) ellentétes, dönts. Example: 'A Quant (2) 1.8-1.2-t javasolt, de a Specialista (3) ezt 1.5-1.5-re módosította a hiányzók miatt. Bár a modell (4) így döntetlent vár, a Kritikus (5) helyesen jelzi, hogy a piac erősen a hazaiak felé mozog. Bíva a piaci jelzésben a modell statikusságával szemben, a hazai győzelem felé hajlunk...'>",
+  "strategic_synthesis": "<Egy 2-3 bekezdéses holisztikus elemzés. Magyarázd el a teljes láncot. Térj ki a 'Pure xG'-re (2), indokold meg, hogy a kontextus (3) miért módosította. Kezeld a 'Critic's Risks'-t (5)!>",
   
   "micromodels": {
     "btts_analysis": "<BTTS elemzés.
@@ -207,28 +202,79 @@ Csak ha a simulatorReport.mu_corners_sim > 0.>\\nBizalom: [Alacsony/Közepes/Mag
 Csak ha a simulatorReport.mu_cards_sim > 0.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]"
   },
   
-  "final_confidence_report": "**{final_confidence_score}/10** - Részletes indoklás. <INDOKOLD MEG a {final_confidence_score}-es végső pontszámot. Vessd össze a {modelConfidence} (stat) bizalmat a 'Critic's Risks' (5) és a {criticReport.contradiction_score} (kockázati pontszám) által jelzett tényezőkkel. Example: 'A statisztikai bizalom (6.8/10) közepes volt, de a Kritikus jelentős (-3.0) kockázati pontszámot adott a kulcsfontosságú hazai hiányzók (5) miatt, így a végső bizalom 4.5/10-re csökkent.'>",
+  "final_confidence_report": "**{final_confidence_score}/10** - Részletes indoklás. <INDOKOLD MEG a {final_confidence_score}-es végső pontszámot. Vessd össze a {modelConfidence} (stat) bizalmat a 'Critic's Risks' (5) és a {criticReport.contradiction_score} (kockázati pontszám) által jelzett tényezőkkel.>",
   
   "master_recommendation": {
-    "__INSTRUCTION__": "**KRITIKUS FONTOSSÁGÚ:** Soha ne adj 'No Bet' vagy 'Nincs Tipp' ajánlást. MINDIG válaszd ki a legvalószínűbb kimenetelt a fő piacok (1X2, O/U, BTTS) közül, még akkor is, ha a bizalom alacsony. A bizalmat a 'final_confidence' mezőben tükrözd, ne az ajánlás hiányával.",
-    "recommended_bet": "<A végső, szintetizált ajánlás (CSAK fő piac: 1X2, O/U, BTTS, Moneyline)>",
+    "recommended_bet": "<A KONZERVATÍV, 'Bankár' ajánlás (pl. 'Home Win 1X' vagy 'Over 2.0')>",
     "final_confidence": {final_confidence_score},
-    "brief_reasoning": "<Egyetlen, tömör magyar mondatos indoklás, amely tükrözi a szintézist és a Kritikus (5) jelentésére adott választ>"
+    "brief_reasoning": "<Egyetlen, tömör magyar mondatos indoklás, amely a konzervatív döntést és a kockázatokat hangsúlyozza>"
   }
 }
 `;
-// === MÓDOSÍTÁS VÉGE ===
 
+// === ÚJ (v64.0): 6. ÜGYNÖK (A SZERENCSEJÁTÉKOS) PROMPT ===
+// Ez az agresszív, értékközpontú Stratéga
+export const PROMPT_STRATEGIST_GAMBLER_V64 = `
+TASK: You are 'The Gambler', the 6th and FINAL Agent.
+Your job is to synthesize all reports into a final, decisive recommendation.
+**YOUR PERSONALITY: You are an AGGRESSIVE value investor. Your primary goal is finding high-value opportunities, even if they are high risk.**
 
-// === TÖRÖLVE (v63.0): EGYESÍTETT (v55.1) AI Elemzési Lépés ===
-/*
-export async function runStep_UnifiedAnalysis(data: UnifiedInput): Promise<any> {
-    // ... TÖRÖLVE ...
+[INPUTS - THE CHAIN OF THOUGHT]:
+1. Match Data: {matchData.home} vs {matchData.away} ({matchData.leagueName})
+2. Agent 1 (Quant) Report:
+   - "Pure xG": H={quantReport.pure_mu_h}, A={quantReport.pure_mu_a}
+3. Agent 3 (Specialist) Report:
+   - "Final Weighted xG": H={specialistReport.mu_h}, A={specialistReport.mu_a}
+4. Agent 4 (Simulator) Report:
+   - Simulation based on Agent 3's Weighted xG: {simulatorReport}
+5. Agent 5 (Critic) Report:
+   - Risks Found: {criticReport.key_risks}
+   - Tactical Summary: "{criticReport.tactical_summary}"
+   - Calculated Risk/Support Score: {criticReport.contradiction_score}
+6. Statistical Model Confidence: {modelConfidence}/10
+7. **Final Calculated Confidence (Quant + Critic): {final_confidence_score}/10**
+8. Value Bets Found (from Scout): {valueBetsJson}
+
+[YOUR TASK - FINAL DECISION (GAMBLER)]:
+1. Synthesize everything, starting with the Critic's summary (5).
+2. Generate the Prophetic Timeline based on the Final Weighted xG (3) and Context (5).
+3. **Justify the "Final Calculated Confidence" (7).**
+4. **Generate the "Gambler's Recommendation":**
+   - **PRIORITY 1 (Find Value):** Look for opportunities where the model (4) and the context (5) CONTRADICT the market, even if confidence (7) is low.
+   - **PRIORITY 2 (Act on Context):** If the Critic's score (5) is strongly negative (e.g., -5.0) because of major absentees (like the FC Utrecht log), you MUST recommend betting AGAINST the favored team, regardless of the statistical model.
+   - **PRIORITY 3 (Use Value Bets):** If `valueBetsJson` (8) is not empty, prioritize those bets.
+   - **PRIORITY 4 (Clarity):** Always pick a clear 1X2, O/U, or BTTS bet. Do not recommend "No Bet".
+
+[OUTPUT STRUCTURE]:
+Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
+{
+  "prophetic_timeline": "<(A PRÓFÉTA) Egy 2-3 mondatos, valósághű narratíva a meccs várható lefolyásáról. Szintetizáld a 'Final Weighted xG'-t (3) és a 'Critic's Tactical Summary'-t (5).>",
+  
+  "strategic_synthesis": "<Egy 2-3 bekezdéses holisztikus elemzés. Magyarázd el a teljes láncot. Térj ki a 'Pure xG'-re (2), indokold meg, hogy a kontextus (3) miért módosította. Kezeld a 'Critic's Risks'-t (5)!>",
+  
+  "micromodels": {
+    "btts_analysis": "<BTTS elemzés.
+A {simulatorReport.pBTTS}% (4) valószínűség alapján.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]",
+    "goals_ou_analysis": "<Gól O/U elemzés.
+**KRITIKUS: Kizárólag a {simulatorReport.mainTotalsLine} gólvonalat (pl. 2.5, 3.5) elemezd!** A {simulatorReport.pOver}% (4) valószínűség alapján.>\\nBizalom: [Alacsony/Közepes/Magas]",
+    "corner_analysis": "<Szöglet O/U elemzés.
+Csak ha a simulatorReport.mu_corners_sim > 0.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]",
+    "card_analysis": "<Lap O/U elemzés.
+Csak ha a simulatorReport.mu_cards_sim > 0.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]"
+  },
+  
+  "final_confidence_report": "**{final_confidence_score}/10** - Részletes indoklás. <INDOKOLD MEG a {final_confidence_score}-es végső pontszámot. Vessd össze a {modelConfidence} (stat) bizalmat a 'Critic's Risks' (5) és a {criticReport.contradiction_score} (kockázati pontszám) által jelzett tényezőkkel.>",
+  
+  "master_recommendation": {
+    "recommended_bet": "<Az AGGRESSZÍV, 'Gambler' ajánlás (pl. 'Away Win', 'Over 2.5')>",
+    "final_confidence": {final_confidence_score},
+    "brief_reasoning": "<Egyetlen, tömör magyar mondatos indoklás, amely az értékre vagy a kontextuális felülbírálásra fókuszál>"
+  }
 }
-*/
+`;
 
 
-// === ÚJ (v63.0): 5. LÉPÉS (KRITIKUS) ===
+// === Változatlan (v63.1): 5. LÉPÉS (KRITIKUS) ===
 interface CriticInput {
     simJson: any;
 marketIntel: string;
@@ -244,7 +290,6 @@ return await _callGeminiWithJsonRetry(filledPrompt, "Step_Critic");
         console.error(`AI Hiba (Critic): ${e.message}`);
 // Kritikus hiba esetén is adjunk vissza egy alap jelentést, hogy a lánc ne álljon le
         return {
-            // === MÓDOSÍTVA (v63.1) ===
             "contradiction_score": 0.0, // Semleges pontszám hiba esetén
             "key_risks": [`KRITIKUS HIBA: Az 5. Ügynök (Kritikus) nem tudott lefutni: ${e.message}`],
             "tactical_summary": `AI Hiba (Critic): ${e.message}`
@@ -252,8 +297,8 @@ return await _callGeminiWithJsonRetry(filledPrompt, "Step_Critic");
 }
 }
 
-// === ÚJ (v63.0): 6. LÉPÉS (STRATÉGA) ===
-// === MÓDOSÍTVA (v63.1): Kiegészítve a 'final_confidence_score'-ral ===
+// === MÓDOSÍTVA (v64.0): 6. LÉPÉS (STRATÉGA) ===
+// Most már paraméterként kapja a promptot
 interface StrategistInput {
     matchData: { home: string, away: string, sport: string, leagueName: string };
 quantReport: { pure_mu_h: number, pure_mu_a: number, source: string };
@@ -261,36 +306,42 @@ quantReport: { pure_mu_h: number, pure_mu_a: number, source: string };
     simulatorReport: any;
 criticReport: any; // Az 5. Ügynök kimenete
     modelConfidence: number;
-    final_confidence_score: number; // <-- ÚJ (v63.1)
+    final_confidence_score: number;
+    valueBetsJson: any[]; // ÚJ: Átadjuk a Gamblernek
     rawDataJson: ICanonicalRawData;
 // A teljes kontextus a biztonság kedvéért
     realXgJson: any;
 // A P1 tiszta xG
 }
-export async function runStep_Strategist(data: StrategistInput): Promise<any> {
+export async function runStep_Strategist(
+    data: StrategistInput, 
+    promptTemplate: string, 
+    stepName: string
+): Promise<any> {
     try {
         // Biztosítjuk, hogy a simJson (a 4. Ügynök jelentése) a 'simulatorReport' kulcson legyen
         const dataForPrompt = { ...data, simulatorReport: data.simulatorReport };
-const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V63, dataForPrompt);
-        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Strategist");
+const filledPrompt = fillPromptTemplate(promptTemplate, dataForPrompt);
+        return await _callGeminiWithJsonRetry(filledPrompt, stepName);
     } catch (e: any) {
-        console.error(`AI Hiba (Strategist): ${e.message}`);
+        console.error(`AI Hiba (${stepName}): ${e.message}`);
 // Kritikus hiba esetén is adjunk vissza egy alap ajánlást
         return {
-            prophetic_timeline: `AI Hiba (Strategist): A Próféta nem tudott jósolni.
+            prophetic_timeline: `AI Hiba (${stepName}): A Próféta nem tudott jósolni.
 ${e.message}`,
-            strategic_synthesis: `AI Hiba (Strategist): ${e.message}`,
+            strategic_synthesis: `AI Hiba (${stepName}): ${e.message}`,
             micromodels: {},
-            final_confidence_report: `**${data.final_confidence_score || 1.0}/10** - AI Hiba (Strategist): ${e.message}`,
+            final_confidence_report: `**${data.final_confidence_score || 1.0}/10** - AI Hiba (${stepName}): ${e.message}`,
             master_recommendation: {
                 recommended_bet: "Hiba",
                 final_confidence: data.final_confidence_score || 1.0,
        
-         brief_reasoning: `AI Hiba (Strategist): ${e.message}`
+         brief_reasoning: `AI Hiba (${stepName}): ${e.message}`
             }
         };
 }
 }
+// === MÓDOSÍTÁS VÉGE ===
 
 
 // --- CHAT FUNKCIÓ --- (Változatlan)
