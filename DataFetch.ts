@@ -1,20 +1,11 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v62.1 (P1 Manuális Roster Választó - 3. Lépés)
-// MÓDOSÍTÁS:
-// 1. Nincs logikai változtatás.
-//    A v54.44-es  kód
-//    architekturálisan helyes, mivel a '...baseResult' 
-//    és '...finalResult' operátorok automatikusan
-//    továbbítják az 'apiSportsProvider.ts' (v62.1) által
-//    biztosított új 'availableRosters' mezőt.
-// 2. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
-
-// === KÖVETKEZŐ LÉPÉS (6 FŐS BIZOTTSÁG) ===
+// VERZIÓ: v63.0 (Javított)
 // MÓDOSÍTÁS (Feladat 2.2):
 // 1. ÚJ IMPORT: 'IPlayerStub' és 'ICanonicalPlayer' importálva a típusokhoz.
 // 2. ÚJ FÜGGVÉNY: 'getRostersForMatch' exportálva az '/getRosters' végpont számára.
 // 3. MÓDOSÍTOTT INTERFÉSZ: 'IDataFetchOptions' kiegészítve a 'manual_absentees' mezővel.
 // 4. MÓDOSÍTOTT LOGIKA: 'getRichContextualData' kiegészítve a "Plan A / Plan B" hiányzó-kezeléssel.
+// 5. JAVÍTÁS: A 'baseBResult' elgépelés javítva 'baseResult'-ra.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -76,7 +67,7 @@ export interface IDataFetchResponse extends ICanonicalRichContext {
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v62.1 (Logikailag v54.44 , de v62.1 kontextusban)
+* VERZIÓ: v63.0 (Javított)
 **************************************************************/
 
 function getProvider(sport: string): IDataProvider {
@@ -164,7 +155,7 @@ export async function getRichContextualData(
         let finalAwayXg: number | null = null;
         let xgSource: IDataFetchResponse['xgSource'];
         // 1. xG PRIORITÁSI LÁNC (MÓDOSÍTVA v61.0)
-        // A 2-mezős (Direkt) [image: 4223a5.png] logika eltávolítva
+        // A 2-mezős (Direkt) logika eltávolítva
         if (options.manual_H_xG != null && options.manual_H_xGA != null &&
             options.manual_A_xG != null && options.manual_A_xGA != null)
         {
@@ -246,7 +237,9 @@ export async function getRichContextualData(
                 console.warn(`[DataFetch] Figyelmeztetés: A Sofascore (P2) nem adott vissza hiányzó- vagy értékelés-adatot. Fallback indítása az 'apiSportsProvider' (P4) felé...`);
                 const fixtureId = baseResult.rawData.apiFootballData?.fixtureId;
                 const homeTeamId = baseResult.rawData.apiFootballData?.homeTeamId;
-                const awayTeamId = baseBResult.rawData.apiFootballData?.awayTeamId;
+                // === JAVÍTÁS (TS2552) ===
+                const awayTeamId = baseResult.rawData.apiFootballData?.awayTeamId; // 'baseBResult' -> 'baseResult'
+                // === JAVÍTÁS VÉGE ===
                 if (fixtureId && homeTeamId && awayTeamId) {
                     try {
                         // Hívjuk az 'apiSportsProvider'-ben (v58.1) lévő exportált funkciót
