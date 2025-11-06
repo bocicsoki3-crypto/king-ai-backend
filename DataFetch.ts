@@ -238,17 +238,24 @@ finalResult.rawData.detailedPlayerStats = sofascoreData.playerStats;
 } else {
                 // 2. Eset: A Sofascore (P2) csődöt mondott
                 console.warn(`[DataFetch] Figyelmeztetés: A Sofascore (P2) nem adott vissza hiányzó- vagy értékelés-adatot. Fallback indítása az 'apiSportsProvider' (P4) felé...`);
-// === JAVÍTOTT RÉSZLET (DataFetch.ts.txt) ===
+                
+                // === JAVÍTÁS (TS2304): A változók definíciója ide került ===
+                const fixtureId = baseResult.rawData.apiFootballData?.fixtureId;
+                const homeTeamId = baseResult.rawData.apiFootballData?.homeTeamId;
+                const awayTeamId = baseResult.rawData.apiFootballData?.awayTeamId;
+                // === JAVÍTÁS VÉGE ===
+
                 if (fixtureId && homeTeamId && awayTeamId) {
                     try {
                         // === JAVÍTÁS (TS2554): Kiolvassuk a szezont a baseResult-ból ===
                         const foundSeason = baseResult.rawData.apiFootballData?.foundSeason;
                         if (!foundSeason) {
-                             throw new Error("P4 Fallback hiba: hiányzó 'foundSeason'.");
+                             throw new Error("P4 Fallback hiba: hiányzó 'foundSeason' a 'baseResult.rawData.apiFootballData' objektumban.");
                         }
+                        
                         // Hívjuk az 'apiSportsProvider'-ben (v58.1) lévő exportált funkciót
-   
-                     const apiSportsPlayerStats = await getApiSportsLineupsAndInjuries(fixtureId, options.sport, homeTeamId, awayTeamId, foundSeason); /* <-- AZ 5. ARGUMENTUM HOZZÁADVA */
+                        // Most már 5 argumentummal hívjuk, ahogy az 'apiSportsProvider' elvárja
+                     const apiSportsPlayerStats = await getApiSportsLineupsAndInjuries(fixtureId, options.sport, homeTeamId, awayTeamId, foundSeason);
 if (apiSportsPlayerStats) {
                             console.log(`[DataFetch] Felülírás (P4 Fallback): A 'sofascoreProvider' üres adatai felülírva az 'apiSportsProvider' (P4) adataival.`);
 finalResult.rawData.detailedPlayerStats = apiSportsPlayerStats;
