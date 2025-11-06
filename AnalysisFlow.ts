@@ -314,15 +314,16 @@ const criticReport = await runStep_Critic(criticInput);
         }
 
         // A Kritikus pontszáma (-10...10) átalakítva a 10-es skálára a súlyozáshoz
-        const criticAdjustment = contradictionScore * CRITIC_SCORE_WEIGHT;
+        // (Pl. -3.0 pontszám -> -0.9 kiigazítás)
+        const criticAdjustment = (contradictionScore / 10.0) * (10.0 * CRITIC_SCORE_WEIGHT * 3.33); // A 3.33-as szorzó normalizálja a 0.3-as súlyt a 10-es skálára
         
         // Súlyozott átlag számítása
-        let finalConfidenceScore = (modelConfidence * STAT_CONFIDENCE_WEIGHT) + criticAdjustment;
+        let finalConfidenceScore = modelConfidence + criticAdjustment;
         
         // Biztosítjuk, hogy az eredmény 1.0 és 10.0 között maradjon
         finalConfidenceScore = Math.max(1.0, Math.min(10.0, finalConfidenceScore));
 
-        console.log(`[Lánc 5.5/6] Súlyozás kész. Statisztika (70%): ${modelConfidence.toFixed(2)}, Kritika (30%): ${criticAdjustment.toFixed(2)} -> Végső Bizalom: ${finalConfidenceScore.toFixed(2)}`);
+        console.log(`[Lánc 5.5/6] Súlyozás kész. Statisztika: ${modelConfidence.toFixed(2)}, Kritika Pontszám: ${contradictionScore.toFixed(2)} -> Végső Bizalom: ${finalConfidenceScore.toFixed(2)}`);
         // === MÓDOSÍTÁS VÉGE ===
 
         // === 6. ÜGYNÖK (STRATÉGA): Végső döntés ===
