@@ -7,6 +7,7 @@
 // 4. ÚJ IMPORT: 'estimatePureXG' és 'applyContextualModifiers' (a 'Model.ts'-ből).
 // 5. ÚJ IMPORT: 'runStep_Critic' és 'runStep_Strategist' (az 'AI_Service.ts'-ből).
 // 6. A P1 Manuális Hiányzók ('manual_absentees') most már helyesen kerülnek átadásra a 'DataFetch' (2. Ügynök) felé.
+// 7. JAVÍTÁS: A 'catch' blokk TS2448/TS2454 hibája javítva ('away' és 'sport' változók).
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -148,7 +149,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         } = params;
         // === Olvasás Vége ===
 
-        if (!rawHome || !away || !sport || !utcKickoff) {
+        if (!rawHome || !rawAway || !sport || !utcKickoff) {
             throw new Error("Hiányzó kötelező paraméterek: 'home', 'away', 'sport', 'utcKickoff'.");
         }
         
@@ -374,10 +375,14 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
 
         return jsonResponse;
     } catch (error: any) {
+        // === JAVÍTÁS (TS2448 / TS2454) ===
+        // A 'home', 'away' és 'sport' változók a 'try' blokkban ragadtak.
+        // Helyettük a 'params' objektumot használjuk, ami ebben a hatókörben (scope) is elérhető.
         const homeParam = params?.home || 'N/A';
         const awayParam = params?.away || 'N/A';
-        const sportParam = sport || params?.sport || 'N/A';
+        const sportParam = sport || params?.sport || 'N/A'; // 'sport' (függvény argumentum) itt elérhető
         console.error(`Súlyos hiba az elemzési folyamatban (${sportParam} - ${homeParam} vs ${awayParam}): ${error.message}`, error.stack);
         return { error: `Elemzési hiba: ${error.message}` };
+        // === JAVÍTÁS VÉGE ===
     }
 }
