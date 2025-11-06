@@ -156,8 +156,7 @@ try {
             manual_A_xG, 
             manual_A_xGA,
             // P1 (Hiányzók)
-            manual_absentees // 
-<- MÓDOSÍTÁS (6 FŐS BIZOTTSÁG)
+            manual_absentees // <- MÓDOSÍTÁS (6 FŐS BIZOTTSÁG)
         
         } = params;
 // === Olvasás Vége ===
