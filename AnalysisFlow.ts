@@ -9,6 +9,7 @@
 // 5. ÚJ IMPORT: 'runStep_Critic' és 'runStep_Strategist' (az 'AI_Service.ts'-ből).
 // 6. A P1 Manuális Hiányzók ('manual_absentees') most már helyesen kerülnek átadásra a 'DataFetch' (2. Ügynök) felé.
 // 7. JAVÍTÁS: A 'catch' blokk TS2448/TS2454 hibája javítva ('away' és 'sport' változók).
+// 8. JAVÍTÁS (v63.5): A 'finalConfidenceScore' számítási hiba (hibás szorzó) javítva.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -275,7 +276,7 @@ const { mu_h, mu_a, modifierLog } = applyContextualModifiers(
 console.log(`Specialista (Súlyozott xG): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
         // === Specialista Végzett ===
 
-        const finalXgSource = xgSource;
+        const finalXgSource = xGSource;
 // === 4. ÜGYNÖK (SZIMULÁTOR): Meccs szimulálása ===
         console.log(`[Lánc 4/6] Szimulátor Ügynök: 25000 szimuláció futtatása...`);
 const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
@@ -312,9 +313,12 @@ const criticReport = await runStep_Critic(criticInput);
             contradictionScore = 0.0;
         }
 
+        // === JAVÍTÁS (v63.5) ===
         // A Kritikus pontszáma (-10...10) átalakítva a 10-es skálára a súlyozáshoz
         // (Pl. -3.0 pontszám -> -0.9 kiigazítás)
-        const criticAdjustment = (contradictionScore / 10.0) * (10.0 * CRITIC_SCORE_WEIGHT * 3.33); // A 3.33-as szorzó normalizálja a 0.3-as súlyt a 10-es skálára
+        // const criticAdjustment = (contradictionScore / 10.0) * (10.0 * CRITIC_SCORE_WEIGHT * 3.33); // <-- HIBÁS SOR (v63.1)
+        const criticAdjustment = contradictionScore * CRITIC_SCORE_WEIGHT; // <-- JAVÍTOTT SOR (v63.5)
+        // === JAVÍTÁS VÉGE ===
         
         // Súlyozott átlag számítása
         let finalConfidenceScore = modelConfidence + criticAdjustment;
