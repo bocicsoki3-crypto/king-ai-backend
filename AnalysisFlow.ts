@@ -10,6 +10,7 @@
 // 6. A P1 Manuális Hiányzók ('manual_absentees') most már helyesen kerülnek átadásra a 'DataFetch' (2. Ügynök) felé.
 // 7. JAVÍTÁS: A 'catch' blokk TS2448/TS2454 hibája javítva ('away' és 'sport' változók).
 // 8. JAVÍTÁS (v63.5): A 'finalConfidenceScore' számítási hiba (hibás szorzó) javítva.
+// 9. JAVÍTÁS (v63.6): A 'xGSource' elgépelési hiba (TS2552) javítva.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -276,7 +277,10 @@ const { mu_h, mu_a, modifierLog } = applyContextualModifiers(
 console.log(`Specialista (Súlyozott xG): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
         // === Specialista Végzett ===
 
-        const finalXgSource = xGSource;
+        // === JAVÍTÁS (v63.6): TS2552 hiba javítva (xGSource -> xgSource) ===
+        const finalXgSource = xgSource;
+        // === JAVÍTÁS VÉGE ===
+
 // === 4. ÜGYNÖK (SZIMULÁTOR): Meccs szimulálása ===
         console.log(`[Lánc 4/6] Szimulátor Ügynök: 25000 szimuláció futtatása...`);
 const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
