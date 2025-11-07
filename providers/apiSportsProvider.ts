@@ -1043,8 +1043,7 @@ const result: ICanonicalRichContext = {
          rawData: finalData,
          oddsData: fetchedOddsData, 
          fromCache: false,
-         // ÚJ (v62.1): Keretek hozzáadása a kliens 
-oldali válaszhoz
+         // ÚJ (v62.1): Keretek hozzáadása a kliens oldali válaszhoz
          availableRosters: {
             home: lineupData?.rosters?.home ||
 [],
