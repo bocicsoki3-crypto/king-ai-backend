@@ -1,5 +1,5 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v68.0 (/getRosters végpont hozzáadva)
+// VERZIÓ: v64.0 (Stratéga Döntési Jogkör)
 // MÓDOSÍTÁS:
 // 1. ELTÁVOLÍTVA: A [Lánc 5.5/6] (Végső Bizalom Számítása) blokk.
 //    A végső bizalom meghatározása átkerült a Stratéga (Ügynök 6) hatáskörébe.
@@ -7,7 +7,6 @@
 //    Helyette a 'modelConfidence'-t (Quant) és a 'criticReport'-ot (Kritikus) kapja meg.
 // 3. MÓDOSÍTVA: A 'jsonResponse' a végső bizalmat most már az AI válaszából
 //    (strategistReport.master_recommendation.final_confidence) nyeri ki.
-// 4. HOZZÁADVA (v68.0): Új importok és 'getRosters' funkció a P1 Modal "N/A" hibájának javításához.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -50,15 +49,6 @@ import {
     // =================================
 } from './AI_Service.js';
 import { saveAnalysisToSheet } from './sheets.js'; 
-
-// === ÚJ IMPORT (v68.0) ===
-// Ezek kellenek az új /getRosters végponthoz
-import { 
-    getApiSportsLeagueId, 
-    getApiSportsTeamId, 
-    getApiSportsRostersOnly 
-} from './providers/apiSportsProvider.js'; 
-// === IMPORT VÉGE ===
 
 // Gyorsítótár inicializálása
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
@@ -160,7 +150,7 @@ try {
             manual_A_xG, 
             manual_A_xGA,
             // P1 (Hiányzók)
-            manual_absentees // <- MÓDOSÍTÁS (v68.0: Ez már {name, pos}[] objektumokat tartalmaz)
+            manual_absentees // <- MÓDOSÍTÁS (6 FŐS BIZOTTSÁG)
         
         } = params;
 // === Olvasás Vége ===
@@ -175,18 +165,12 @@ const away: string = String(rawAway).trim();
         const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
 const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         
-        // === MÓDOSÍTVA (v68.0) ===
-        // Cache kulcs (v68.0) - A 'v64.0_strat_decides' -> 'v68.0_pos_aware'
-        // A Hash most már a {name, pos} objektumok alapján készül (robusztusabb)
-        let p1AbsenteesHash = '';
-        if (manual_absentees && (manual_absentees.home?.length > 0 || manual_absentees.away?.length > 0)) {
-            // Egyedi hash generálása a nevekből és pozíciókból
-            const homeHash = manual_absentees.home.map((p: IPlayerStub) => `${p.name.substring(0,3)}${p.pos}`).join('');
-            const awayHash = manual_absentees.away.map((p: IPlayerStub) => `${p.name.substring(0,3)}${p.pos}`).join('');
-            p1AbsenteesHash = `_P1A_${homeHash.length}_${awayHash.length}_${homeHash}${awayHash}`.substring(0, 50); // Levágás a biztonság kedvéért
-        }
-        
-        analysisCacheKey = `analysis_v68.0_pos_aware_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
+        // === MÓDOSÍTVA (v64.0) ===
+        // Cache kulcs (v64.0) - A 'v63.1_q_critic' -> 'v64.0_strat_decides'
+        const p1AbsenteesHash = manual_absentees ?
+`_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
+            '';
+        analysisCacheKey = `analysis_v64.0_strat_decides_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
 if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
 if (cachedResult) {
@@ -222,7 +206,7 @@ const dataFetchOptions: IDataFetchOptions = {
             manual_A_xG: safeConvertToNumber(manual_A_xG),
             manual_A_xGA: safeConvertToNumber(manual_A_xGA),
             
-            // P1 (Hiányzók) (v68.0: Objektumok átadása)
+            // P1 (Hiányzók) (v63.0)
             manual_absentees: manual_absentees 
         
 };
@@ -279,7 +263,7 @@ console.log(`Quant (Tiszta xG) [${quantSource}]: H=${pure_mu_h.toFixed(2)}, A=${
 const { mu_h, mu_a, modifierLog } = applyContextualModifiers(
             pure_mu_h, pure_mu_a, // A Quant kimenete
             quantSource, // Az 1. Ügynök forrása (a "Dupla Számítás" elkerüléséhez)
-            rawData, // A Scout kimenete (v68.0: már tartalmazza a POZÍCIÓS hiányzókat)
+            rawData, // A Scout kimenete
             sport, 
             psyProfileHome, 
             psyProfileAway,
@@ -312,11 +296,11 @@ console.log(`Szimulátor végzett. (Modell bizalom: ${modelConfidence.toFixed(1)
 const criticInput = {
             simJson: sim,
             marketIntel: marketIntel,
-            rawDataJson: rawData, // v68.0: Ez már a pozíciós hiányzókat tartalmazza
+            rawDataJson: rawData,
             modelConfidence: modelConfidence,
             valueBetsJson: valueBets
         };
-const criticReport = await runStep_Critic(criticInput); // v68.0: A v67-es prompt már tudja ezt kezelni
+const criticReport = await runStep_Critic(criticInput);
         const contradictionScore = criticReport?.contradiction_score || 0.0;
 console.log(`[Lánc 5/6] Kritikus végzett. Kockázati Pontszám: ${contradictionScore.toFixed(2)}`);
 
@@ -344,7 +328,7 @@ const strategistInput = {
             }
         };
 
-const strategistReport = await runStep_Strategist(strategistInput); // v68.0: A v67-es promptot hívja
+const strategistReport = await runStep_Strategist(strategistInput);
         
         if (strategistReport.error) {
             console.error("A Stratéga (6. Ügynök) hibát adott vissza:", strategistReport.error);
@@ -418,7 +402,7 @@ if (params.sheetUrl && typeof params.sheetUrl === 'string') {
                 away, 
                 date: new Date(), 
           
-      html: `JSON_API_MODE (v68.0 Pozíciós) (xG Forrás: ${finalXgSource})`, // v68.0
+      html: `JSON_API_MODE (v63.1 Lánc) (xG Forrás: ${finalXgSource})`,
                 id: analysisCacheKey,
                 fixtureId: fixtureIdForSaving,
                 recommendation: masterRecommendation
@@ -440,80 +424,5 @@ const awayParam = params?.away || 'N/A';
         console.error(`Súlyos hiba az elemzési folyamatban (${sportParam} - ${homeParam} vs ${awayParam}): ${error.message}`, error.stack);
 return { error: `Elemzési hiba: ${error.message}` };
         // === JAVÍTÁS VÉGE ===
-    }
-}
-
-// === ÚJ (v68.0): A /getRosters végpont logikája ===
-// Ez a funkció CSAK a P1 modal feltöltéséhez szükséges keretadatokat kéri le.
-
-export async function getRosters(params: any): Promise<{ home: IPlayerStub[]; away: IPlayerStub[] } | IAnalysisError> {
-    const { 
-        home: rawHome, 
-        away: rawAway, 
-        leagueName, 
-        utcKickoff, 
-        sport 
-    } = params;
-
-    if (!rawHome || !rawAway || !sport || !utcKickoff || !leagueName) {
-        console.error("Hiányzó kötelező paraméterek a /getRosters számára:", params);
-        return { error: "Hiányzó kötelező paraméterek: 'home', 'away', 'sport', 'utcKickoff', 'leagueName'." };
-    }
-
-    try {
-        const home: string = String(rawHome).trim();
-        const away: string = String(rawAway).trim();
-
-        console.log(`[Lánc /getRosters] Keretlekérés indul: ${home} vs ${away}`);
-
-        // 1. LÉPÉS: Szezon meghatározása
-        const seasonDate = new Date(utcKickoff);
-        const originSeason = (sport !== 'soccer' && seasonDate.getMonth() < 7) ?
-            seasonDate.getFullYear() - 1 : seasonDate.getFullYear();
-        if (isNaN(originSeason)) throw new Error(`Érvénytelen utcKickoff: ${utcKickoff}`);
-
-        // 2. LÉPÉS: Liga adatok lekérése
-        const sportConfig = SPORT_CONFIG[sport];
-        if (!sportConfig) throw new Error(`Nincs sport konfiguráció: ${sport}`);
-        const leagueData = sportConfig.espn_leagues[leagueName];
-        if (!leagueData?.country) throw new Error(`Hiányzó 'country' konfiguráció: '${leagueName}'`);
-        
-        const country = leagueData.country;
-        const leagueDataResponse = await getApiSportsLeagueId(leagueName, country, originSeason, sport);
-        if (!leagueDataResponse || !leagueDataResponse.leagueId) {
-            throw new Error(`Nem található 'leagueId': '${leagueName}'`);
-        }
-        const { leagueId, foundSeason } = leagueDataResponse;
-
-        // 3. LÉPÉS: Csapat ID-k lekérése
-        const [homeTeamId, awayTeamId] = await Promise.all([
-            getApiSportsTeamId(home, sport, leagueId, foundSeason),
-            getApiSportsTeamId(away, sport, leagueId, foundSeason),
-        ]);
-        if (!homeTeamId || !awayTeamId) { 
-            throw new Error(`Csapat azonosítók hiányoznak. HomeID: ${homeTeamId}, AwayID: ${awayTeamId}.`);
-        }
-
-        // 4. LÉPÉS: Keretek lekérése (Pozícióval)
-        // Az 'getApiSportsRostersOnly' a _getApiSportsLineupData-t hívja (amit az apiSportsProvider.txt-ben exportáltunk),
-        // ami a _getSquadForTeam-et hívja. 
-        // A _getSquadForTeam a /v3/players-t hívja, ami TARTALMAZZA a pozíciókat.
-        // A 'fixtureId' null-ként való átadása itt MEGENGEDETT, 
-        // mert a keretlekérés (_getSquadForTeam) nem függ tőle.
-        const rosters = await getApiSportsRostersOnly(
-            null, // FixtureId (nem szükséges a teljes kerethez, csak a /lineups-hoz, ami itt nem kell)
-            sport, 
-            homeTeamId, 
-            awayTeamId, 
-            foundSeason 
-        );
-
-        console.log(`[Lánc /getRosters] Keretlekérés sikeres. (H: ${rosters.home.length}, A: ${rosters.away.length})`);
-        // A kliens (script.js v68.0) pontosan ezt a formátumot várja
-        return rosters; 
-
-    } catch (error: any) {
-        console.error(`Súlyos hiba a /getRosters folyamatban (${rawHome} vs ${rawAway}): ${error.message}`, error.stack);
-        return { error: `Keretlekérési hiba: ${error.message}` };
     }
 }
