@@ -1,17 +1,20 @@
-// --- AI_Service.ts (v64.0 - Stratéga Döntési Jogkör) ---
-// MÓDOSÍTÁS (v64.0):
-// 1. MÓDOSÍTVA: 'PROMPT_STRATEGIST_V63' -> 'PROMPT_STRATEGIST_V64'.
-// 2. A Stratéga (6. Ügynök) már nem "megkapja" a végső bizalmat, hanem
-//    megkapja a Quant bizalmát (modelConfidence) és a Kritikus kockázati pontszámát (criticReport.contradiction_score).
-// 3. A Stratéga FELADATA most már az, hogy e két input alapján
-//    *meghatározza* és *generálja* a végső bizalmi pontszámot.
-// 4. Ez lehetővé teszi, hogy az AI felülbírálja a statisztikát (pl. 10 hiányzó esetén).
+// --- AI_Service.ts (v65.0 - Agresszív Stratéga) ---
+// MÓDOSÍTÁS (v65.0):
+// 1. A Stratéga (PROMPT_STRATEGIST_V65) promptja jelentősen átírva.
+// 2. A Stratégának már nem csak "lehetősége" van felülbírálni (override),
+//    hanem aktívan keresnie kell a "Chaos = High Confidence" (Káosz = Magas Bizalom)
+//    forgatókönyvet, ahogy a felhasználó kérte.
+// 3. A prompt most már expliciten elvárja, hogy a magas kockázat (sok hiányzó)
+//    esetén is keressen magas bizalmú tippet, ha a piac alulreagálja a helyzetet.
 
 import { _callGemini } from './DataFetch.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
 import type { ICanonicalPlayerStats, ICanonicalRawData } from './src/types/canonical.d.ts';
 // === Robusztus AI hívó JSON parse retry logikával (Változatlan) ===
 async function _callGeminiWithJsonRetry(
+// ... (A _callGeminiWithJsonRetry funkció törzse változatlan) ...
+// ... (A fillPromptTemplate funkció törzse változatlan) ...
+// ... (A PROMPT_CRITIC_V63 (Ügynök 5) törzse változatlan) ...
     prompt: string, 
     stepName: string, 
     maxRetries: number = 2
@@ -156,9 +159,9 @@ Ez ellentmond a szimulációnak (1), amely a statisztikák alapján még mindig 
 }
 `;
 
-// === MÓDOSÍTOTT (v64.0): 6. ÜGYNÖK (A STRATÉGA) PROMPT ===
-// Most már ő határozza meg a végső bizalmat.
-const PROMPT_STRATEGIST_V64 = `
+// === MÓDOSÍTOTT (v65.0): 6. ÜGYNÖK (A STRATÉGA) PROMPT ===
+// Most már agresszívan keresi a "Káosz = Magas Bizalom" esetet.
+const PROMPT_STRATEGIST_V65 = `
 TASK: You are 'The Strategist', the 6th and FINAL Agent.
 You are the King.
 Your job is to synthesize ALL previous reports into a single, final, decisive analysis and recommendation.
@@ -176,27 +179,33 @@ You resolve all contradictions.
 5. Agent 5 (Critic) Report:
    - Risks Found: {criticReport.key_risks}
    - Tactical Summary: "{criticReport.tactical_summary}"
-   - Calculated Risk/Support Score: {criticReport.contradiction_score}
 6. **Statistical Model Confidence (Agent 4): {modelConfidence}/10**
 7. **Contextual Risk Score (Agent 5): {criticReport.contradiction_score}/10**
 
 [YOUR TASK - FINAL DECISION]:
-Synthesize everything.
-- Start with the Critic's summary (5).
-- Acknowledge the Quant (2) vs Specialist (3) modification.
-- Address the Critic's risks (5).
-- Generate the Prophetic Timeline based ONLY on the FINAL Weighted xG (3) and Context (5).
-- **Your main task is to DECIDE the "Final Confidence Score" (a number from 1.0 to 10.0).**
-- Use the 'Statistical Confidence' (6) as a baseline.
-- Use the 'Contextual Risk Score' (7) as a guide for adjustment (e.g., if Stat is 4.3 and Risk is -10.0, the final score should be VERY low, like 1.0-2.0).
-- **CRITICAL EXCEPTION:** You have the authority to OVERRIDE. If the Risk Score is -10.0 (e.g., 10 missing players) but you believe the B-team is *still* the right bet, you can assign a HIGH confidence (e.g., 8.0/10) and *explain* this specific override in your synthesis.
+Your main task is to find the *smartest bet* (the 'sharp' bet) and **DECIDE the "Final Confidence Score"** (a number from 1.0 to 10.0).
+Do not just average the two scores (6 and 7). High risk (e.g., Risk Score -10.0) does NOT automatically mean low confidence. 
+**High risk can *create* a high-confidence opportunity if the market is wrong.**
+
+Analyze the relationship between (6) and (7) and choose one of these two paths:
+
+* **PATH A (Standard):** The 'Statistical Confidence' (6) is reliable and the 'Contextual Risk' (7) is a logical adjustment.
+    * (Example: Stat is 7.0, Risk is -1.5 -> Final Confidence: 5.5/10).
+    * (Example: Stat is 4.0, Risk is -9.0 -> Final Confidence: 1.5/10. The match is true chaos.)
+
+* **PATH B (The "Kurva Jó" Override):** The 'Contextual Risk' (7) is EXTREME (e.g., -10.0 due to 10 missing players), which makes the 'Statistical Confidence' (6) IRRELEVANT.
+    * You realize that the *reason* for the risk (e.g., 10 players missing) actually *creates* the best bet (e.g., "Under 2.5").
+    * You see that the B-team players who *are* playing are underestimated, or the market hasn't reacted properly.
+    * **In this case, assign a HIGH confidence score (e.g., 7.0/10, 8.0/10, or 9.0/10) to the tip that exploits this chaos.**
+
+**You MUST choose a path and justify it.**
 
 [OUTPUT STRUCTURE]:
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
 {
-  "prophetic_timeline": "<(A PRÓFÉTA) Egy 2-3 mondatos, valósághű narratíva a meccs várható lefolyásáról. Szintetizáld a 'Final Weighted xG'-t (3) és a 'Critic's Tactical Summary'-t (5). Példa: 'A meccs tapogatózóan indul, de a Kritikus által jelzett (5) hiányzó hazai védő miatt a vendégek szereznek vezetést az első félidőben. A második félidőben a súlyozott xG (3) fölény érvényesül, és a 70. perc környékén kiegyenlítenek.'>",
+  "prophetic_timeline": "<(A PRÓFÉTA) Egy 2-3 mondatos, valósághű narratíva a meccs várható lefolyásáról. Szintetizáld a 'Final Weighted xG'-t (3) és a 'Critic's Tactical Summary'-t (5).>",
   
-  "strategic_synthesis": "<Egy 2-3 bekezdéses holisztikus elemzés. Magyarázd el a teljes láncot. Térj ki a 'Pure xG'-re (2), indokold meg, hogy a kontextus (3) miért módosította. **KRITIKUS: Kezeld a 'Critic's Risks'-t (5)!** Ha a piac (5) és a modell (4) ellentétes, dönts. Example: 'A Quant (2) 1.8-1.2-t javasolt, de a Specialista (3) ezt 1.5-1.5-re módosította a hiányzók miatt. Bár a modell (4) így döntetlent vár, a Kritikus (5) helyesen jelzi, hogy a piac erősen a hazaiak felé mozog. Bíva a piaci jelzésben a modell statikusságával szemben, a hazai győzelem felé hajlunk...'>",
+  "strategic_synthesis": "<Egy 2-3 bekezdéses holisztikus elemzés. Magyarázd el a teljes láncot. **KRITIKUS: Kezeld a 'Critic's Risks'-t (5)!** Dönts. Example (PATH B - Override): 'A statisztika (4.3) és a kockázat (-10.0) is alacsony a 10 hazai hiányzó miatt. Azonban a piac nem reagált, és a hazai B-csapat (pl. U21) jobb formában van, mint a vendég kezdő. Ez egy rejtett lehetőség. A kockázat ellenére a bizalmam magas az Under 2.5-re.'>",
   
   "micromodels": {
     "btts_analysis": "<BTTS elemzés. A {simulatorReport.pBTTS}% (4) valószínűség alapján.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]",
@@ -205,7 +214,7 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
     "card_analysis": "<Lap O/U elemzés. Csak ha a simulatorReport.mu_cards_sim > 0.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]"
   },
   
-  "final_confidence_report": "**<Number>/10** - Részletes indoklás. <**ELŐSZÖR HATÁROZD MEG A VÉGSŐ PONTOT (pl. 8.0/10)**, majd indokold meg. Vessd össze a {modelConfidence} (stat) bizalmat a {criticReport.contradiction_score} (kockázati pontszám) által jelzett tényezőkkel. Example (Override): 'A statisztikai bizalom (4.3/10) és a kockázati pontszám (-10.0) is alacsony a 10 hazai hiányzó miatt. Azonban a piac nem reagált, és a hazai B-csapat (pl. U21) jobb formában van, mint a vendég kezdő. Ez egy rejtett lehetőség. A kockázat ellenére a bizalmam 8.0/10 az Under 2.5-re.'>",
+  "final_confidence_report": "**<Number>/10** - Részletes indoklás. <**ELŐSZÖR HATÁROZD MEG A VÉGSŐ PONTOT (pl. 8.0/10)**, majd indokold meg. Vessd össze a {modelConfidence} (stat) bizalmat a {criticReport.contradiction_score} (kockázati pontszám) által jelzett tényezőkkel, és indokold meg, hogy a 'PATH A' vagy 'PATH B' mellett döntöttél.>",
   
   "master_recommendation": {
     "__INSTRUCTION__": "**KRITIKUS FONTOSSÁGÚ:** Soha ne adj 'No Bet' vagy 'Nincs Tipp' ajánlást. MINDIG válaszd ki a legvalószínűbb kimenetelt a fő piacok (1X2, O/U, BTTS) közül, még akkor is, ha a bizalom alacsony. A bizalmat a 'final_confidence' mezőben tükrözd, ne az ajánlás hiányával.",
@@ -269,7 +278,7 @@ export async function runStep_Strategist(data: StrategistInput): Promise<any> {
     try {
         // Biztosítjuk, hogy a simJson (a 4. Ügynök jelentése) a 'simulatorReport' kulcson legyen
         const dataForPrompt = { ...data, simulatorReport: data.simulatorReport };
-const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V64, dataForPrompt); // v64-es prompt használata
+const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V65, dataForPrompt); // v65-ös prompt használata
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Strategist");
     } catch (e: any) {
         console.error(`AI Hiba (Strategist): ${e.message}`);
