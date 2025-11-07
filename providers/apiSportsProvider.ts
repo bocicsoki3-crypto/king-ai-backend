@@ -104,7 +104,8 @@ async function _getLeagueRoster(leagueId: number | string, season: number, sport
 const cachedRoster = apiSportsRosterCache.get<any[]>(cacheKey);
     if (cachedRoster) {
         console.log(`API-SPORTS (${sport}): Csapatlista CACHE TALÁLAT (Liga: ${leagueId}, Szezon: ${season})`);
-return cachedRster;
+        // === HIBA JAVÍTÁSA (v63.3): 'cachedRster' -> 'cachedRoster' ===
+return cachedRoster;
     }
     console.log(`API-SPORTS (${sport}): Csapatlista lekérése (Liga: ${leagueId}, Szezon: ${season})...`);
     const endpoint = `/v3/teams?league=${leagueId}&season=${season}`;
@@ -169,7 +170,7 @@ null> {
     const lowerName = teamName.toLowerCase().trim();
     const mappedName = APIFOOTBALL_TEAM_NAME_MAP[lowerName] || teamName;
     const searchName = mappedName.toLowerCase();
-const nameCacheKey = `apisports_name_map_v6_strict_${sport}_${leagueId}_${season}_${searchName.replace(/\s+/g, '')}`;
+const nameCacheKey = `apisports_name_map_v6_strict_${sport}_${leagueId}_${season}_${searchName.replace(/\s/g, '')}`;
     const cachedMappedId = apiSportsNameMappingCache.get<number | 'not_found'>(nameCacheKey);
 if (cachedMappedId !== undefined) {
         if (cachedMappedId === 'not_found') return null;
@@ -470,7 +471,7 @@ break;
         }
          if (sport !== 'soccer') break;
 console.warn(`API-SPORTS (${sport}): Nem található statisztika a(z) ${s} szezonra.`);
-    }
+}
     if (!stats) {
         console.error(`API-SPORTS (${sport}): Végleg nem található szezon statisztika ehhez: T:${teamId}, L:${leagueId}`);
 }
@@ -761,7 +762,7 @@ null
 // Itt lehetne a jövőben feldolgozni a 'homeData.startXI'-t,
             // hogy az 'ICanonicalPlayerStats'-ot feltöltsük, de
             // a P4 fallback (getApiSportsLineupsAndInjuries) logikája
-            // ezt jelenleg üresen hagyja[cite: 459].
+            // ezt jelenleg üresen hagyja.
 } else {
             console.warn(`[API-SPORTS LineupData] Nem sikerült a hazai/vendég adat szétválasztása (ID: ${fixtureId}).`);
 }
