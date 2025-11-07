@@ -1,14 +1,19 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v69.0 (Profi Fogadó Stratéga)
+// VERZIÓ: v69.1 (Build Failed Javítások)
 // MÓDOSÍTÁS:
 // 1. A PROMPT_STRATEGIST_V67 lecserélve PROMPT_STRATEGIST_V69-re.
 // 2. AZ ÚJ PROMPT TILTJA a "Dupla Esély" (Double Chance) tippeket.
 // 3. AZ ÚJ PROMPT "VALUE" (ÉRTÉK) alapú gondolkodást kényszerít ki.
 // 4. AZ ÚJ PROMPT TILTJA a 7.5-re való "átlagolást", dinamikus bizalmat kér 1.0-10.0 között.
+// 5. JAVÍTVA (v69.1): TS2846 import hiba (.d.ts)
+// 6. JAVÍTVA (v69.1): TS2554 hiba (a _callGemini 3 paramétert kapott 2 helyett)
+// 7. HOZZÁADVA (v69.1): TS2305 hiba (hiányzó 'getChatResponse' export)
 
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 import { _callGemini } from './providers/common/utils.js'; // Megosztott Gemini hívó
-import {
+// JAVÍTVA (v69.1): TS2846 hiba
+// A '.d.ts' importálása helytelen volt. Most már 'import type'-ot használunk.
+import type {
     ICanonicalRichContext,
     ICanonicalStats,
     ICanonicalPlayerStats,
@@ -18,7 +23,7 @@ import {
     FixtureResult,
     IStructuredWeather,
     IPlayerStub
-} from './src/types/canonical.d.ts';
+} from './src/types/canonical'; // <-- .d.ts eltávolítva
 
 // === v63.0: 5. ÜGYNÖK (KRITIKUS) PROMPTJA ===
 // v67.0: Módosítva, hogy a 'contradiction_score' POZITÍV is lehessen (Támogatás)
@@ -244,7 +249,8 @@ INPUTS:
 `;
 
     try {
-        const jsonString = await _callGemini(prompt, true, IStrategistMasterResponse_V64); // JSON mód + Séma kényszerítve
+        // JAVÍTVA (v69.1): TS2554 hiba. A 3. argumentum (IStrategistMasterResponse_V64) eltávolítva.
+        const jsonString = await _callGemini(prompt, true); // JSON mód kényszerítve
         const result = JSON.parse(jsonString);
         console.log(`[Lánc 6/6] Stratéga Ügynök (v69): Válasz sikeresen fogadva.`);
         return result;
@@ -266,5 +272,44 @@ INPUTS:
             },
             "error": e.message
         };
+    }
+}
+
+// === HOZZÁADVA (v69.1): A TS2305 hiba javítása ===
+// Az 'index.ts' ezt a funkciót keresi a /askChat végponthoz.
+export async function getChatResponse(context: string, history: any[], question: string) {
+    console.log(`[Lánc /askChat] Chat válasz kérése...`);
+    
+    // A 'history' átalakítása a Gemini által várt formátumra (ha szükséges)
+    // Ez a példa feltételezi, hogy a 'history' már a helyes formátumban van:
+    // { role: "user" | "model", parts: [{ text: "..." }] }
+    
+    const prompt = `
+TASK: You are a specialized AI assistant for a sports betting analyst.
+Your job is to answer questions based *only* on the provided context.
+DO NOT use external knowledge. DO NOT browse the web.
+Be concise and helpful. Answer in Hungarian.
+
+CONTEXT (The analysis you must use):
+---
+${context}
+---
+
+CHAT HISTORY:
+---
+${history.map((entry: any) => `${entry.role}: ${entry.parts[0].text}`).join('\n')}
+---
+
+NEW QUESTION:
+${question}
+`;
+
+    try {
+        const answer = await _callGemini(prompt, false); // Nem JSON mód
+        console.log(`[Lánc /askChat] Sikeres válasz.`);
+        return { answer };
+    } catch (e: any) {
+        console.error(`[Lánc /askChat] Hiba a chat válasz során: ${e.message}`);
+        return { error: e.message };
     }
 }
