@@ -1,6 +1,4 @@
 // 6. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
-// MÓDOSÍTÁS (v68.0): Hozzáadva 'getApiSportsLeagueId', 'getApiSportsTeamId' és 'getApiSportsRostersOnly' exportok
-// a /getRosters végpont támogatásához.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -166,8 +164,8 @@ return null;
     }
 }
 
-// --- getApiSportsTeamId (v56.0 - MÓDOSÍTVA v68.0: EXPORTÁLVA) ---
-export async function getApiSportsTeamId(teamName: string, sport: string, leagueId: number | string, season: number): Promise<number |
+// --- getApiSportsTeamId (v56.0 - Változatlan) ---
+async function getApiSportsTeamId(teamName: string, sport: string, leagueId: number | string, season: number): Promise<number |
 null> {
     const lowerName = teamName.toLowerCase().trim();
     const mappedName = APIFOOTBALL_TEAM_NAME_MAP[lowerName] || teamName;
@@ -263,8 +261,8 @@ return null;
     }
 }
 
-// --- getApiSportsLeagueId (v56.2 - MÓDOSÍTVA v68.0: EXPORTÁLVA) ---
-export async function getApiSportsLeagueId(leagueName: string, country: string, season: number, sport: string): Promise<{ leagueId: number, foundSeason: number } |
+// --- getApiSportsLeagueId (v56.2 - Változatlan) ---
+async function getApiSportsLeagueId(leagueName: string, country: string, season: number, sport: string): Promise<{ leagueId: number, foundSeason: number } |
 null> {
     if (!leagueName || !country || !season) {
         console.warn(`API-SPORTS (${sport}): Liga név ('${leagueName}'), ország ('${country}') vagy szezon (${season}) hiányzik.`);
@@ -1061,30 +1059,6 @@ throw new Error(`Kritikus statisztikák (GP <= 0) érvénytelenek.`);
     
     return result;
 }
-
-// === ÚJ (v68.0): EXPORTÁLT FUNKCIÓK A /getRosters VÉGPONTHOZ ===
-/**
- * Ez a funkció a _getApiSportsLineupData-t hívja (ami a _getSquadForTeam-et hívja),
- * és CSAK a keretadatokat adja vissza a P1 Modal számára.
- * A pozíciók ('pos') már normalizálva vannak (G, D, M, F).
- */
-export async function getApiSportsRostersOnly(
-    fixtureId: number | string | null,
-    sport: string,
-    homeTeamId: number,
-    awayTeamId: number,
-    season: number
-): Promise<{ home: IPlayerStub[]; away: IPlayerStub[] }> {
-    const data = await _getApiSportsLineupData(fixtureId, sport, homeTeamId, awayTeamId, season);
-    if (data && data.rosters) {
-        return data.rosters;
-    }
-    // Hiba esetén vagy ha nincs adat
-    console.warn(`[getApiSportsRostersOnly] Nem sikerült keretadatokat lekérni (Fixture: ${fixtureId})`);
-    return { home: [], away: [] };
-}
-// === MÓDOSÍTÁS VÉGE ===
-
 
 // Meta-adat a logoláshoz
 export const providerName = 'api-sports-soccer';
