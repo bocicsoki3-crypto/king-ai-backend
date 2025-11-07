@@ -1,5 +1,5 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v69.1 (Build Failed Javítások)
+// VERZIÓ: v69.2 (Build Failed Javítások)
 // MÓDOSÍTÁS:
 // 1. A PROMPT_STRATEGIST_V67 lecserélve PROMPT_STRATEGIST_V69-re.
 // 2. AZ ÚJ PROMPT TILTJA a "Dupla Esély" (Double Chance) tippeket.
@@ -8,11 +8,13 @@
 // 5. JAVÍTVA (v69.1): TS2846 import hiba (.d.ts)
 // 6. JAVÍTVA (v69.1): TS2554 hiba (a _callGemini 3 paramétert kapott 2 helyett)
 // 7. HOZZÁADVA (v69.1): TS2305 hiba (hiányzó 'getChatResponse' export)
+// 8. JAVÍTVA (v69.2): TS2834 hiba (hiányzó .js kiterjesztés a type importnál)
 
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 import { _callGemini } from './providers/common/utils.js'; // Megosztott Gemini hívó
-// JAVÍTVA (v69.1): TS2846 hiba
-// A '.d.ts' importálása helytelen volt. Most már 'import type'-ot használunk.
+// JAVÍTVA (v69.2): TS2834 hiba
+// A '.d.ts' importálása helytelen volt. Most már 'import type'-ot használunk,
+// ÉS hozzáadtuk a .js kiterjesztést a 'nodenext' modulkezelés miatt.
 import type {
     ICanonicalRichContext,
     ICanonicalStats,
@@ -23,7 +25,7 @@ import type {
     FixtureResult,
     IStructuredWeather,
     IPlayerStub
-} from './src/types/canonical'; // <-- .d.ts eltávolítva
+} from './src/types/canonical.js'; // <-- JAVÍTVA: .js hozzáadva
 
 // === v63.0: 5. ÜGYNÖK (KRITIKUS) PROMPTJA ===
 // v67.0: Módosítva, hogy a 'contradiction_score' POZITÍV is lehessen (Támogatás)
