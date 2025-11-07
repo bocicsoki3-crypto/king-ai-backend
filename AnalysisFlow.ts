@@ -1,16 +1,12 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v63.1 (Kvantitatív Kritikus & Súlyozó Stratéga)
+// VERZIÓ: v64.0 (Stratéga Döntési Jogkör)
 // MÓDOSÍTÁS:
-// 1. A 'runFullAnalysis' ÁTÍRVA, hogy a 'runStep_Critic' új kimenetét ('contradiction_score') kezelje.
-// 2. A Végső Bizalmi Pontszám ('final_confidence_score') most már
-//    a TypeScriptben kerül kiszámításra, az AI (Stratéga) csak megkapja és indokolja.
-// 3. TÖRÖLVE: A 'runStep_UnifiedAnalysis' import és hívás (ez okozta a hibát).
-// 4. ÚJ IMPORT: 'estimatePureXG' és 'applyContextualModifiers' (a 'Model.ts'-ből).
-// 5. ÚJ IMPORT: 'runStep_Critic' és 'runStep_Strategist' (az 'AI_Service.ts'-ből).
-// 6. A P1 Manuális Hiányzók ('manual_absentees') most már helyesen kerülnek átadásra a 'DataFetch' (2. Ügynök) felé.
-// 7. JAVÍTÁS: A 'catch' blokk TS2448/TS2454 hibája javítva ('away' és 'sport' változók).
-// 8. JAVÍTÁS (v63.5): A 'finalConfidenceScore' számítási hiba (hibás szorzó) javítva.
-// 9. JAVÍTÁS (v63.6): A 'xGSource' elgépelési hiba (TS2552) javítva.
+// 1. ELTÁVOLÍTVA: A [Lánc 5.5/6] (Végső Bizalom Számítása) blokk.
+//    A végső bizalom meghatározása átkerült a Stratéga (Ügynök 6) hatáskörébe.
+// 2. MÓDOSÍTVA: A 'strategistInput' már nem küldi el a 'final_confidence_score'-t.
+//    Helyette a 'modelConfidence'-t (Quant) és a 'criticReport'-ot (Kritikus) kapja meg.
+// 3. MÓDOSÍTVA: A 'jsonResponse' a végső bizalmat most már az AI válaszából
+//    (strategistReport.master_recommendation.final_confidence) nyeri ki.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -58,9 +54,9 @@ import { saveAnalysisToSheet } from './sheets.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v63.1):
-* - Átállás a 6 Fős Bizottsági Lánc architektúrára.
-* - A Végső Bizalom számítása áthelyezve az AI-tól a TypeScript kódba.
+* VÁLTOZÁS (v64.0):
+* - A Végső Bizalom számítása ELTÁVOLÍTVA a kódból.
+* - A Stratéga (Ügynök 6) DÖNTI EL a végső bizalmat.
 * **************************************************************/
 
 // Az új, strukturált JSON válasz (MÓDOSÍTVA v63.0)
@@ -85,7 +81,7 @@ string;
         oddsData: ICanonicalOdds | null;
         valueBets: any[];
         modelConfidence: number; // Ez a Quant/Statisztikai bizalom (4. Ügynök)
-        finalConfidenceScore: number; // === ÚJ (v63.1) === Ez a Súlyozott (Végső) bizalom
+        finalConfidenceScore: number; // Ez a Stratéga (6. Ügynök) által MEGHATÁROZOTT bizalom
         sim: any; 
         recommendation: any;
         xgSource: 'Manual (Direct)' |
@@ -169,12 +165,12 @@ const away: string = String(rawAway).trim();
         const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
 const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         
-        // === MÓDOSÍTVA (v63.1) ===
-        // Cache kulcs (v63.1) - A 'v63.0_chain' -> 'v63.1_q_critic'
+        // === MÓDOSÍTVA (v64.0) ===
+        // Cache kulcs (v64.0) - A 'v63.1_q_critic' -> 'v64.0_strat_decides'
         const p1AbsenteesHash = manual_absentees ?
 `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
-        analysisCacheKey = `analysis_v63.1_q_critic_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
+        analysisCacheKey = `analysis_v64.0_strat_decides_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
 if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
 if (cachedResult) {
@@ -305,47 +301,24 @@ const criticInput = {
             valueBetsJson: valueBets
         };
 const criticReport = await runStep_Critic(criticInput);
+        const contradictionScore = criticReport?.contradiction_score || 0.0;
+console.log(`[Lánc 5/6] Kritikus végzett. Kockázati Pontszám: ${contradictionScore.toFixed(2)}`);
 
-        // === MÓDOSÍTÁS (v63.1): 5.5 LÉPÉS (TS KÓD) - VÉGSŐ BIZALOM KISZÁMÍTÁSA ===
-        console.log(`[Lánc 5.5/6] Súlyozás: Végső Bizalom kiszámítása...`);
-        const STAT_CONFIDENCE_WEIGHT = 0.7; // 70% súly a statisztikai modellnek
-        const CRITIC_SCORE_WEIGHT = 0.3; // 30% súly a Kritikus kockázati pontszámának
-        
-        let contradictionScore = criticReport?.contradiction_score || 0.0;
-        if (typeof contradictionScore !== 'number' || isNaN(contradictionScore)) {
-            console.warn(`[AnalysisFlow] A Kritikus érvénytelen 'contradiction_score'-t adott vissza (${contradictionScore}). 0.0-ra állítva.`);
-            contradictionScore = 0.0;
-        }
-
-        // === JAVÍTÁS (v63.5) ===
-        // A Kritikus pontszáma (-10...10) átalakítva a 10-es skálára a súlyozáshoz
-        // (Pl. -3.0 pontszám -> -0.9 kiigazítás)
-        // const criticAdjustment = (contradictionScore / 10.0) * (10.0 * CRITIC_SCORE_WEIGHT * 3.33); // <-- HIBÁS SOR (v63.1)
-        const criticAdjustment = contradictionScore * CRITIC_SCORE_WEIGHT; // <-- JAVÍTOTT SOR (v63.5)
-        // === JAVÍTÁS VÉGE ===
-        
-        // Súlyozott átlag számítása
-        let finalConfidenceScore = modelConfidence + criticAdjustment;
-        
-        // Biztosítjuk, hogy az eredmény 1.0 és 10.0 között maradjon
-        finalConfidenceScore = Math.max(1.0, Math.min(10.0, finalConfidenceScore));
-
-        console.log(`[Lánc 5.5/6] Súlyozás kész. Statisztika: ${modelConfidence.toFixed(2)}, Kritika Pontszám: ${contradictionScore.toFixed(2)} -> Végső Bizalom: ${finalConfidenceScore.toFixed(2)}`);
-        // === MÓDOSÍTÁS VÉGE ===
+        // === MÓDOSÍTÁS (v64.0): A [Lánc 5.5/6] (Súlyozás) ELTÁVOLÍTVA ===
+        // A kód itt már nem számol végső bizalmat.
 
         // === 6. ÜGYNÖK (STRATÉGA): Végső döntés ===
         console.log(`[Lánc 6/6] Stratéga Ügynök: Végső döntés meghozatala...`);
-        // === JAVÍTÁS (TS1005 / TS1128) ===
-        // A hibás 'strategistInput' objektum javítva.
+        // A Stratéga megkapja a Quant bizalmat (modelConfidence) és a
+        // Kritikus jelentését (criticReport), és ő DÖNTI EL a végső bizalmat.
 const strategistInput = {
             matchData: { home, away, sport, leagueName },
             quantReport: { pure_mu_h: pure_mu_h, pure_mu_a: pure_mu_a, source: quantSource },
             specialistReport: { mu_h: mu_h, mu_a: mu_a, log: modifierLog },
             simulatorReport: sim,
-            criticReport: criticReport, // Az 5. Ügynök jelentése
-        
-    modelConfidence: modelConfidence, // A Statisztikai bizalom
-            final_confidence_score: parseFloat(finalConfidenceScore.toFixed(1)), // === MÓDOSÍTÁS (v63.1) === A kiszámolt Végső bizalom
+            criticReport: criticReport, // Az 5. Ügynök jelentése (benne a contradiction_score)
+            modelConfidence: modelConfidence, // A Statisztikai bizalom (pl. 4.3)
+            // A 'final_confidence_score' ELTÁVOLÍTVA innen (v64.0)
             rawDataJson: rawData,
             realXgJson: { // A P1 "Tiszta" xG átadása
                 manual_H_xG: advancedData?.manual_H_xG ?? null,
@@ -354,7 +327,6 @@ const strategistInput = {
                 manual_A_xGA: advancedData?.manual_A_xGA ?? null
             }
         };
-        // === JAVÍTÁS VÉGE ===
 
 const strategistReport = await runStep_Strategist(strategistInput);
         
@@ -362,8 +334,17 @@ const strategistReport = await runStep_Strategist(strategistInput);
             console.error("A Stratéga (6. Ügynök) hibát adott vissza:", strategistReport.error);
 }
         
+        // === MÓDOSÍTÁS (v64.0): A végső bizalom kinyerése az AI válaszából ===
         const masterRecommendation = strategistReport.master_recommendation;
-console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterRecommendation)}`);
+        let finalConfidenceScore = 1.0; // Alapértelmezett hiba esetén
+        if (masterRecommendation && typeof masterRecommendation.final_confidence === 'number') {
+            finalConfidenceScore = masterRecommendation.final_confidence;
+        } else {
+            console.error("KRITIKUS HIBA: A Stratéga (6. Ügynök) nem adott vissza érvényes 'final_confidence' számot! 1.0-ra állítva.");
+        }
+        // === MÓDOSÍTÁS VÉGE ===
+
+console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterRecommendation)} (Végső bizalom: ${finalConfidenceScore})`);
 
         // --- 7. Válasz Elküldése és Naplózás ---
         const debugInfo = {
@@ -375,7 +356,7 @@ console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterReco
 'Ismeretlen'
         };
         
-        // === A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA (MÓDOSÍTVA v63.1) ===
+        // === A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA (MÓDOSÍTVA v64.0) ===
         const jsonResponse: IAnalysisResponse = { 
             analysisData: {
                 committee: {
@@ -397,8 +378,8 @@ console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterReco
                  },
                 oddsData: mutableOddsData,
                 valueBets: valueBets,
-                modelConfidence: modelConfidence, // Statisztikai bizalom
-                finalConfidenceScore: parseFloat(finalConfidenceScore.toFixed(1)), // Végső bizalom
+                modelConfidence: modelConfidence, // Statisztikai bizalom (Quant)
+                finalConfidenceScore: parseFloat(finalConfidenceScore.toFixed(1)), // Végső bizalom (Stratéga)
          
        sim: sim,
                 recommendation: masterRecommendation,
