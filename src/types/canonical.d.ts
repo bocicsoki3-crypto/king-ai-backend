@@ -1,14 +1,8 @@
 // FÁJL: src/types/canonical.d.ts
-// VERZIÓ: v62.1 (P1 Manuális Roster Választó - 1. Lépés)
+// VERZIÓ: v63.1 (P1 Manuális Roster Választó - Rating)
 // MÓDOSÍTÁS:
-// 1. ÚJ INTERFÉSZ: 'IPlayerStub' hozzáadva.
-// 2. 'ICanonicalRawData' [cite: 2666-2667] és 'ICanonicalRichContext' 
-//    kiegészítve az 'availableRosters' mezővel (TS2741 Hiba [image: 438084.png] javítása).
-// 3. 'ICanonicalRichContext' -> 'advancedData'  kiegészítve a
-//    'manual_H_xG', 'manual_H_xGA' stb.  mezőkkel
-//    (TS2339 Hiba [image: 438084.png] javítása).
-// 4. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
-
+// 1. 'IPlayerStub' kiegészítve a 'rating_last_5' mezővel.
+// 2. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
 // Ezen interfészek definiálják a rendszeren belüli "adatszerződést".
 // A Providerek (pl. apiSportsProvider) felelőssége, hogy az API válaszaikat
 // ezen interfészeknek megfelelő objektumokká alakítsák.
@@ -44,6 +38,8 @@ export interface IPlayerStub {
     id: number;
     name: string;
     pos: string; // Pozíció (G, D, M, F)
+    // === ÚJ (v63.1) ===
+    rating_last_5: number; // Placeholder rating a P1-es hiányzó-logikához
 }
 
 /**
@@ -155,8 +151,7 @@ export interface ICanonicalRichContext {
   advancedData: {
     home: { [key:string]: any };
     away: { [key:string]: any };
-    
-    // === ÚJ (v62.1) A TS2339 [image: 438084.png] hiba javítása ===
+// === ÚJ (v62.1) A TS2339 [image: 438084.png] hiba javítása ===
     manual_H_xG?: number | null;
     manual_H_xGA?: number | null;
     manual_A_xG?: number | null;
@@ -168,12 +163,12 @@ export interface ICanonicalRichContext {
     away_overall: string | null;
     [key: string]: any;
   };
-  rawData: ICanonicalRawData; // Ez már tartalmazza a v62.1-es mezőket
+  rawData: ICanonicalRawData;
+// Ez már tartalmazza a v62.1-es mezőket
   leagueAverages: { [key: string]: any };
   oddsData: ICanonicalOdds | null;
   fromCache: boolean;
-
-  // === ÚJ (v62.1) ===
+// === ÚJ (v62.1) ===
   // Ezt küldjük a kliensnek a lista feltöltéséhez
   availableRosters: {
     home: IPlayerStub[];
@@ -189,7 +184,8 @@ export type FixtureResult = {
     home: number;
     away: number;
     status: 'FT';
-} | {
+} |
+{
     status: string;
     home?: undefined;
     away?: undefined;
