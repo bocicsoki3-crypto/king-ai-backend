@@ -1,10 +1,14 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v73.2 (Architekta Javítás - TS2322)
+// VERZIÓ: v75.0 (Redundáns Odds Fallback)
 // MÓDOSÍTÁS:
-// 1. JAVÍTVA (ts2322): Az 'IDataFetchResponse' interfész 'xgSource' típusa
-//    'string'-re módosítva a 67. sorban, hogy a 176. sorban lévő
-//    cache-logika (pl. "API (Real) (Cache)") ne okozzon típus-ütközést.
-// 2. Az összes többi (v73.1) logika (P2 Aggregátor, P1 Kezelés) változatlan.
+// 1. HOZZÁADVA: Importálja a 'fetchOddsData'-t az új 'providers/oddsProvider.ts'-ből.
+// 2. MÓDOSÍTVA: A 'getRichContextualData' (250. sor környéke) most már
+//    tartalmaz egy "fallback" logikát.
+// 3. LOGIKA: Ha az 'apiSportsProvider' (baseResult) nem ad vissza odds adatot,
+//    a rendszer automatikusan meghívja az új 'oddsFeedFetchData'-t
+//    (a dedikált "Odds Feed" API-t), hogy megoldja a "Bielefeld-hibát"
+//    (-5.00 Kockázati Pontszám).
+// 4. Az összes korábbi (v73.2) logika (P2 Aggregátor, P1 Kezelés) változatlan.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -20,6 +24,9 @@ import {
 import * as hockeyProvider from './providers/newHockeyProvider.js';
 import * as basketballProvider from './providers/newBasketballProvider.js';
 import { fetchSofascoreData, type ISofascoreResponse } from './providers/sofascoreProvider.js';
+// === ÚJ (v75.0): Redundáns Odds Provider importálása ===
+import { fetchOddsData as oddsFeedFetchData } from './providers/oddsProvider.js';
+// === MÓDOSÍTÁS VÉGE ===
 import { SPORT_CONFIG } from './config.js';
 // Importálás a központi utils fájlból
 import {
@@ -64,16 +71,13 @@ export interface IDataFetchOptions {
 
 // Az IDataFetchResponse kiterjeszti az ICanonicalRichContext-et
 export interface IDataFetchResponse extends ICanonicalRichContext {
-    // === JAVÍTÁS (v73.2 - TS2322) ===
-    // 'string'-re módosítva, hogy a cache-elt stringek (pl. "API (Real) (Cache)")
-    // ne okozzanak típus-ütközést a 176. sorban.
+    // v73.2-ben 'string'-re módosítva a cache-kompatibilitás miatt
     xgSource: string; 
-    // === JAVÍTÁS VÉGE ===
 }
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v73.2 (Architekta Javítás - TS2322)
+* VERZIÓ: v75.0 (Redundáns Odds Fallback)
 **************************************************************/
 
 function getProvider(sport: string): IDataProvider {
@@ -91,7 +95,7 @@ function getProvider(sport: string): IDataProvider {
 
 /**
  * Segédfüggvény a pozíció nevének fordításához (a Model.ts által várt formátumra)
- * === JAVÍTÁS (v73.0): Explicit visszatérési típus CanonicalRole-ra ===
+ * (Változatlan v73.0)
  */
 function getRoleFromPos(pos: string): CanonicalRole {
     const p = pos.toUpperCase();
@@ -101,10 +105,9 @@ function getRoleFromPos(pos: string): CanonicalRole {
     if (p === 'F') return 'Támadó';
     return 'Ismeretlen';
 }
-// === JAVÍTÁS VÉGE ===
 
 /**
- * FŐ ADATGYŰJTŐ FÜGGVÉNY (v73.2)
+ * FŐ ADATGYŰJTŐ FÜGGVÉNY (v75.0)
  */
 export async function getRichContextualData(
     options: IDataFetchOptions,
@@ -136,9 +139,9 @@ export async function getRichContextualData(
         `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
         '';
         
-    // A cache kulcs most már az explicitMatchId-t használja, ha meg van adva
     const ck = explicitMatchId || `rich_context_v62.1_roster_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}${p1AbsenteesHash}`;
     
+    // === CACHE OLVASÁS (v73.2) ===
     if (!forceNew) {
         const cached = preFetchAnalysisCache.get<IDataFetchResponse>(ck);
         if (cached) {
@@ -148,6 +151,7 @@ export async function getRichContextualData(
             let p1Source = " (Cache)";
             let xgSource: IDataFetchResponse['xgSource'] = cached.xgSource || 'Calculated (Fallback)';
 
+            // P1 xG felülbírálás a cache-elt adatokon
             if (manual_H_xG != null && manual_H_xGA != null && manual_A_xG != null && manual_A_xGA != null) {
                 finalData.advancedData.manual_H_xG = manual_H_xG;
                 finalData.advancedData.manual_H_xGA = manual_H_xGA;
@@ -157,6 +161,7 @@ export async function getRichContextualData(
                 p1Source = " (Cache + P1 xG)";
             }
             
+            // P1 Hiányzó felülbírálás a cache-elt adatokon
             if (manual_absentees && (manual_absentees.home.length > 0 || manual_absentees.away.length > 0)) {
                 const mapManualToCanonical = (playerStub: { name: string, pos: string }): ICanonicalPlayer => ({
                     name: playerStub.name,
@@ -172,14 +177,11 @@ export async function getRichContextualData(
                 p1Source = " (Cache + P1 Hiányzók)";
             }
 
-            // === JAVÍTÁS (v73.2 - TS2322) ===
-            // Az 'xgSource' mezőt nem módosítjuk a 'p1Source' stringgel,
-            // hogy a típusa 'Manual (Components)' maradhasson.
             return { ...finalData, fromCache: true, xgSource: xgSource };
-            // === JAVÍTÁS VÉGE ===
         }
     }
-    
+    // === CACHE OLVASÁS VÉGE ===
+
     console.log(`Nincs cache (vagy kényszerítve) (${ck}), friss adatok lekérése...`);
     try {
         
@@ -199,7 +201,7 @@ export async function getRichContextualData(
             awayTeamName: decodedAwayTeam,
             leagueName: decodedLeagueName,
             utcKickoff: decodedUtcKickoff,
-            countryContext: countryContext // Átadjuk a P4 providernek is
+            countryContext: countryContext 
         };
         
         // Párhuzamos hívás (P4 Alap + P2 Kontextus)
@@ -214,13 +216,13 @@ export async function getRichContextualData(
                 : Promise.resolve(null)
         ]);
         
-        // === EGYESÍTÉS (v73.0) ===
+        // === EGYESÍTÉS (v75.0) ===
         const finalResult: ICanonicalRichContext = baseResult;
         let finalHomeXg: number | null = null;
         let finalAwayXg: number | null = null;
         let xgSource: IDataFetchResponse['xgSource'];
         
-        // 1. xG PRIORITÁSI LÁNC
+        // 1. xG PRIORITÁSI LÁNC (Változatlan)
         if (manual_H_xG != null && manual_H_xGA != null &&
             manual_A_xG != null && manual_A_xGA != null)
         {
@@ -252,8 +254,39 @@ export async function getRichContextualData(
         finalResult.advancedData.away['xg'] = finalAwayXg;
         
         console.log(`[DataFetch] xG Forrás meghatározva: ${xgSource}. (H:${finalHomeXg ?? 'N/A'}, A:${finalAwayXg ?? 'N/A'})`);
+
+        // === ÚJ (v75.0): REDUNDÁNS ODDS FALLBACK ===
+        // Az odds_implementation_plan.md (3.3) alapján
         
-        // 2. HIÁNYZÓK PRIORITÁSI LÁNC
+        const primaryOddsFailed = !finalResult.oddsData || 
+                                  !finalResult.oddsData.allMarkets || 
+                                  finalResult.oddsData.allMarkets.length === 0;
+        
+        const fixtureId = finalResult.rawData.apiFootballData?.fixtureId;
+
+        if (primaryOddsFailed && fixtureId && sport === 'soccer') {
+            console.warn(`[DataFetch] Az 'apiSportsProvider' nem adott vissza Odds adatot (mint a Bielefeld-log). Fallback indítása az 'OddsProvider'-re (FixtureID: ${fixtureId})...`);
+            
+            try {
+                // Hívjuk a 2. (dedikált) providert (az oddsProvider.ts-ből)
+                const oddsFeedResult = await oddsFeedFetchData(fixtureId, sport);
+                
+                if (oddsFeedResult) {
+                    console.log(`[DataFetch] SIKER. Az 'OddsProvider' megbízható odds adatokat adott vissza.`);
+                    finalResult.oddsData = oddsFeedResult; // Felülírjuk a 'baseResult' üres oddsait
+                } else {
+                    console.warn(`[DataFetch] A 'fallback' ('OddsProvider') sem adott vissza adatot a ${fixtureId} ID-hoz.`);
+                }
+            } catch (e: any) {
+                console.error(`[DataFetch] Kritikus hiba az 'OddsProvider' fallback hívása során: ${e.message}`);
+            }
+        } else if (!primaryOddsFailed) {
+            console.log(`[DataFetch] Az 'apiSportsProvider' sikeresen adott vissza Odds adatot. Fallback kihagyva.`);
+        }
+        // === MÓDOSÍTÁS VÉGE ===
+
+        
+        // 2. HIÁNYZÓK PRIORITÁSI LÁNC (Változatlan v73.0)
         // === PLAN A (Manuális) ===
         if (manual_absentees && (manual_absentees.home.length > 0 || manual_absentees.away.length > 0)) {
             console.log(`[DataFetch] Felülírás (P1): Manuális hiányzók alkalmazva. (H: ${manual_absentees.home.length}, A: ${manual_absentees.away.length}). Automatikus lekérés (Sofascore/apiSports) kihagyva.`);
@@ -306,18 +339,18 @@ export async function getRichContextualData(
             xgSource: xgSource 
         };
         
-        preFetchAnalysisCache.set(ck, response); // A helyes kulcs használata
-        console.log(`Sikeres adat-egyesítés (v73.2), cache mentve (${ck}).`);
+        preFetchAnalysisCache.set(ck, response);
+        console.log(`Sikeres adat-egyesítés (v75.0), cache mentve (${ck}).`);
         return { ...response, fromCache: false };
         
     } catch (e: any) {
-         console.error(`KRITIKUS HIBA a getRichContextualData (v73.2) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
-         throw new Error(`Adatgyűjtési hiba (v73.2): ${e.message} \nStack: ${e.stack}`);
+         console.error(`KRITIKUS HIBA a getRichContextualData (v75.0) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
+         throw new Error(`Adatgyűjtési hiba (v75.0): ${e.message} \nStack: ${e.stack}`);
     }
 }
 
 
-// === ÚJ (6 FŐS BIZOTTSÁG): P1 KERET-LEKÉRŐ FÜGGVÉNY ===
+// === P1 KERET-LEKÉRŐ FÜGGVÉNY (Változatlan v73.0) ===
 export async function getRostersForMatch(options: {
     sport: string;
     homeTeamName: string; 
@@ -334,13 +367,19 @@ null> {
         const decodedHomeTeam = decodeURIComponent(decodeURIComponent(options.homeTeamName));
         const decodedAwayTeam = decodeURIComponent(decodeURIComponent(options.awayTeamName));
         const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(options.utcKickoff));
+        
+        // (v75.0) A 'countryContext' hozzáadása a provider hívásához, ha szükséges
+        const sportConfig = SPORT_CONFIG[options.sport];
+        const leagueData = sportConfig?.espn_leagues[decodedLeagueName];
+        const countryContext = leagueData?.country || null;
 
         const providerOptions = {
             sport: options.sport,
             homeTeamName: decodedHomeTeam,
             awayTeamName: decodedAwayTeam,
             leagueName: decodedLeagueName,
-            utcKickoff: decodedUtcKickoff
+            utcKickoff: decodedUtcKickoff,
+            countryContext: countryContext
         };
 
         const baseResult = await sportProvider.fetchMatchData(providerOptions);
@@ -366,5 +405,4 @@ null> {
 // --- KÖZÖS FÜGGVÉNYEK EXPORTÁLÁSA ---
 export const _getFixturesFromEspn = commonGetFixtures;
 export const _callGemini = commonCallGemini;
-// ÚJ (v71.0)
 export const _callGeminiWithJsonRetry = commonCallGeminiWithJsonRetry;
