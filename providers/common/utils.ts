@@ -1,13 +1,10 @@
 // FÁJL: providers/common/utils.ts
-// VERZIÓ: v55.9 (Valós Időjárás Implementáció és TS2739 Javítás)
+// VERZIÓ: v72.0 (Architekta Refaktor)
 // MÓDOSÍTÁS:
-// 1. A 'getStructuredWeatherData'  placeholder (TODO) ELTÁVOLÍTVA.
-// 2. Helyettesítve egy 'production-ready' implementációval, amely
-//    az Open-Meteo Geocoding és Archive API-jait hívja.
-// 3. Ez a javítás MEGOLDJA a TS2739 build hibát, mivel a 'getStructuredWeatherData'
-//    visszatérési értéke most már megfelel a 'IStructuredWeather' (v55.4)  interfésznek
-//    (tartalmazza a 'wind_speed_kmh' és 'precipitation_mm' mezőket).
-// 4. JAVÍTVA: Minden szintaktikai hibát okozó '' hivatkozás eltávolítva.
+// 1. Centralizált segédfüggvény modul.
+// 2. ÁTHOZVA: _callGemini és _getFixturesFromEspn a DataFetch.ts-ből (v73.0).
+// 3. ÁTHOZVA: _callGeminiWithJsonRetry és fillPromptTemplate az AI_Service.ts-ből (v70.0).
+// 4. MEGTARTVA: makeRequest és getStructuredWeatherData (a régi utils.txt v55.9-ből).
 
 import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import {
@@ -17,13 +14,11 @@ import {
 import type { 
     ICanonicalOdds, 
     ICanonicalStats,
-    IStructuredWeather // Importáljuk a v55.4-es interfészt
+    IStructuredWeather
 } from '../../src/types/canonical.d.ts'; 
 
-/**
- * Általános, hibatűrő API hívó segédfüggvény (az eredeti DataFetch.js-ből)
- * Ezt minden provider használhatja, amelyiknek nincs szüksége egyedi kulcsrotációra.
- */
+// --- ÁLTALÁNOS API HÍVÓ ---
+
 export async function makeRequest(url: string, config: AxiosRequestConfig = {}, retries: number = 1): Promise<any> {
     let attempts = 0;
     const method = config.method?.toUpperCase() || 'GET';
@@ -32,13 +27,12 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
         try {
             const baseConfig: AxiosRequestConfig = {
                 timeout: 25000,
-                validateStatus: (status: number) => status >= 200 && status < 500, // Típus hozzáadva
+                validateStatus: (status: number) => status >= 200 && status < 500,
                 headers: {}
             };
             const currentConfig: AxiosRequestConfig = { ...baseConfig, ...config, headers: { ...baseConfig.headers, ...config?.headers } };
             
             let response: AxiosResponse<any>;
-            // Típusosítás
             if (method === 'POST') {
                 response = await axios.post(url, currentConfig.data || {}, currentConfig);
             } else {
@@ -83,24 +77,19 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
     throw new Error("API hívás váratlanul befejeződött.");
 }
 
+// --- GEMINI API HÍVÓK ---
+
 /**
- * Gemini API Hívó (MÓDOSÍTVA v53.0)
- * @param prompt A Gemininek küldött szöveg.
- * @param forceJson (Opcionális, default=true) Meghatározza, hogy a JSON kényszerítő
- * instrukciókat hozzá kell-e adni a prompthoz.
+ * Alap Gemini API Hívó
  */
-export async function _callGemini(prompt: string, forceJson: boolean = true): Promise<string> { // <-- JAVÍTÁS
+export async function _callGemini(prompt: string, forceJson: boolean = true): Promise<string> {
     if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') { throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY."); }
     if (!GEMINI_MODEL_ID) { throw new Error("Hiányzó GEMINI_MODEL_ID."); }
     
     let finalPrompt = prompt;
-    // === JAVÍTÁS (TS2554) ===
-    // Csak akkor adjuk hozzá a JSON instrukciókat, ha a 'forceJson' true.
-    // A chat (AI_Service.ts) 'false'-szal hívja.
     if (forceJson) {
         finalPrompt = `${prompt}\n\nCRITICAL OUTPUT INSTRUCTION: Your entire response must be ONLY a single, valid JSON object.\nDo not add any text, explanation, or introductory phrases outside of the JSON structure itself.\nEnsure the JSON is complete and well-formed.`;
     }
-    // === JAVÍTÁS VÉGE ===
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent?key=${GEMINI_API_KEY}`;
     const payload = { 
@@ -108,7 +97,6 @@ export async function _callGemini(prompt: string, forceJson: boolean = true): Pr
         generationConfig: { 
             temperature: 0.2, 
             maxOutputTokens: 8192,
-            // A 'responseMimeType' csak akkor használható, ha 'forceJson' true
             ...(forceJson && { responseMimeType: "application/json" }),
         }, 
     };
@@ -132,11 +120,9 @@ export async function _callGemini(prompt: string, forceJson: boolean = true): Pr
             throw new Error(`Gemini nem adott vissza szöveges tartalmat. Ok: ${finishReason}`);
         }
         
-        // Ha JSON-t kényszerítettünk, validáljuk
         if (forceJson) {
             try {
                 JSON.parse(responseText);
-                // Validálás
             } catch (e: any) {
                 console.error(`Gemini JSON parse hiba a kikényszerített válaszon: ${e.message}`);
                 throw new Error(`Gemini JSON parse hiba: ${e.message}`);
@@ -151,241 +137,119 @@ export async function _callGemini(prompt: string, forceJson: boolean = true): Pr
 }
 
 /**
- * Gemini Prompt Generátor (az eredeti DataFetch.js-ből)
- * Ezt a v53.0 (Dialectical CoT) modell már nem használja aktívan,
- * de a 'stub' providerek (hockey, basketball) még hivatkozhatnak rá.
+ * Robusztus AI hívó JSON parse retry logikával (AI_Service.ts-ből áthozva)
  */
-export function PROMPT_V43(
-    sport: string, 
-    homeTeamName: string, 
-    awayTeamName: string, 
-    apiSportsHomeSeasonStats: ICanonicalStats | null, // TÍPUSOSÍTVA
-    apiSportsAwaySeasonStats: ICanonicalStats | null, // TÍPUSOSÍTVA
-    apiSportsH2HData: any[] | null, 
-    apiSportsLineups: any[] | null
-): string {
+export async function _callGeminiWithJsonRetry(
+    prompt: string, 
+    stepName: string, 
+    maxRetries: number = 2
+): Promise<any> {
     
-    let calculatedStatsInfo = "NOTE ON STATS: No reliable API-Sports season stats available. Please use your best knowledge for the CURRENT SEASON/COMPETITION stats.\n";
-    if (apiSportsHomeSeasonStats || apiSportsAwaySeasonStats) {
-        calculatedStatsInfo = `CRITICAL NOTE ON STATS: The following basic stats have been PRE-CALCULATED from API-Sports.
-Use these exact numbers; do not rely on your internal knowledge for these specific stats.\n`;
-        if (apiSportsHomeSeasonStats) {
-            // Típusbiztos 'gp' és 'form' használata
-            calculatedStatsInfo += `Home Calculated (GP=${apiSportsHomeSeasonStats.gp ?? 'N/A'}, Form=${apiSportsHomeSeasonStats.form ?? 'N/A'})\n`;
-        } else { calculatedStatsInfo += `Home Calculated: N/A\n`; }
-        if (apiSportsAwaySeasonStats) {
-            calculatedStatsInfo += `Away Calculated (GP=${apiSportsAwaySeasonStats.gp ?? 'N/A'}, Form=${apiSportsAwaySeasonStats.form ?? 'N/A'})\n`;
-        } else { calculatedStatsInfo += `Away Calculated: N/A\n`; }
-    }
-
-    let h2hInfo = "NOTE ON H2H: No reliable H2H data available from API-Sports. Use your general knowledge for H2H summary and potentially older structured data.\n";
-    if (apiSportsH2HData && Array.isArray(apiSportsH2HData) && apiSportsH2HData.length > 0) {
-        const h2hString = apiSportsH2HData.map(m => `${m.date} (${m.competition}): ${m.home_team} ${m.score} ${m.away_team}`).join('; ');
-        h2hInfo = `CRITICAL H2H DATA (from API-Sports, Last ${apiSportsH2HData.length}): ${h2hString}\nUse THIS data to generate the h2h_summary and h2h_structured fields.
-Do not use your internal knowledge for H2H.\n`;
-        h2hInfo += `Structured H2H (for JSON output): ${JSON.stringify(apiSportsH2HData)}\n`;
-    }
-
-    let lineupInfo = "NOTE ON LINEUPS: No API-Sports lineup data available (this is normal if the match is far away). Analyze absentees and formation based on your general knowledge and recent news.\n";
-    if (apiSportsLineups && apiSportsLineups.length > 0) {
-        const relevantLineupData = apiSportsLineups.map((t: any) => ({
-             team: t.team?.name,
-             formation: t.formation,
-             startXI: t.startXI?.map((p: any) => p.player?.name),
-             substitutes: t.substitutes?.map((p: any) => p.player?.name)
-        }));
-        lineupInfo = `CRITICAL LINEUP DATA (from API-Sports): ${JSON.stringify(relevantLineupData)}\nUse THIS data *first* to determine absentees, key players, and formation.
-This is more reliable than general knowledge.\n`;
-    }
-
-    return `CRITICAL TASK: Analyze the ${sport} match: "${homeTeamName}" (Home) vs "${awayTeamName}" (Away).
-Provide a single, valid JSON object. Focus ONLY on the requested fields.
-**CRITICAL: You MUST use the latest factual data provided below (API-Sports) over your general knowledge.**
-${calculatedStatsInfo}
-${h2hInfo}
-${lineupInfo}
-... (A prompt többi része változatlan) ...
-`;
-}
-
-
-// --- ÚJ (v55.9) Időjárás Implementáció ---
-
-// In-memory cache a geokódolási hívások csökkentésére.
-const geocodingCache = new Map<string, { latitude: number; longitude: number }>();
-
-/**
- * Az Open-Meteo Geocoding API válasza
- */
-interface IGeocodingResponse {
-    results?: Array<{
-        latitude: number;
-        longitude: number;
-        country_code: string;
-    }>;
-}
-
-/**
- * Az Open-Meteo Archive (Weather) API válasza
- */
-interface IWeatherArchiveResponse {
-    hourly: {
-        time: string[]; // ISO 8601 dátumok
-        precipitation: number[]; // mm
-        wind_speed_10m: number[]; // km/h
-        temperature_2m: number[]; // °C
-    };
-    hourly_units: {
-        precipitation: string;
-        wind_speed_10m: string;
-        temperature_2m: string;
-    };
-}
-
-/**
- * Segédfüggvény: Lekéri egy város koordinátáit az Open-Meteo Geocoding API-tól.
- * Gyorsítótárazza az eredményeket.
- */
-async function getCoordinatesForCity(city: string): Promise<{ latitude: number; longitude: number } | null> {
-    const normalizedCity = city.toLowerCase().trim();
-    if (geocodingCache.has(normalizedCity)) {
-        return geocodingCache.get(normalizedCity)!;
-    }
-
-    try {
-        const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(normalizedCity)}&count=1&language=en&format=json`;
-        
-        // A 'fetch' modern Node.js verziókban (18+) globálisan elérhető.
-        const response = await fetch(url, {
-            headers: { 'Accept': 'application/json' }
-        });
-
-        if (!response.ok) {
-            console.error(`[utils.ts/Geocoding] API Hiba (${normalizedCity}): ${response.status} ${response.statusText}`);
-            return null;
-        }
-
-        const data = (await response.json()) as IGeocodingResponse;
-
-        if (data.results && data.results.length > 0) {
-            const { latitude, longitude } = data.results[0];
-            const result = { latitude, longitude };
-            geocodingCache.set(normalizedCity, result); // Mentés a cache-be
+    let attempts = 0;
+    while (attempts <= maxRetries) {
+        attempts++;
+        try {
+            // A belső, centralizált _callGemini-t hívja
+            const jsonString = await _callGemini(prompt, true); 
+            const result = JSON.parse(jsonString);
+            
+            if (attempts > 1) {
+                console.log(`[AI_Service] Sikeres JSON feldolgozás (${stepName}) a(z) ${attempts}. próbálkozásra.`);
+            }
             return result;
-        } else {
-            console.warn(`[utils.ts/Geocoding] Nincs találat erre: ${normalizedCity}`);
-            return null;
+        } catch (e: any) {
+            if (e instanceof SyntaxError) {
+                console.warn(`[AI_Service] FIGYELMEZTETÉS: Gemini JSON parse hiba (${stepName}), ${attempts}/${maxRetries+1}. próbálkozás. Hiba: ${e.message}`);
+                if (attempts > maxRetries) {
+                    console.error(`[AI_Service] KRITIKUS HIBA: A Gemini JSON feldolgozása végleg sikertelen (${stepName}) ${attempts-1} próbálkozás után.`);
+                    throw new Error(`AI Hiba (${stepName}): A modell hibás JSON struktúrát adott vissza, ami nem feldolgozható. Hiba: ${e.message}`);
+                }
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+            } else {
+                console.error(`[AI_Service] Kritikus nem-parse hiba (${stepName}): ${e.message}`);
+                throw e;
+            }
         }
-    } catch (error: any) {
-        console.error(`[utils.ts/Geocoding] Kritikus hiba (${normalizedCity}): ${error.message}`);
-        return null;
     }
+    throw new Error(`AI Hiba (${stepName}): Ismeretlen hiba az újrapróbálkozási ciklusban.`);
 }
 
+// --- PROMPT SEGÉDFÜGGVÉNY ---
 
 /**
- * === JAVÍTOTT (v55.9) Időjárás Függvény ===
- * Lecseréli a "TODO" placeholdert egy valós Open-Meteo API hívással.
- * Visszatérési értéke MEGFELEL a v55.4-es IStructuredWeather interfésznek .
- * Ez javítja a TS2739 hibát [image_2922f8.png] az 'apiSportsProvider'-ben  és a 'newBasketballProvider'-ben .
+ * HELPER a promptok kitöltéséhez (AI_Service.ts-ből áthozva)
  */
-export async function getStructuredWeatherData(
-    stadiumLocation: string | null, 
-    utcKickoff: string | null
-): Promise<IStructuredWeather> {
-    
-    // Alapértelmezett (fallback) válasz, amely megfelel az interfésznek
-    const fallbackWeather: IStructuredWeather = {
-        description: "N/A (Hiányzó adat)",
-        temperature_celsius: null,
-        wind_speed_kmh: null,     // KÖTELEZŐ
-        precipitation_mm: null, // KÖTELEZŐ
-        source: 'N/A'
-    };
-
-    if (!stadiumLocation || !utcKickoff || stadiumLocation === "N/A") {
-        console.warn(`[utils.ts/Weather] Hiányzó város vagy dátum az időjárás lekéréséhez.`);
-        return fallbackWeather;
-    }
-
-    // 1. LÉPÉS: Koordináták lekérése (Cache-elt)
-    const coordinates = await getCoordinatesForCity(stadiumLocation);
-    if (!coordinates) {
-        console.warn(`[utils.ts/Weather] Nem sikerült geokódolni: ${stadiumLocation}`);
-        return fallbackWeather;
-    }
-
-    // 2. LÉPÉS: Dátum formázása az Archive API-nak (YYYY-MM-DD)
-    let matchDate: Date;
-    let matchHour: number;
+export function fillPromptTemplate(template: string, data: any): string {
+    if (!template || typeof template !== 'string') return '';
     try {
-        matchDate = new Date(utcKickoff);
-        matchHour = matchDate.getUTCHours(); // A meccs kezdésének UTC órája
-    } catch (e: any) {
-        console.error(`[utils.ts/Weather] Érvénytelen dátum formátum: ${utcKickoff}`);
-        return fallbackWeather;
-    }
-    
-    // YYYY-MM-DD formátum
-    const simpleDate = matchDate.toISOString().split('T')[0];
+        return template.replace(/\{([\w_.]+)\}/g, (match, key) => {
+            let value: any;
+            if (key.includes('.')) {
+                const keys = key.split('.');
+                let currentData = data;
+                let found = true;
+                for (const k of keys) {
+                    if (currentData && typeof currentData === 'object' && currentData.hasOwnProperty(k)) {
+                        currentData = currentData[k];
+                    } else if (k.endsWith('Json')) {
+                        const baseKey = k.replace('Json', '');
+                        if (currentData && currentData.hasOwnProperty(baseKey) && currentData[baseKey] !== undefined) {
+                            try { 
+                                currentData = currentData[baseKey];
+                            } catch (e: any) { 
+                                console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál (bejövő objektum)`);
+                                currentData = {}; 
+                            }
+                         }
+                    } else {
+                        found = false;
+                        break;
+                    }
+                }
+                if (found) {
+                    value = currentData;
+                } else {
+                    console.warn(`Hiányzó pontozott kulcs a prompt kitöltéséhez: ${key}`);
+                    return "N/A";
+                }
+            
+            } else if (data && typeof data === 'object' && data.hasOwnProperty(key)) {
+                 value = data[key];
+            } 
+ 
+            else if (key.endsWith('Json')) {
+                const baseKey = key.replace('Json', '');
+                if (data && data.hasOwnProperty(baseKey) && data[baseKey] !== undefined) {
+                    try { return JSON.stringify(data[baseKey]);
+                    } 
+                     catch (e: any) { console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál`);
+                        return '{}'; }
+                } else { return '{}';
+                } 
+            }
+            else { 
+                 console.warn(`Hiányzó kulcs a prompt kitöltéséhez: ${key}`);
+                return "N/A";
+            }
 
-    // 3. LÉPÉS: Időjárás API Hívás
-    try {
-        const { latitude, longitude } = coordinates;
-        const weatherUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${latitude.toFixed(4)}&longitude=${longitude.toFixed(4)}&start_date=${simpleDate}&end_date=${simpleDate}&hourly=temperature_2m,precipitation,wind_speed_10m&timezone=UTC`;
-
-        const response = await fetch(weatherUrl, {
-            headers: { 'Accept': 'application/json' }
+            if (value === null || value === undefined) { return "N/A";
+            }
+            if (typeof value === 'object') {
+                 try { return JSON.stringify(value);
+                } catch (e) { return "[object]"; }
+            }
+            return String(value);
         });
-
-        if (!response.ok) {
-            console.error(`[utils.ts/Weather] API Hiba (${stadiumLocation} @ ${simpleDate}): ${response.status} ${response.statusText}`);
-            return fallbackWeather;
-        }
-
-        const data = (await response.json()) as IWeatherArchiveResponse;
-
-        if (!data.hourly || !data.hourly.time || data.hourly.time.length === 0) {
-            console.warn(`[utils.ts/Weather] Az API nem adott vissza óránkénti adatot.`);
-            return fallbackWeather;
-        }
-
-        // 4. LÉPÉS: A megfelelő óra adatának kinyerése
-        // Keressük azt az indexet, ami a meccs órájának felel meg
-        const hourIndex = data.hourly.time.findIndex(timeISO => {
-            return new Date(timeISO).getUTCHours() === matchHour;
-        });
-
-        if (hourIndex === -1) {
-            console.warn(`[utils.ts/Weather] Nem található a meccs órája (${matchHour}:00 UTC) az API válaszban. Fallback: N/A.`);
-            // Nem átlagolunk, mert az félrevezető lehet
-            return fallbackWeather;
-        }
-        
-        // A pontos óra adatai
-        const temp = data.hourly.temperature_2m[hourIndex];
-        const precip = data.hourly.precipitation[hourIndex];
-        const wind = data.hourly.wind_speed_10m[hourIndex];
-
-        console.log(`[utils.ts/Weather] Időjárás adat sikeresen lekérve (${stadiumLocation}): Temp: ${temp}°C, Csapadék: ${precip}mm, Szél: ${wind}km/h`);
-
-        return {
-            temperature_celsius: temp,
-            precipitation_mm: precip,
-            wind_speed_kmh: wind,
-            description: `Valós adat: ${temp}°C, ${precip}mm eső, ${wind}km/h szél.`,
-            source: 'Open-Meteo'
-        };
-
-    } catch (error: any) {
-        console.error(`[utils.ts/Weather] Kritikus hiba az időjárás feldolgozásakor (${stadiumLocation}): ${error.message}`);
-        return fallbackWeather;
+    } catch(e: any) {
+         console.error(`Váratlan hiba a fillPromptTemplate során: ${e.message}`);
+        return template; 
     }
 }
 
+// --- SPORT ADAT SEGÉDFÜGGVÉNYEK ---
 
 /**
- * ESPN Meccslekérdező (az eredeti DataFetch.js-ből)
+ * ESPN Meccslekérdező
  */
 export async function _getFixturesFromEspn(sport: string, days: string): Promise<any[]> {
     const sportConfig = SPORT_CONFIG[sport];
@@ -439,7 +303,9 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
                                     home: homeTeam.name.trim(),
                                     away: awayTeam.name.trim(),
                                     utcKickoff: event.date,
-                                    league: req.leagueName.trim()
+                                    league: req.leagueName.trim(),
+                                    // (v72.0) Egyedi ID generálása az ingestor számára
+                                    uniqueId: `${sport}_${homeTeam.name.toLowerCase().replace(/\s+/g, '')}_${awayTeam.name.toLowerCase().replace(/\s+/g, '')}`
                                 };
                             }
                             return null;
@@ -475,7 +341,6 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
 
 /**
  * Meghatározza a fő gól/pont vonalat az odds adatokból.
- * Az AnalysisFlow.ts hívja meg. Típusosítva.
  */
 export function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: string): number {
     const defaultConfigLine = SPORT_CONFIG[sport]?.totals_line || (sport === 'soccer' ? 2.5 : 6.5);
@@ -546,4 +411,153 @@ export function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: strin
     const numericLines = Object.keys(linesAvailable).map(parseFloat);
     numericLines.sort((a, b) => Math.abs(a - numericDefaultLine) - Math.abs(b - numericDefaultLine));
     return numericLines[0];
+}
+
+
+// --- IDŐJÁRÁS (v55.9) ---
+
+const geocodingCache = new Map<string, { latitude: number; longitude: number }>();
+
+interface IGeocodingResponse {
+    results?: Array<{
+        latitude: number;
+        longitude: number;
+        country_code: string;
+    }>;
+}
+
+interface IWeatherArchiveResponse {
+    hourly: {
+        time: string[];
+        precipitation: number[];
+        wind_speed_10m: number[];
+        temperature_2m: number[];
+    };
+    hourly_units: {
+        precipitation: string;
+        wind_speed_10m: string;
+        temperature_2m: string;
+    };
+}
+
+async function getCoordinatesForCity(city: string): Promise<{ latitude: number; longitude: number } | null> {
+    const normalizedCity = city.toLowerCase().trim();
+    if (geocodingCache.has(normalizedCity)) {
+        return geocodingCache.get(normalizedCity)!;
+    }
+
+    try {
+        const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(normalizedCity)}&count=1&language=en&format=json`;
+        
+        // @ts-ignore
+        const response = await fetch(url, {
+            headers: { 'Accept': 'application/json' }
+        });
+
+        if (!response.ok) {
+            console.error(`[utils.ts/Geocoding] API Hiba (${normalizedCity}): ${response.status} ${response.statusText}`);
+            return null;
+        }
+
+        const data = (await response.json()) as IGeocodingResponse;
+
+        if (data.results && data.results.length > 0) {
+            const { latitude, longitude } = data.results[0];
+            const result = { latitude, longitude };
+            geocodingCache.set(normalizedCity, result);
+            return result;
+        } else {
+            console.warn(`[utils.ts/Geocoding] Nincs találat erre: ${normalizedCity}`);
+            return null;
+        }
+    } catch (error: any) {
+        console.error(`[utils.ts/Geocoding] Kritikus hiba (${normalizedCity}): ${error.message}`);
+        return null;
+    }
+}
+
+export async function getStructuredWeatherData(
+    stadiumLocation: string | null, 
+    utcKickoff: string | null
+): Promise<IStructuredWeather> {
+    
+    const fallbackWeather: IStructuredWeather = {
+        description: "N/A (Hiányzó adat)",
+        temperature_celsius: null,
+        wind_speed_kmh: null,
+        precipitation_mm: null,
+        source: 'N/A'
+    };
+
+    if (!stadiumLocation || !utcKickoff || stadiumLocation === "N/A") {
+        console.warn(`[utils.ts/Weather] Hiányzó város vagy dátum az időjárás lekéréséhez.`);
+        return fallbackWeather;
+    }
+
+    const coordinates = await getCoordinatesForCity(stadiumLocation);
+    if (!coordinates) {
+        console.warn(`[utils.ts/Weather] Nem sikerült geokódolni: ${stadiumLocation}`);
+        return fallbackWeather;
+    }
+
+    let matchDate: Date;
+    let matchHour: number;
+    try {
+        matchDate = new Date(utcKickoff);
+        matchHour = matchDate.getUTCHours();
+    } catch (e: any) {
+        console.error(`[utils.ts/Weather] Érvénytelen dátum formátum: ${utcKickoff}`);
+        return fallbackWeather;
+    }
+    
+    const simpleDate = matchDate.toISOString().split('T')[0];
+
+    try {
+        const { latitude, longitude } = coordinates;
+        const weatherUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${latitude.toFixed(4)}&longitude=${longitude.toFixed(4)}&start_date=${simpleDate}&end_date=${simpleDate}&hourly=temperature_2m,precipitation,wind_speed_10m&timezone=UTC`;
+
+        // @ts-ignore
+        const response = await fetch(weatherUrl, {
+            headers: { 'Accept': 'application/json' }
+        });
+
+        if (!response.ok) {
+            console.error(`[utils.ts/Weather] API Hiba (${stadiumLocation} @ ${simpleDate}): ${response.status} ${response.statusText}`);
+            return fallbackWeather;
+        }
+
+        const data = (await response.json()) as IWeatherArchiveResponse;
+
+        if (!data.hourly || !data.hourly.time || data.hourly.time.length === 0) {
+            console.warn(`[utils.ts/Weather] Az API nem adott vissza óránkénti adatot.`);
+            return fallbackWeather;
+        }
+
+        const hourIndex = data.hourly.time.findIndex(timeISO => {
+            return new Date(timeISO).getUTCHours() === matchHour;
+        });
+
+        if (hourIndex === -1) {
+            console.warn(`[utils.ts/Weather] Nem található a meccs órája (${matchHour}:00 UTC) az API válaszban. Fallback: N/A.`);
+            return fallbackWeather;
+        }
+        
+        const temp = data.hourly.temperature_2m[hourIndex];
+        const precip = data.hourly.precipitation[hourIndex];
+        const wind = data.hourly.wind_speed_10m[hourIndex];
+
+        console.log(`[utils.ts/Weather] Időjárás adat sikeresen lekérve (${stadiumLocation}): Temp: ${temp}°C, Csapadék: ${precip}mm, Szél: ${wind}km/h`);
+
+        return {
+            temperature_celsius: temp,
+            precipitation_mm: precip,
+            wind_speed_kmh: wind,
+            description: `Valós adat: ${temp}°C, ${precip}mm eső, ${wind}km/h szél.`,
+            source: 'Open-Meteo'
+        };
+
+    } catch (error: any) {
+        console.error(`[utils.ts/Weather] Kritikus hiba az időjárás feldolgozásakor (${stadiumLocation}): ${error.message}`);
+        return fallbackWeather;
+    }
 }

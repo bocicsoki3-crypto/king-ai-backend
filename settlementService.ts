@@ -1,20 +1,22 @@
-// --- settlementService.ts (v52.2 - TS2719 javítás) ---
-// Ez a modul felelős a "Post-Match Settlement" (Utólagos Eredmény-elszámolás) futtatásáért.
-// MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
-// JAVÍTÁS: A lokális 'FixtureResult' típus eltávolítva, és a kanonikus
-// 'FixtureResult' importálva a 'canonical.d.ts'-ből a TS2719 hiba javítására.
+// --- settlementService.ts (v71.0 - "Auditor" Bővítés) ---
+// MÓDOSÍTÁS (v71.0):
+// 1. HOZZÁADVA: Importálja a 'runAuditAnalysis'-t a 'LearningService'-ből.
+// 2. HOZZÁADVA: 'AUDIT_THRESHOLD' (7.0) konstans.
+// 3. MÓDOSÍTVA: A 'runSettlementProcess' logikája kibővítve.
+// 4. LOGIKA: Ha egy tipp 'L' (Loss) ÉS a bizalma >= AUDIT_THRESHOLD:
+//    a) Beolvassa a 'JSON_Data' oszlopot.
+//    b) Lefuttatja a 'runAuditAnalysis'-t (7. Ügynök)
+//    c) A tanulság naplózásra kerül (a 'LearningService'-en keresztül).
 
 import { getHistorySheet } from './sheets.js';
 import { getApiSportsFixtureResult } from './providers/apiSportsProvider.js';
 import { GoogleSpreadsheetRow } from 'google-spreadsheet';
 
-// --- Típusdefiníciók ---
+// === ÚJ (v71.0): Auditor importálása ===
+import { runAuditAnalysis } from './LearningService.js';
+// =====================================
 
-// === JAVÍTÁS (TS2719) ===
-// A lokális típusdefiníciók eltávolítva.
-// Helyette a központi, kanonikus típust importáljuk.
 import type { FixtureResult } from './src/types/canonical.d.ts';
-// === JAVÍTÁS VÉGE ===
 
 // Az elszámolási folyamat eredményének típusa
 type SettlementResult = {
@@ -22,21 +24,23 @@ type SettlementResult = {
     processed: number;
     updated: number;
     errors: number;
+    audits_triggered: number; // ÚJ (v71.0)
     error?: undefined;
 } | {
     error: string;
     processed: number;
     updated: number;
     errors: number;
+    audits_triggered: number; // ÚJ (v71.0)
     message?: undefined;
 };
 
+// === ÚJ (v71.0): Minimális bizalmi szint az audit indításához ===
+const AUDIT_THRESHOLD = 7.0; 
 
 /**
  * Összehasonlítja a tárolt tippet a valós végeredménnyel és visszaadja a W/L/P státuszt.
- * @param {string} prediction A tárolt tipp (pl. "Over 2.5", "Hazai győzelem", "BTTS Igen").
- * @param {object} result A valós eredmény (pl. { home: 2, away: 1, status: 'FT' }).
- * @returns {string} "W" (Win), "L" (Loss), vagy "P" (Push/Void).
+ * (Változatlan v71.0)
  */
 function checkPredictionCorrectness(prediction: string, result: Extract<FixtureResult, { status: 'FT' }>): "W" | "L" | "P" | "N/A" {
     if (!prediction || prediction === 'N/A' || !result) {
@@ -109,15 +113,17 @@ function checkPredictionCorrectness(prediction: string, result: Extract<FixtureR
 /**
  * Fő elszámolási folyamat.
  * Végigmegy a "History" lapon, lekéri a hiányzó eredményeket és frissíti a W/L/P státuszt.
+ * MÓDOSÍTVA (v71.0): Most már indítja a 7. Ügynök (Auditor) elemzését, ha szükséges.
  */
 export async function runSettlementProcess(): Promise<SettlementResult> {
-    console.log("[Settlement] Eredmény-elszámolási folyamat indítása...");
+    console.log("[Settlement] Eredmény-elszámolási folyamat indítása (v71.0 - Auditorral)...");
     let processedCount = 0;
     let updatedCount = 0;
     let errorCount = 0;
+    let auditCount = 0; // ÚJ (v71.0)
 
     try {
-        const sheet = await getHistorySheet();
+        const sheet = await getHistorySheet(); // Ez a v71.0-s 'sheets.ts' miatt már a 'JSON_Data' oszlopot is tartalmazza
         const rows: GoogleSpreadsheetRow<any>[] = await sheet.getRows();
 
         const unsettledRows = rows.filter(row => {
@@ -129,25 +135,25 @@ export async function runSettlementProcess(): Promise<SettlementResult> {
         
         if (unsettledRows.length === 0) {
             console.log("[Settlement] Befejezve. Nem található új, elszámolandó sor.");
-            return { message: "Nincs elszámolandó sor.", processed: 0, updated: 0, errors: 0 };
+            return { message: "Nincs elszámolandó sor.", processed: 0, updated: 0, errors: 0, audits_triggered: 0 };
         }
 
         console.log(`[Settlement] ${unsettledRows.length} elszámolatlan sor található. Feldolgozás indul...`);
         
-        // A sorok egyenkénti feldolgozása (elkerülve az API rate limitet)
         for (const row of unsettledRows) {
             const fixtureId = row.get("FixtureID") as string;
             const sport = row.get("Sport") as string;
             const prediction = row.get("Tipp") as string;
             const analysisId = row.get("ID") as string;
+            const confidenceStr = row.get("Bizalom") as string; // ÚJ (v71.0)
             
             try {
-                // 1. Valós eredmény lekérése (sport jelenleg 'soccer'-re van korlátozva a providerben)
+                // 1. Valós eredmény lekérése
                 const result: FixtureResult = await getApiSportsFixtureResult(fixtureId, sport);
                 processedCount++;
 
                 if (result && result.status === 'FT' && result.home !== undefined) {
-                    // 2. Eredmény kiértékelése (result típusa itt már szűkítve van 'FT'-re)
+                    // 2. Eredmény kiértékelése
                     const wlp_status = checkPredictionCorrectness(prediction, result as Extract<FixtureResult, { status: 'FT' }>);
                     const finalScore = `${result.home}-${result.away}`;
 
@@ -158,16 +164,47 @@ export async function runSettlementProcess(): Promise<SettlementResult> {
                     
                     console.log(`[Settlement] FRISSÍTVE (ID: ${analysisId}): Tipp="${prediction}", Eredmény=${finalScore} -> ${wlp_status}`);
                     updatedCount++;
+
+                    // === ÚJ (v71.0): AUDITOR INDÍTÁSA ===
+                    const confidence = parseFloat(confidenceStr);
+                    if (wlp_status === 'L' && !isNaN(confidence) && confidence >= AUDIT_THRESHOLD) {
+                        console.warn(`[Settlement] MAGAS BIZALMÚ HIBA ÉSZLELVE (Bizalom: ${confidence}). 7. Ügynök (Auditor) indítása... (ID: ${analysisId})`);
+                        
+                        // Olvassuk ki a teljes JSON-t a sorból
+                        const originalAnalysisJson = row.get("JSON_Data") as string;
+                        if (originalAnalysisJson) {
+                            try {
+                                const originalAnalysis = JSON.parse(originalAnalysisJson);
+                                
+                                // Indítjuk az auditot (ez egy aszinkron hívás,
+                                // de nem várjuk be, hogy ne blokkolja az elszámolást)
+                                runAuditAnalysis(
+                                    originalAnalysis,
+                                    prediction,
+                                    confidence,
+                                    finalScore,
+                                    'L'
+                                ).catch(auditError => {
+                                    console.error(`[Settlement] 7. Ügynök (Auditor) futási hiba (ID: ${analysisId}): ${auditError.message}`);
+                                });
+                                auditCount++;
+
+                            } catch (parseError: any) {
+                                console.error(`[Settlement] Auditor hiba: Nem sikerült feldolgozni a 'JSON_Data' oszlopot (ID: ${analysisId}). Az audit kihagyva. Hiba: ${parseError.message}`);
+                            }
+                        } else {
+                            console.warn(`[Settlement] Auditor hiba: A 'JSON_Data' oszlop üres (ID: ${analysisId}). Az audit kihagyva.`);
+                        }
+                    }
+                    // === AUDITOR VÉGE ===
+
                 } else if (result && result.status) {
-                    // A meccs még nem fejeződött be (pl. 'HT', 'NS')
                     console.log(`[Settlement] KIHAGYVA (ID: ${analysisId}): Meccs még folyamatban (Státusz: ${result.status}).`);
                 } else {
-                    // Az API hívás sikertelen volt vagy nem talált meccset
                     console.warn(`[Settlement] KIHAGYVA (ID: ${analysisId}): Nem sikerült lekérni a ${fixtureId} végeredményét.`);
                 }
 
-                // Várakozás a Rate Limiting elkerülése érdekében (RapidAPI limit)
-                await new Promise(resolve => setTimeout(resolve, 500)); // Fél másodperc várakozás
+                await new Promise(resolve => setTimeout(resolve, 500)); 
 
             } catch (e: any) {
                 errorCount++;
@@ -175,16 +212,17 @@ export async function runSettlementProcess(): Promise<SettlementResult> {
             }
         }
 
-        console.log(`[Settlement] Elszámolás befejezve. Feldolgozva: ${processedCount}, Frissítve: ${updatedCount}, Hiba: ${errorCount}`);
+        console.log(`[Settlement] Elszámolás befejezve. Feldolgozva: ${processedCount}, Frissítve: ${updatedCount}, Hiba: ${errorCount}, Audit Indítva: ${auditCount}`);
         return {
             message: "Elszámolás befejezve.",
             processed: processedCount,
             updated: updatedCount,
-            errors: errorCount
+            errors: errorCount,
+            audits_triggered: auditCount
         };
         
     } catch (e: any) {
         console.error(`[Settlement] KRITIKUS HIBA az elszámolási folyamat során: ${e.message}`, e.stack);
-        return { error: `Kritikus hiba: ${e.message}`, processed: processedCount, updated: updatedCount, errors: errorCount };
+        return { error: `Kritikus hiba: ${e.message}`, processed: processedCount, updated: updatedCount, errors: errorCount, audits_triggered: auditCount };
     }
 }

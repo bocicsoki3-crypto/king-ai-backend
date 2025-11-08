@@ -1,12 +1,11 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v70.0 (Stratéga Döntési Jogkör + "Okos" Specialista)
-// MÓDOSÍTÁS (v70.0):
-// 1. ELTÁVOLÍTVA: A [Lánc 3/6] (Specialista) már nem a 'Model.ts'
-//    szabálymotorát hívja meg (applyContextualModifiers).
-// 2. HOZZÁADVA: A [Lánc 3/6] most már az 'AI_Service.ts' (v70.0)
-//    'runStep_Specialist' funkcióját hívja (aszinkron AI hívás).
-// 3. MÓDOSÍTVA: A 6. Ügynök (Stratéga) bemenete most már a
-//    3. Ügynök (Okos Specialista) teljes AI-jelentését kapja meg.
+// VERZIÓ: v71.1 (Auditor Bővítés - TS2322 Típusjavítás)
+// MÓDOSÍTÁS (v71.1):
+// 1. JAVÍTVA (ts2322): Az 'IAnalysisResponse' interfész 'xgSource' típusa
+//    'string'-re módosítva, hogy megfeleljen a 'DataFetch.ts' (v73.1)
+//    bővített visszatérési értékének (pl. "API (Real) (Cache)").
+// 2. A v70.0-s "Okos Specialista" (AI Ügynök 3) hívása érvényben marad.
+// 3. A v71.0-s "Auditor" JSON mentési logikája érvényben marad.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -48,18 +47,20 @@ import {
     runStep_Strategist  // ÚJ (6. Ügynök - Stratéga)
     // =================================
 } from './AI_Service.js';
+// === MÓDOSÍTÁS (v71.0): saveAnalysisToSheet importálása ===
 import { saveAnalysisToSheet } from './sheets.js'; 
 
 // Gyorsítótár inicializálása
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v70.0):
-* - A 3. Ügynök (Specialista) most már egy AI hívás (AI_Service.ts),
-* nem pedig egy merev szabálymotor (Model.ts).
+* VÁLTOZÁS (v71.1):
+* - A 3. Ügynök (Okos Specialista) aktív.
+* - A 'JSON_Data' mentés aktív.
+* - TS(2322) xgSource típus-ütközés javítva.
 * **************************************************************/
 
-// Az új, strukturált JSON válasz (MÓDOSÍTVA v70.0)
+// Az új, strukturált JSON válasz (MÓDOSÍTVA v71.1)
 interface IAnalysisResponse {
     analysisData: {
         committee: {
@@ -87,7 +88,13 @@ interface IAnalysisResponse {
         finalConfidenceScore: number; // Ez a Stratéga (6. Ügynök) által MEGHATÁROZOTT bizalom
         sim: any; 
         recommendation: any;
-        xgSource: 'Manual (Direct)' | 'Manual (Components)' | 'API (Real)' | 'Calculated (Fallback)';
+        
+        // === JAVÍTÁS (v71.1 - TS2322) ===
+        // 'string'-re módosítva, hogy fogadja a DataFetch.ts (v73.1) által
+        // adott '... | string' típust (pl. "API (Real) (Cache)").
+        xgSource: string; 
+        // === JAVÍTÁS VÉGE ===
+
         // === ÚJ (v62.1) ===
         availableRosters: {
             home: IPlayerStub[];
@@ -152,7 +159,7 @@ try {
             manual_A_xG, 
             manual_A_xGA,
             // P1 (Hiányzók)
-            manual_absentees // <- MÓDOSÍTÁS (6 FŐS BIZOTTSÁG)
+            manual_absentees
         
         } = params;
 // === Olvasás Vége ===
@@ -167,12 +174,12 @@ const away: string = String(rawAway).trim();
         const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
 const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         
-        // === MÓDOSÍTVA (v70.0) ===
-        // Cache kulcs (v70.0) - Az 'v64.0_strat_decides' -> 'v70.0_ai_specialist'
+        // === MÓDOSÍTVA (v71.0) ===
+        // Cache kulcs (v71.0) - Az 'v70.0_ai_specialist' -> 'v71.0_auditor_ready'
         const p1AbsenteesHash = manual_absentees ?
 `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
-        analysisCacheKey = `analysis_v70.0_ai_specialist_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
+        analysisCacheKey = `analysis_v71.0_auditor_ready_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
 if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
 if (cachedResult) {
@@ -212,7 +219,8 @@ const dataFetchOptions: IDataFetchOptions = {
             manual_absentees: manual_absentees 
         
 };
-        // A 'getRichContextualData' (Scout) most már kezeli a 'manual_absentees' (Plan A/B) logikát
+        // A 'getRichContextualData' (Scout) most már a v73.0-s ("P2 Terv") aggregátor
+        // === JAVÍTÁS (v72.0): Átadjuk a 2. argumentumot (a cache kulcsot) ===
         const { 
             rawStats, 
             richContext,
@@ -220,11 +228,10 @@ const dataFetchOptions: IDataFetchOptions = {
             form, 
             rawData, 
             leagueAverages = {}, 
-
             oddsData,
-            xgSource,
+            xgSource, // Ez a v73.1-ben már '... | string' típusú
             availableRosters // <- (v62.1)
-        }: IDataFetchResponse = await getRichContextualData(dataFetchOptions);
+        }: IDataFetchResponse = await getRichContextualData(dataFetchOptions, analysisCacheKey);
 // === Scout Végzett ===
         
         console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
@@ -260,10 +267,7 @@ const { pure_mu_h, pure_mu_a, source: quantSource } = estimatePureXG(
         );
 console.log(`Quant (Tiszta xG) [${quantSource}]: H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)}`);
         
-        // === MÓDOSÍTÁS (v70.0): 3. ÜGYNÖK (SPECIALISTA) - AI HÍVÁS ===
-        // A régi, szabályalapú 'applyContextualModifiers' hívás helyett
-        // az új, 'AI_Service'-ben lévő 3. Ügynököt hívjuk.
-        
+        // === 3. ÜGYNÖK (SPECIALISTA) - AI HÍVÁS (v70.0) ===
         console.log(`[Lánc 3/6] Specialista Ügynök (AI): Kontextuális módosítók alkalmazása...`);
         
         const specialistInput = {
@@ -275,20 +279,20 @@ console.log(`Quant (Tiszta xG) [${quantSource}]: H=${pure_mu_h.toFixed(2)}, A=${
             psyProfileHome: psyProfileHome,
             psyProfileAway: psyProfileAway
         };
-        // Aszinkron hívás az AI Specialista felé
+        // Meghívjuk az 'AI_Service.ts' (v70.0) új AI ágensét
         const specialistReport = await runStep_Specialist(specialistInput);
 
-        // Kinyerjük az AI által módosított értékeket
         const { 
-            modified_mu_h: mu_h, 
+            modified_mu_h: mu_h, // Az AI által súlyozott xG
             modified_mu_a: mu_a 
-        } = specialistReport; // Az AI JSON válaszából
+        } = specialistReport; 
         
         console.log(`Specialista (AI) (Súlyozott xG): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
-        // === MÓDOSÍTÁS VÉGE ===
-
-        // === JAVÍTÁS (v63.6): TS2552 hiba javítva (xGSource -> xgSource) ===
-        const finalXgSource = xgSource;
+        // === AI Specialista Végzett ===
+        
+        // === JAVÍTÁS (v71.1 - TS2322) ===
+        // 'xgSource' (kis 'x') használata, ahogy az a 185. sorban definálva van.
+        const finalXgSource = xgSource; 
         // === JAVÍTÁS VÉGE ===
 
 // === 4. ÜGYNÖK (SZIMULÁTOR): Meccs szimulálása ===
@@ -320,19 +324,13 @@ console.log(`[Lánc 5/6] Kritikus végzett. Kockázati Pontszám: ${contradictio
 
         // === 6. ÜGYNÖK (STRATÉGA): Végső döntés ===
         console.log(`[Lánc 6/6] Stratéga Ügynök: Végső döntés meghozatala...`);
-        // A Stratéga megkapja a Quant bizalmat (modelConfidence) és a
-        // Kritikus jelentését (criticReport), és ő DÖNTI EL a végső bizalmat.
 const strategistInput = {
             matchData: { home, away, sport, leagueName },
             quantReport: { pure_mu_h: pure_mu_h, pure_mu_a: pure_mu_a, source: quantSource },
-            
-            // === MÓDOSÍTÁS (v70.0): A teljes AI jelentés átadása ===
             specialistReport: specialistReport, // A 3. Ügynök (AI) teljes JSON válaszát adjuk át
-            // A régi '{ mu_h: mu_h, mu_a: mu_a, log: modifierLog }' helyett
-            
             simulatorReport: sim,
-            criticReport: criticReport, // Az 5. Ügynök jelentése (benne a contradiction_score)
-            modelConfidence: modelConfidence, // A Statisztikai bizalom (pl. 4.3)
+            criticReport: criticReport, // Az 5. Ügynök jelentése
+            modelConfidence: modelConfidence, // A Statisztikai bizalom (4. Ügynök)
             rawDataJson: rawData,
             realXgJson: { // A P1 "Tiszta" xG átadása
                 manual_H_xG: advancedData?.manual_H_xG ?? null,
@@ -373,16 +371,12 @@ console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterReco
             analysisData: {
                 committee: {
                     quant: { mu_h: pure_mu_h, mu_a: pure_mu_a, source: quantSource },
-            
-                    // === MÓDOSÍTÁS (v70.0) ===
-                    specialist: { 
-                        mu_h: mu_h, // Az AI által módosított xG
-                        mu_a: mu_a, // Az AI által módosított xG
-                        log: specialistReport.reasoning, // Az AI indoklása
-                        report: specialistReport // A teljes AI jelentés
+                    specialist: { // Az AI Specialista teljes jelentése
+                        mu_h: mu_h, 
+                        mu_a: mu_a, 
+                        log: specialistReport.reasoning, 
+                        report: specialistReport 
                     },
-                    // === MÓDOSÍTÁS VÉGE ===
-
                     critic: criticReport,
                     strategist: strategistReport
                 },
@@ -403,7 +397,7 @@ console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterReco
          
        sim: sim,
                 recommendation: masterRecommendation,
-                xgSource: finalXgSource,
+                xgSource: finalXgSource, // Ez a (v71.1) javítással már helyes
                 
                 // === (v62.1) ===
                 availableRosters: availableRosters 
@@ -415,32 +409,34 @@ console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterReco
 
         scriptCache.set(analysisCacheKey, jsonResponse);
         console.log(`Elemzés befejezve és cache mentve (${analysisCacheKey})`);
+        
+        // === MÓDOSÍTÁS (v71.0): A TELJES JSON mentése ===
 if (params.sheetUrl && typeof params.sheetUrl === 'string') {
+            
+            // A 'html' mező most már csak egy log-üzenet, a valódi adat
+            // a 'JSON_Data' mezőbe kerül az Auditor számára.
             saveAnalysisToSheet(params.sheetUrl, {
                 sport, 
                 home, 
                 away, 
                 date: new Date(), 
-          
-      html: `JSON_API_MODE (v70.0 AI Specialista) (xG Forrás: ${finalXgSource})`, // Frissített log üzenet
+                html: `JSON_API_MODE (v71.1 AI Auditor) (xG Forrás: ${finalXgSource})`,
+                JSON_Data: JSON.stringify(jsonResponse), // <--- A KULCSMÓDOSÍTÁS
                 id: analysisCacheKey,
                 fixtureId: fixtureIdForSaving,
                 recommendation: masterRecommendation
             })
                 .then(() => console.log(`Elemzés (JSON) mentve a Google Sheet-be (${analysisCacheKey})`))
- 
                 .catch(sheetError => console.error(`Hiba az elemzés Google Sheet-be mentésekor (${analysisCacheKey}): ${sheetError.message}`));
 }
+        // === MÓDOSÍTÁS VÉGE ===
 
         return jsonResponse;
 } catch (error: any) {
         // === JAVÍTÁS (TS2448 / TS2454) ===
-        // A 'home', 'away' és 'sport' változók a 'try' blokkban ragadtak.
-// Helyettük a 'params' objektumot használjuk, ami ebben a hatókörben (scope) is elérhető.
         const homeParam = params?.home || 'N-A';
 const awayParam = params?.away || 'N-A';
         const sportParam = sport || params?.sport || 'N-A';
-// 'sport' (függvény argumentum) itt elérhető
         console.error(`Súlyos hiba az elemzési folyamatban (${sportParam} - ${homeParam} vs ${awayParam}): ${error.message}`, error.stack);
 return { error: `Elemzési hiba: ${error.message}` };
         // === JAVÍTÁS VÉGE ===

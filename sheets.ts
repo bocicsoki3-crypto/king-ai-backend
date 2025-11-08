@@ -1,14 +1,14 @@
-// sheets.ts (v52.4 - TS2322 hibajavítás)
-// MÓDOSÍTÁS: A modul átalakítva TypeScript-re.
-// JAVÍTÁS: TS2459 (import) és TS2345 (GridProperties) hibák javítva.
-// JAVÍTÁS: TS2322 hiba javítva: 'undefined' helyett '' (üres string)
-// használata, mivel a RowCellData nem fogadja el az undefined értéket.
+// sheets.ts (v71.0 - "Auditor" Bővítés)
+// MÓDOSÍTÁS (v71.0):
+// 1. HOZZÁADVA: A 'getHistorySheet' fejlécei közé bekerült az új 'JSON_Data' oszlop.
+// 2. MÓDOSÍTVA: A 'saveAnalysisToSheet' most már kezeli és menti a 'JSON_Data' mezőt.
+// 3. MÓDOSÍTVA: A 'getAnalysisDetailFromSheet' intelligensebb lett:
+//    - Ha talál 'JSON_Data'-t, megpróbálja azt "szépen" (pretty-print) megjeleníteni.
+//    - Ha nem, visszaáll a régi 'HTML Tartalom' mezőre.
 
 import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
-// A 'WorksheetGridProperties' és 'RowCellData' típusok eltávolítva az importból (TS2459 javítás)
-
 import { JWT } from 'google-auth-library';
-import { SHEET_URL } from './config.js'; // A .env fájlból beolvasott Sheet URL
+import { SHEET_URL } from './config.js'; 
 
 // --- Google Hitelesítés Beállítása (Környezeti Változókból) ---
 
@@ -19,8 +19,7 @@ const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
 
 if (!privateKey || !clientEmail) {
     console.warn(`KRITIKUS BIZTONSÁGI FIGYELMEZTETÉS: Hiányzó GOOGLE_PRIVATE_KEY vagy GOOGLE_CLIENT_EMAIL környezeti változó. 
-    A Google Sheet integráció (mentés/olvasás) SIKERTELEN lesz.
-    A 'google-credentials.json' fájlból olvasd ki a 'client_email' és 'private_key' értékeket, és állítsd be őket környezeti változóként.`);
+    A Google Sheet integráció (mentés/olvasás) SIKERTELEN lesz.`);
 }
 
 const serviceAccountAuth = new JWT({
@@ -64,19 +63,16 @@ async function _getSheet(doc: GoogleSpreadsheet, sheetName: string, headers?: st
         if (!sheet && headers && Array.isArray(headers)) {
             console.log(`'${sheetName}' munkalap nem található, létrehozás...`);
             
-            // JAVÍTÁS (TS2459 / TS2345)
             sheet = await doc.addSheet({ 
                 title: sheetName, 
                 headerValues: headers
             });
 
-            // A 'frozenRowCount' beállítása 'any' típus-kényszerítéssel
             await sheet.updateGridProperties({ 
                 frozenRowCount: 1,
-                // A TS2345 hiba elkerülése a hiányzó mezők hozzáadásával
                 rowCount: sheet.rowCount,
                 columnCount: sheet.columnCount
-            } as any); // 'as any' használata a nem exportált típusok megkerülésére
+            } as any); 
             
             await sheet.loadHeaderRow();
             const headerCells = sheet.headerValues.map((header, index) => sheet.getCell(0, index));
@@ -84,13 +80,30 @@ async function _getSheet(doc: GoogleSpreadsheet, sheetName: string, headers?: st
                 cell.textFormat = { bold: true };
             }
             
-            await sheet.saveUpdatedCells(); // (TS2554 hiba javítva)
+            await sheet.saveUpdatedCells(); 
 
             console.log(`'${sheetName}' munkalap sikeresen létrehozva.`);
         } else if (!sheet) {
             console.error(`'${sheetName}' munkalap nem található, és nem lettek megadva fejlécek.`);
             throw new Error(`'${sheetName}' munkalap nem található.`);
         }
+        
+        // === ÚJ (v71.0): Fejléc ellenőrzése és frissítése ===
+        // Biztosítja, hogy a 'JSON_Data' oszlop létezzen, ha a lap már létezett
+        if (sheet && headers && headers.length > 0) {
+            await sheet.loadHeaderRow();
+            const currentHeaders = sheet.headerValues || [];
+            const missingHeaders = headers.filter(h => !currentHeaders.includes(h));
+            
+            if (missingHeaders.length > 0) {
+                console.warn(`[sheets.ts] A '${sheetName}' munkalap frissítése... Hiányzó oszlopok: ${missingHeaders.join(', ')}`);
+                // Hozzáadjuk a hiányzó fejléceket (ez új sorokat nem ad hozzá, csak a fejlécet frissíti)
+                await sheet.setHeaderRow(currentHeaders.concat(missingHeaders));
+                console.log(`[sheets.ts] Fejléc sikeresen frissítve.`);
+            }
+        }
+        // === MÓDOSÍTÁS VÉGE ===
+
         return sheet;
     } catch (e: any) {
         console.error(`Hiba a munkalap elérésekor (${sheetName}): ${e.message}`, e.stack);
@@ -100,6 +113,7 @@ async function _getSheet(doc: GoogleSpreadsheet, sheetName: string, headers?: st
 
 /**
  * Lekéri a "History" munkalapot.
+ * MÓDOSÍTVA (v71.0): Hozzáadva a 'JSON_Data' oszlop.
  */
 export async function getHistorySheet(): Promise<GoogleSpreadsheetWorksheet> {
     const doc = getDocInstance();
@@ -114,7 +128,8 @@ export async function getHistorySheet(): Promise<GoogleSpreadsheetWorksheet> {
         "Bizalom",
         "Valós Eredmény",
         "Helyes (W/L/P)",
-        "HTML Tartalom"
+        "HTML Tartalom", // Ez a régi log, meghagyjuk
+        "JSON_Data"      // ÚJ (v71.0) - Az Auditor számára
     ];
     return await _getSheet(doc, "History", headers);
 }
@@ -134,7 +149,7 @@ interface IAnalysisDetail {
     id: string;
     home: string;
     away: string;
-    html: string;
+    html: string; // Ez most már a JSON vagy a régi HTML
 }
 
 interface IAnalysisDataToSave {
@@ -144,7 +159,8 @@ interface IAnalysisDataToSave {
     sport: string;
     home: string;
     away: string;
-    html: string;
+    html: string; // A log üzenet
+    JSON_Data?: string; // A teljes JSON (Auditor számára)
     recommendation: {
         recommended_bet: string;
         final_confidence: number;
@@ -156,6 +172,7 @@ interface IAnalysisDataToSave {
 
 /**
  * Lekéri az elemzési előzményeket a táblázatból.
+ * (Változatlan v71.0)
  */
 export async function getHistoryFromSheet(): Promise<{ history?: IHistoryRow[]; error?: string }> {
     try {
@@ -196,6 +213,7 @@ export async function getHistoryFromSheet(): Promise<{ history?: IHistoryRow[]; 
 
 /**
  * Lekéri egy konkrét elemzés részleteit (HTML tartalmát) ID alapján.
+ * MÓDOSÍTVA (v71.0): Először a 'JSON_Data'-t keresi.
  */
 export async function getAnalysisDetailFromSheet(id: string): Promise<{ record?: IAnalysisDetail; error?: string }> {
     try {
@@ -207,11 +225,29 @@ export async function getAnalysisDetailFromSheet(id: string): Promise<{ record?:
             throw new Error("Az elemzés nem található az ID alapján.");
         }
 
+        let content = "";
+        const jsonData = row.get("JSON_Data") as string | undefined;
+        
+        if (jsonData) {
+            // 1. Eset: Új (v71.0+) formátum, van JSON adat
+            try {
+                const parsedJson = JSON.parse(jsonData);
+                // "Szép" (pretty-print) formázás a könnyebb olvashatóságért
+                content = `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: monospace; color: var(--text-primary); background: var(--bg-dark); padding: 1rem; border-radius: 8px;">${JSON.stringify(parsedJson, null, 2)}</pre>`;
+            } catch (e: any) {
+                console.warn(`[sheets.ts] JSON parse hiba a getAnalysisDetail-ben (ID: ${id}). Nyers adat visszaadása.`);
+                content = `[JSON PARSE HIBA: ${e.message}]\n\n${jsonData}`;
+            }
+        } else {
+            // 2. Eset: Régi (v71.0 előtti) formátum, csak HTML van
+            content = row.get("HTML Tartalom") || "Nincs adat ehhez az elemzéshez.";
+        }
+
         const record: IAnalysisDetail = {
             id: row.get("ID"),
             home: row.get("Hazai"),
             away: row.get("Vendég"),
-            html: row.get("HTML Tartalom")
+            html: content // Ez most már a formázott JSON vagy a régi HTML
         };
         return { record };
     } catch (e: any) {
@@ -222,6 +258,7 @@ export async function getAnalysisDetailFromSheet(id: string): Promise<{ record?:
 
 /**
  * Elment egy új elemzést a Google Sheet "History" lapjára.
+ * MÓDOSÍTVA (v71.0): Hozzáadva a 'JSON_Data' mező mentése.
  */
 export async function saveAnalysisToSheet(sheetUrl: string, analysisData: IAnalysisDataToSave): Promise<void> {
     const analysisId = analysisData.id || 'N/A';
@@ -239,21 +276,18 @@ export async function saveAnalysisToSheet(sheetUrl: string, analysisData: IAnaly
         const confidence = analysisData.recommendation?.final_confidence ? 
             analysisData.recommendation.final_confidence.toFixed(1) : 'N/A';
         
-        // === JAVÍTÁS (TS2322) ===
-        // A 'null' és 'undefined' értéket ''-re (üres string) cseréljük,
-        // mivel a RowCellData típusa (implicit módon) csak primitív értékeket
-        // (string, number, boolean) fogad el.
         const fixtureId: string | number | boolean = analysisData.fixtureId ?? '';
-        // === JAVÍTÁS VÉGE ===
+        const jsonData: string | number | boolean = analysisData.JSON_Data ?? ''; // ÚJ (v71.0)
 
         await sheet.addRow({
             "ID": newId,
-            "FixtureID": fixtureId, // <-- JAVÍTOTT (TS2322)
+            "FixtureID": fixtureId,
             "Dátum": dateToSave,
             "Sport": analysisData.sport || 'N/A',
             "Hazai": analysisData.home,
             "Vendég": analysisData.away,
-            "HTML Tartalom": analysisData.html || '',
+            "HTML Tartalom": analysisData.html || '', // A log üzenet
+            "JSON_Data": jsonData, // A teljes elemzési JSON
             "Tipp": tip,
             "Bizalom": confidence
         });
@@ -265,6 +299,7 @@ export async function saveAnalysisToSheet(sheetUrl: string, analysisData: IAnaly
 
 /**
  * Töröl egy elemet a "History" lapról ID alapján.
+ * (Változatlan v71.0)
  */
 export async function deleteHistoryItemFromSheet(id: string): Promise<{ success?: boolean; error?: string }> {
     try {
@@ -286,6 +321,7 @@ export async function deleteHistoryItemFromSheet(id: string): Promise<{ success?
 
 /**
  * Elment egy mélyebb öntanulási tanulságot a "Learning_Insights" lapra.
+ * (Változatlan v71.0)
  */
 export async function logLearningInsight(sheetUrl: string, insightData: any): Promise<void> {
     const headers = ["Dátum", "Sport", "Hazai", "Vendég", "Tipp", "Bizalom", "Valós Eredmény", "Tanulság (AI)"];
