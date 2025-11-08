@@ -323,11 +323,16 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         
         const masterRecommendation = strategistReport.master_recommendation;
         let finalConfidenceScore = 1.0; // Alapértelmezett hiba esetén
+        
+        // === KRITIKUS HIBA JAVÍTÁS (v77.8): final_confidence Hozzáférés Korrekciója ===
+        // A hibás hozzáférés: masterRecommendation.master_recommendation.final_confidence
+        // A helyes hozzáférés: masterRecommendation.final_confidence
         if (masterRecommendation && typeof masterRecommendation.final_confidence === 'number') {
-            finalConfidenceScore = masterRecommendation.master_recommendation.final_confidence;
+            finalConfidenceScore = masterRecommendation.final_confidence;
         } else {
             console.error("KRITIKUS HIBA: A Stratéga (6. Ügynök) nem adott vissza érvényes 'final_confidence' számot! 1.0-ra állítva.");
         }
+        // === JAVÍTÁS VÉGE ===
 
         console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterRecommendation)} (Végső bizalom: ${finalConfidenceScore})`);
 
