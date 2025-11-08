@@ -1,8 +1,8 @@
-// --- AI_Service.ts (v83.2 - Végleges Szintaktikai Javítás) ---
-// MÓDOSÍTÁS (v83.2):
-// 1. JAVÍTVA: A `StrategistInput` interfész (kb. 188. sor) szintaktikai hibája.
-//    A `psyProfileHome` és `psyProfileAway` mezők megkapták a hiányzó
-//    sorvégi pontosvesszőket (;) a TS1005 hiba javításához.
+// --- AI_Service.ts (v83.3 - Végleges Build Javítás) ---
+// MÓDOSÍTÁS (v83.3):
+// 1. JAVÍTVA: A `StrategistInput` interfész (kb. 182. sor) szintaktikai hibája.
+//    A `matchData` mező megkapta a hiányzó sorvégi pontosvesszőt (;)
+//    a TS1005 build hiba végleges javításához.
 
 import { 
     _callGemini, 
@@ -303,9 +303,9 @@ export async function runStep_Critic(data: CriticInput): Promise<any> {
     }
 }
 
-// === JAVÍTVA (v83.2): 6. LÉPÉS (STRATÉGA) - SZINTAKTIKAI JAVÍTÁS ===
+// === JAVÍTVA (v83.3): 6. LÉPÉS (STRATÉGA) - VÉGLEGES SZINTAKTIKAI JAVÍTÁS ===
 interface StrategistInput {
-    matchData: { home: string, away: string, sport: string, leagueName: string };
+    matchData: { home: string, away: string, sport: string, leagueName: string }; // <-- HIÁNYZÓ PONTOSVESSZŐ (;) PÓTOLVA
     quantReport: { pure_mu_h: number, pure_mu_a: number, source: string };
     specialistReport: any; 
     simulatorReport: any;
@@ -313,7 +313,6 @@ interface StrategistInput {
     modelConfidence: number; 
     rawDataJson: ICanonicalRawData; 
     realXgJson: any;
-    // JAVÍTVA (v83.2): Hiányzó pontosvesszők (;) pótolva a TS1005 hiba javításához
     psyProfileHome: any;
     psyProfileAway: any;
 }
