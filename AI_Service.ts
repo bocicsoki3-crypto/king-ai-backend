@@ -1,8 +1,12 @@
-// --- AI_Service.ts (v83.4 - Végleges Szintaktikai Javítás) ---
-// MÓDOSÍTÁS (v83.4):
+// --- AI_Service.ts (v83.5 - Mélyelemzés és Javítás) ---
+// MÓDOSÍTÁS (v83.5):
 // 1. JAVÍTVA: A `StrategistInput` interfész (kb. 182-184. sor) kritikus
-//    szintaktikai hibája. A belső típusdefiníciókban a vesszők (,)
-//    pontosvesszőre (;) lettek cserélve a TS1005 build hiba elhárításához.
+//    szintaktikai hibája.
+// 2. A belső típusdefiníciókban (pl. matchData) az elválasztókat vesszőre (,)
+//    cseréltem (a `',' expected` hiba miatt).
+// 3. A külső tulajdonságokat (matchData: {}, quantReport: {})
+//    pontosvesszővel (;) választottam el, ami a TS szintaktika
+//    fő követelménye az interfészekben.
 
 import { 
     _callGemini, 
@@ -303,12 +307,14 @@ export async function runStep_Critic(data: CriticInput): Promise<any> {
     }
 }
 
-// === JAVÍTVA (v83.4): 6. LÉPÉS (STRATÉGA) - VÉGLEGES SZINTAKTIKAI JAVÍTÁS ===
-// A 183. sor környéki hiba javítva: A belső vesszők (,) pontosvesszőre (;)
-// lettek cserélve a TS1005 build hiba elhárításához.
+// === JAVÍTVA (v83.5): 6. LÉPÉS (STRATÉGA) - VÉGLEGES SZINTAKTIKAI JAVÍTÁS ===
+// A 183. sor környéki hiba javítva:
+// 1. A beágyazott típusokban (pl. matchData) VESSZŐT (,) használunk elválasztónak.
+// 2. A külső tulajdonságokat (matchData, quantReport) PONTOSVESSZŐVEL (;)
+//    zárjuk, az interfész szintaktikának megfelelően.
 interface StrategistInput {
-    matchData: { home: string; away: string; sport: string; leagueName: string; }; // <-- JAVÍTVA
-    quantReport: { pure_mu_h: number; pure_mu_a: number; source: string; }; // <-- JAVÍTVA
+    matchData: { home: string, away: string, sport: string, leagueName: string }; // <-- JAVÍTVA (belső vesszők, külső pontosvessző)
+    quantReport: { pure_mu_h: number, pure_mu_a: number, source: string }; // <-- JAVÍTVA (belső vesszők, külső pontosvessző)
     specialistReport: any; 
     simulatorReport: any;
     criticReport: any; 
