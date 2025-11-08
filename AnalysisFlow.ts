@@ -1,12 +1,12 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v64.0 (Stratéga Döntési Jogkör)
-// MÓDOSÍTÁS:
-// 1. ELTÁVOLÍTVA: A [Lánc 5.5/6] (Végső Bizalom Számítása) blokk.
-//    A végső bizalom meghatározása átkerült a Stratéga (Ügynök 6) hatáskörébe.
-// 2. MÓDOSÍTVA: A 'strategistInput' már nem küldi el a 'final_confidence_score'-t.
-//    Helyette a 'modelConfidence'-t (Quant) és a 'criticReport'-ot (Kritikus) kapja meg.
-// 3. MÓDOSÍTVA: A 'jsonResponse' a végső bizalmat most már az AI válaszából
-//    (strategistReport.master_recommendation.final_confidence) nyeri ki.
+// VERZIÓ: v70.0 (Stratéga Döntési Jogkör + "Okos" Specialista)
+// MÓDOSÍTÁS (v70.0):
+// 1. ELTÁVOLÍTVA: A [Lánc 3/6] (Specialista) már nem a 'Model.ts'
+//    szabálymotorát hívja meg (applyContextualModifiers).
+// 2. HOZZÁADVA: A [Lánc 3/6] most már az 'AI_Service.ts' (v70.0)
+//    'runStep_Specialist' funkcióját hívja (aszinkron AI hívás).
+// 3. MÓDOSÍTVA: A 6. Ügynök (Stratéga) bemenete most már a
+//    3. Ügynök (Okos Specialista) teljes AI-jelentését kapja meg.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -28,9 +28,9 @@ import {
 } from './DataFetch.js';
 // v54.16 importok (1., 3., 4. Ügynökök)
 import {
-    // === MÓDOSÍTÁS (6 FŐS BIZOTTSÁG) ===
+    // === MÓDOSÍTÁS (v70.0): applyContextualModifiers ELTÁVOLÍTVA ===
     estimatePureXG,           // ÚJ (1. Ügynök - Quant)
-    applyContextualModifiers, // ÚJ (3. Ügynök - Specialista)
+    // 'applyContextualModifiers' TÖRÖLVE (helyette AI hívás)
     // =================================
     estimateAdvancedMetrics,
     simulateMatchProgress,    // (4. Ügynök - Szimulátor)
@@ -42,10 +42,10 @@ import {
 } from './Model.js';
 // AI Szolgáltatás Importok (5. és 6. Ügynökök)
 import {
-    // === MÓDOSÍTÁS (6 FŐS BIZOTTSÁG) ===
+    // === MÓDOSÍTÁS (v70.0): runStep_Specialist HOZZÁADVA ===
+    runStep_Specialist, // ÚJ (3. Ügynök - AI Specialista)
     runStep_Critic,     // ÚJ (5. Ügynök - Kritikus)
     runStep_Strategist  // ÚJ (6. Ügynök - Stratéga)
-    // 'runStep_UnifiedAnalysis' TÖRÖLVE
     // =================================
 } from './AI_Service.js';
 import { saveAnalysisToSheet } from './sheets.js'; 
@@ -54,29 +54,32 @@ import { saveAnalysisToSheet } from './sheets.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v64.0):
-* - A Végső Bizalom számítása ELTÁVOLÍTVA a kódból.
-* - A Stratéga (Ügynök 6) DÖNTI EL a végső bizalmat.
+* VÁLTOZÁS (v70.0):
+* - A 3. Ügynök (Specialista) most már egy AI hívás (AI_Service.ts),
+* nem pedig egy merev szabálymotor (Model.ts).
 * **************************************************************/
 
-// Az új, strukturált JSON válasz (MÓDOSÍTVA v63.0)
+// Az új, strukturált JSON válasz (MÓDOSÍTVA v70.0)
 interface IAnalysisResponse {
     analysisData: {
-        // MÓDOSÍTÁS: A 'committeeResults' mostantól strukturált
         committee: {
             quant: { mu_h: number, mu_a: number, source: string };
-specialist: { mu_h: number, mu_a: number, log: any };
+            specialist: { // Ez most már az AI Specialista jelentése
+                mu_h: number, // AI által súlyozott xG
+                mu_a: number, // AI által súlyozott xG
+                log: string,  // AI indoklása
+                report: any   // A teljes AI JSON válasz
+            };
             critic: any;
             strategist: any;
         };
-matchData: {
+        matchData: {
             home: string;
             away: string;
             sport: string;
-mainTotalsLine: number | string;
-            mu_h: number | string; // Ez a SÚLYOZOTT (Specialista) xG
-            mu_a: number |
-string;
+            mainTotalsLine: number | string;
+            mu_h: number | string; // Ez a SÚLYOZOTT (AI Specialista) xG
+            mu_a: number | string;
         };
         oddsData: ICanonicalOdds | null;
         valueBets: any[];
@@ -84,12 +87,11 @@ string;
         finalConfidenceScore: number; // Ez a Stratéga (6. Ügynök) által MEGHATÁROZOTT bizalom
         sim: any; 
         recommendation: any;
-        xgSource: 'Manual (Direct)' |
-'Manual (Components)' | 'API (Real)' | 'Calculated (Fallback)';
+        xgSource: 'Manual (Direct)' | 'Manual (Components)' | 'API (Real)' | 'Calculated (Fallback)';
         // === ÚJ (v62.1) ===
         availableRosters: {
             home: IPlayerStub[];
-away: IPlayerStub[];
+            away: IPlayerStub[];
         };
         // === VÉGE ===
     };
@@ -165,12 +167,12 @@ const away: string = String(rawAway).trim();
         const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
 const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         
-        // === MÓDOSÍTVA (v64.0) ===
-        // Cache kulcs (v64.0) - A 'v63.1_q_critic' -> 'v64.0_strat_decides'
+        // === MÓDOSÍTVA (v70.0) ===
+        // Cache kulcs (v70.0) - Az 'v64.0_strat_decides' -> 'v70.0_ai_specialist'
         const p1AbsenteesHash = manual_absentees ?
 `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
-        analysisCacheKey = `analysis_v64.0_strat_decides_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
+        analysisCacheKey = `analysis_v70.0_ai_specialist_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
 if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
 if (cachedResult) {
@@ -258,20 +260,32 @@ const { pure_mu_h, pure_mu_a, source: quantSource } = estimatePureXG(
         );
 console.log(`Quant (Tiszta xG) [${quantSource}]: H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)}`);
         
-        // === 3. ÜGYNÖK (SPECIALISTA): Kontextuális módosítók alkalmazása ===
-        console.log(`[Lánc 3/6] Specialista Ügynök: Kontextuális módosítók alkalmazása...`);
-const { mu_h, mu_a, modifierLog } = applyContextualModifiers(
-            pure_mu_h, pure_mu_a, // A Quant kimenete
-            quantSource, // Az 1. Ügynök forrása (a "Dupla Számítás" elkerüléséhez)
-            rawData, // A Scout kimenete
-            sport, 
-            psyProfileHome, 
-            psyProfileAway,
- 
-           null
-        );
-console.log(`Specialista (Súlyozott xG): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
-        // === Specialista Végzett ===
+        // === MÓDOSÍTÁS (v70.0): 3. ÜGYNÖK (SPECIALISTA) - AI HÍVÁS ===
+        // A régi, szabályalapú 'applyContextualModifiers' hívás helyett
+        // az új, 'AI_Service'-ben lévő 3. Ügynököt hívjuk.
+        
+        console.log(`[Lánc 3/6] Specialista Ügynök (AI): Kontextuális módosítók alkalmazása...`);
+        
+        const specialistInput = {
+            pure_mu_h: pure_mu_h,
+            pure_mu_a: pure_mu_a,
+            quant_source: quantSource,
+            rawDataJson: rawData, // A 2. Ügynök teljes kontextusa
+            sport: sport,
+            psyProfileHome: psyProfileHome,
+            psyProfileAway: psyProfileAway
+        };
+        // Aszinkron hívás az AI Specialista felé
+        const specialistReport = await runStep_Specialist(specialistInput);
+
+        // Kinyerjük az AI által módosított értékeket
+        const { 
+            modified_mu_h: mu_h, 
+            modified_mu_a: mu_a 
+        } = specialistReport; // Az AI JSON válaszából
+        
+        console.log(`Specialista (AI) (Súlyozott xG): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
+        // === MÓDOSÍTÁS VÉGE ===
 
         // === JAVÍTÁS (v63.6): TS2552 hiba javítva (xGSource -> xgSource) ===
         const finalXgSource = xgSource;
@@ -281,7 +295,7 @@ console.log(`Specialista (Súlyozott xG): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed
         console.log(`[Lánc 4/6] Szimulátor Ügynök: 25000 szimuláció futtatása...`);
 const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
         const sim = simulateMatchProgress(
-            mu_h, mu_a, // A Specialista SÚLYOZOTT kimenete alapján
+            mu_h, mu_a, // Az AI Specialista SÚLYOZOTT kimenete alapján
             mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData
         );
 sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a;
@@ -304,9 +318,6 @@ const criticReport = await runStep_Critic(criticInput);
         const contradictionScore = criticReport?.contradiction_score || 0.0;
 console.log(`[Lánc 5/6] Kritikus végzett. Kockázati Pontszám: ${contradictionScore.toFixed(2)}`);
 
-        // === MÓDOSÍTÁS (v64.0): A [Lánc 5.5/6] (Súlyozás) ELTÁVOLÍTVA ===
-        // A kód itt már nem számol végső bizalmat.
-
         // === 6. ÜGYNÖK (STRATÉGA): Végső döntés ===
         console.log(`[Lánc 6/6] Stratéga Ügynök: Végső döntés meghozatala...`);
         // A Stratéga megkapja a Quant bizalmat (modelConfidence) és a
@@ -314,11 +325,14 @@ console.log(`[Lánc 5/6] Kritikus végzett. Kockázati Pontszám: ${contradictio
 const strategistInput = {
             matchData: { home, away, sport, leagueName },
             quantReport: { pure_mu_h: pure_mu_h, pure_mu_a: pure_mu_a, source: quantSource },
-            specialistReport: { mu_h: mu_h, mu_a: mu_a, log: modifierLog },
+            
+            // === MÓDOSÍTÁS (v70.0): A teljes AI jelentés átadása ===
+            specialistReport: specialistReport, // A 3. Ügynök (AI) teljes JSON válaszát adjuk át
+            // A régi '{ mu_h: mu_h, mu_a: mu_a, log: modifierLog }' helyett
+            
             simulatorReport: sim,
             criticReport: criticReport, // Az 5. Ügynök jelentése (benne a contradiction_score)
             modelConfidence: modelConfidence, // A Statisztikai bizalom (pl. 4.3)
-            // A 'final_confidence_score' ELTÁVOLÍTVA innen (v64.0)
             rawDataJson: rawData,
             realXgJson: { // A P1 "Tiszta" xG átadása
                 manual_H_xG: advancedData?.manual_H_xG ?? null,
@@ -334,7 +348,6 @@ const strategistReport = await runStep_Strategist(strategistInput);
             console.error("A Stratéga (6. Ügynök) hibát adott vissza:", strategistReport.error);
 }
         
-        // === MÓDOSÍTÁS (v64.0): A végső bizalom kinyerése az AI válaszából ===
         const masterRecommendation = strategistReport.master_recommendation;
         let finalConfidenceScore = 1.0; // Alapértelmezett hiba esetén
         if (masterRecommendation && typeof masterRecommendation.final_confidence === 'number') {
@@ -342,7 +355,6 @@ const strategistReport = await runStep_Strategist(strategistInput);
         } else {
             console.error("KRITIKUS HIBA: A Stratéga (6. Ügynök) nem adott vissza érvényes 'final_confidence' számot! 1.0-ra állítva.");
         }
-        // === MÓDOSÍTÁS VÉGE ===
 
 console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterRecommendation)} (Végső bizalom: ${finalConfidenceScore})`);
 
@@ -356,13 +368,21 @@ console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterReco
 'Ismeretlen'
         };
         
-        // === A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA (MÓDOSÍTVA v64.0) ===
+        // === A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA (MÓDOSÍTVA v70.0) ===
         const jsonResponse: IAnalysisResponse = { 
             analysisData: {
                 committee: {
                     quant: { mu_h: pure_mu_h, mu_a: pure_mu_a, source: quantSource },
             
-        specialist: { mu_h: mu_h, mu_a: mu_a, log: modifierLog },
+                    // === MÓDOSÍTÁS (v70.0) ===
+                    specialist: { 
+                        mu_h: mu_h, // Az AI által módosított xG
+                        mu_a: mu_a, // Az AI által módosított xG
+                        log: specialistReport.reasoning, // Az AI indoklása
+                        report: specialistReport // A teljes AI jelentés
+                    },
+                    // === MÓDOSÍTÁS VÉGE ===
+
                     critic: criticReport,
                     strategist: strategistReport
                 },
@@ -402,7 +422,7 @@ if (params.sheetUrl && typeof params.sheetUrl === 'string') {
                 away, 
                 date: new Date(), 
           
-      html: `JSON_API_MODE (v63.1 Lánc) (xG Forrás: ${finalXgSource})`,
+      html: `JSON_API_MODE (v70.0 AI Specialista) (xG Forrás: ${finalXgSource})`, // Frissített log üzenet
                 id: analysisCacheKey,
                 fixtureId: fixtureIdForSaving,
                 recommendation: masterRecommendation
@@ -417,9 +437,9 @@ if (params.sheetUrl && typeof params.sheetUrl === 'string') {
         // === JAVÍTÁS (TS2448 / TS2454) ===
         // A 'home', 'away' és 'sport' változók a 'try' blokkban ragadtak.
 // Helyettük a 'params' objektumot használjuk, ami ebben a hatókörben (scope) is elérhető.
-        const homeParam = params?.home || 'N/A';
-const awayParam = params?.away || 'N/A';
-        const sportParam = sport || params?.sport || 'N/A';
+        const homeParam = params?.home || 'N-A';
+const awayParam = params?.away || 'N-A';
+        const sportParam = sport || params?.sport || 'N-A';
 // 'sport' (függvény argumentum) itt elérhető
         console.error(`Súlyos hiba az elemzési folyamatban (${sportParam} - ${homeParam} vs ${awayParam}): ${error.message}`, error.stack);
 return { error: `Elemzési hiba: ${error.message}` };

@@ -1,12 +1,10 @@
-// --- AI_Service.ts (v69.2 - Prompt-Bleeding Javítás) ---
-// MÓDOSÍTÁS (v69.2):
-// 1. JAVÍTVA: A Stratéga (Ügynök 6) promptjában (PROMPT_STRATEGIST_V69) a
-//    "prophetic_timeline" mező utasításait (pl. "(A PRÓFÉTA) FELADAT:...")
-//    az AI visszaküldte a válaszban a narratíva helyett.
-// 2. A hiba javítása érdekében az utasítások átkerültek a fő prompt törzsébe
-//    ([YOUR TASK...] szekció), és a JSON séma 'prophetic_timeline'
-//    mezője már csak egy egyszerű placeholdert tartalmaz.
-// 3. A v69.1-es '{simulatorReport.mu_cards_sim}' javítás érvényben marad.
+// --- AI_Service.ts (v70.0 - "Okos" Specialista) ---
+// MÓDOSÍTÁS (v70.0):
+// 1. HOZZÁADVA: Új 3. Ügynök (AI Specialista) a 'Model.ts' merev szabályainak leváltására.
+// 2. HOZZÁADVA: PROMPT_SPECIALIST_V1 - Egy célzott prompt, ami az 1. Ügynök
+//    (Quant) Tiszta xG-jét módosítja a 2. Ügynök (Scout) kontextusa alapján.
+// 3. HOZZÁADVA: runStep_Specialist() - Az új aszinkron függvény az AI hívásához.
+// 4. A v69.2-es "Prompt-Bleeding" javítások érvényben maradnak.
 
 import { _callGemini } from './DataFetch.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
@@ -120,9 +118,47 @@ function fillPromptTemplate(template: string, data: any): string {
     }
 }
 
+// === ÚJ (v70.0): 3. ÜGYNÖK (AZ AI SPECIALISTA) PROMPT ===
+const PROMPT_SPECIALIST_V1 = `
+TASK: You are 'The Specialist', the 3rd Agent in a 6-agent analysis chain.
+Your job is to apply contextual modifiers (injuries, weather, morale) to a baseline statistical model.
+
+[INPUTS]:
+1. Baseline (Pure) xG (from Agent 1, Quant):
+   - pure_mu_h: {pure_mu_h}
+   - pure_mu_a: {pure_mu_a}
+   - quant_source: "{quant_source}"
+
+2. Full Raw Context (from Agent 2, Scout): {rawDataJson}
+   - (Includes: absentees, weather, tactics, morale)
+
+[YOUR TASK - MODIFICATION & REASONING]:
+1. Analyze the 'rawDataJson' (Agent 2) context. Identify the TOP 3-5 key qualitative factors that the 'pure_mu_h' and 'pure_mu_a' (Agent 1) statistical model DOES NOT account for.
+2. Focus on injuries, confirmed absentees (P1 or P4), weather, pitch condition, morale, and match tension.
+3. **CRITICAL:** Decide how these factors modify the baseline xG.
+   - Example 1: "Hazai kulcs csatár (8.5 rating) hiányzik." -> Decrease 'pure_mu_h'.
+   - Example 2: "Vendég kezdő kapus (8.2 rating) hiányzik." -> Increase 'pure_mu_h'.
+   - Example 3: "Szakadó eső és 50 km/h szél." -> Decrease both 'pure_mu_h' and 'pure_mu_a'.
+   - Example 4: "Vendég csapat 3 meccse nyert, hazai edző kirúgás szélén." -> Increase 'pure_mu_a', decrease 'pure_mu_h'.
+4. **DO NOT** modify for factors already in the baseline. (If 'quant_source' is 'Manual (Components)', the model already knows the seasonal average xG, but it does NOT know about a *last-minute* injury).
+5. Provide the FINAL 'modified_mu_h' and 'modified_mu_a' as numbers.
+
+[OUTPUT STRUCTURE]:
+Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
+{
+  "modified_mu_h": <Number, the final weighted xG for Home. Example: 1.35>,
+  "modified_mu_a": <Number, the final weighted xG for Away. Example: 1.15>,
+  "key_factors": [
+    "<List of 3-5 string bullet points describing the qualitative factors you used. Example: 'A hazai csapat kulcsfontosságú támadója (Mané) hiányzik (P1 adat).'>",
+    "<Example: 'A vendég csapat morálja kiváló (3 meccses győzelmi sorozat).'>",
+    "<Example: 'Erős szél (35km/h) és eső várható, ami csökkenti a támadójáték hatékonyságát.'>"
+  ],
+  "reasoning": "<A concise, 1-2 sentence Hungarian explanation of HOW the key_factors led to the final modified xG numbers.>"
+}
+`;
 
 // === MÓDOSÍTOTT (v69.0): 5. ÜGYNÖK (A KRITIKUS) PROMPT ===
-// (Változatlan v69.0 óta)
+// (Változatlan v70.0-ban)
 const PROMPT_CRITIC_V69 = `
 TASK: You are 'The Critic', the 5th Agent in a 6-agent analysis chain.
 Your job is to find **CONTRADICTIONS** and **RISKS** and define the **NARRATIVE THEME** of the match.
@@ -156,7 +192,7 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 `;
 
 // === MÓDOSÍTOTT (v69.2): 6. ÜGYNÖK (A STRATÉGA) PROMPT (JAVÍTVA) ===
-// A "prophetic_timeline" utasításai átkerültek a [YOUR TASK] részbe.
+// (Változatlan v70.0-ban)
 const PROMPT_STRATEGIST_V69 = `
 TASK: You are 'The Strategist', the 6th and FINAL Agent.
 You are the King.
@@ -197,7 +233,7 @@ Your response MUST be a single JSON object. You have 3 tasks:
    - Válassz a "PATH A" (Standard) vagy "PATH B" (Káosz Kiaknázása) közül.
      * **PATH A (Standard):** A 'Statistical Confidence' (6) megbízható, a 'Contextual Risk' (7) egy logikus módosító. (Pl. Stat: 7.0, Risk: -1.5 -> Végső Bizalom: 5.5/10).
      * **PATH B ("Kurva Jó" Override):** A 'Contextual Risk' (7) extrém (pl. -10.0), ami a 'Statistical Confidence'-t (6) IRRELEVÁNSSÁ teszi. Felismerted, hogy a kockázat (pl. 8 hiányzó) valójában egy *lehetőséget* teremt. Ebben az esetben **adj MAGAS bizalmat** (7.0-9.0/10) a tippenek, ami kiaknázza ezt a káoszt.
-   - Írj egy 2-3 bekezdéses holisztikus elemzést a 'strategic_synthesis'-be (magyarul). Magyarázd el a láncot, kezeld a 'Critic's Risks'-t (5), és támasszad alá a Próféta (TASK 1) narratíváját.
+   - Írj egy 2-3 bekezdéses holisztikus elemzés a 'strategic_synthesis'-be (magyarul). Magyarázd el a láncot, kezeld a 'Critic's Risks'-t (5), és támasszad alá a Próféta (TASK 1) narratíváját.
    - Írj egy részletes indoklást a 'final_confidence_report'-ba (magyarul), és **HATÁROZD MEG A VÉGSŐ BIZALMI PONTSZÁMOT (1.0-10.0)**.
 
 **TASK 3: (A VÉGREHAJTÓ) - A "micromodels" és "master_recommendation" mezők kitöltése.**
@@ -230,6 +266,32 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 `;
 // === MÓDOSÍTÁS VÉGE ===
 
+// === ÚJ (v70.0): 3. LÉPÉS (AI SPECIALISTA) ===
+interface SpecialistInput {
+    pure_mu_h: number;
+    pure_mu_a: number;
+    quant_source: string;
+    rawDataJson: ICanonicalRawData;
+    sport: string;
+    psyProfileHome: any;
+    psyProfileAway: any;
+}
+export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
+    try {
+        const filledPrompt = fillPromptTemplate(PROMPT_SPECIALIST_V1, data);
+        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Specialist");
+    } catch (e: any) {
+        console.error(`AI Hiba (Specialist): ${e.message}`);
+        // Kritikus hiba esetén visszatérünk a Tiszta xG-vel, hogy a lánc ne álljon le
+        return {
+            "modified_mu_h": data.pure_mu_h,
+            "modified_mu_a": data.pure_mu_a,
+            "key_factors": [`KRITIKUS HIBA: A 3. Ügynök (Specialista) nem tudott lefutni: ${e.message}`],
+            "reasoning": "AI Hiba: A 3. Ügynök (Specialista) hibát dobott, a Súlyozott xG megegyezik a Tiszta xG-vel."
+        };
+    }
+}
+
 
 // === MÓDOSÍTOTT (v69.0): 5. LÉPÉS (KRITIKUS) ===
 interface CriticInput {
@@ -259,7 +321,8 @@ export async function runStep_Critic(data: CriticInput): Promise<any> {
 interface StrategistInput {
     matchData: { home: string, away: string, sport: string, leagueName: string };
     quantReport: { pure_mu_h: number, pure_mu_a: number, source: string };
-    specialistReport: { mu_h: number, mu_a: number, log: any };
+    // MÓDOSÍTÁS (v70.0): A specialistReport most már az AI Specialista teljes JSON objektuma
+    specialistReport: any; 
     simulatorReport: any;
     criticReport: any; // Az 5. Ügynök (v69) kimenete (benne a narrative_theme)
     modelConfidence: number; // A Statisztikai bizalom (Quant)
@@ -269,7 +332,18 @@ interface StrategistInput {
 export async function runStep_Strategist(data: StrategistInput): Promise<any> {
     try {
         // Biztosítjuk, hogy a simJson (a 4. Ügynök jelentése) a 'simulatorReport' kulcson legyen
-        const dataForPrompt = { ...data, simulatorReport: data.simulatorReport };
+        // és a specialistReport (a 3. Ügynök) mu_h/mu_a értékei is elérhetők legyenek
+        const dataForPrompt = { 
+            ...data, 
+            simulatorReport: data.simulatorReport,
+            // A 6. Ügynök promptjának {specialistReport.mu_h} hivatkozásaihoz
+            specialistReport: {
+                ...data.specialistReport, // Tartalmazza a 'reasoning'-et, 'key_factors'-t
+                mu_h: data.specialistReport.modified_mu_h, // Átnevezés a prompt kompatibilitáshoz
+                mu_a: data.specialistReport.modified_mu_a  // Átnevezés a prompt kompatibilitáshoz
+            }
+        };
+        
         const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V69, dataForPrompt); // v69-es (javított v69.2) prompt használata
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Strategist");
     } catch (e: any) {
@@ -326,8 +400,9 @@ If the answer isn't in the context or history, politely state that the informati
     }
 }
 
-// --- FŐ EXPORT --- (v63.0 - Frissítve a Lánc Lépéseire)
+// --- FŐ EXPORT (MÓDOSÍTVA v70.0) ---
 export default {
+    runStep_Specialist, // HOZZÁADVA
     runStep_Critic,
     runStep_Strategist,
     getChatResponse
