@@ -1,9 +1,12 @@
-// --- AI_Service.ts (v69.1 - Elit Narrátor, Javított Prompt) ---
-// MÓDOSÍTÁS (v69.1):
+// --- AI_Service.ts (v69.2 - Prompt-Bleeding Javítás) ---
+// MÓDOSÍTÁS (v69.2):
 // 1. JAVÍTVA: A Stratéga (Ügynök 6) promptjában (PROMPT_STRATEGIST_V69) a
-//    "prophetic_timeline" rész hibásan hivatkozott a '{mu_cards_sim}'
-//    változóra. Ez javítva a helyes '{simulatorReport.mu_cards_sim}' hivatkozásra.
-// 2. A (v69.0) összes többi logikája (narrative_theme, stb.) változatlan.
+//    "prophetic_timeline" mező utasításait (pl. "(A PRÓFÉTA) FELADAT:...")
+//    az AI visszaküldte a válaszban a narratíva helyett.
+// 2. A hiba javítása érdekében az utasítások átkerültek a fő prompt törzsébe
+//    ([YOUR TASK...] szekció), és a JSON séma 'prophetic_timeline'
+//    mezője már csak egy egyszerű placeholdert tartalmaz.
+// 3. A v69.1-es '{simulatorReport.mu_cards_sim}' javítás érvényben marad.
 
 import { _callGemini } from './DataFetch.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
@@ -119,7 +122,7 @@ function fillPromptTemplate(template: string, data: any): string {
 
 
 // === MÓDOSÍTOTT (v69.0): 5. ÜGYNÖK (A KRITIKUS) PROMPT ===
-// Most már "narrative_theme"-et is generál.
+// (Változatlan v69.0 óta)
 const PROMPT_CRITIC_V69 = `
 TASK: You are 'The Critic', the 5th Agent in a 6-agent analysis chain.
 Your job is to find **CONTRADICTIONS** and **RISKS** and define the **NARRATIVE THEME** of the match.
@@ -152,8 +155,8 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 }
 `;
 
-// === MÓDOSÍTOTT (v69.1): 6. ÜGYNÖK (A STRATÉGA) PROMPT (JAVÍTVA) ===
-// A "prophetic_timeline" {mu_cards_sim} hivatkozása javítva {simulatorReport.mu_cards_sim}-re.
+// === MÓDOSÍTOTT (v69.2): 6. ÜGYNÖK (A STRATÉGA) PROMPT (JAVÍTVA) ===
+// A "prophetic_timeline" utasításai átkerültek a [YOUR TASK] részbe.
 const PROMPT_STRATEGIST_V69 = `
 TASK: You are 'The Strategist', the 6th and FINAL Agent.
 You are the King.
@@ -178,29 +181,35 @@ You resolve all contradictions.
 7. **Contextual Risk Score (Agent 5): {criticReport.contradiction_score}/10**
 
 [YOUR TASK - FINAL DECISION]:
-Your main task is to find the *smartest bet* (the 'sharp' bet) and **DECIDE the "Final Confidence Score"** (a number from 1.0 to 10.0).
-Do not just average the two scores (6) and (7). High risk (e.g., Risk Score -10.0) does NOT automatically mean low confidence. 
-**High risk can *create* a high-confidence opportunity if the market is wrong.**
+Your response MUST be a single JSON object. You have 3 tasks:
 
-Analyze the relationship between (6) and (7) and choose one of these two paths:
+**TASK 1: (A PRÓFÉTA) - A "prophetic_timeline" mező generálása.**
+   - FELADAT: Te vagy 'A Próféta', egy elit sport-történetmesélő.
+   - BEMENETEK (Ezeket a fenti INPUTS részből vedd):
+     1. Narratíva Téma (Ügynök 5): '{criticReport.narrative_theme}'
+     2. Súlyozott xG (Ügynök 3): H={specialistReport.mu_h}, A={specialistReport.mu_a}
+     3. Várható Lapok/Szögletek (Ügynök 4): {simulatorReport.mu_cards_sim} lap, {simulatorReport.mu_corners_sim} szöglet
+   - UTASÍTÁSOK: Írj egy **élethű, részletes és magával ragadó narratívát** (magyarul) a meccs lefolyásáról, mintha már megtörtént volna. A történetednek **TÖKÉLETESEN tükröznie kell** a kapott xG adatokat és a narratív témát. Ne csak összefoglalj, hanem mesélj! Írd le a meccs hangulatát (a 'Téma' alapján). Írd le, hogyan születnek a gólok (az xG arányában). Fesd le a kulcspillanatokat (pl. egy piros lap a {simulatorReport.mu_cards_sim} alapján). A történetnek logikusan el kell vezetnie a legvalószínűbb végeredményhez (pl. 2-0, 1-1).
+   - Ezt a szöveget helyezd a 'prophetic_timeline' mezőbe.
 
-* **PATH A (Standard):** The 'Statistical Confidence' (6) is reliable and the 'Contextual Risk' (7) is a logical adjustment.
-    * (Example: Stat is 7.0, Risk is -1.5 -> Final Confidence: 5.5/10).
-    * (Example: Stat is 4.0, Risk is -9.0 -> Final Confidence: 1.5/10. The match is true chaos.)
+**TASK 2: (A STRATÉGA) - A "strategic_synthesis" és "final_confidence_report" mezők generálása.**
+   - FELADAT: Elemezd a 6-os (Stat Bizalom) és 7-es (Kockázati Pontszám) bemeneteket.
+   - Válassz a "PATH A" (Standard) vagy "PATH B" (Káosz Kiaknázása) közül.
+     * **PATH A (Standard):** A 'Statistical Confidence' (6) megbízható, a 'Contextual Risk' (7) egy logikus módosító. (Pl. Stat: 7.0, Risk: -1.5 -> Végső Bizalom: 5.5/10).
+     * **PATH B ("Kurva Jó" Override):** A 'Contextual Risk' (7) extrém (pl. -10.0), ami a 'Statistical Confidence'-t (6) IRRELEVÁNSSÁ teszi. Felismerted, hogy a kockázat (pl. 8 hiányzó) valójában egy *lehetőséget* teremt. Ebben az esetben **adj MAGAS bizalmat** (7.0-9.0/10) a tippenek, ami kiaknázza ezt a káoszt.
+   - Írj egy 2-3 bekezdéses holisztikus elemzést a 'strategic_synthesis'-be (magyarul). Magyarázd el a láncot, kezeld a 'Critic's Risks'-t (5), és támasszad alá a Próféta (TASK 1) narratíváját.
+   - Írj egy részletes indoklást a 'final_confidence_report'-ba (magyarul), és **HATÁROZD MEG A VÉGSŐ BIZALMI PONTSZÁMOT (1.0-10.0)**.
 
-* **PATH B (The "Kurva Jó" Override):** The 'Contextual Risk' (7) is EXTREME (e.g., -10.0 due to 10 missing players), which makes the 'Statistical Confidence' (6) IRRELEVANT.
-    * You realize that the *reason* for the risk (e.g., 10 players missing) actually *creates* the best bet (e.g., "Under 2.5").
-    * You see that the B-team players who *are* playing are underestimated, or the market hasn't reacted properly.
-    * **In this case, assign a HIGH confidence score (e.g., 7.0/10, 8.0/10, or 9.0/10) to the tip that exploits this chaos.**
-
-**You MUST choose a path and justify it.**
+**TASK 3: (A VÉGREHAJTÓ) - A "micromodels" és "master_recommendation" mezők kitöltése.**
+   - Töltsd ki a 'micromodels' mezőit a 4-es Ügynök (Simulator) adatai alapján.
+   - Töltsd ki a 'master_recommendation' mezőt. MINDIG válassz egy tippet (1X2, O/U, BTTS). A 'final_confidence' mezőbe a TASK 2-ben meghatározott végső bizalmi pontszámot írd.
 
 [OUTPUT STRUCTURE]:
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
 {
-  "prophetic_timeline": "<(A PRÓFÉTA) FELADAT: Te vagy 'A Próféta', egy elit sport-történetmesélő. BEMENETEK: 1. Narratíva Téma (Ügynök 5): '{criticReport.narrative_theme}'. 2. Súlyozott xG (Ügynök 3): H={specialistReport.mu_h}, A={specialistReport.mu_a}. 3. Várható Lapok/Szögletek (Ügynök 4): {simulatorReport.mu_cards_sim} lap, {simulatorReport.mu_corners_sim} szöglet. UTASÍTÁSOK: Írj egy **élethű, részletes és magával ragadó narratívát** (magyarul) a meccs lefolyásáról, mintha már megtörtént volna. A történetednek **TÖKÉLETESEN tükröznie kell** a kapott xG adatokat és a narratív témát. Ne csak összefoglalj, hanem mesélj! Írd le a meccs hangulatát (a 'Téma' alapján). Írd le, hogyan születnek a gólok (az xG arányában). Fesd le a kulcspillanatokat (pl. egy piros lap a {simulatorReport.mu_cards_sim} alapján). A történetnek logikusan el kell vezetnie a legvalószínűbb végeredményhez (pl. 2-0, 1-1).>",
+  "prophetic_timeline": "<A (TASK 1) alapján generált, élethű, magyar nyelvű meccs-narratíva, amely a BEMENETEKRE épül.>",
   
-  "strategic_synthesis": "<Egy 2-3 bekezdéses holisztikus elemzés (magyarul). Magyarázd el a teljes láncot. **KRITIKUS: Kezeld a 'Critic's Risks'-t (5) és fejtsd ki a 'Próféta' (prophetic_timeline) által vázolt meccsképet!** Indokold meg, hogy a 'PATH A' vagy 'PATH B' mellett döntöttél.>",
+  "strategic_synthesis": "<A (TASK 2) alapján generált 2-3 bekezdéses holisztikus elemzés (magyarul). Magyarázza el a láncot, a 'PATH A/B' döntést, és támassza alá a Próféta narratíváját.>",
   
   "micromodels": {
     "btts_analysis": "<BTTS elemzés. A {simulatorReport.pBTTS}% (4) valószínűség alapján.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]",
@@ -209,12 +218,12 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
     "card_analysis": "<Lap O/U elemzés. Csak ha a simulatorReport.mu_cards_sim > 0.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]"
   },
   
-  "final_confidence_report": "**<Number>/10** - Részletes indoklás (magyarul). <**ELŐSZÖR HATÁROZD MEG A VÉGSŐ PONTOT (pl. 8.0/10)**, majd indokold meg. Vessd össze a {modelConfidence} (stat) bizalmat a {criticReport.contradiction_score} (kockázati pontszám) által jelzett tényezőkkel, és indokold meg, hogy a 'PATH A' vagy 'PATH B' mellett döntöttél.>",
+  "final_confidence_report": "**<Number>/10** - Részletes indoklás (magyarul). <A (TASK 2) alapján meghatározott VÉGSŐ pontszám és a 'PATH A/B' indoklása.>",
   
   "master_recommendation": {
     "__INSTRUCTION__": "**KRITIKUS FONTOSSÁGÚ:** Soha ne adj 'No Bet' vagy 'Nincs Tipp' ajánlást. MINDIG válaszd ki a legvalószínűbb kimenetelt a fő piacok (1X2, O/U, BTTS) közül, még akkor is, ha a bizalom alacsony. A bizalmat a 'final_confidence' mezőben tükrözd, ne az ajánlás hiányával.",
-    "recommended_bet": "<A végső, szintetizált ajánlás (CSAK fő piac: 1X2, O/U, BTTS, Moneyline)>",
-    "final_confidence": <Number, a végső bizalmi pontszám 1.0-10.0 között, amit te határoztál meg a 'final_confidence_report'-ban.>,
+    "recommended_bet": "<A (TASK 3) alapján meghatározott végső, szintetizált ajánlás (CSAK fő piac: 1X2, O/U, BTTS, Moneyline)>",
+    "final_confidence": <Number, a (TASK 2) 'final_confidence_report'-ban meghatározott végső bizalmi pontszám 1.0-10.0 között.>,
     "brief_reasoning": "<Egyetlen, tömör magyar mondatos indoklás, amely tükrözi a szintézist és a Kritikus (5) jelentésére adott választ>"
   }
 }
@@ -261,7 +270,7 @@ export async function runStep_Strategist(data: StrategistInput): Promise<any> {
     try {
         // Biztosítjuk, hogy a simJson (a 4. Ügynök jelentése) a 'simulatorReport' kulcson legyen
         const dataForPrompt = { ...data, simulatorReport: data.simulatorReport };
-        const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V69, dataForPrompt); // v69-es (javított v69.1) prompt használata
+        const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V69, dataForPrompt); // v69-es (javított v69.2) prompt használata
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Strategist");
     } catch (e: any) {
         console.error(`AI Hiba (Strategist): ${e.message}`);
