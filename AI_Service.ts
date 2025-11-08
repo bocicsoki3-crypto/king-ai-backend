@@ -1,10 +1,13 @@
-// --- AI_Service.ts (v80.0 - "Valósághű" Foci Logika) ---
-// MÓDOSÍTÁS (v80.0):
-// 1. MÓDOSÍTVA: `PROMPT_SPECIALIST_V1` -> `PROMPT_SPECIALIST_V80` (Óvatosabb, arányosabb logika)
-// 2. MÓDOSÍTVA: `SpecialistInput` interfész (Megkapja a pszichológiát)
-// 3. MÓDOSÍTVA: `PROMPT_STRATEGIST_V69` -> `PROMPT_STRATEGIST_V80` (Pszichológiai profilokat használ)
-// 4. MÓDOSÍTVA: `StrategistInput` interfész (Megkapja a pszichológiát)
-// 5. CÉL: A "nem valósághű", túlérzékeny elemzések javítása.
+// --- AI_Service.ts (v81.0 - "Taktikai Kritikus" Logika) ---
+// MÓDOSÍTÁS (v81.0):
+// 1. MÓDOSÍTVA: `PROMPT_CRITIC_V80` -> `PROMPT_CRITIC_V81`
+//    - A Kritikus (5) mostantól Taktikus is. Elemzi a felállást és a pszichológiát.
+//    - Új kimeneti mezőket ad: `home_tactic_analysis`, `away_tactic_analysis`, `key_battlefield`.
+// 2. MÓDOSÍTVA: `CriticInput` interfész (Megkapja a pszichológiát).
+// 3. MÓDOSÍTVA: `PROMPT_STRATEGIST_V80` -> `PROMPT_STRATEGIST_V81`
+//    - A Stratéga (6) megkapja a Kritikus (5) új taktikai elemzését.
+//    - A Próféta (Task 1) utasítása frissítve, hogy használja a taktikát a "jóslathoz".
+// 4. CÉL: A "prophetic_timeline" (jóslat) pontosságának drámai növelése.
 
 import { 
     _callGemini, 
@@ -82,41 +85,60 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 }
 `;
 
-// === JAVÍTVA (v80.0): 5. ÜGYNÖK (A KRITIKUS) PROMPT (Változatlan, de v80-ra átnevezve) ===
-const PROMPT_CRITIC_V80 = `
-TASK: You are 'The Critic', the 5th Agent in a 6-agent analysis chain.
-Your job is to find **CONTRADICTIONS** and **RISKS** and define the **NARRATIVE THEME** of the match.
+// === JAVÍTVA (v81.0): 5. ÜGYNÖK (A KRITIKUS / TAKTIKUS) PROMPT ===
+const PROMPT_CRITIC_V81 = `
+TASK: You are 'The Critic', the 5th Agent.
+You have two roles:
+1.  **Tactician:** Define the tactical setup based on formations and psychology.
+2.  **Critic:** Find contradictions and risks based on market data and simulation.
+
 [INPUTS]:
 1. Simulation (Agent 4 Output): {simJson}
-   (This sim was run on the FINAL Contextually-Weighted xG. P(Home): {simJson.pHome}%, P(Draw): {simJson.pDraw}%, P(Away): {simJson.pAway}%)
+   (P(Home): {simJson.pHome}%, P(Draw): {simJson.pDraw}%, P(Away): {simJson.pAway}%)
 2. Market Sentiment (Scout Data): "{marketIntel}"
 3. Value Bets (Calculated): {valueBetsJson}
 4. Model Confidence (Statistical): {modelConfidence}/10
-5. Raw Contextual Data (for qualitative review): {rawDataJson}
+5. Raw Contextual Data (Formations, etc.): {rawDataJson}
+6. Psychological Profile (Home): {psyProfileHome}
+7. Psychological Profile (Away): {psyProfileAway}
 
-[YOUR TASK - CRITIQUE & SCORING]:
-1. Review ALL inputs and identify the top 1-3 most significant risks or contradictions.
-2. Generate a "Tactical Summary" synthesizing the simulation and the raw context (injuries, market moves).
-3. Generate a "Contradiction Score" (a number between -10.0 and +10.0).
-   - A negatív pontszám JELENTŐS KOCKÁZATOT jelent (pl. a statisztika 70%-ot ad a Hazaira, de a kulcsjátékosuk hiányzik ÉS a piac ellenük mozog).
-   - A 0 körüli pontszám azt jelenti, hogy nincsenek jelentős ellentmondások.
-   - A pozitív pontszám azt jelenti, hogy a kontextus (pl. hiányzók) ERŐSEN TÁMOGATJA a szimuláció eredményét.
-4. **Generate a "Narrative Theme" (a single, descriptive sentence in Hungarian) that captures the core tactical story.** (e.g., "Agresszív hazai letámadás egy mélyen védekező, kontrára építő vendégcsapat ellen." or "Káosz meccs: Mindkét csapat kulcsfontosságú védői hiányoznak, nyílt, adok-kapok várható.")
+[YOUR TASK]:
+Perform your roles in this order:
+
+**PART 1: TACTICAL ANALYSIS (A Taktikus)**
+   - Analyze 'Raw Contextual Data' (5) (especially 'home_formation', 'away_formation') and 'Psychological Profiles' (6, 7).
+   - Define the tactical approach for both teams.
+   - Define the key battlefield.
+
+**PART 2: RISK ANALYSIS (A Kritikus)**
+   - Review ALL inputs (1-7) and identify the top 1-3 most significant risks or contradictions.
+   - Generate a "Contradiction Score" (a number between -10.0 and +10.0).
+     - Negatív: Kockázat (pl. a statisztika 70%-ot ad a Hazaira, de a kulcsjátékosuk hiányzik ÉS a piac ellenük mozog).
+     - Pozitív: A kontextus ERŐSEN TÁMOGATJA a szimulációt.
+   - Generate a "Tactical Summary" synthesizing the simulation and the raw context.
+   - Generate a "Narrative Theme" (a single, descriptive Hungarian sentence) that captures the core tactical story.
 
 [OUTPUT STRUCTURE]:
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
 {
-  "contradiction_score": <Number, from -10.0 to +10.0. Example: -3.5>,
-  "key_risks": [
-    "<List of 1-3 string bullet points describing the main risks. Example: 'KOCKÁZAT: A szimuláció (1) 65%-ot ad a Hazaira, de a 'smart money' (2) a Vendégre mozog.'>"
-  ],
-  "tactical_summary": "<A 2. (Scout) és 4. (Sim) Ügynök adatainak rövid, 1-2 mondatos narratív összefoglalása.>",
-  "narrative_theme": "<A single, descriptive Hungarian sentence describing the core tactical story. Example: 'Egyoldalú küzdelem: A Hazaiak agresszív letámadása egy mélyen, 10 emberrel védekező Vendég csapat ellen, akik a kontrákra építenek.'>"
+  "tactical_analysis": {
+    "home_tactic_analysis": "<A Hazai csapat (5, 6) elemzése. Pl: 'A 4-3-3-as felállás és a 'High Morale' (8.5) agresszív, letámadó játékot vetít előre.'>",
+    "away_tactic_analysis": "<A Vendég csapat (5, 7) elemzése. Pl: 'Az 5-3-2-es felállás és a 'High Pressure' (9.0) mély védekezésre és gyors kontrákra utal.'>",
+    "key_battlefield": "<A kulcs küzdelem helye. Pl: 'Középpályás dominancia' vagy 'Hazai szélsők vs. Vendég szélső védők.'>"
+  },
+  "risk_analysis": {
+    "contradiction_score": <Number, from -10.0 to +10.0. Example: -3.5>,
+    "key_risks": [
+      "<List of 1-3 string bullet points describing the main risks. Example: 'KOCKÁZAT: A szimuláció (1) 65%-ot ad a Hazaira, de a 'smart money' (2) a Vendégre mozog.'>"
+    ],
+    "tactical_summary": "<A 2. (Scout) és 4. (Sim) Ügynök adatainak rövid, 1-2 mondatos narratív összefoglalása.>",
+    "narrative_theme": "<A single, descriptive Hungarian sentence describing the core tactical story. Example: 'Egyoldalú küzdelem: A Hazaiak agresszív letámadása egy mélyen, 10 emberrel védekező Vendég csapat ellen, akik a kontrákra építenek.'>"
+  }
 }
 `;
 
-// === JAVÍTVA (v80.0): 6. ÜGYNÖK (A STRATÉGA) PROMPT - "VALÓSÁGHŰ" LOGIKA ===
-const PROMPT_STRATEGIST_V80 = `
+// === JAVÍTVA (v81.0): 6. ÜGYNÖK (A STRATÉGA) PROMPT - "TAKTIAI" LOGIKA ===
+const PROMPT_STRATEGIST_V81 = `
 TASK: You are 'The Strategist', the 6th and FINAL Agent.
 You are the King.
 Your job is to synthesize ALL previous reports into a single, final, decisive analysis and recommendation.
@@ -132,29 +154,29 @@ You resolve all contradictions.
    - Reasoning: {specialistReport.reasoning}
 4. Agent 4 (Simulator) Report:
    - Simulation based on Agent 3's Weighted xG: {simulatorReport}
-5. Agent 5 (Critic) Report (v80.0):
-   - Narrative Theme: "{criticReport.narrative_theme}"
-   - Risks Found: {criticReport.key_risks}
-   - Tactical Summary: "{criticReport.tactical_summary}"
+5. Agent 5 (Critic/Tactician) Report (v81.0):
+   - Tactical Setup: {criticReport.tactical_analysis}
+   - Risk Analysis: {criticReport.risk_analysis}
 
 [KEY DECISION FACTORS]:
 6. **Statistical Model Confidence (Agent 4): {modelConfidence}/10**
-7. **Contextual Risk Score (Agent 5): {criticReport.contradiction_score}/10**
+7. **Contextual Risk Score (Agent 5): {criticReport.risk_analysis.contradiction_score}/10**
 8. **Psychological Profile (Home): {psyProfileHome}**
 9. **Psychological Profile (Away): {psyProfileAway}**
 
-[YOUR TASK - FINAL DECISION (v80.0)]:
+[YOUR TASK - FINAL DECISION (v81.0)]:
 Your response MUST be a single JSON object. You have 3 tasks:
 
 **TASK 1: (A PRÓFÉTA) - A "prophetic_timeline" mező generálása.**
    - FELADAT: Írj egy élethű, részletes narratívát (magyarul) a meccs lefolyásáról.
-   - BEMENETEK: Használd a 3., 4., 5. és 8/9. Ügynökök adatait.
-   - UTASÍTÁSOK: A történetednek **TÖKÉLETESEN tükröznie kell** a kapott xG adatokat, a 'Narratív Témát' (5) és a 'Pszichológiai Profilokat' (8, 9).
+   - BEMENETEK: Használd a 3., 4., 5., 8. és 9. Ügynökök adatait.
+   - UTASÍTÁSOK: A történetednek **TÖKÉLETESEN tükröznie kell** a kapott xG adatokat (3), a 'Pszichológiai Profilokat' (8, 9) és a **'Taktikai Elemzést' (5)** (pl. '{criticReport.tactical_analysis.key_battlefield}').
+   - A narratívádnak logikusan meg kell magyaráznia, HOGYAN alakul ki az xG a taktika alapján.
    - Ezt a szöveget helyezd a 'prophetic_timeline' mezőbe.
 
 **TASK 2: (A STRATÉGA) - A "strategic_synthesis" és "final_confidence_report" mezők generálása.**
    - FELADAT: Elemezd az ÖSSZES bemenetet (különösen 6, 7, 8, 9).
-   - ** szintetizáld a pszichológiát (8, 9)!** Hogyan befolyásolja a 'psyProfileHome.pressureIndex' a statisztikai modellt? A 'psyProfileAway.moraleIndex' alátámasztja vagy cáfolja a 'Contextual Risk Score'-t (7)?
+   - szintetizáld a pszichológiát (8, 9) és a taktikát (5)!
    - Magyarázd el a 'strategic_synthesis'-ben (magyarul), hogy a pszichológia és a kockázati pontszám hogyan vezet a végső döntéshez.
    - Írj egy részletes indoklást a 'final_confidence_report'-ba (magyarul), és **HATÁROZD MEG A VÉGSŐ BIZALMI PONTSZÁMOT (1.0-10.0)**.
 
@@ -165,8 +187,8 @@ Your response MUST be a single JSON object. You have 3 tasks:
 [OUTPUT STRUCTURE]:
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
 {
-  "prophetic_timeline": "<A (TASK 1) alapján generált, élethű, magyar nyelvű meccs-narratíva.>",
-  "strategic_synthesis": "<A (TASK 2) alapján generált 2-3 bekezdéses holisztikus elemzés (magyarul), amely magában foglalja a pszichológiai (8, 9) és kockázati (7) faktorok szintézisét.>",
+  "prophetic_timeline": "<A (TASK 1) alapján generált, élethű, TAKTIKAI alapú, magyar nyelvű meccs-narratíva.>",
+  "strategic_synthesis": "<A (TASK 2) alapján generált 2-3 bekezdéses holisztikus elemzés (magyarul), amely magában foglalja a taktikát (5), a pszichológiát (8, 9) és kockázati (7) faktorok szintézisét.>",
   "micromodels": {
     "btts_analysis": "<BTTS elemzés. A {simulatorReport.pBTTS}% (4) valószínűség alapján.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]",
     "goals_ou_analysis": "<Gól O/U elemzés. **KRITIKUS: Kizárólag a {simulatorReport.mainTotalsLine} gólvonalat (pl. 2.5, 3.5) elemezd!** A {simulatorReport.pOver}% (4) valószínűség alapján.>\\nBizalom: [Alacsony/Közepes/Magas]",
@@ -178,7 +200,7 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
     "__INSTRUCTION__": "**KRITIKUS FONTOSSÁGÚ:** Soha ne adj 'No Bet' vagy 'Nincs Tipp' ajánlást. MINDIG válaszd ki a legvalószínűbb kimenetelt.",
     "recommended_bet": "<A (TASK 3) alapján meghatározott végső, szintetizált ajánlás (CSAK fő piac: 1X2, O/U, BTTS, Moneyline)>",
     "final_confidence": <Number, a (TASK 2) 'final_confidence_report'-ban meghatározott végső bizalmi pontszám 1.0-10.0 között.>,
-    "brief_reasoning": "<Egyetlen, tömör magyar mondatos indoklás, amely tükrözi a szintézist és a pszichológiai (8, 9) faktorokat.>"
+    "brief_reasoning": "<Egyetlen, tömör magyar mondatos indoklás, amely tükrözi a szintézist és a pszichológiai/taktikai faktorokat.>"
   }
 }
 `;
@@ -239,32 +261,42 @@ export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
 }
 
 
-// === JAVÍTVA (v80.0): 5. LÉPÉS (KRITIKUS) ===
+// === JAVÍTVA (v81.0): 5. LÉPÉS (KRITIKUS / TAKTIKUS) ===
 interface CriticInput {
     simJson: any;
     marketIntel: string;
     valueBetsJson: any[];
     modelConfidence: number;
     rawDataJson: ICanonicalRawData;
+    // JAVÍTVA (v81.0): Hozzáadva az interfészhez
+    psyProfileHome: any;
+    psyProfileAway: any;
 }
 export async function runStep_Critic(data: CriticInput): Promise<any> {
     try {
-        // JAVÍTVA (v80.0): A v80-as prompt használata
-        const filledPrompt = fillPromptTemplate(PROMPT_CRITIC_V80, data); 
-        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Critic (v80)");
+        // JAVÍTVA (v81.0): A v81-es "Taktikai Kritikus" prompt használata
+        const filledPrompt = fillPromptTemplate(PROMPT_CRITIC_V81, data); 
+        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Critic (v81)");
     } catch (e: any) {
         console.error(`AI Hiba (Critic): ${e.message}`);
         // Kritikus hiba esetén is adjunk vissza egy alap jelentést, hogy a lánc ne álljon le
         return {
-            "contradiction_score": 0.0, // Semleges pontszám hiba esetén
+          "tactical_analysis": {
+            "home_tactic_analysis": "AI Hiba: A taktikai elemzés nem futott le.",
+            "away_tactic_analysis": "AI Hiba: A taktikai elemzés nem futott le.",
+            "key_battlefield": "N/A"
+          },
+          "risk_analysis": {
+            "contradiction_score": 0.0,
             "key_risks": [`KRITIKUS HIBA: Az 5. Ügynök (Kritikus) nem tudott lefutni: ${e.message}`],
             "tactical_summary": `AI Hiba (Critic): ${e.message}`,
             "narrative_theme": `Hiba: A Kritikus (5. Ügynök) nem tudott lefutni.`
+          }
         };
     }
 }
 
-// === JAVÍTVA (v80.0): 6. LÉPÉS (STRATÉGA) ===
+// === JAVÍTVA (v81.0): 6. LÉPÉS (STRATÉGA) ===
 interface StrategistInput {
     matchData: { home: string, away: string, sport: string, leagueName: string };
     quantReport: { pure_mu_h: number, pure_mu_a: number, source: string };
@@ -291,9 +323,9 @@ export async function runStep_Strategist(data: StrategistInput): Promise<any> {
             }
         };
         
-        // JAVÍTVA (v80.0): Az új, "valósághű" prompt használata
-        const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V80, dataForPrompt); 
-        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Strategist (v80)");
+        // JAVÍTVA (v81.0): Az új, "taktikai" prompt használata
+        const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V81, dataForPrompt); 
+        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Strategist (v81)");
     } catch (e: any) {
         console.error(`AI Hiba (Strategist): ${e.message}`);
         return {
