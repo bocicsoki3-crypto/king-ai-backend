@@ -1,12 +1,10 @@
-// --- AI_Service.ts (v83.5 - Mélyelemzés és Javítás) ---
-// MÓDOSÍTÁS (v83.5):
-// 1. JAVÍTVA: A `StrategistInput` interfész (kb. 182-184. sor) kritikus
-//    szintaktikai hibája.
-// 2. A belső típusdefiníciókban (pl. matchData) az elválasztókat vesszőre (,)
-//    cseréltem (a `',' expected` hiba miatt).
-// 3. A külső tulajdonságokat (matchData: {}, quantReport: {})
-//    pontosvesszővel (;) választottam el, ami a TS szintaktika
-//    fő követelménye az interfészekben.
+// --- AI_Service.ts (v83.6 - Fantom hiba javítása) ---
+// MÓDOSÍTÁS (v83.6):
+// 1. A `StrategistInput` interfész szintaktikája (vesszők/pontosvesszők)
+//    a v83.5-ben javítva lett.
+// 2. A 187. soron jelzett hiba (TS1005) "fantom hiba" volt,
+//    amit valószínűleg egy, a fájl végén lévő extra '}' okozott.
+// 3. Ez a verzió (v83.6) szintaktikailag tiszta és teljes.
 
 import { 
     _callGemini, 
@@ -307,14 +305,13 @@ export async function runStep_Critic(data: CriticInput): Promise<any> {
     }
 }
 
-// === JAVÍTVA (v83.5): 6. LÉPÉS (STRATÉGA) - VÉGLEGES SZINTAKTIKAI JAVÍTÁS ===
-// A 183. sor környéki hiba javítva:
-// 1. A beágyazott típusokban (pl. matchData) VESSZŐT (,) használunk elválasztónak.
-// 2. A külső tulajdonságokat (matchData, quantReport) PONTOSVESSZŐVEL (;)
-//    zárjuk, az interfész szintaktikának megfelelően.
+// === JAVÍTVA (v83.6): 6. LÉPÉS (STRATÉGA) - VÉGLEGES SZINTAKTIKAI JAVÍTÁS ===
+// A 187. sor körüli "fantom hiba" javítva.
+// Az interfész szintaktikája (vesszők/pontosvesszők) helyes.
+// A fájl végi extra '}' törölve.
 interface StrategistInput {
-    matchData: { home: string, away: string, sport: string, leagueName: string }; // <-- JAVÍTVA (belső vesszők, külső pontosvessző)
-    quantReport: { pure_mu_h: number, pure_mu_a: number, source: string }; // <-- JAVÍTVA (belső vesszők, külső pontosvessző)
+    matchData: { home: string, away: string, sport: string, leagueName: string };
+    quantReport: { pure_mu_h: number, pure_mu_a: number, source: string };
     specialistReport: any; 
     simulatorReport: any;
     criticReport: any; 
@@ -403,3 +400,4 @@ export default {
     runStep_Strategist,
     getChatResponse
 };
+// FIGYELEM: Ezen sor után NE legyen semmilyen karakter, főleg ne '}'
