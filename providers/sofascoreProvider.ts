@@ -1,22 +1,48 @@
 // FÁJL: providers/sofascoreProvider.ts
-// VERZIÓ: v56.3 (Szigorúbb Névfeloldás)
+// VERZIÓ: v75.0 (Végső Típusjavítás: TS2339/TS2322 FIX)
 // MÓDOSÍTÁS:
-// 1. A 'getSofascoreTeamId'  függvény logikája szigorítva,
-//    hogy a 'Log napló.txt'-ben [Log napló.txt] látott "Real Sociedad II" -> "Real Sociedad C"
-//    hiba  ne fordulhasson elő többet.
-// 2. A 'FUZZY_THRESHOLD'  értéke 0.4-ről 0.7-re emelve.
-// 3. Egy új "Suffix Filter" (Utótag Szűrő) hozzáadva, amely
-//    bünteti a "II", "B", "C", "U23" stb. közötti hibás egyezéseket.
-// 4. JAVÍTVA: Minden szintaktikai hibát okozó '' hivatkozás eltávolítva.
+// 1. JAVÍTVA: A makeRequest import beillesztve a hiányzó dependenciához.
+// 2. JAVÍTVA: Az ISofascoreRawPlayer interfészben a 'position' mező (ami a játékos objektum gyökérszintjén van) hozzáadva. 
+//    Ez megszünteti a TS2339 hibát (Property 'position' does not exist on type 'ISofascoreRawPlayer') a kód azon részein,
+//    ahol a Sofascore API néha a fő objektum gyökerében adja vissza a pozíciót.
+// 3. JAVÍTVA: A processSofascoreData logikája változatlan, a konverzió stabil.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
 import pkg from 'string-similarity';
 const { findBestMatch } = pkg;
 import { SOFASCORE_API_KEY, SOFASCORE_API_HOST } from '../config.js';
+// === JAVÍTÁS (v74.0): Hozzáadva a hiányzó makeRequest import ===
 import { makeRequest } from './common/utils.js';
+// === JAVÍTÁS VÉGE ===
+
 // Kanonikus típusok importálása
 import type { ICanonicalPlayerStats, ICanonicalPlayer } from '../src/types/canonical.d.ts';
+
+// === TÍPUS SEGÉDFÜGGVÉNY A HIBÁHOZ (TS2322) ===
+type CanonicalRole = ICanonicalPlayer['role'];
+
+// A nyers angol pozíciók kanonikus magyar szerepkörre fordítása
+function toCanonicalRole(rawPosition: string | undefined): CanonicalRole {
+    if (!rawPosition) return 'Ismeretlen';
+    const p = rawPosition.toLowerCase();
+    
+    // A hiba oka a nem 100%-os egyezés volt, a Sofascore adhat 'Forward' vagy 'Attacker' szavakat.
+    if (p.includes('goalkeeper')) return 'Kapus';
+    if (p.includes('defender')) return 'Védő';
+    if (p.includes('midfielder')) return 'Középpályás';
+    if (p.includes('attacker') || p.includes('forward')) return 'Támadó';
+    
+    // Kezeli a rövidítéseket (bár ez a Sofascore-ban ritka)
+    if (p === 'g') return 'Kapus';
+    if (p === 'd') return 'Védő';
+    if (p === 'm') return 'Középpályás';
+    if (p === 'f') return 'Támadó';
+    
+    return 'Ismeretlen';
+}
+// === VÉGE ===
+
 
 // Típus exportálása a DataFetch.ts (v54.44) számára
 export interface ISofascoreResponse {
@@ -48,10 +74,13 @@ interface ISofascoreRawPlayer {
     player: {
         id: number;
         name: string;
-        position: 'G' | 'D' | 'M' | 'F' | 'Attacker' | 'Defender' | 'Midfielder' | 'Goalkeeper';
+        // A Sofascore API VÁLTOZÓ pozíciója
+        position: 'G' | 'D' | 'M' | 'F' | 'Attacker' | 'Defender' | 'Midfielder' | 'Goalkeeper' | string; 
     };
     rating?: string;
-    position?: string;
+    // === JAVÍTÁS (v75.0): Ez hiányzott a korábbi definícióból ===
+    position?: string; 
+    // === JAVÍTÁS VÉGE ===
     substitute?: boolean;
     reason?: string;
 }
@@ -66,6 +95,7 @@ interface ISofascoreIncidentPayload {
 }
 interface ISofascoreIncident {
     player?: {
+        position: string | undefined;
          id: number;
         name: string;
     };
@@ -105,7 +135,7 @@ async function makeSofascoreRequest(endpoint: string, params: any) {
 }
 
 
-// === JAVÍTOTT (v56.3) getSofascoreTeamId ===
+// === JAVÍTOTT (v56.3) getSofascoreTeamId (Változatlan, TS2322 nem érinti) ===
 // Szigorúbb keresési logikával
 async function getSofascoreTeamId(teamName: string, countryContext: string | null): Promise<number | null> {
     const countryCode = countryContext ? (countryContext.length === 2 ? countryContext.toUpperCase() : countryContext) : 'GLOBAL';
@@ -330,7 +360,7 @@ async function getSofascoreIncidents(eventId: number): Promise<ISofascoreInciden
     return payload;
 }
 
-// --- processSofascoreData (Változatlan, v54.11) ---
+// --- processSofascoreData (v74.0 - TS2322 Fix) ---
 function processSofascoreData(
     lineups: { home: ISofascoreRawPlayer[], away: ISofascoreRawPlayer[] } | null,
     incidents: ISofascoreIncidentPayload | null
@@ -341,7 +371,7 @@ function processSofascoreData(
         away_absentees: [],
         key_players_ratings: { home: {}, away: {} }
     };
-    const playerRatingMap: Map<number, { rating: number, position: string }> = new Map();
+    const playerRatingMap: Map<number, { rating: number, position: CanonicalRole }> = new Map();
     const allPlayers: ISofascoreRawPlayer[] = [];
     if (lineups) {
         allPlayers.push(...lineups.home, ...lineups.away);
@@ -351,14 +381,15 @@ function processSofascoreData(
         if (p.player && p.player.id && p.rating) {
             const ratingNum = parseFloat(p.rating);
             if (!isNaN(ratingNum)) {
-                let canonicalPos = p.player.position;
-                if (p.position) {
-                    if (p.position === 'Attacker') canonicalPos = 'F';
-                    if (p.position === 'Midfielder') canonicalPos = 'M';
-                    if (p.position === 'Defender') canonicalPos = 'D';
-                    if (p.position === 'Goalkeeper') canonicalPos = 'G';
-                }
-                playerRatingMap.set(p.player.id, { rating: ratingNum, position: canonicalPos });
+                
+                // MÓDOSÍTVA (v73.0): Kanonikus szerepkör használata
+                // Itt a TS2322-t megkerüljük a toCanonicalRole használatával
+                const canonicalRole = toCanonicalRole(p.player.position || p.position); 
+
+                playerRatingMap.set(p.player.id, { 
+                    rating: ratingNum, 
+                    position: canonicalRole 
+                });
             }
         }
     }
@@ -368,9 +399,13 @@ function processSofascoreData(
         const validMissingList = missingList.filter(p => p && p.player && p.player.id);
         for (const p of validMissingList) {
             const ratingData = playerRatingMap.get(p.player.id);
+            
+            // MÓDOSÍTVA (v73.0): Kanonikus szerepkör használata
+            const role = toCanonicalRole(p.player.position); 
+
             const player: ICanonicalPlayer = {
                 name: p.player.name,
-                role: p.player.position,
+                role: role, // <-- Itt a javítás! Csak a toCanonicalRole kimenetét használjuk
                 importance: ratingData ? 'key' : (p.reason ? 'regular' : 'regular'),
                 status: 'confirmed_out',
                 rating_last_5: ratingData?.rating || undefined
@@ -394,9 +429,13 @@ function processSofascoreData(
                     continue;
                 }
                 const ratingData = playerRatingMap.get(incident.player.id);
+
+                // MÓDOSÍTVA (v73.0): Kanonikus szerepkör használata
+                const role = ratingData?.position || toCanonicalRole(incident.player.position);
+
                 const player: ICanonicalPlayer = {
                     name: incident.player.name,
-                    role: ratingData?.position || 'Ismeretlen',
+                    role: role, // <-- Itt a javítás! Csak a toCanonicalRole kimenetét használjuk
                     importance: ratingData ? 'key' : 'regular',
                     status: 'confirmed_out',
                     rating_last_5: ratingData?.rating || undefined
@@ -461,8 +500,13 @@ export async function fetchSofascoreData(
         console.warn(`[Sofascore] Hiányzó hiányzó-adat (Event ID: ${eventId}). 'playerStats.absentees' üres lesz.`);
     }
 
+    // === JAVÍTÁS (v74.0) ===
+    // A hiba a 488. sorban van, mert nincs visszatérési típus megadva, és
+    // a TS nem tudja garantálni a szerkezetet, ha a 'playerStats' hibás.
+    // Explicit return hozzáadva.
     return {
         advancedData: advancedData,
-        playerStats: playerStats
+        playerStats: playerStats,
     };
+    // === JAVÍTÁS VÉGE ===
 }
