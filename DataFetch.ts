@@ -1,10 +1,10 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v63.1 (P1 Manuális Hiányzó Rating Javítás)
-// MÓDOSÍTÁS (Feladat 3.3):
-// 1. JAVÍTVA: A 'mapManualToCanonical' függvény most már beállít egy
-//    statikus 'rating_last_5: 7.5' értéket a P1 Manuális Hiányzók számára.
-// 2. Ez a változás biztosítja, hogy a Model.ts-ben lévő xG-módosító (absentee_mod_h/a)
-//    helyesen tudjon lefutni, amikor a P1-et használják.
+// VERZIÓ: v73.0 (TS2322 Fix: Literál Típusok és Szerepkör Konzisztencia)
+// MÓDOSÍTÁS:
+// 1. JAVÍTVA: Bevezetve a 'CanonicalRole' típus alias a literál típusú szerepkörökhöz.
+// 2. JAVÍTVA: A 'getRoleFromPos' függvény visszatérési típusa explicitté téve a TS2322 hiba elkerülésére.
+// 3. LOGIKA: A P1 (Manuális Hiányzó) bemenet most már garantáltan a helyes, magyar nyelvű
+//    szerepkört (pl. 'Védő') adja át a Model.ts-nek a súlyozáshoz.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -35,6 +35,9 @@ interface IDataProvider {
     providerName: string;
 }
 
+// === ÚJ TÍPUS (JAVÍTÁS TS2322) ===
+type CanonicalRole = 'Kapus' | 'Védő' | 'Középpályás' | 'Támadó' | 'Ismeretlen';
+
 // Az 'apiSportsProvider' manuális becsomagolása az 'IDataProvider' interfészhez
 const apiSportsProvider: IDataProvider = {
     fetchMatchData: apiSportsFetchData,
@@ -56,7 +59,7 @@ export interface IDataFetchOptions {
     manual_A_xG?: number | null;  // v61.0
     manual_A_xGA?: number | null;
 // v61.0
-    manual_absentees?: { home: string[], away: string[] } | null;
+    manual_absentees?: { home: { name: string, pos: string }[], away: { name: string, pos: string }[] } | null; // <-- Típus frissítve
 // ÚJ (6 FŐS BIZOTTSÁG)
 }
 
@@ -68,7 +71,7 @@ export interface IDataFetchResponse extends ICanonicalRichContext {
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v63.1 (Javított)
+* VERZIÓ: v73.0 (TS2322 Fix: Literál Típusok és Szerepkör Konzisztencia)
 **************************************************************/
 
 function getProvider(sport: string): IDataProvider {
@@ -85,7 +88,21 @@ function getProvider(sport: string): IDataProvider {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FÜGGVÉNY (v62.1)
+ * Segédfüggvény a pozíció nevének fordításához (a Model.ts által várt formátumra)
+ * === JAVÍTÁS (v73.0): Explicit visszatérési típus CanonicalRole-ra ===
+ */
+function getRoleFromPos(pos: string): CanonicalRole {
+    const p = pos.toUpperCase();
+    if (p === 'G') return 'Kapus';
+    if (p === 'D') return 'Védő';
+    if (p === 'M') return 'Középpályás';
+    if (p === 'F') return 'Támadó';
+    return 'Ismeretlen';
+}
+// === JAVÍTÁS VÉGE ===
+
+/**
+ * FŐ ADATGYŰJTŐ FÜGGVÉNY (v73.0)
  */
 export async function getRichContextualData(
     options: IDataFetchOptions 
@@ -191,18 +208,22 @@ finalAwayXg = null;
 finalResult.advancedData.away['xg'] = finalAwayXg;
         
         console.log(`[DataFetch] xG Forrás meghatározva: ${xgSource}. (H:${finalHomeXg ?? 'N/A'}, A:${finalAwayXg ?? 'N/A'})`);
-// === MÓDOSÍTÁS (6 FŐS BIZOTTSÁG): P1 MANUÁLIS HIÁNYZÓ KEZELÉS (PLAN A) ===
+// === MÓDOSÍTÁS (v71.0): P1 MANUÁLIS HIÁNYZÓ KEZELÉS (PLAN A) ===
         if (options.manual_absentees && (options.manual_absentees.home.length > 0 || options.manual_absentees.away.length > 0)) {
             console.log(`[DataFetch] Felülírás (P1): Manuális hiányzók alkalmazva. (H: ${options.manual_absentees.home.length}, A: ${options.manual_absentees.away.length}). Automatikus lekérés (Sofascore/apiSports) kihagyva.`);
-            const mapManualToCanonical = (name: string): ICanonicalPlayer => ({
-                name: name,
-                role: 'Ismeretlen', // A manuális bevitel nem tudja a szerepkört
+            
+            // === MÓDOSÍTVA (v71.0): A teljes objektumot fogadjuk és a pozíciót a szerepkörhöz map-eljük ===
+            const mapManualToCanonical = (playerStub: { name: string, pos: string }): ICanonicalPlayer => ({
+                name: playerStub.name,
+                role: getRoleFromPos(playerStub.pos), // Pozíció -> Szerepkör
                 importance: 'key', // Feltételezzük, hogy a user csak fontos hiányzót ír be
                 status: 'confirmed_out',
        
                 // === JAVÍTÁS (v63.1): Statikus Rating hozzáadása ===
                 rating_last_5: 7.5 // Statikus placeholder a Model.ts (Specialista) számára
             });
+            // === MÓDOSÍTÁS VÉGE ===
+
             finalResult.rawData.detailedPlayerStats = {
                 home_absentees: options.manual_absentees.home.map(mapManualToCanonical),
                 away_absentees: options.manual_absentees.away.map(mapManualToCanonical),

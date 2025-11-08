@@ -1,10 +1,8 @@
-// --- index.ts (v63.3 - Szintaktikai Javítás) ---
+// --- index.ts (v72.0 - Manuális Hiányzó Típus) ---
 // MÓDOSÍTÁS:
-// 1. JAVÍTVA: A 'strategistInput' objektumban a '?? null' szintaktikai hiba
-//    (TS1002/TS1005) kijavítva a helyes '?? null,' formátumra.
-// 2. LOGIKA MEGERŐSÍTVE: Az 'origin: "*"' CORS beállítás érvényben van.
-// 3. LOGIKA MEGERŐSÍTVE: Az "Előzmények" mentési és betöltési logikája
-//    frissítve a 'JSON_Data' oszlop kezelésére.
+// 1. JAVÍTVA: A '/runAnalysis' végponton a 'manual_absentees' típusa már a 
+//    helyes, objektum-alapú szerkezetet várja el, ahogy azt a DataFetch.ts is igényli.
+// 2. LOGIKA MEGERŐSÍTVE: Minden v63.3-as javítás (CORS, History) érvényben van.
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
@@ -196,10 +194,17 @@ app.post('/getRosters', protect, async (req: Request, res: Response) => {
 });
 
 
-// === MÓDOSÍTOTT VÉGPONT (6 FŐS BIZOTTSÁG) ===
+// === MÓDOSÍTOTT VÉGPONT (v72.0 - Típusbiztonság) ===
 // === runAnalysis (v62.1-es mezőkkel) ===
 app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
     try {
+        // Típusosítjuk a bejövő manuális hiányzó mezőt, 
+        // hogy megfeleljen a DataFetchOptions-ben definiált IPlayerStub[] szerkezetnek
+        interface ManualAbsentees { 
+            home: { name: string, pos: string }[]; 
+            away: { name: string, pos: string }[]; 
+        }
+        
         const { 
             home, 
             away, 
@@ -215,9 +220,8 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             manual_A_xG, 
             manual_A_xGA,
     
-            // === MÓDOSÍTÁS (6 FŐS BIZOTTSÁG) ===
-            // P1 Manuális Hiányzók (ÚJ v62.1, de most már fogadjuk)
-            manual_absentees 
+            // === MÓDOSÍTÁS (v72.0): Helyes típus fogadása ===
+            manual_absentees // Típus: ManualAbsentees | null
         } = req.body;
 
         if (!home || !away || !sport || !utcKickoff || !leagueName) { 
@@ -236,7 +240,7 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             manual_H_xGA,
             manual_A_xG,
             manual_A_xGA,
-            manual_absentees // <- MÓDOSÍTÁS (6 FŐS BIZOTTSÁG): Átadás az AnalysisFlow-nak
+            manual_absentees: manual_absentees as ManualAbsentees | null // Típus kényszerítése
         };
         const result = await runFullAnalysis(params, sport, openingOdds);
         if ('error' in result) {

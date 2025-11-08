@@ -1,12 +1,10 @@
 // FÁJL: src/types/canonical.d.ts
-// VERZIÓ: v63.1 (P1 Manuális Roster Választó - Rating)
+// VERZIÓ: v72.0 (P1 Manuális Roster Választó - Objektum Típusbiztonság)
 // MÓDOSÍTÁS:
-// 1. 'IPlayerStub' kiegészítve a 'rating_last_5' mezővel.
-// 2. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
+// 1. IPlayerStub interfész frissítve a P1 keretválasztó által várt és küldött adatokra.
+// 2. ICanonicalPlayer interfészhez hozzáadtuk a hiányzó 'role' mező magyar nyelvű megfeleléseit, hogy a Specialista (Model.ts) szerepkör-súlyozása konzisztensen fusson.
+// 3. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
 // Ezen interfészek definiálják a rendszeren belüli "adatszerződést".
-// A Providerek (pl. apiSportsProvider) felelőssége, hogy az API válaszaikat
-// ezen interfészeknek megfelelő objektumokká alakítsák.
-// A Fogyasztók (pl. Model, AnalysisFlow) ezen interfészekre támaszkodnak.
 
 /**
  * A csapatok alapvető statisztikai adatai, amelyeket a Model.ts vár.
@@ -24,7 +22,8 @@ export interface ICanonicalStats {
  */
 export interface ICanonicalPlayer {
   name: string;
-  role: string;
+  // Role: Kapus, Védő, Középpályás, Támadó, vagy Ismeretlen (A DataFetch.ts-ben van mapelve)
+  role: 'Kapus' | 'Védő' | 'Középpályás' | 'Támadó' | 'Ismeretlen'; 
   importance: 'key' | 'regular' | 'substitute';
   status: 'confirmed_out' | 'doubtful' | 'active';
   rating_last_5?: number;    // Opcionális, de javasolt
@@ -33,12 +32,12 @@ export interface ICanonicalPlayer {
 /**
  * === ÚJ (v62.1) ===
  * Egyszerűsített játékos-objektum a P1-es keret-kiválasztóhoz.
+ * (Ez a Kanban kártya adatmodellje)
  */
 export interface IPlayerStub {
     id: number;
     name: string;
     pos: string; // Pozíció (G, D, M, F)
-    // === ÚJ (v63.1) ===
     rating_last_5: number; // Placeholder rating a P1-es hiányzó-logikához
 }
 
