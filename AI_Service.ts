@@ -1,8 +1,8 @@
-// --- AI_Service.ts (v83.3 - Végleges Build Javítás) ---
-// MÓDOSÍTÁS (v83.3):
-// 1. JAVÍTVA: A `StrategistInput` interfész (kb. 182. sor) szintaktikai hibája.
-//    A `matchData` mező megkapta a hiányzó sorvégi pontosvesszőt (;)
-//    a TS1005 build hiba végleges javításához.
+// --- AI_Service.ts (v83.4 - Végleges Szintaktikai Javítás) ---
+// MÓDOSÍTÁS (v83.4):
+// 1. JAVÍTVA: A `StrategistInput` interfész (kb. 182-184. sor) kritikus
+//    szintaktikai hibája. A belső típusdefiníciókban a vesszők (,)
+//    pontosvesszőre (;) lettek cserélve a TS1005 build hiba elhárításához.
 
 import { 
     _callGemini, 
@@ -303,10 +303,12 @@ export async function runStep_Critic(data: CriticInput): Promise<any> {
     }
 }
 
-// === JAVÍTVA (v83.3): 6. LÉPÉS (STRATÉGA) - VÉGLEGES SZINTAKTIKAI JAVÍTÁS ===
+// === JAVÍTVA (v83.4): 6. LÉPÉS (STRATÉGA) - VÉGLEGES SZINTAKTIKAI JAVÍTÁS ===
+// A 183. sor környéki hiba javítva: A belső vesszők (,) pontosvesszőre (;)
+// lettek cserélve a TS1005 build hiba elhárításához.
 interface StrategistInput {
-    matchData: { home: string, away: string, sport: string, leagueName: string }; // <-- HIÁNYZÓ PONTOSVESSZŐ (;) PÓTOLVA
-    quantReport: { pure_mu_h: number, pure_mu_a: number, source: string };
+    matchData: { home: string; away: string; sport: string; leagueName: string; }; // <-- JAVÍTVA
+    quantReport: { pure_mu_h: number; pure_mu_a: number; source: string; }; // <-- JAVÍTVA
     specialistReport: any; 
     simulatorReport: any;
     criticReport: any; 
