@@ -178,7 +178,7 @@ Your response MUST be a single JSON object. You have 3 tasks:
      - **CASE 2 (VÖRÖS ZÁSZLÓ / "Arsenal Hiba"):** A 'Contextual Risk Score' (7) extrém negatív (pl. -4.0 alatt).
        - **THEN:** Ez azt jelenti, hogy a Piac (a "Smart Money") aktívan ellened fogad. A modelled (4) és a piac (5) ellentmond.
        - **NE FUTAMODJ MEG (NE vágd 1.0-ra a bizalmat, mint a v82.0-ban)!**
-       - **A FELADATOD:** Légy "A Szintetizátor". **Találd meg a REJTETT VÁLTOZÓT.**
+       - **A FELADATOD:** Légy "A Szintetizátor". **Találd meg a REJTETT VÁTOZÓT.**
        - 1. Elemezd a 'Risk Analysis' (5) 'key_risks' mezőjét (ez megmondja, mi az ellentmondás, pl. "Modell=Under, Piac=Over").
        - 2. Elemezd a 'Raw Contextual Data'-t (pl. `rawDataJson.absentees`, `rawDataJson.lineup_news`, pletykák) és a 'Market Sentiment'-et (5).
        - 3. **Indokold meg, MIÉRT** mozog a piac? Lát a piac egy utolsó pillanatos sérülést, amit a statisztikai modelled nem? (Pl. "A Piac valószínűleg arra reagál, hogy a Hazai csapat két kezdő védője (P4 adat) mégis kétséges, ezért az 'Over' felé mozog, felülbírálva a mi 'Under' modellünket.")
