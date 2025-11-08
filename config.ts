@@ -80,6 +80,9 @@ export const BASKETBALL_API_HOST: string = process.env.BASKETBALL_API_HOST || 'b
 export const SOFASCORE_API_KEY: string | undefined = process.env.SOFASCORE_API_KEY; 
 export const SOFASCORE_API_HOST: string = process.env.SOFASCORE_API_HOST || 'sportapi7.p.rapidapi.com';
 
+export const ODDS_API_KEY: string | undefined = process.env.ODDS_API_KEY;
+export const ODDS_API_HOST: string = process.env.ODDS_API_HOST || 'odds-feed.p.rapidapi.com';
+
 // --- API HOST TÉRKÉP (KULCSROTÁCIÓVAL - CSAK FOCI) ---
 // Típusosítva az IApiHostMap interfész alapján
 export const API_HOSTS: IApiHostMap = {
