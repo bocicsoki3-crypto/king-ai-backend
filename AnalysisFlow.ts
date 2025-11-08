@@ -1,425 +1,357 @@
-// FÁJL: AnalysisFlow.ts
-// VERZIÓ: v77.9 (VÉGLEGES Stratéga TypeError Javítás)
-// MÓDOSÍTÁS (v77.9):
-// 1. JAVÍTVA: A Stratéga jelentésének feldolgozása. Biztonságos láncolt operátorok (?. és null check)
-//    használata a TypeError elkerülésére, ha az LLM nem ad vissza érvényes JSON-t.
+// --- AI_Service.ts (v80.0 - "Valósághű" Foci Logika) ---
+// MÓDOSÍTÁS (v80.0):
+// 1. MÓDOSÍTVA: `PROMPT_SPECIALIST_V1` -> `PROMPT_SPECIALIST_V80` (Óvatosabb, arányosabb logika)
+// 2. MÓDOSÍTVA: `SpecialistInput` interfész (Megkapja a pszichológiát)
+// 3. MÓDOSÍTVA: `PROMPT_STRATEGIST_V69` -> `PROMPT_STRATEGIST_V80` (Pszichológiai profilokat használ)
+// 4. MÓDOSÍTVA: `StrategistInput` interfész (Megkapja a pszichológiát)
+// 5. CÉL: A "nem valósághű", túlérzékeny elemzések javítása.
 
-import NodeCache from 'node-cache';
-import { SPORT_CONFIG } from './config.js';
-// Kanonikus típusok importálása
-import type {
-    ICanonicalRichContext,
-    ICanonicalRawData,
-    ICanonicalStats,
-    ICanonicalOdds,
-    IPlayerStub // ÚJ (v62.1)
-} from './src/types/canonical.d.ts';
-// A 'findMainTotalsLine'-t a központi 'utils' fájlból importáljuk
-import { findMainTotalsLine } from './providers/common/utils.js';
-// Adatgyűjtő funkciók (2. Ügynök - Scout)
 import { 
-    getRichContextualData, 
-    type IDataFetchOptions, 
-    type IDataFetchResponse 
-} from './DataFetch.js';
-// v54.16 importok (1., 3., 4. Ügynökök)
-import {
-    estimatePureXG,           // ÚJ (1. Ügynök - Quant)
-    estimateAdvancedMetrics,
-    simulateMatchProgress,    // (4. Ügynök - Szimulátor)
-    calculateModelConfidence,
-    calculatePsychologicalProfile,
-    calculateValue,
-    analyzeLineMovement
-} from './Model.js';
-// AI Szolgáltatás Importok (5. és 6. Ügynökök)
-import {
-    runStep_Specialist, // ÚJ (3. Ügynök - AI Specialista)
-    runStep_Critic,     // ÚJ (5. Ügynök - Kritikus)
-    runStep_Strategist  // ÚJ (6. Ügynök - Stratéga)
-} from './AI_Service.js';
-import { saveAnalysisToSheet } from './sheets.js'; 
+    _callGemini, 
+    _callGeminiWithJsonRetry, 
+    fillPromptTemplate 
+} from './providers/common/utils.js'; 
+import { getConfidenceCalibrationMap } from './LearningService.js';
+import type { ICanonicalPlayerStats, ICanonicalRawData } from './src/types/canonical.d.ts';
 
-// Gyorsítótár inicializálása
-const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
-/**************************************************************
-* AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v77.9): Kritikus Hiba Javítása (TypeError a Stratéga JSON-ban)
-* **************************************************************/
-
-// Az új, strukturált JSON válasz (MÓDOSÍTVA v70.0)
-interface IAnalysisResponse {
-    analysisData: {
-        committee: {
-            quant: { mu_h: number, mu_a: number, source: string };
-            specialist: { // Ez most már az AI Specialista jelentése
-                mu_h: number, // AI által súlyozott xG
-                mu_a: number, // AI által súlyozott xG
-                log: string,  // AI indoklása
-                report: any   // A teljes AI JSON válasz
-            };
-            critic: any;
-            strategist: any;
-        };
-        matchData: {
-            home: string;
-            away: string;
-            sport: string;
-            mainTotalsLine: number | string;
-            mu_h: number | string; // Ez a SÚLYOZOTT (AI Specialista) xG
-            mu_a: number | string;
-        };
-        oddsData: ICanonicalOdds | null;
-        valueBets: any[];
-        modelConfidence: number; // Ez a Quant/Statisztikai bizalom (4. Ügynök)
-        finalConfidenceScore: number; // Ez a Stratéga (6. Ügynök) által MEGHATÁROZOTT bizalom
-        sim: any; 
-        recommendation: any;
-        xgSource: string; // JAVÍTVA: String típus a Cache-kompatibilitás miatt
-        // === ÚJ (v62.1) ===
-        availableRosters: {
-            home: IPlayerStub[];
-            away: IPlayerStub[];
-        };
-        // === VÉGE ===
-    };
-    debugInfo: any;
+// === ÚJ (v77.0): 8. ÜGYNÖK (A TÉRKÉPÉSZ) PROMPT ===
+const PROMPT_TEAM_RESOLVER_V1 = `
+TASK: You are 'The Mapper', an expert sports data mapping assistant.
+Your goal is to find the correct team ID for a misspelled or alternative team name.
+[CONTEXT]:
+- Input Name (from ESPN): "{inputName}"
+- Search Term (Normalized): "{searchTerm}"
+- Available Roster (from API Provider): {rosterJson}
+[INSTRUCTIONS]:
+1. Analyze the 'Available Roster' (JSON array of {id, name} objects).
+2. Find the *single best match* for the 'Search Term'.
+3. The match must be logically sound (e.g., "Cologne" matches "1. FC Köln", "Man Utd" matches "Manchester United").
+4. If the 'Search Term' is "N/A" or empty, you must return null.
+5. If no logical match is found in the roster, you must return null.
+[OUTPUT STRUCTURE]:
+Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
+{
+  "matched_id": <Number | null>
 }
+`;
 
-interface IAnalysisError {
-    error: string;
+// === JAVÍTVA (v80.0): 3. ÜGYNÖK (AZ AI SPECIALISTA) PROMPT - "VALÓSÁGHŰ" LOGIKA ===
+const PROMPT_SPECIALIST_V80 = `
+TASK: You are 'The Specialist', the 3rd Agent.
+Your job is to apply contextual modifiers to a baseline statistical model.
+
+[GUIDING PRINCIPLE - THE "REALISM" OATH]:
+You MUST be **CONSERVATIVE and PROPORTIONAL**.
+A statistical model (Agent 1) is robust. Do NOT modify the xG values significantly unless the contextual factors (Agent 2) are EXTREME.
+- Minor factors (light rain, 1-2 average players out, minor morale dip) should result in minimal or ZERO change (e.g., +/- 0.05 xG).
+- Significant factors (key player >8.0 rating out, heavy snow, extreme pressure) should be proportional.
+- DO NOT overreact.
+
+[INPUTS]:
+1. Baseline (Pure) xG (from Agent 1, Quant):
+   - pure_mu_h: {pure_mu_h}
+   - pure_mu_a: {pure_mu_a}
+   - quant_source: "{quant_source}"
+
+2. Full Raw Context (from Agent 2, Scout): {rawDataJson}
+   - (Includes: absentees, weather, tactics, morale)
+
+3. Psychological Profiles (from Model):
+   - psyProfileHome: {psyProfileHome}
+   - psyProfileAway: {psyProfileAway}
+
+[YOUR TASK - MODIFICATION & REASONING]:
+1. Analyze the 'rawDataJson' and 'Psychological Profiles'.
+2. Identify the TOP 3-5 *TRULY SIGNIFICANT* qualitative factors.
+3. **PROPORTIONAL MODIFICATION:**
+   - Example 1: "Hazai kulcs csatár (8.5 rating) hiányzik." -> Decrease 'pure_mu_h' proportionally (e.g., -0.25 xG).
+   - Example 2: "Vendég 2. számú csatár (6.8 rating) hiányzik." -> Minimal/Zero change (e.g., -0.05 xG).
+   - Example 3: "Szakadó eső és 50 km/h szél." -> Decrease both 'pure_mu_h' and 'pure_mu_a' significantly (e.g., -0.30 xG each).
+   - Example 4: "Vendég csapat 'High Pressure' (psyProfileAway.pressureIndex > 8)." -> Slightly decrease 'pure_mu_a' due to pressure.
+4. Provide the FINAL 'modified_mu_h' and 'modified_mu_a' as numbers.
+
+[OUTPUT STRUCTURE]:
+Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
+{
+  "modified_mu_h": <Number, the final weighted xG for Home. Example: 1.35>,
+  "modified_mu_a": <Number, the final weighted xG for Away. Example: 1.15>,
+  "key_factors": [
+    "<List of 3-5 string bullet points describing the SIGNIFICANT qualitative factors used.>"
+  ],
+  "reasoning": "<A concise, 1-2 sentence Hungarian explanation of HOW the key_factors led to the final (and proportional) modified xG numbers.>"
 }
+`;
 
-// === Segédfüggvény a tizedesvesszők kezelésére (Változatlan) ===
-/**
- * Biztonságosan konvertál egy stringet (akár ','-vel) számmá.
-* Helyesen kezeli a 0-t, null-t, és a "0,9" formátumot.
- */
-function safeConvertToNumber(value: any): number | null {
-    if (value == null || value === '') { // Kezeli a null, undefined, ""
-        return null;
+// === JAVÍTVA (v80.0): 5. ÜGYNÖK (A KRITIKUS) PROMPT (Változatlan, de v80-ra átnevezve) ===
+const PROMPT_CRITIC_V80 = `
+TASK: You are 'The Critic', the 5th Agent in a 6-agent analysis chain.
+Your job is to find **CONTRADICTIONS** and **RISKS** and define the **NARRATIVE THEME** of the match.
+[INPUTS]:
+1. Simulation (Agent 4 Output): {simJson}
+   (This sim was run on the FINAL Contextually-Weighted xG. P(Home): {simJson.pHome}%, P(Draw): {simJson.pDraw}%, P(Away): {simJson.pAway}%)
+2. Market Sentiment (Scout Data): "{marketIntel}"
+3. Value Bets (Calculated): {valueBetsJson}
+4. Model Confidence (Statistical): {modelConfidence}/10
+5. Raw Contextual Data (for qualitative review): {rawDataJson}
+
+[YOUR TASK - CRITIQUE & SCORING]:
+1. Review ALL inputs and identify the top 1-3 most significant risks or contradictions.
+2. Generate a "Tactical Summary" synthesizing the simulation and the raw context (injuries, market moves).
+3. Generate a "Contradiction Score" (a number between -10.0 and +10.0).
+   - A negatív pontszám JELENTŐS KOCKÁZATOT jelent (pl. a statisztika 70%-ot ad a Hazaira, de a kulcsjátékosuk hiányzik ÉS a piac ellenük mozog).
+   - A 0 körüli pontszám azt jelenti, hogy nincsenek jelentős ellentmondások.
+   - A pozitív pontszám azt jelenti, hogy a kontextus (pl. hiányzók) ERŐSEN TÁMOGATJA a szimuláció eredményét.
+4. **Generate a "Narrative Theme" (a single, descriptive sentence in Hungarian) that captures the core tactical story.** (e.g., "Agresszív hazai letámadás egy mélyen védekező, kontrára építő vendégcsapat ellen." or "Káosz meccs: Mindkét csapat kulcsfontosságú védői hiányoznak, nyílt, adok-kapok várható.")
+
+[OUTPUT STRUCTURE]:
+Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
+{
+  "contradiction_score": <Number, from -10.0 to +10.0. Example: -3.5>,
+  "key_risks": [
+    "<List of 1-3 string bullet points describing the main risks. Example: 'KOCKÁZAT: A szimuláció (1) 65%-ot ad a Hazaira, de a 'smart money' (2) a Vendégre mozog.'>"
+  ],
+  "tactical_summary": "<A 2. (Scout) és 4. (Sim) Ügynök adatainak rövid, 1-2 mondatos narratív összefoglalása.>",
+  "narrative_theme": "<A single, descriptive Hungarian sentence describing the core tactical story. Example: 'Egyoldalú küzdelem: A Hazaiak agresszív letámadása egy mélyen, 10 emberrel védekező Vendég csapat ellen, akik a kontrákra építenek.'>"
 }
-    
-    let strValue = String(value);
-    
-    // A kritikus hiba javítása: ',' -> '.'
-    strValue = strValue.replace(',', '.');
-    
-    const num = Number(strValue);
-    
-    // Ha a konverzió után 'NaN', akkor adjon null-t vissza
-    if (isNaN(num)) {
-        console.warn(`[AnalysisFlow] HIBÁS BEMENET: Nem sikerült számmá alakítani: "${value}"`);
-        return null;
-    }
-    
-    // Helyesen adja vissza a 0-t vagy a konvertált számot
-    return num;
+`;
+
+// === JAVÍTVA (v80.0): 6. ÜGYNÖK (A STRATÉGA) PROMPT - "VALÓSÁGHŰ" LOGIKA ===
+const PROMPT_STRATEGIST_V80 = `
+TASK: You are 'The Strategist', the 6th and FINAL Agent.
+You are the King.
+Your job is to synthesize ALL previous reports into a single, final, decisive analysis and recommendation.
+You resolve all contradictions.
+
+[INPUTS - THE CHAIN OF THOUGHT]:
+1. Match Data: {matchData.home} vs {matchData.away} ({matchData.leagueName})
+2. Agent 1 (Quant) Report:
+   - "Pure xG": H={quantReport.pure_mu_h}, A={quantReport.pure_mu_a}
+   - P1 Input Used: {realXgJson}
+3. Agent 3 (Specialist) Report (v80.0):
+   - "Final Weighted xG": H={specialistReport.mu_h}, A={specialistReport.mu_a}
+   - Reasoning: {specialistReport.reasoning}
+4. Agent 4 (Simulator) Report:
+   - Simulation based on Agent 3's Weighted xG: {simulatorReport}
+5. Agent 5 (Critic) Report (v80.0):
+   - Narrative Theme: "{criticReport.narrative_theme}"
+   - Risks Found: {criticReport.key_risks}
+   - Tactical Summary: "{criticReport.tactical_summary}"
+
+[KEY DECISION FACTORS]:
+6. **Statistical Model Confidence (Agent 4): {modelConfidence}/10**
+7. **Contextual Risk Score (Agent 5): {criticReport.contradiction_score}/10**
+8. **Psychological Profile (Home): {psyProfileHome}**
+9. **Psychological Profile (Away): {psyProfileAway}**
+
+[YOUR TASK - FINAL DECISION (v80.0)]:
+Your response MUST be a single JSON object. You have 3 tasks:
+
+**TASK 1: (A PRÓFÉTA) - A "prophetic_timeline" mező generálása.**
+   - FELADAT: Írj egy élethű, részletes narratívát (magyarul) a meccs lefolyásáról.
+   - BEMENETEK: Használd a 3., 4., 5. és 8/9. Ügynökök adatait.
+   - UTASÍTÁSOK: A történetednek **TÖKÉLETESEN tükröznie kell** a kapott xG adatokat, a 'Narratív Témát' (5) és a 'Pszichológiai Profilokat' (8, 9).
+   - Ezt a szöveget helyezd a 'prophetic_timeline' mezőbe.
+
+**TASK 2: (A STRATÉGA) - A "strategic_synthesis" és "final_confidence_report" mezők generálása.**
+   - FELADAT: Elemezd az ÖSSZES bemenetet (különösen 6, 7, 8, 9).
+   - ** szintetizáld a pszichológiát (8, 9)!** Hogyan befolyásolja a 'psyProfileHome.pressureIndex' a statisztikai modellt? A 'psyProfileAway.moraleIndex' alátámasztja vagy cáfolja a 'Contextual Risk Score'-t (7)?
+   - Magyarázd el a 'strategic_synthesis'-ben (magyarul), hogy a pszichológia és a kockázati pontszám hogyan vezet a végső döntéshez.
+   - Írj egy részletes indoklást a 'final_confidence_report'-ba (magyarul), és **HATÁROZD MEG A VÉGSŐ BIZALMI PONTSZÁMOT (1.0-10.0)**.
+
+**TASK 3: (A VÉGREHAJTÓ) - A "micromodels" és "master_recommendation" mezők kitöltése.**
+   - Töltsd ki a 'micromodels' mezőit a 4-es Ügynök (Simulator) adatai alapján.
+   - Töltsd ki a 'master_recommendation' mezőt. MINDIG válassz egy tippet.
+
+[OUTPUT STRUCTURE]:
+Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
+{
+  "prophetic_timeline": "<A (TASK 1) alapján generált, élethű, magyar nyelvű meccs-narratíva.>",
+  "strategic_synthesis": "<A (TASK 2) alapján generált 2-3 bekezdéses holisztikus elemzés (magyarul), amely magában foglalja a pszichológiai (8, 9) és kockázati (7) faktorok szintézisét.>",
+  "micromodels": {
+    "btts_analysis": "<BTTS elemzés. A {simulatorReport.pBTTS}% (4) valószínűség alapján.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]",
+    "goals_ou_analysis": "<Gól O/U elemzés. **KRITIKUS: Kizárólag a {simulatorReport.mainTotalsLine} gólvonalat (pl. 2.5, 3.5) elemezd!** A {simulatorReport.pOver}% (4) valószínűség alapján.>\\nBizalom: [Alacsony/Közepes/Magas]",
+    "corner_analysis": "<Szöglet O/U elemzés. Csak ha a simulatorReport.mu_corners_sim > 0.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]",
+    "card_analysis": "<Lap O/U elemzés. Csak ha a simulatorReport.mu_cards_sim > 0.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]"
+  },
+  "final_confidence_report": "**<Number>/10** - Részletes indoklás (magyarul). <A (TASK 2) alapján meghatározott VÉGSŐ pontszám és a pszichológiai (8, 9) indoklás.>",
+  "master_recommendation": {
+    "__INSTRUCTION__": "**KRITIKUS FONTOSSÁGÚ:** Soha ne adj 'No Bet' vagy 'Nincs Tipp' ajánlást. MINDIG válaszd ki a legvalószínűbb kimenetelt.",
+    "recommended_bet": "<A (TASK 3) alapján meghatározott végső, szintetizált ajánlás (CSAK fő piac: 1X2, O/U, BTTS, Moneyline)>",
+    "final_confidence": <Number, a (TASK 2) 'final_confidence_report'-ban meghatározott végső bizalmi pontszám 1.0-10.0 között.>,
+    "brief_reasoning": "<Egyetlen, tömör magyar mondatos indoklás, amely tükrözi a szintézist és a pszichológiai (8, 9) faktorokat.>"
+  }
 }
-// === JAVÍTÁS VÉGE ===
+`;
 
-
-export async function runFullAnalysis(params: any, sport: string, openingOdds: any): Promise<IAnalysisResponse | IAnalysisError> {
-    let analysisCacheKey = 'unknown_analysis';
-    let fixtureIdForSaving: number | string | null = null;
+// === ÚJ (v77.0): 8. LÉPÉS (AI TÉRKÉPÉSZ) ===
+interface TeamNameResolverInput {
+    inputName: string;
+    searchTerm: string;
+    rosterJson: any[]; // Lista a {id, name} objektumokból
+}
+export async function runStep_TeamNameResolver(data: TeamNameResolverInput): Promise<number | null> {
     try {
-        // === v63.0: P1 Komponens és P1 Hiányzók olvasása ===
-        const { 
-            home: rawHome, 
-            away: rawAway, 
-            force: forceNewStr, 
-            sheetUrl, 
-            utcKickoff, 
-            leagueName,
-            // P1 (Komponens)
-            manual_H_xG, 
-            manual_H_xGA,
-            manual_A_xG, 
-            manual_A_xGA,
-            // P1 (Hiányzók)
-            manual_absentees // <- MÓDOSÍTÁS (6 FŐS BIZOTTSÁG)
+        const filledPrompt = fillPromptTemplate(PROMPT_TEAM_RESOLVER_V1, data);
+        const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_TeamNameResolver");
         
-        } = params;
-        // === Olvasás Vége ===
-
-        if (!rawHome || !rawAway || !sport || !utcKickoff) {
-            throw new Error("Hiányzó kötelező paraméterek: 'home', 'away', 'sport', 'utcKickoff'.");
-        }
-        
-        const home: string = String(rawHome).trim();
-        const away: string = String(rawAway).trim();
-        const forceNew: boolean = String(forceNewStr).toLowerCase() === 'true';
-        const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
-        const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
-        
-        // === MÓDOSÍTVA (v77.5) ===
-        // Cache kulcs (v77.5) - az 'v71.2_lean_save' -> 'v77.5_critical_fix'
-        const p1AbsenteesHash = manual_absentees ?
-            `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
-            '';
-        analysisCacheKey = `analysis_v77.5_critical_fix_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
-        if (!forceNew) {
-            const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
-            if (cachedResult) {
-                console.log(`Cache találat (${analysisCacheKey})`);
-                return cachedResult;
-            } else {
-                console.log(`Nincs cache (${analysisCacheKey}), friss elemzés indul...`);
-            }
+        if (result && result.matched_id) {
+            const foundId = Number(result.matched_id);
+            const matchedTeam = data.rosterJson.find(t => t.id === foundId);
+            console.log(`[AI_Service - Térképész] SIKER: Az AI a "${data.searchTerm}" nevet ehhez a csapathoz rendelte: "${matchedTeam?.name || 'N/A'}" (ID: ${foundId})`);
+            return foundId;
         } else {
-            console.log(`Újraelemzés kényszerítve (${analysisCacheKey})`);
+            console.error(`[AI_Service - Térképész] HIBA: Az AI nem talált egyezést (matched_id: null) a "${data.searchTerm}" névre.`);
+            return null;
         }
-
-        // --- 1. Alapkonfiguráció ---
-        const sportConfig = SPORT_CONFIG[sport];
-        if (!sportConfig) {
-            throw new Error(`Nincs konfiguráció a(z) '${sport}' sporthoz.`);
-        }
-
-        // === 2. ÜGYNÖK (SCOUT): Kontextus, Piac és P1 Hiányzók Kezelése ===
-        console.log(`[Lánc 2/6] Scout Ügynök: Kontextus és Piac lekérése...`);
-        const dataFetchOptions: IDataFetchOptions = {
-            sport: sport,
-            homeTeamName: home,
-            awayTeamName: away,
-            leagueName: leagueName,
-            utcKickoff: utcKickoff,
-            forceNew: forceNew,
-  
-            // P1 (Komponens) (v61.0)
-            manual_H_xG: safeConvertToNumber(manual_H_xG),
-            manual_H_xGA: safeConvertToNumber(manual_H_xGA),
-            manual_A_xG: safeConvertToNumber(manual_A_xG),
-            manual_A_xGA: safeConvertToNumber(manual_A_xGA),
-            
-            // P1 (Hiányzók) (v63.0)
-            manual_absentees: manual_absentees 
-        
-        };
-        // A 'getRichContextualData' (Scout) most már kezeli a 'manual_absentees' (Plan A/B) logikát
-        const { 
-            rawStats, 
-            richContext,
-            advancedData,
-            form, 
-            rawData, 
-            leagueAverages = {}, 
-
-            oddsData,
-            xgSource,
-            availableRosters // <- (v62.1)
-        }: IDataFetchResponse = await getRichContextualData(dataFetchOptions);
-        // === Scout Végzett ===
-        
-        console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
-        if (rawData && rawData.apiFootballData && rawData.apiFootballData.fixtureId) {
-            fixtureIdForSaving = rawData.apiFootballData.fixtureId;
-        }
-
-        // --- 3. Piaci adatok előkészítése (Scout adatából) ---
-        let mutableOddsData: ICanonicalOdds | null = oddsData;
-        if (!mutableOddsData) {
-            console.warn(`Figyelmeztetés: Nem sikerült szorzó adatokat lekérni ${home} vs ${away} meccshez.`);
-            mutableOddsData = { 
-                current: [], 
-                allMarkets: [], 
-                fromCache: false, 
-                fullApiData: null 
-            };
-        }
-
-        // JAVÍTÁS (v77.5): Az analyzeLineMovement (Model.ts) mostantól megbízhatóan fog lefutni
-        const marketIntel = analyzeLineMovement(mutableOddsData, openingOdds, sport, home);
-        const mainTotalsLine = findMainTotalsLine(mutableOddsData, sport) || sportConfig.totals_line;
-        console.log(`Meghatározott fő gól/pont vonal: ${mainTotalsLine}`);
-
-        const psyProfileHome = calculatePsychologicalProfile(home, away, rawData);
-        const psyProfileAway = calculatePsychologicalProfile(away, home, rawData);
-        
-        // === 1. ÜGYNÖK (QUANT): "Tiszta xG" számítása ===
-        console.log(`[Lánc 1/6] Quant Ügynök: Tiszta xG számítása...`);
-        const { pure_mu_h, pure_mu_a, source: quantSource } = estimatePureXG(
-            home, away, rawStats, sport, form, leagueAverages, 
-            advancedData // Ez tartalmazza a P1-es 4-komponensű adatokat
-        );
-        console.log(`Quant (Tiszta xG) [${quantSource}]: H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)}`);
-        
-        // === MÓDOSÍTÁS (v70.0): 3. ÜGYNÖK (SPECIALISTA) - AI HÍVÁS ===
-        console.log(`[Lánc 3/6] Specialista Ügynök (AI): Kontextuális módosítók alkalmazása...`);
-        
-        const specialistInput = {
-            pure_mu_h: pure_mu_h,
-            pure_mu_a: pure_mu_a,
-            quant_source: quantSource,
-            rawDataJson: rawData, // A 2. Ügynök teljes kontextusa
-            sport: sport,
-            psyProfileHome: psyProfileHome,
-            psyProfileAway: psyProfileAway
-        };
-        // Aszinkron hívás az AI Specialista felé
-        const specialistReport = await runStep_Specialist(specialistInput);
-
-        // Kinyerjük az AI által módosított értékeket
-        const { 
-            modified_mu_h: mu_h, 
-            modified_mu_a: mu_a 
-        } = specialistReport; // Az AI JSON válaszából
-        
-        console.log(`Specialista (AI) (Súlyozott xG): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
-        // === MÓDOSÍTÁS VÉGE ===
-
-        const finalXgSource = xgSource;
-
-        // === 4. ÜGYNÖK (SZIMULÁTOR): Meccs szimulálása ===
-        console.log(`[Lánc 4/6] Szimulátor Ügynök: 25000 szimuláció futtatása...`);
-        const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
-        const sim = simulateMatchProgress(
-            mu_h, mu_a, // Az AI Specialista SÚLYOZOTT kimenete alapján
-            mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData
-        );
-        sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a;
-        sim.mu_corners_sim = mu_corners;
-        sim.mu_cards_sim = mu_cards; sim.mainTotalsLine = mainTotalsLine;
-        const modelConfidence = calculateModelConfidence(sport, home, away, rawData, form, sim, marketIntel);
-        const valueBets = calculateValue(sim, mutableOddsData, sport, home, away);
-        console.log(`Szimulátor végzett. (Modell bizalom: ${modelConfidence.toFixed(1)})`);
-
-        // === 5. ÜGYNÖK (KRITIKUS): Ellentmondások keresése ===
-        console.log(`[Lánc 5/6] Kritikus Ügynök: Ellentmondások keresése...`);
-        const criticInput = {
-            simJson: sim,
-            marketIntel: marketIntel,
-            rawDataJson: rawData,
-            modelConfidence: parseFloat(modelConfidence.toFixed(1)), // JAVÍTVA: Fix formátum átadása az AI promptnak
-            valueBetsJson: valueBets
-        };
-        const criticReport = await runStep_Critic(criticInput);
-        const contradictionScore = criticReport?.contradiction_score || 0.0;
-        console.log(`[Lánc 5/6] Kritikus végzett. Kockázati Pontszám: ${contradictionScore.toFixed(2)}`);
-
-        // === 6. ÜGYNÖK (STRATÉGA): Végső döntés ===
-        console.log(`[Lánc 6/6] Stratéga Ügynök: Végső döntés meghozatala...`);
-        const strategistInput = {
-            matchData: { home, away, sport, leagueName },
-            quantReport: { pure_mu_h: pure_mu_h, pure_mu_a: pure_mu_a, source: quantSource },
-            specialistReport: specialistReport, 
-            simulatorReport: sim,
-            criticReport: criticReport, // Az 5. Ügynök jelentése (benne a contradiction_score)
-            modelConfidence: parseFloat(modelConfidence.toFixed(1)), // JAVÍTVA: Fix formátum átadása az AI promptnak
-            rawDataJson: rawData,
-            realXgJson: { // A P1 "Tiszta" xG átadása
-                manual_H_xG: advancedData?.manual_H_xG ?? null,
-                manual_H_xGA: advancedData?.manual_H_xGA ?? null,
-                manual_A_xG: advancedData?.manual_A_xG ?? null,
-                manual_A_xGA: advancedData?.manual_A_xGA ?? null
-            }
-        };
-
-        const strategistReport = await runStep_Strategist(strategistInput);
-        
-        if (strategistReport.error) {
-            console.error("A Stratéga (6. Ügynök) hibát adott vissza:", strategistReport.error);
-        }
-        
-        // JAVÍTÁS (v77.9): Biztonságos hozzáférés a master_recommendation-höz
-        const masterRecommendation = strategistReport?.master_recommendation;
-        let finalConfidenceScore = 1.0; // Alapértelmezett hiba esetén
-        
-        if (masterRecommendation && typeof masterRecommendation.final_confidence === 'number') {
-            finalConfidenceScore = masterRecommendation.final_confidence;
-        } else {
-            console.error("KRITIKUS HIBA: A Stratéga (6. Ügynök) nem adott vissza érvényes 'final_confidence' számot! 1.0-ra állítva.");
-        }
-        // === JAVÍTÁS VÉGE ===
-
-        console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterRecommendation)} (Végső bizalom: ${finalConfidenceScore})`);
-
-        // --- 7. Válasz Elküldése és Naplózás ---
-        const debugInfo = {
-            playerDataSource: rawData?.detailedPlayerStats?.home_absentees?.length > 0 ?
-                (manual_absentees ? 'P1 (Manuális)' : 'P2/P4 (Automatikus)') : 
-                'Nincs adat',
-            realXgUsed: finalXgSource,
-            fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
-        };
-        
-        // === A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA (MÓDOSÍTVA v71.2) ===
-        // Csak a karcsúsított (lean) adatok mentése a Sheets 50k limit miatt
-        const auditData = {
-            analysisData: {
-                committee: {
-                    quant: { mu_h: pure_mu_h, mu_a: pure_mu_a, source: quantSource },
-                    specialist: { mu_h: mu_h, mu_a: mu_a, log: specialistReport.reasoning, report: specialistReport },
-                    critic: criticReport,
-                    strategist: strategistReport
-                },
-                matchData: {
-                    home, 
-                    away, 
-                    sport, 
-                    mainTotalsLine: sim.mainTotalsLine,
-                    mu_h: sim.mu_h_sim,
-                    mu_a: sim.mu_a_sim
-                },
-                oddsData: mutableOddsData,
-                valueBets: valueBets,
-                modelConfidence: parseFloat(modelConfidence.toFixed(1)),
-                finalConfidenceScore: parseFloat(finalConfidenceScore.toFixed(1)),
-                sim: {
-                    pHome: sim.pHome, pDraw: sim.pDraw, pAway: sim.pAway,
-                    pOver: sim.pOver, pUnder: sim.pUnder, pBTTS: sim.pBTTS,
-                    topScore: sim.topScore
-                },
-                recommendation: masterRecommendation
-            }
-        };
-        
-        const jsonResponse: IAnalysisResponse = { 
-            // JAVÍTVA (v77.6): A szétszórt objektumok helyett
-            // KÖZVETLENÜL mentjük az analysisData és xgSource mezőket
-            analysisData: {
-                committee: auditData.analysisData.committee,
-                matchData: auditData.analysisData.matchData,
-                oddsData: mutableOddsData,
-                valueBets: valueBets,
-                modelConfidence: auditData.analysisData.modelConfidence,
-                finalConfidenceScore: auditData.analysisData.finalConfidenceScore,
-                sim: sim, // A teljes sim objektum a UI számára
-                recommendation: masterRecommendation,
-                xgSource: finalXgSource, // A hiányzó mező
-                availableRosters: availableRosters // A teljes roster
-            },
-            debugInfo: debugInfo 
-        };
-        // === MÓDOSÍTÁS VÉGE ===
-
-        scriptCache.set(analysisCacheKey, jsonResponse);
-        console.log(`Elemzés befejezve és cache mentve (${analysisCacheKey})`);
-        if (params.sheetUrl && typeof params.sheetUrl === 'string') {
-            // A Google Sheet-be már csak a karcsúsított JSON-t mentjük (v71.2)
-            saveAnalysisToSheet(params.sheetUrl, {
-                sport, 
-                home, 
-                away, 
-                date: new Date(), 
-                html: `<pre style="white-space: pre-wrap;">${JSON.stringify(auditData, null, 2)}</pre>`, // Karcsúsított JSON mentése
-                id: analysisCacheKey,
-                fixtureId: fixtureIdForSaving,
-                recommendation: masterRecommendation
-            })
-                .then(() => console.log(`Elemzés (JSON) mentve a Google Sheet-be (${analysisCacheKey})`))
-                .catch(sheetError => console.error(`Hiba az elemzés Google Sheet-be mentésekor (${analysisCacheKey}): ${sheetError.message}`));
-        }
-
-        return jsonResponse;
-    } catch (error: any) {
-        // === JAVÍTÁS (TS2448 / TS2454) ===
-        const homeParam = params?.home || 'N-A';
-        const awayParam = params?.away || 'N-A';
-        const sportParam = sport || params?.sport || 'N-A';
-        // 'sport' (függvény argumentum) itt elérhető
-        console.error(`Súlyos hiba az elemzési folyamatban (${sportParam} - ${homeParam} vs ${awayParam}): ${error.message}`, error.stack);
-        return { error: `Elemzési hiba: ${error.message}` };
-        // === JAVÍTÁS VÉGE
+    } catch (e: any) {
+        console.error(`[AI_Service - Térképész] KRITIKUS HIBA a Gemini hívás vagy JSON parse során: ${e.message}`);
+        return null;
     }
 }
+
+
+// === JAVÍTVA (v80.0): 3. LÉPÉS (AI SPECIALISTA) ===
+interface SpecialistInput {
+    pure_mu_h: number;
+    pure_mu_a: number;
+    quant_source: string;
+    rawDataJson: ICanonicalRawData;
+    sport: string;
+    // JAVÍTVA (v80.0): Hozzáadva az interfészhez
+    psyProfileHome: any;
+    psyProfileAway: any;
+}
+export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
+    try {
+        // JAVÍTVA (v80.0): Az új, "valósághű" prompt használata
+        const filledPrompt = fillPromptTemplate(PROMPT_SPECIALIST_V80, data);
+        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Specialist (v80)");
+    } catch (e: any) {
+        console.error(`AI Hiba (Specialist): ${e.message}`);
+        // Kritikus hiba esetén visszatérünk a Tiszta xG-vel, hogy a lánc ne álljon le
+        return {
+            "modified_mu_h": data.pure_mu_h,
+            "modified_mu_a": data.pure_mu_a,
+            "key_factors": [`KRITIKUS HIBA: A 3. Ügynök (Specialista) nem tudott lefutni: ${e.message}`],
+            "reasoning": "AI Hiba: A 3. Ügynök (Specialista) hibát dobott, a Súlyozott xG megegyezik a Tiszta xG-vel."
+        };
+    }
+}
+
+
+// === JAVÍTVA (v80.0): 5. LÉPÉS (KRITIKUS) ===
+interface CriticInput {
+    simJson: any;
+    marketIntel: string;
+    valueBetsJson: any[];
+    modelConfidence: number;
+    rawDataJson: ICanonicalRawData;
+}
+export async function runStep_Critic(data: CriticInput): Promise<any> {
+    try {
+        // JAVÍTVA (v80.0): A v80-as prompt használata
+        const filledPrompt = fillPromptTemplate(PROMPT_CRITIC_V80, data); 
+        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Critic (v80)");
+    } catch (e: any) {
+        console.error(`AI Hiba (Critic): ${e.message}`);
+        // Kritikus hiba esetén is adjunk vissza egy alap jelentést, hogy a lánc ne álljon le
+        return {
+            "contradiction_score": 0.0, // Semleges pontszám hiba esetén
+            "key_risks": [`KRITIKUS HIBA: Az 5. Ügynök (Kritikus) nem tudott lefutni: ${e.message}`],
+            "tactical_summary": `AI Hiba (Critic): ${e.message}`,
+            "narrative_theme": `Hiba: A Kritikus (5. Ügynök) nem tudott lefutni.`
+        };
+    }
+}
+
+// === JAVÍTVA (v80.0): 6. LÉPÉS (STRATÉGA) ===
+interface StrategistInput {
+    matchData: { home: string, away: string, sport: string, leagueName: string };
+    quantReport: { pure_mu_h: number, pure_mu_a: number, source: string };
+    specialistReport: any; 
+    simulatorReport: any;
+    criticReport: any; 
+    modelConfidence: number; 
+    rawDataJson: ICanonicalRawData; 
+    realXgJson: any;
+    // JAVÍTVA (v80.0): Hozzáadva az interfészhez
+    psyProfileHome: any;
+    psyProfileAway: any;
+}
+export async function runStep_Strategist(data: StrategistInput): Promise<any> {
+    try {
+        // JAVÍTVA (v80.0): A 'data' objektum már tartalmazza a pszichológiai adatokat
+        const dataForPrompt = { 
+            ...data, 
+            simulatorReport: data.simulatorReport,
+            specialistReport: {
+                ...data.specialistReport, 
+                mu_h: data.specialistReport.modified_mu_h, 
+                mu_a: data.specialistReport.modified_mu_a  
+            }
+        };
+        
+        // JAVÍTVA (v80.0): Az új, "valósághű" prompt használata
+        const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V80, dataForPrompt); 
+        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Strategist (v80)");
+    } catch (e: any) {
+        console.error(`AI Hiba (Strategist): ${e.message}`);
+        return {
+            prophetic_timeline: `AI Hiba (Strategist): A Próféta nem tudott jósolni. ${e.message}`,
+            strategic_synthesis: `AI Hiba (Strategist): ${e.message}`,
+            micromodels: {},
+            final_confidence_report: `**1.0/10** - AI Hiba (Strategist): ${e.message}`,
+            master_recommendation: {
+                recommended_bet: "Hiba",
+                final_confidence: 1.0, 
+                brief_reasoning: `AI Hiba (Strategist): ${e.message}`
+            }
+        };
+    }
+}
+
+
+// --- CHAT FUNKCIÓ --- (Változatlan)
+interface ChatMessage {
+  role: 'user' | 'model' | 'ai';
+  parts: { text: string }[];
+}
+
+export async function getChatResponse(context: string, history: ChatMessage[], question: string): Promise<{ answer?: string; error?: string }> {
+    if (!context || !question) return { error: "Hiányzó 'context' vagy 'question'." };
+    try {
+        const historyString = (history || [])
+             .map(msg => `${msg.role === 'user' ? 'Felhasználó' : 'AI'}: ${msg.parts?.[0]?.text || ''}`)
+            .join('\n');
+        
+        const prompt = `You are an elite sports analyst AI assistant specialized in the provided match analysis.
+[CONTEXT of the analysis]:
+--- START CONTEXT ---
+${context}
+--- END CONTEXT ---
+
+CONVERSATION HISTORY:
+${historyString}
+
+Current User Question: ${question}
+
+Answer concisely and accurately in Hungarian based ONLY on the provided Analysis Context and Conversation History.
+Do not provide betting advice. Do not make up information not present in the context.
+If the answer isn't in the context or history, politely state that the information is not available in the analysis.`;
+        
+        const rawAnswer = await _callGemini(prompt, false); // forceJson = false
+        return rawAnswer ? { answer: rawAnswer } : { error: "Az AI nem tudott válaszolni." };
+    } catch (e: any) {
+        console.error(`Chat hiba: ${e.message}`, e.stack);
+        return { error: `Chat AI Hiba: ${e.message}` };
+    }
+}
+
+// --- FŐ EXPORT (MÓDOSÍTVA v77.0) ---
+export default {
+    runStep_TeamNameResolver, // HOZZÁADVA
+    runStep_Specialist, 
+    runStep_Critic,
+    runStep_Strategist,
+    getChatResponse
+};
