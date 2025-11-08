@@ -1,10 +1,8 @@
-// --- AI_Service.ts (v83.7 - Tényleges Javítás) ---
-// MÓDOSÍTÁS (v83.7):
-// 1. A hiba az én figyelmetlenségem volt.
-// 2. Az `StrategistInput` interfész (kb. 185. sor) MINDEN
-//    tulajdonsága (matchData, quantReport, stb.) után
-//    pótoltam a hiányzó pontosvesszőt (;)
-// 3. Ennek most már 100%-ban működnie kell.
+// --- AI_Service.ts (v83.4 - Végleges Szintaktikai Javítás) ---
+// MÓDOSÍTÁS (v83.4):
+// 1. JAVÍTVA: A `StrategistInput` interfész (kb. 182-184. sor) kritikus
+//    szintaktikai hibája. A belső típusdefiníciókban a vesszők (,)
+//    pontosvesszőre (;) lettek cserélve a TS1005 build hiba elhárításához.
 
 import { 
     _callGemini, 
@@ -264,7 +262,7 @@ export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
             "modified_mu_h": data.pure_mu_h,
             "modified_mu_a": data.pure_mu_a,
             "key_factors": [`KRITIKUS HIBA: A 3. Ügynök (Specialista) nem tudott lefutni: ${e.message}`],
-            "reasoning": "AI Hiba: A 3. Ügynök (Specialista) hibát dobott, a Súlyozott xG megegyezik a Tiszta xG-vel."
+            "reasoning": "AI Hiba: A 3. Ügynök (Specialista) hibát dobott, a Súlyozott xG megegezik a Tiszta xG-vel."
         };
     }
 }
@@ -304,14 +302,13 @@ export async function runStep_Critic(data: CriticInput): Promise<any> {
         };
     }
 }
-// === JAVÍTVA (v83.7): 6. LÉPÉS (STRATÉGA) - VÉGLEGES SZINTAKTIKAI JAVÍTÁS ===
-// A 185. sor körüli "fantom hiba" VALÓDI OKA:
-// Az interfész *minden* tulajdonsága (pl. matchData, quantReport)
-// UTÁN hiányzott a pontosvessző (;) elválasztó.
-// Ezt most pótoltam.
+
+// === JAVÍTVA (v83.4): 6. LÉPÉS (STRATÉGA) - VÉGLEGES SZINTAKTIKAI JAVÍTÁS ===
+// A 183. sor környéki hiba javítva: A belső vesszők (,) pontosvesszőre (;)
+// lettek cserélve a TS1005 build hiba elhárításához.
 interface StrategistInput {
-    matchData: { home: string, away: string, sport: string, leagueName: string };
-    quantReport: { pure_mu_h: number, pure_mu_a: number, source: string };
+    matchData: { home: string; away: string; sport: string; leagueName: string; }; // <-- JAVÍTVA
+    quantReport: { pure_mu_h: number; pure_mu_a: number; source: string; }; // <-- JAVÍTVA
     specialistReport: any; 
     simulatorReport: any;
     criticReport: any; 
@@ -400,4 +397,3 @@ export default {
     runStep_Strategist,
     getChatResponse
 };
-// FIGYELEM: Ezen sor után NE legyen semmilyen karakter, főleg ne '}'
