@@ -1,13 +1,7 @@
-// --- AI_Service.ts (v83.0 - "A Szintetizátor" Logika) ---
-// MÓDOSÍTÁS (v83.0):
-// 1. MÓDOSÍTVA: `PROMPT_STRATEGIST_V82` -> `PROMPT_STRATEGIST_V83`
-// 2. CÉL: A "Tökéletes Tipp" elérése. A "pánik fék" (v82.0) helyett
-//    a rendszernek meg kell értenie és szintetizálnia kell a piaci ellentmondásokat.
-// 3. LOGIKA: A Stratéga (6) agya "VÖRÖS ZÁSZLÓ" protokollt kap.
-//    Ha a piac (5) ellentmond a modellnek (4), a 6. Ügynöknek
-//    aktívan meg kell találnia a rejtett okot (hír, pletyka, sérülés),
-//    és ez alapján kell szintetizálnia a végső tippet, ahelyett,
-//    hogy 1.0-ra vágja a bizalmat.
+// --- AI_Service.ts (v83.1 - Szintaktikai Javítás) ---
+// MÓDOSÍTÁS (v83.1):
+// 1. JAVÍTVA: A `StrategistInput` interfész (kb. 188. sor) szintaktikai hibája.
+//    Hiányzó pontosvesszők (TS1005) pótlása.
 
 import { 
     _callGemini, 
@@ -308,7 +302,7 @@ export async function runStep_Critic(data: CriticInput): Promise<any> {
     }
 }
 
-// === JAVÍTVA (v83.0): 6. LÉPÉS (STRATÉGA) ===
+// === JAVÍTVA (v83.1): 6. LÉPÉS (STRATÉGA) - SZINTAKTIKAI JAVÍTÁS ===
 interface StrategistInput {
     matchData: { home: string, away: string, sport: string, leagueName: string };
     quantReport: { pure_mu_h: number, pure_mu_a: number, source: string };
@@ -318,10 +312,12 @@ interface StrategistInput {
     modelConfidence: number; 
     rawDataJson: ICanonicalRawData; 
     realXgJson: any;
-    // JAVÍTVA (v80.0): Hozzáadva az interfészhez
+    // JAVÍTVA (v83.1): Hiányzó pontosvesszők pótolva
     psyProfileHome: any;
     psyProfileAway: any;
 }
+// === JAVÍTÁS VÉGE ===
+
 export async function runStep_Strategist(data: StrategistInput): Promise<any> {
     try {
         // JAVÍTVA (v80.0): A 'data' objektum már tartalmazza a pszichológiai adatokat
