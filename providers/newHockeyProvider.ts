@@ -1,13 +1,10 @@
 // FÁJL: providers/newHockeyProvider.ts
-// VERZIÓ: v62.1 (P1 Manuális Roster Választó - 3. Lépés)
+// VERZIÓ: v70.0 (Architekta Refaktor)
 // MÓDOSÍTÁS:
-// 1. Az 'ICanonicalRichContext' és 'ICanonicalRawData'
-//    interfészeknek való megfelelés érdekében
-//    az 'availableRosters: { home: [], away: [] }' mező
-//    hozzáadva a 'finalData' és 'result' objektumokhoz.
-// 2. Ez a javítás MEGOLDJA a 'TS2741: Property 'availableRosters' is missing...' [image: 438084.png]
-//    build hibát ebben a fájlban.
-// 3. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
+// 1. ELTÁVOLÍTVA: A _callGemini és PROMPT_V43 importok törölve (TS2305 hiba javítása).
+// 2. LOGIKA: A 'fetchMatchData' funkció már nem hívja meg a Geminit.
+// 3. LOGIKA: A provider egyetlen feladata a nyers adatok összegyűjtése és
+//    az 'ICanonicalRichContext' objektum felépítése.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -30,10 +27,12 @@ import {
 } from '../config.js';
 // Importáljuk a megosztott segédfüggvényeket
 import {
-    _callGemini,
-    PROMPT_V43,
+    // === JAVÍTÁS (v70.0): Importok eltávolítva ===
+    // _callGemini,
+    // PROMPT_V43,
+    // === JAVÍTÁS VÉGE ===
     makeRequest,
-    getStructuredWeatherData // v55.9 valós implementáció
+    getStructuredWeatherData
 } from './common/utils.js';
 
 // --- API-SPORTS (HOKI) SPECIFIKUS CACHE-EK (Változatlan) ---
@@ -409,21 +408,21 @@ async function getWeatherForFixture(
         description: "N/A (Beltéri)", 
         temperature_celsius: -1, // -1 jelzi, hogy beltéri
         humidity_percent: null, 
-        wind_speed_kmh: null,   // Megfelel a v55.4 interfésznek
-        precipitation_mm: null, // Megfelel a v55.4 interfésznek
+        wind_speed_kmh: null,
+        precipitation_mm: null,
         source: 'N/A'
     };
 }
 
 
-// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (MÓDOSÍTVA v62.1) ---
+// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (MÓDOSÍTVA v70.0) ---
 export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
     const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
     const seasonDate = new Date(utcKickoff);
     const originSeason = (seasonDate.getMonth() < 7) ? seasonDate.getFullYear() - 1 : seasonDate.getFullYear();
     if (isNaN(originSeason)) throw new Error(`Érvénytelen utcKickoff: ${utcKickoff}`);
     
-    console.log(`Adatgyűjtés indul (v62.1 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
+    console.log(`Adatgyűjtés indul (v70.0 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
     
     // 1. LÉPÉS: Liga ID (Hardkódolt) és Csapatlista (Szezon Fallback)
     const leagueId = 57; // Hardkódolt NHL ID az api-sports.io-hoz
@@ -474,9 +473,11 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
     console.log(`[API-SPORTS (Hockey)]: Párhuzamos lekérések befejezve.`);
     
     const realXgData = realFixtureStats || null;
+    
+    // === JAVÍTÁS (v70.0): Gemini hívás eltávolítva ===
     const geminiData: any = {};
     
-    // --- VÉGLEGES ADAT EGYESÍTÉS (MÓDOSÍTVA v62.1) ---
+    // --- VÉGLEGES ADAT EGYESÍTÉS (MÓDOSÍTVA v70.0) ---
     const finalData: ICanonicalRawData = {
         stats: {
             home: {} as ICanonicalStats, 
@@ -508,17 +509,15 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
             pitch_condition: "N/A (Jég)", 
             weather: structuredWeather.description || "N/A",
             match_tension_index: null,
-            coach: { // v58.3
+            coach: {
                 home_name: null,
                 away_name: null
             }
         },
-        // === JAVÍTÁS (v62.1): Hiányzó 'availableRosters' mező hozzáadva ===
         availableRosters: {
-            home: [], // A hoki provider nem ad vissza keretet
+            home: [],
             away: []
         }
-        // === JAVÍTÁS VÉGE ===
     };
     
     const homeGP = apiSportsHomeSeasonStats?.gamesPlayed || 1;
@@ -559,12 +558,10 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
          rawData: finalData,
          oddsData: fetchedOddsData,
          fromCache: false,
-         // === JAVÍTÁS (v62.1): Hiányzó 'availableRosters' mező hozzáadva ===
          availableRosters: {
             home: [],
             away: []
          }
-         // === JAVÍTÁS VÉGE ===
     };
 
     if (typeof result.rawStats?.home?.gp !== 'number' || result.rawStats.home.gp <= 0 || typeof result.rawStats?.away?.gp !== 'number' || result.rawStats?.away?.gp <= 0) {
@@ -575,5 +572,4 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
     return result;
 }
 
-// Meta-adat a logoláshoz
 export const providerName = 'api-sports-hockey-v1';

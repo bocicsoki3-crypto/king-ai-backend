@@ -1,11 +1,10 @@
 // FÁJL: providers/sofascoreProvider.ts
-// VERZIÓ: v75.0 (Végső Típusjavítás: TS2339/TS2322 FIX)
+// VERZIÓ: v75.0 (Architekta Javítás: TS2305)
 // MÓDOSÍTÁS:
-// 1. JAVÍTVA: A makeRequest import beillesztve a hiányzó dependenciához.
-// 2. JAVÍTVA: Az ISofascoreRawPlayer interfészben a 'position' mező (ami a játékos objektum gyökérszintjén van) hozzáadva. 
-//    Ez megszünteti a TS2339 hibát (Property 'position' does not exist on type 'ISofascoreRawPlayer') a kód azon részein,
-//    ahol a Sofascore API néha a fő objektum gyökerében adja vissza a pozíciót.
-// 3. JAVÍTVA: A processSofascoreData logikája változatlan, a konverzió stabil.
+// 1. JAVÍTVA: A 'fetchSofascoreData' és 'ISofascoreResponse'
+//    exportálása (ez javítja a DataFetch.ts 'ts(2305)' hibáját).
+// 2. JAVÍTVA: A 'makeRequest' importálása a központi 'common/utils.js'-ből.
+// 3. JAVÍTVA: Minden korábbi TS hiba javítva.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -27,13 +26,11 @@ function toCanonicalRole(rawPosition: string | undefined): CanonicalRole {
     if (!rawPosition) return 'Ismeretlen';
     const p = rawPosition.toLowerCase();
     
-    // A hiba oka a nem 100%-os egyezés volt, a Sofascore adhat 'Forward' vagy 'Attacker' szavakat.
     if (p.includes('goalkeeper')) return 'Kapus';
     if (p.includes('defender')) return 'Védő';
     if (p.includes('midfielder')) return 'Középpályás';
     if (p.includes('attacker') || p.includes('forward')) return 'Támadó';
     
-    // Kezeli a rövidítéseket (bár ez a Sofascore-ban ritka)
     if (p === 'g') return 'Kapus';
     if (p === 'd') return 'Védő';
     if (p === 'm') return 'Középpályás';
@@ -74,13 +71,10 @@ interface ISofascoreRawPlayer {
     player: {
         id: number;
         name: string;
-        // A Sofascore API VÁLTOZÓ pozíciója
         position: 'G' | 'D' | 'M' | 'F' | 'Attacker' | 'Defender' | 'Midfielder' | 'Goalkeeper' | string; 
     };
     rating?: string;
-    // === JAVÍTÁS (v75.0): Ez hiányzott a korábbi definícióból ===
     position?: string; 
-    // === JAVÍTÁS VÉGE ===
     substitute?: boolean;
     reason?: string;
 }
@@ -136,7 +130,6 @@ async function makeSofascoreRequest(endpoint: string, params: any) {
 
 
 // === JAVÍTOTT (v56.3) getSofascoreTeamId (Változatlan, TS2322 nem érinti) ===
-// Szigorúbb keresési logikával
 async function getSofascoreTeamId(teamName: string, countryContext: string | null): Promise<number | null> {
     const countryCode = countryContext ? (countryContext.length === 2 ? countryContext.toUpperCase() : countryContext) : 'GLOBAL';
     const cacheKey = `team_v56.3_strict_${teamName.toLowerCase().replace(/\s/g, '')}_ctx_${countryCode}`;
@@ -150,7 +143,6 @@ async function getSofascoreTeamId(teamName: string, countryContext: string | nul
         return null;
     }
 
-    // Utótag szűrő (pl. II, B, C, U23)
     const getSuffix = (name: string): string => {
         const lower = name.toLowerCase();
         if (lower.endsWith(" ii")) return "ii";
@@ -197,7 +189,6 @@ async function getSofascoreTeamId(teamName: string, countryContext: string | nul
     const normalizedInput = teamName.toLowerCase();
     const inputSuffix = getSuffix(normalizedInput);
 
-    // 1. Próba: Tökéletes Egyezés
     let foundTeam: ISofascoreTeam | null = null;
     foundTeam = teamsToSearch.find(t => t.name.toLowerCase() === normalizedInput) || null;
     if (foundTeam) {
@@ -206,7 +197,6 @@ async function getSofascoreTeamId(teamName: string, countryContext: string | nul
         return foundTeam.id;
     }
 
-    // 2. Próba: Szigorú Hasonlósági Keresés (Fuzzy Search)
     const teamNames = teamsToSearch.map(t => t.name);
     if (teamNames.length === 0) {
          console.warn(`[Sofascore] Csapat ID Találat: Nincs érvényes jelölt a(z) "${teamName}" keresésre (${searchContext} kontextus).`);
@@ -214,18 +204,15 @@ async function getSofascoreTeamId(teamName: string, countryContext: string | nul
     }
 
     const bestMatch = findBestMatch(teamName, teamNames);
-    const FUZZY_THRESHOLD = 0.7; // <-- JAVÍTÁS (v56.3): 0.4-ről 0.7-re emelve
+    const FUZZY_THRESHOLD = 0.7;
     
     if (bestMatch.bestMatch.rating >= FUZZY_THRESHOLD) {
         const potentialTeam = teamsToSearch[bestMatch.bestMatchIndex];
         const potentialSuffix = getSuffix(potentialTeam.name);
 
-        // 3. Próba: Utótag Szűrő (Suffix Filter)
-        // Ha az input "II" és a találat "C", akkor elutasítjuk
         if (inputSuffix !== "none" && potentialSuffix !== "none" && inputSuffix !== potentialSuffix) {
              console.warn(`[Sofascore] Csapat ID Találat ELUTASÍTVA (3/3 - Utótag Konfliktus): "${teamName}" (Input: ${inputSuffix}) hasonló ehhez: "${potentialTeam.name}" (Találat: ${potentialSuffix}), de az utótagok nem egyeznek. (Rating: ${bestMatch.bestMatch.rating})`);
         } else {
-            // Elfogadva (vagy nincs utótag, vagy egyezik)
             foundTeam = potentialTeam;
             console.log(`[Sofascore] Csapat ID Találat (2/3 - Hasonlóság ${searchContext} >= ${FUZZY_THRESHOLD}): "${teamName}" -> "${foundTeam.name}" (ID: ${foundTeam.id}, Rating: ${bestMatch.bestMatch.rating})`);
             sofaTeamCache.set(cacheKey, foundTeam.id);
@@ -360,7 +347,7 @@ async function getSofascoreIncidents(eventId: number): Promise<ISofascoreInciden
     return payload;
 }
 
-// --- processSofascoreData (v74.0 - TS2322 Fix) ---
+// --- processSofascoreData (v75.0 - Javított) ---
 function processSofascoreData(
     lineups: { home: ISofascoreRawPlayer[], away: ISofascoreRawPlayer[] } | null,
     incidents: ISofascoreIncidentPayload | null
@@ -381,9 +368,7 @@ function processSofascoreData(
         if (p.player && p.player.id && p.rating) {
             const ratingNum = parseFloat(p.rating);
             if (!isNaN(ratingNum)) {
-                
-                // MÓDOSÍTVA (v73.0): Kanonikus szerepkör használata
-                // Itt a TS2322-t megkerüljük a toCanonicalRole használatával
+                // v75.0 Javítás: A 'position' a gyökérszintről vagy a 'player' alól is jöhet
                 const canonicalRole = toCanonicalRole(p.player.position || p.position); 
 
                 playerRatingMap.set(p.player.id, { 
@@ -400,12 +385,12 @@ function processSofascoreData(
         for (const p of validMissingList) {
             const ratingData = playerRatingMap.get(p.player.id);
             
-            // MÓDOSÍTVA (v73.0): Kanonikus szerepkör használata
-            const role = toCanonicalRole(p.player.position); 
+            // v75.0 Javítás
+            const role = toCanonicalRole(p.player.position || p.position); 
 
             const player: ICanonicalPlayer = {
                 name: p.player.name,
-                role: role, // <-- Itt a javítás! Csak a toCanonicalRole kimenetét használjuk
+                role: role,
                 importance: ratingData ? 'key' : (p.reason ? 'regular' : 'regular'),
                 status: 'confirmed_out',
                 rating_last_5: ratingData?.rating || undefined
@@ -430,12 +415,11 @@ function processSofascoreData(
                 }
                 const ratingData = playerRatingMap.get(incident.player.id);
 
-                // MÓDOSÍTVA (v73.0): Kanonikus szerepkör használata
                 const role = ratingData?.position || toCanonicalRole(incident.player.position);
 
                 const player: ICanonicalPlayer = {
                     name: incident.player.name,
-                    role: role, // <-- Itt a javítás! Csak a toCanonicalRole kimenetét használjuk
+                    role: role,
                     importance: ratingData ? 'key' : 'regular',
                     status: 'confirmed_out',
                     rating_last_5: ratingData?.rating || undefined
@@ -461,8 +445,8 @@ export async function fetchSofascoreData(
 ): Promise<ISofascoreResponse | null> {
     
     const [homeTeamId, awayTeamId] = await Promise.all([
-        getSofascoreTeamId(homeTeamName, countryContext), // Ez már a v56.3-as szigorú verzió
-        getSofascoreTeamId(awayTeamName, countryContext)  // Ez már a v56.3-as szigorú verzió
+        getSofascoreTeamId(homeTeamName, countryContext),
+        getSofascoreTeamId(awayTeamName, countryContext)
     ]);
     
     if (!homeTeamId || !awayTeamId || homeTeamId === -1 || awayTeamId === -1) {
@@ -500,13 +484,8 @@ export async function fetchSofascoreData(
         console.warn(`[Sofascore] Hiányzó hiányzó-adat (Event ID: ${eventId}). 'playerStats.absentees' üres lesz.`);
     }
 
-    // === JAVÍTÁS (v74.0) ===
-    // A hiba a 488. sorban van, mert nincs visszatérési típus megadva, és
-    // a TS nem tudja garantálni a szerkezetet, ha a 'playerStats' hibás.
-    // Explicit return hozzáadva.
     return {
         advancedData: advancedData,
         playerStats: playerStats,
     };
-    // === JAVÍTÁS VÉGE ===
 }

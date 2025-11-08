@@ -1,16 +1,16 @@
 // FÁJL: providers/newBasketballProvider.ts
-// VERZIÓ: v62.1 (P1 Manuális Roster Választó - 4. Lépés)
+// VERZIÓ: v70.0 (Architekta Refaktor)
 // MÓDOSÍTÁS:
-// 1. Az 'ICanonicalRichContext' és 'ICanonicalRawData'
-//    interfészeknek való megfelelés érdekében
-//    az 'availableRosters: { home: [], away: [] }' mező
-//    hozzáadva a 'finalData' és 'result' objektumokhoz.
-// 2. Ez a javítás MEGOLDJA a 'TS2741: Property 'availableRosters' is missing...' [image: 438084.png]
-//    build hibát ebben a fájlban.
-// 3. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
+// 1. ELTÁVOLÍTVA: A _callGemini és PROMPT_V43 importok törölve (TS2305 hiba javítása).
+// 2. LOGIKA: A 'fetchMatchData' funkció már nem hívja meg a Geminit.
+// 3. LOGIKA: A provider egy "stub", amely csak a kanonikus adatstruktúrát
+//    biztosítja a "Mély-adat" (v73.0) teszteléséhez.
 
 import axios from 'axios';
-import { makeRequest } from './common/utils.js';
+// === JAVÍTÁS (v70.0): Importok eltávolítva ===
+// import { _callGemini, PROMPT_V43 } from './common/utils.js'; (HIBÁS VOLT)
+import { makeRequest, getStructuredWeatherData } from './common/utils.js';
+// === JAVÍTÁS VÉGE ===
 
 // Kanonikus típusok importálása
 import type {
@@ -26,26 +26,21 @@ import {
     BASKETBALL_API_KEY,
     BASKETBALL_API_HOST
 } from '../config.js';
-// Importáljuk a megosztott segédfüggvényeket
-import {
-    _callGemini,
-    PROMPT_V43,
-    getStructuredWeatherData // v55.9 valós implementáció
-} from './common/utils.js';
 
 /**
  * 🏀 Kosárlabda Adatlekérő Függvény
  * FIGYELEM: Ez a provider jelenleg egy "stub" (csonk).
- * Most már a v62.1-es ICanonicalRichContext szerződést teljesíti.
+ * Most már a v70.0-s architektúrát követi.
  */
 export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
   const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
   if (!BASKETBALL_API_KEY || !BASKETBALL_API_HOST) {
-    throw new Error('[Basketball API] Kritikus konfigurációs hiba: Hiányzó BASKETBALL_API_KEY vagy BASKETBALL_API_HOST a config.js-ben.');
+    console.warn('[Basketball API] Figyelmeztetés: Hiányzó BASKETBALL_API_KEY. A "stub" provider futtatása folytatódik placeholder adatokkal.');
   }
   
   console.log(`[Basketball Provider]: Adatgyűjtés indul: ${homeTeamName} vs ${awayTeamName}`);
   console.log(`[Basketball Provider]: FIGYELEM: Ez a provider jelenleg egy "stub" (csonk), és placeholder adatokat ad vissza.`);
+  
   // 1. API HÍVÁSOK (STUB)
   // ...
   
@@ -63,23 +58,13 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
       form: null
   };
 
-  // 3. GEMINI HÍVÁS (opcionális, a placeholder adatokkal)
-  const geminiJsonString = await _callGemini(PROMPT_V43(
-       sport, homeTeamName, awayTeamName,
-       unifiedHomeStats,
-       unifiedAwayStats,
-       null, null
-  ));
-  let geminiData: any = {};
-  try { 
-      geminiData = geminiJsonString ? JSON.parse(geminiJsonString) : {};
-  } catch (e: any) { 
-      console.error(`[Basketball API] Gemini JSON parse hiba: ${e.message}`);
-  }
+  // === JAVÍTÁS (v70.0): Gemini hívás eltávolítva ===
+  // const geminiJsonString = await _callGemini(PROMPT_V43(...));
+  const geminiData: any = {}; // Üres objektum, az AI hívás törölve
+  // === JAVÍTÁS VÉGE ===
 
   // --- 4. VÉGLEGES ADAT EGYESÍTÉS (KANONIKUS MODELL v62.1) ---
   
-  // v55.8-as Időjárás placeholder (már helyes)
   const defaultStructuredWeather: IStructuredWeather = {
       description: "N/A (Beltéri)",
       temperature_celsius: null,
@@ -88,7 +73,6 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
       source: 'N/A'
   };
 
-  // Hozzuk létre az alap ICanonicalRawData struktúrát
   const finalData: ICanonicalRawData = {
       stats: {
           home: { ...unifiedHomeStats, ...(geminiData.stats?.home || {}) },
@@ -116,19 +100,15 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         weather: "N/A (Beltéri)",
         match_tension_index: geminiData?.contextual_factors?.match_tension_index || null,
         structured_weather: defaultStructuredWeather,
-        coach: { // v58.3
+        coach: {
             home_name: null,
             away_name: null
         }
       },
-      
-      // === JAVÍTÁS (v62.1): Hiányzó 'availableRosters' mező hozzáadva ===
       availableRosters: {
-        home: [], // A kosár provider nem ad vissza keretet
+        home: [],
         away: []
       },
-      // === JAVÍTÁS VÉGE ===
-
       ...geminiData
   };
   finalData.stats.home.gp = unifiedHomeStats.gp;
@@ -139,11 +119,9 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
   const location = finalData.contextual_factors.stadium_location;
   let structuredWeather: IStructuredWeather = defaultStructuredWeather;
   if (location && location !== "N/A (Beltéri)" && location !== "N/A") {
-      // Ez a hívás a v55.9-es valós implementációt hívja
       structuredWeather = await getStructuredWeatherData(location, utcKickoff);
   }
 
-  // Közvetlenül frissítjük a finalData objektumot
   finalData.contextual_factors.structured_weather = structuredWeather;
   finalData.contextual_factors.weather = structuredWeather.description || "N/A (Beltéri)";
 
@@ -155,7 +133,6 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
   ].filter(Boolean).join('\n') || "N/A";
 
 
-  // A végső ICanonicalRichContext objektum összeállítása
   const result: ICanonicalRichContext = {
        rawStats: finalData.stats,
        leagueAverages: geminiData.league_averages || {},
@@ -168,13 +145,10 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
        rawData: finalData,
        oddsData: null,
        fromCache: false,
-       
-       // === JAVÍTÁS (v62.1): Hiányzó 'availableRosters' mező hozzáadva ===
        availableRosters: {
           home: [],
           away: []
        }
-       // === JAVÍTÁS VÉGE ===
   };
   
   if (result.rawStats.home.gp <= 0 || result.rawStats.away.gp <= 0) {
