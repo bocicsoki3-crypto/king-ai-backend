@@ -5,6 +5,7 @@
 // 2. HOZZÁADVA: A `psyProfileHome` és `psyProfileAway` változók átadása
 //    a `criticInput`-nak, hogy az AI "taktikai" elemzést végezhessen.
 // 3. MÓDOSÍTVA: A Cache kulcs `v81.0_tactical_fix`-re.
+// 4. JAVÍTVA: A 'XGSource' (TS2552) build hiba javítása 'xgSource'-ra.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -271,7 +272,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         console.log(`Specialista (AI) (Súlyozott xG): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
         // === MÓDOSÍTÁS VÉGE ===
 
-        const finalXgSource = xGSource;
+        const finalXgSource = xgSource;
 
         // === 4. ÜGYNÖK (SZIMULÁTOR): Meccs szimulálása ===
         console.log(`[Lánc 4/6] Szimulátor Ügynök: 25000 szimuláció futtatása...`);
