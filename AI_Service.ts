@@ -1,122 +1,41 @@
-// --- AI_Service.ts (v70.0 - "Okos" Specialista) ---
-// MÓDOSÍTÁS (v70.0):
-// 1. HOZZÁADVA: Új 3. Ügynök (AI Specialista) a 'Model.ts' merev szabályainak leváltására.
-// 2. HOZZÁADVA: PROMPT_SPECIALIST_V1 - Egy célzott prompt, ami az 1. Ügynök
-//    (Quant) Tiszta xG-jét módosítja a 2. Ügynök (Scout) kontextusa alapján.
-// 3. HOZZÁADVA: runStep_Specialist() - Az új aszinkron függvény az AI hívásához.
-// 4. A v69.2-es "Prompt-Bleeding" javítások érvényben maradnak.
+// --- AI_Service.ts (v77.0 - "Térképész" Ügynök) ---
+// MÓDOSÍTÁS (v77.0):
+// 1. HOZZÁADVA: 'PROMPT_TEAM_RESOLVER_V1' (Új 8. Ügynök prompt).
+// 2. HOZZÁADVA: 'runStep_TeamNameResolver' (Új 8. Ügynök funkció).
+// 3. CÉL: Visszaállítja az AI-alapú csapatnév-feloldás képességét,
+//    amit a v70.0-s refaktor során elvesztettünk.
 
-import { _callGemini } from './DataFetch.js';
+import { 
+    _callGemini, 
+    _callGeminiWithJsonRetry, 
+    fillPromptTemplate 
+} from './providers/common/utils.js'; 
 import { getConfidenceCalibrationMap } from './LearningService.js';
 import type { ICanonicalPlayerStats, ICanonicalRawData } from './src/types/canonical.d.ts';
 
-// === Robusztus AI hívó JSON parse retry logikával (Változatlan) ===
-async function _callGeminiWithJsonRetry(
-    prompt: string, 
-    stepName: string, 
-    maxRetries: number = 2
-): Promise<any> {
-    
-    let attempts = 0;
-    while (attempts <= maxRetries) {
-        attempts++;
-        try {
-            const jsonString = await _callGemini(prompt, true);
-            const result = JSON.parse(jsonString);
-            
-            if (attempts > 1) {
-                console.log(`[AI_Service] Sikeres JSON feldolgozás (${stepName}) a(z) ${attempts}. próbálkozásra.`);
-            }
-            return result;
-        } catch (e: any) {
-            if (e instanceof SyntaxError) {
-                console.warn(`[AI_Service] FIGYELMEZTETÉS: Gemini JSON parse hiba (${stepName}), ${attempts}/${maxRetries+1}. próbálkozás. Hiba: ${e.message}`);
-                if (attempts > maxRetries) {
-                    console.error(`[AI_Service] KRITIKUS HIBA: A Gemini JSON feldolgozása végleg sikertelen (${stepName}) ${attempts-1} próbálkozás után.`);
-                    throw new Error(`AI Hiba (${stepName}): A modell hibás JSON struktúrát adott vissza, ami nem feldolgozható. Hiba: ${e.message}`);
-                }
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
-            } else {
-                console.error(`[AI_Service] Kritikus nem-parse hiba (${stepName}): ${e.message}`);
-                throw e;
-            }
-        }
-    }
-    throw new Error(`AI Hiba (${stepName}): Ismeretlen hiba az újrapróbálkozási ciklusban.`);
-}
+// === ÚJ (v77.0): 8. ÜGYNÖK (A TÉRKÉPÉSZ) PROMPT ===
+const PROMPT_TEAM_RESOLVER_V1 = `
+TASK: You are 'The Mapper', an expert sports data mapping assistant.
+Your goal is to find the correct team ID for a misspelled or alternative team name.
 
-// --- 
-// HELPER a promptok kitöltéséhez 
-// (Változatlan)
-function fillPromptTemplate(template: string, data: any): string {
-    if (!template || typeof template !== 'string') return '';
-    try {
-        // Kiegészített regex, hogy a {simJson.mu_h_sim} formátumot is kezelje
-        return template.replace(/\{([\w_.]+)\}/g, (match, key) => {
-            let value: any;
-            // Pontozott kulcsok kezelése (pl. simJson.mu_h_sim)
-            if (key.includes('.')) {
-                const keys = key.split('.');
-                let currentData = data;
-                let found = true;
-                for (const k of keys) {
-                    if (currentData && typeof currentData === 'object' && currentData.hasOwnProperty(k)) {
-                        currentData = currentData[k];
-                    } else if (k.endsWith('Json')) {
-                        // Speciális eset: {simJson.mu_h_sim} esetén a 'simJson' már objektum, nem kell stringify
-                        const baseKey = k.replace('Json', '');
-                        if (currentData && currentData.hasOwnProperty(baseKey) && currentData[baseKey] !== undefined) {
-                            try { 
-                                currentData = currentData[baseKey];
-                            } catch (e: any) { 
-                                console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál (bejövő objektum)`);
-                                currentData = {}; 
-                            }
-                         }
-                    } else {
-                        found = false;
-                        break;
-                    }
-                }
-                if (found) {
-                    value = currentData;
-                } else {
-                    console.warn(`Hiányzó pontozott kulcs a prompt kitöltéséhez: ${key}`);
-                    return "N/A";
-                }
-            
-            } else if (data && typeof data === 'object' && data.hasOwnProperty(key)) {
-                 value = data[key];
-            } 
- 
-            else if (key.endsWith('Json')) {
-                const baseKey = key.replace('Json', '');
-                if (data && data.hasOwnProperty(baseKey) && data[baseKey] !== undefined) {
-                    try { return JSON.stringify(data[baseKey]);
-                    } 
-                     catch (e: any) { console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál`);
-                        return '{}'; }
-                } else { return '{}';
-                } 
-            }
-            else { 
-                 console.warn(`Hiányzó kulcs a prompt kitöltéséhez: ${key}`);
-                return "N/A";
-            }
+[CONTEXT]:
+- Input Name (from ESPN): "{inputName}"
+- Search Term (Normalized): "{searchTerm}"
+- Available Roster (from API Provider): {rosterJson}
 
-            if (value === null || value === undefined) { return "N/A";
-            }
-            if (typeof value === 'object') {
-                 try { return JSON.stringify(value);
-                } catch (e) { return "[object]"; }
-            }
-            return String(value);
-        });
-    } catch(e: any) {
-         console.error(`Váratlan hiba a fillPromptTemplate során: ${e.message}`);
-        return template; 
-    }
+[INSTRUCTIONS]:
+1. Analyze the 'Available Roster' (JSON array of {id, name} objects).
+2. Find the *single best match* for the 'Search Term'.
+3. The match must be logically sound (e.g., "Cologne" matches "1. FC Köln", "Man Utd" matches "Manchester United").
+4. If the 'Search Term' is "N/A" or empty, you must return null.
+5. If no logical match is found in the roster, you must return null.
+
+[OUTPUT STRUCTURE]:
+Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
+{
+  "matched_id": <Number | null>
 }
+`;
 
 // === ÚJ (v70.0): 3. ÜGYNÖK (AZ AI SPECIALISTA) PROMPT ===
 const PROMPT_SPECIALIST_V1 = `
@@ -158,7 +77,6 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 `;
 
 // === MÓDOSÍTOTT (v69.0): 5. ÜGYNÖK (A KRITIKUS) PROMPT ===
-// (Változatlan v70.0-ban)
 const PROMPT_CRITIC_V69 = `
 TASK: You are 'The Critic', the 5th Agent in a 6-agent analysis chain.
 Your job is to find **CONTRADICTIONS** and **RISKS** and define the **NARRATIVE THEME** of the match.
@@ -192,7 +110,6 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 `;
 
 // === MÓDOSÍTOTT (v69.2): 6. ÜGYNÖK (A STRATÉGA) PROMPT (JAVÍTVA) ===
-// (Változatlan v70.0-ban)
 const PROMPT_STRATEGIST_V69 = `
 TASK: You are 'The Strategist', the 6th and FINAL Agent.
 You are the King.
@@ -264,7 +181,33 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
   }
 }
 `;
-// === MÓDOSÍTÁS VÉGE ===
+
+// === ÚJ (v77.0): 8. LÉPÉS (AI TÉRKÉPÉSZ) ===
+interface TeamNameResolverInput {
+    inputName: string;
+    searchTerm: string;
+    rosterJson: any[]; // Lista a {id, name} objektumokból
+}
+export async function runStep_TeamNameResolver(data: TeamNameResolverInput): Promise<number | null> {
+    try {
+        const filledPrompt = fillPromptTemplate(PROMPT_TEAM_RESOLVER_V1, data);
+        const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_TeamNameResolver");
+        
+        if (result && result.matched_id) {
+            const foundId = Number(result.matched_id);
+            const matchedTeam = data.rosterJson.find(t => t.id === foundId);
+            console.log(`[AI_Service - Térképész] SIKER: Az AI a "${data.searchTerm}" nevet ehhez a csapathoz rendelte: "${matchedTeam?.name || 'N/A'}" (ID: ${foundId})`);
+            return foundId;
+        } else {
+            console.error(`[AI_Service - Térképész] HIBA: Az AI nem talált egyezést (matched_id: null) a "${data.searchTerm}" névre.`);
+            return null;
+        }
+    } catch (e: any) {
+        console.error(`[AI_Service - Térképész] KRITIKUS HIBA a Gemini hívás vagy JSON parse során: ${e.message}`);
+        return null;
+    }
+}
+
 
 // === ÚJ (v70.0): 3. LÉPÉS (AI SPECIALISTA) ===
 interface SpecialistInput {
@@ -321,34 +264,29 @@ export async function runStep_Critic(data: CriticInput): Promise<any> {
 interface StrategistInput {
     matchData: { home: string, away: string, sport: string, leagueName: string };
     quantReport: { pure_mu_h: number, pure_mu_a: number, source: string };
-    // MÓDOSÍTÁS (v70.0): A specialistReport most már az AI Specialista teljes JSON objektuma
     specialistReport: any; 
     simulatorReport: any;
-    criticReport: any; // Az 5. Ügynök (v69) kimenete (benne a narrative_theme)
-    modelConfidence: number; // A Statisztikai bizalom (Quant)
-    rawDataJson: ICanonicalRawData; // A teljes kontextus a biztonság kedvéért
-    realXgJson: any; // A P1 tiszta xG
+    criticReport: any; 
+    modelConfidence: number; 
+    rawDataJson: ICanonicalRawData; 
+    realXgJson: any;
 }
 export async function runStep_Strategist(data: StrategistInput): Promise<any> {
     try {
-        // Biztosítjuk, hogy a simJson (a 4. Ügynök jelentése) a 'simulatorReport' kulcson legyen
-        // és a specialistReport (a 3. Ügynök) mu_h/mu_a értékei is elérhetők legyenek
         const dataForPrompt = { 
             ...data, 
             simulatorReport: data.simulatorReport,
-            // A 6. Ügynök promptjának {specialistReport.mu_h} hivatkozásaihoz
             specialistReport: {
-                ...data.specialistReport, // Tartalmazza a 'reasoning'-et, 'key_factors'-t
-                mu_h: data.specialistReport.modified_mu_h, // Átnevezés a prompt kompatibilitáshoz
-                mu_a: data.specialistReport.modified_mu_a  // Átnevezés a prompt kompatibilitáshoz
+                ...data.specialistReport, 
+                mu_h: data.specialistReport.modified_mu_h, 
+                mu_a: data.specialistReport.modified_mu_a  
             }
         };
         
-        const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V69, dataForPrompt); // v69-es (javított v69.2) prompt használata
+        const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V69, dataForPrompt); 
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Strategist");
     } catch (e: any) {
         console.error(`AI Hiba (Strategist): ${e.message}`);
-        // Kritikus hiba esetén is adjunk vissza egy alap ajánlást
         return {
             prophetic_timeline: `AI Hiba (Strategist): A Próféta nem tudott jósolni. ${e.message}`,
             strategic_synthesis: `AI Hiba (Strategist): ${e.message}`,
@@ -356,7 +294,7 @@ export async function runStep_Strategist(data: StrategistInput): Promise<any> {
             final_confidence_report: `**1.0/10** - AI Hiba (Strategist): ${e.message}`,
             master_recommendation: {
                 recommended_bet: "Hiba",
-                final_confidence: 1.0, // Hiba esetén 1.0
+                final_confidence: 1.0, 
                 brief_reasoning: `AI Hiba (Strategist): ${e.message}`
             }
         };
@@ -400,9 +338,10 @@ If the answer isn't in the context or history, politely state that the informati
     }
 }
 
-// --- FŐ EXPORT (MÓDOSÍTVA v70.0) ---
+// --- FŐ EXPORT (MÓDOSÍTVA v77.0) ---
 export default {
-    runStep_Specialist, // HOZZÁADVA
+    runStep_TeamNameResolver, // HOZZÁADVA
+    runStep_Specialist, 
     runStep_Critic,
     runStep_Strategist,
     getChatResponse
