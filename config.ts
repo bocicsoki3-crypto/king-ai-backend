@@ -1,4 +1,4 @@
-// config.ts (v54.38 - Közvetlen Hoki API Kulcs Hozzáadva)
+// config.ts (v77.9 - Final Configuration Fix)
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -51,7 +51,7 @@ interface IApiHostConfig {
  */
 interface IApiHostMap {
   soccer: IApiHostConfig;
-  hockey: IApiHostConfig; // Ez a RapidAPI-s, de már nem fogjuk használni a hokihoz
+  hockey: IApiHostConfig; 
   basketball: IApiHostConfig;
   [key: string]: IApiHostConfig; // Lehetővé teszi a [sport] indexelést
 }
@@ -65,7 +65,6 @@ export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-2.
 export const SHEET_URL: string | undefined = process.env.SHEET_URL;
 
 // === FOCI (RapidAPI) ===
-// (Ez változatlan marad)
 export const APIFOOTBALL_KEY_1: string | undefined = process.env.APIFOOTBALL_KEY_1;
 
 // === JÉGKORONG (Közvetlen API-SPORTS) ===
@@ -80,12 +79,17 @@ export const BASKETBALL_API_HOST: string = process.env.BASKETBALL_API_HOST || 'b
 export const SOFASCORE_API_KEY: string | undefined = process.env.SOFASCORE_API_KEY; 
 export const SOFASCORE_API_HOST: string = process.env.SOFASCORE_API_HOST || 'sportapi7.p.rapidapi.com';
 
+// === REDUNDÁNS ODDS FEED (KÉZI VÁLASZTÁS) ===
+// Hozzáadva a "Bielefeld-hiba" és a piaci redundancia javításához.
+// Host: odds-feed.p.rapidapi.com
 export const ODDS_API_KEY: string | undefined = process.env.ODDS_API_KEY;
 export const ODDS_API_HOST: string = process.env.ODDS_API_HOST || 'odds-feed.p.rapidapi.com';
 
-// --- API HOST TÉRKÉP (KULCSROTÁCIÓVAL - CSAK FOCI) ---
-// Típusosítva az IApiHostMap interfész alapján
-export const API_HOSTS: IApiHostMap = {
+
+// --- API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
+// Ez a struktúra felel a kulcsrotációért.
+
+export const API_HOSTS: { [key: string]: any } = {
     soccer: {
         host: process.env.APIFOOTBALL_HOST || 'api-football-v1.p.rapidapi.com',
         keys: [
@@ -94,11 +98,14 @@ export const API_HOSTS: IApiHostMap = {
             process.env.APIFOOTBALL_KEY_3
         ].filter(Boolean) as string[]
     },
-    // Ezeket már nem használjuk, de a struktúra miatt itt maradnak
+    // === JAVÍTÁS (v77.9): HOCKEY konfiguráció hozzáadva a kritikus hiba elkerülésére ===
+    // Ez a kulcs csak PLACEHOLDER, mivel a Tiszta P1 Stratégiát alkalmazzuk, 
+    // de a kódnak szüksége van rá a konfigurációs összeomlás elkerüléséhez.
     hockey: {
-        host: process.env.APIHOCKEY_HOST || 'api-hockey.p.rapidapi.com',
-        keys: [process.env.APIHOCKEY_KEY_1].filter(Boolean) as string[]
+        host: APISPORTS_HOCKEY_HOST, // Használja a definiált hostot
+        keys: APISPORTS_HOCKEY_KEY ? [APISPORTS_HOCKEY_KEY] : ['hockey-placeholder-key'], 
     },
+    // === JAVÍTÁS VÉGE ===
     basketball: {
         host: process.env.APIBASKETBALL_HOST || 'api-basketball.p.rapidapi.com',
         keys: [process.env.APIBASKETBALL_KEY_1].filter(Boolean) as string[]
