@@ -1,8 +1,8 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v77.7 (KRITIKUS HIBA JAVÍTÁS: ts(2353) - Típus-ütközés a cache-elésnél)
-// MÓDOSÍTÁS (v77.7):
-// 1. JAVÍTVA: Eltávolítva a redundáns 'xgSource' mező a 'jsonResponse' gyökeréből (kb. 390. sor),
-//    mivel az interfész (IAnalysisResponse) csak az 'analysisData'-n belül definiálja.
+// VERZIÓ: v77.9 (VÉGLEGES Stratéga TypeError Javítás)
+// MÓDOSÍTÁS (v77.9):
+// 1. JAVÍTVA: A Stratéga jelentésének feldolgozása. Biztonságos láncolt operátorok (?. és null check)
+//    használata a TypeError elkerülésére, ha az LLM nem ad vissza érvényes JSON-t.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -44,7 +44,7 @@ import { saveAnalysisToSheet } from './sheets.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v77.7): Kritikus Hiba Javítása (xgSource redundancia)
+* VÁLTOZÁS (v77.9): Kritikus Hiba Javítása (TypeError a Stratéga JSON-ban)
 * **************************************************************/
 
 // Az új, strukturált JSON válasz (MÓDOSÍTVA v70.0)
@@ -321,12 +321,10 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             console.error("A Stratéga (6. Ügynök) hibát adott vissza:", strategistReport.error);
         }
         
-        const masterRecommendation = strategistReport.master_recommendation;
+        // JAVÍTÁS (v77.9): Biztonságos hozzáférés a master_recommendation-höz
+        const masterRecommendation = strategistReport?.master_recommendation;
         let finalConfidenceScore = 1.0; // Alapértelmezett hiba esetén
         
-        // === KRITIKUS HIBA JAVÍTÁS (v77.8): final_confidence Hozzáférés Korrekciója ===
-        // A hibás hozzáférés: masterRecommendation.master_recommendation.final_confidence
-        // A helyes hozzáférés: masterRecommendation.final_confidence
         if (masterRecommendation && typeof masterRecommendation.final_confidence === 'number') {
             finalConfidenceScore = masterRecommendation.final_confidence;
         } else {
