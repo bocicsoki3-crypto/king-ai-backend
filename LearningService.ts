@@ -1,30 +1,24 @@
-// LearningService.ts (v71.1 - Architekta Javítás)
-// MÓDOSÍTÁS (v71.1):
-// 1. ELTÁVOLÍTVA: A 'fillPromptTemplate' lokális definíciói törölve.
-// 2. HOZZÁADVA: Importálás a './providers/common/utils.js'-ből.
-// 3. JAVÍTVA: A '_callGeminiWithJsonRetry' import cserélve a közös helyre.
-// 4. HOZZÁADVA: PROMPT_AUDITOR_V1 (7. Ügynök).
-// 5. HOZZÁADVA: runAuditAnalysis (7. Ügynök) funkció.
+// LearningService.ts (v71.2 - Karcsúsított Audit)
+// MÓDOSÍTÁS (v71.2):
+// 1. MÓDOSÍTVA: A 'PROMPT_AUDITOR_V1' frissítve, hogy a "karcsúsított"
+//    (lean) JSON formátumot várja, amelyet az AnalysisFlow (v71.2) küld.
+// 2. MÓDOSÍTVA: A 'runAuditAnalysis' funkció most már a 'leanAuditData'-t
+//    (nem a 'fullAnalysis'-t) kapja meg, és ezt adja át a promptnak.
 
 import NodeCache from 'node-cache';
-// Szükségünk van a Google Sheet olvasó funkcióra
-import { getHistorySheet, logLearningInsight } from './sheets.js'; // logLearningInsight importálva
+import { getHistorySheet, logLearningInsight } from './sheets.js';
 import { GoogleSpreadsheetRow } from 'google-spreadsheet';
-
-// === JAVÍTÁS (v71.1): AI Hívó importálása ===
 import { 
     _callGeminiWithJsonRetry, 
     fillPromptTemplate 
 } from './providers/common/utils.js'; 
 
-// --- Típusdefiníciók a Cache-ben tárolt adatokhoz ---
-
+// --- Típusdefiníciók ---
 interface IPowerRating {
     atk: number;
     def: number;
     matches: number;
 }
-
 interface IMatchLogEntry {
     date: string;
     sport: string;
@@ -35,18 +29,15 @@ interface IMatchLogEntry {
     confidence: number;
     xg_diff: number;
 }
-
 interface INarrativeRating {
     [ratingName: string]: number;
 }
-
 interface IConfidenceBucket {
     wins: number;
     losses: number;
     pushes: number;
     total: number; // W+L
 }
-
 // Globális gyorsítótárak a ratingeknek
 const ratingCache = new NodeCache({ stdTTL: 0 });
 const confidenceCache = new NodeCache({ stdTTL: 0 });
@@ -56,7 +47,7 @@ const MATCH_LOG_KEY = 'match_log_v2';
 const NARRATIVE_RATINGS_KEY = 'narrative_ratings_v2';
 const CONFIDENCE_CALIBRATION_KEY = 'confidence_calibration_v1';
 
-// --- ÖNTANULÓ ÉS ÉRTÉKELŐ MODULOK (Cache alapú) ---
+// --- ÖNTANULÓ ÉS ÉRTÉKELŐ MODULOK (Változatlan) ---
 
 /**
  * Naplózza a meccs eredményét a ratingek frissítéséhez (Cache-be).
@@ -234,6 +225,9 @@ type CalibrationResult = {
 
 type ConfidenceBuckets = { [key: string]: IConfidenceBucket };
 
+/**
+ * Elindítja a bizalmi szintek újra-kalibrálását a "History" sheet alapján.
+ */
 export async function runConfidenceCalibration(): Promise<CalibrationResult> {
     console.log("Meta-tanulás: Bizalmi kalibráció indítása a 'History' alapján...");
     try {
@@ -246,12 +240,14 @@ export async function runConfidenceCalibration(): Promise<CalibrationResult> {
         }
 
         const buckets: ConfidenceBuckets = {};
+        // Bucket-ek inicializálása 1.0-tól 9.9-ig (10-esével)
         for (let i = 1; i < 10; i++) {
             const lowerBound = i.toFixed(1);
             const upperBound = (i + 0.9).toFixed(1);
             const key = `${lowerBound}-${upperBound}`;
             buckets[key] = { wins: 0, losses: 0, pushes: 0, total: 0 };
         }
+        // Külön bucket a 10.0-nak
         buckets["10.0-10.0"] = { wins: 0, losses: 0, pushes: 0, total: 0 };
         
         let processed = 0;
@@ -259,6 +255,7 @@ export async function runConfidenceCalibration(): Promise<CalibrationResult> {
             const confidenceStr = row.get("Bizalom") as string;
             const result = row.get("Helyes (W/L/P)")?.toUpperCase() as string | undefined;
             
+            // Csak akkor dolgozzuk fel, ha van bizalom és érvényes eredmény (W, L, vagy P)
             if (confidenceStr && result && ['W', 'L', 'P'].includes(result)) {
                 const confidence = parseFloat(confidenceStr);
                 
@@ -277,6 +274,7 @@ export async function runConfidenceCalibration(): Promise<CalibrationResult> {
                     else if (result === 'L') buckets[bucketKey].losses++;
                     else if (result === 'P') buckets[bucketKey].pushes++;
                     
+                    // A 'total'-ba csak a W és L számít bele
                     if (result === 'W' || result === 'L') {
                         buckets[bucketKey].total++;
                     }
@@ -287,12 +285,13 @@ export async function runConfidenceCalibration(): Promise<CalibrationResult> {
             }
         }
 
+        // Eredmények mentése a cache-be
         confidenceCache.set(CONFIDENCE_CALIBRATION_KEY, buckets);
         console.log(`Bizalmi kalibráció sikeresen lefutott. Feldolgozott releváns sorok: ${processed}.`);
         
         const significantBuckets: any = {};
         for(const [key, value] of Object.entries(buckets)) {
-            if (value.total >= 5) { 
+            if (value.total >= 5) { // Csak ha van elég minta
                 significantBuckets[key] = { 
                     ...value, 
                     accuracy: value.total > 0 ? (value.wins / value.total * 100).toFixed(1) + '%' : 'N/A' 
@@ -322,14 +321,15 @@ export function getConfidenceCalibrationMap(): ConfidenceBuckets {
 }
 
 
-// === ÚJ (v71.0): 7. ÜGYNÖK (AZ AUDITOR) PROMPT ===
+// === MÓDOSÍTVA (v71.2): 7. ÜGYNÖK (AZ AUDITOR) PROMPT ===
+// Frissítve, hogy a "karcsúsított" (lean) JSON-t várja
 const PROMPT_AUDITOR_V1 = `
 TASK: You are 'The Auditor', the 7th Agent.
 Your job is to analyze *why* a high-confidence prediction failed.
 You are performing a post-match analysis to find the flaw in the original logic.
 
-[INPUT 1: THE ORIGINAL ANALYSIS (Full JSON)]
-{originalAnalysisJson}
+[INPUT 1: THE ORIGINAL ANALYSIS (Lean JSON - Agent Reports Only)]
+{leanAnalysisJson}
 
 [INPUT 2: THE ACTUAL RESULT]
 - Predicted Bet: "{prediction}"
@@ -337,7 +337,7 @@ You are performing a post-match analysis to find the flaw in the original logic.
 - Actual Result: "{actualResult}" (W/L/P Status: {wlpStatus})
 
 [YOUR TASK - FIND THE FLAW]:
-1. Review the *entire* original analysis chain (Quant, Specialist, Critic, Strategist).
+1. Review the original analysis chain (Quant, Specialist, Critic, Strategist).
 2. Compare the "Prophetic Timeline" (strategist.prophetic_timeline) with the actual result.
 3. Identify the *single biggest flaw* in the original reasoning.
    - Did Agent 1 (Quant) use bad data (e.g., P4 fallback)?
@@ -354,34 +354,24 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 }
 `;
 
-// === ÚJ (v71.0): 7. ÜGYNÖK (AUDITOR) FUNKCIÓ ===
+// === MÓDOSÍTVA (v71.2): 7. ÜGYNÖK (AUDITOR) FUNKCIÓ ===
 /**
  * Elindítja a 7. Ügynök (Auditor) elemzését egy hibás, magas bizalmú tippről.
  * Ezt a 'settlementService' hívja meg.
  */
 export async function runAuditAnalysis(
-    originalAnalysis: any, // A teljes 'jsonResponse' objektum a 'JSON_Data' oszlopból
+    leanAuditData: any, // A "karcsúsított" 'auditData' objektum (v71.2)
     prediction: string,
     confidence: number,
     actualResult: string, // Pl. "2-1"
     wlpStatus: "L" // Csak 'L' esetén hívjuk
 ): Promise<void> {
     
-    // Csak a legfontosabb részeket tartjuk meg a prompt méretének csökkentése érdekében
-    // (kivesszük pl. a szimulációs adatokat)
-    const analysisContext = {
-        analysisData: {
-            committee: originalAnalysis?.analysisData?.committee,
-            matchData: originalAnalysis?.analysisData?.matchData,
-            modelConfidence: originalAnalysis?.analysisData?.modelConfidence,
-            finalConfidenceScore: originalAnalysis?.analysisData?.finalConfidenceScore,
-            xgSource: originalAnalysis?.analysisData?.xgSource
-        },
-        debugInfo: originalAnalysis?.debugInfo
-    };
+    // Az 'leanAuditData' már nem tartalmazza a 'sim' és 'rawData' mezőket.
+    const analysisContext = leanAuditData; // Közvetlen felhasználás
     
     const input = {
-        originalAnalysisJson: JSON.stringify(analysisContext, null, 2),
+        leanAnalysisJson: JSON.stringify(analysisContext, null, 2),
         prediction: prediction,
         confidence: confidence,
         actualResult: actualResult,
@@ -406,7 +396,7 @@ export async function runAuditAnalysis(
                 prediction: prediction,
                 confidence: confidence,
                 actual: actualResult,
-                insight: `[AUDITOR v1] Hiba: ${auditResult.flaw_analysis} | Javaslat: ${auditResult.corrective_insight}`
+                insight: `[AUDITOR v1.2] Hiba: ${auditResult.flaw_analysis} | Javaslat: ${auditResult.corrective_insight}`
             });
         } else {
             throw new Error("Az Auditor válasza érvénytelen JSON struktúrájú.");
@@ -415,6 +405,3 @@ export async function runAuditAnalysis(
         console.error(`[LearningService] 7. ÜGYNÖK (AUDITOR) HIBA: ${e.message}`);
     }
 }
-
-// === ELTÁVOLÍTVA (v71.1): A 'fillPromptTemplate' duplikált definíciója törölve ===
-// (mivel már importálva van a ./providers/common/utils.js-ből)
