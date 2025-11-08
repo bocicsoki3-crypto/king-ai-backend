@@ -1,9 +1,10 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v80.0 ("Valósághű" Foci Logika Javítás)
-// MÓDOSÍTÁS (v80.0):
-// 1. JAVÍTVA: A 6. Ügynök (Stratéga) hívása (kb. 320. sor).
+// VERZIÓ: v81.0 ("Taktikai Kritikus" Logika)
+// MÓDOSÍTÁS (v81.0):
+// 1. JAVÍTVA: A 5. Ügynök (Kritikus) hívása (kb. 300. sor).
 // 2. HOZZÁADVA: A `psyProfileHome` és `psyProfileAway` változók átadása
-//    a `strategistInput`-nak, hogy az AI "valósághű" döntést hozzon.
+//    a `criticInput`-nak, hogy az AI "taktikai" elemzést végezhessen.
+// 3. MÓDOSÍTVA: A Cache kulcs `v81.0_tactical_fix`-re.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -45,7 +46,7 @@ import { saveAnalysisToSheet } from './sheets.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v80.0): A Stratéga (6. Ügynök) "bekötése" a pszichológiai adatokkal
+* VÁLTOZÁS (v81.0): Az 5. Ügynök (Kritikus) "bekötése" a pszichológiai adatokkal
 * **************************************************************/
 
 // Az új, strukturált JSON válasz (MÓDOSÍTVA v70.0)
@@ -153,12 +154,12 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         
-        // === MÓDOSÍTVA (v80.0) ===
-        // Cache kulcs (v80.0) - az 'v77.5_critical_fix' -> 'v80.0_realism_fix'
+        // === MÓDOSÍTVA (v81.0) ===
+        // Cache kulcs (v81.0) - az 'v80.0_realism_fix' -> 'v81.0_tactical_fix'
         const p1AbsenteesHash = manual_absentees ?
             `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
-        analysisCacheKey = `analysis_v80.0_realism_fix_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
+        analysisCacheKey = `analysis_v81.0_tactical_fix_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
         // === MÓDOSÍTÁS VÉGE ===
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
@@ -287,16 +288,23 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         console.log(`Szimulátor végzett. (Modell bizalom: ${modelConfidence.toFixed(1)})`);
 
         // === 5. ÜGYNÖK (KRITIKUS): Ellentmondások keresése ===
-        console.log(`[Lánc 5/6] Kritikus Ügynök: Ellentmondások keresése (v80.0)...`);
+        console.log(`[Lánc 5/6] Kritikus Ügynök: Ellentmondások keresése (v81.0)...`);
+        
+        // JAVÍTVA (v81.0): A HIÁNYZÓ "VEZETÉK" BEKÖTVE a Kritikushoz
         const criticInput = {
             simJson: sim,
             marketIntel: marketIntel,
             rawDataJson: rawData,
             modelConfidence: parseFloat(modelConfidence.toFixed(1)), 
-            valueBetsJson: valueBets
+            valueBetsJson: valueBets,
+            // === JAVÍTÁS (v81.0) ===
+            psyProfileHome: psyProfileHome,
+            psyProfileAway: psyProfileAway
+            // === JAVÍTÁS VÉGE ===
         };
         const criticReport = await runStep_Critic(criticInput);
-        const contradictionScore = criticReport?.contradiction_score || 0.0;
+        // JAVÍTVA (v81.0): A kimenet mélyebb objektumban van
+        const contradictionScore = criticReport?.risk_analysis?.contradiction_score || 0.0;
         console.log(`[Lánc 5/6] Kritikus végzett. Kockázati Pontszám: ${contradictionScore.toFixed(2)}`);
 
         // === 6. ÜGYNÖK (STRATÉGA): Végső döntés ===
@@ -425,7 +433,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         // === JAVÍTÁS (TS2448 / TS2454) ===
         const homeParam = params?.home || 'N-A';
         const awayParam = params?.away || 'N-A';
-        const sportParam = sport || params?.sport || 'N/A';
+        const sportParam = sport || params?.sport || 'N-A';
         // 'sport' (függvény argumentum) itt elérhető
         console.error(`Súlyos hiba az elemzési folyamatban (${sportParam} - ${homeParam} vs ${awayParam}): ${error.message}`, error.stack);
         return { error: `Elemzési hiba: ${error.message}` };
