@@ -1,13 +1,9 @@
-// --- AI_Service.ts (v69.0 - Elit Narrátor) ---
-// MÓDOSÍTÁS (v69.0):
-// 1. A Kritikus (Ügynök 5) promptja (PROMPT_CRITIC_V69) kibővítve.
-//    Most már kötelezően azonosítania kell a meccs "narratív témáját" (narrative_theme).
-// 2. A Stratéga (Ügynök 6) promptja (PROMPT_STRATEGIST_V69) drasztikusan átírva.
-// 3. A 'prophetic_timeline' (Próféta) már nem egy rövid összefoglaló, hanem
-//    egy részletes, élethű narratíva generálását kéri, amely a 'narrative_theme'-re
-//    és a részletes xG/lap/szöglet adatokra épül.
-// 4. A 'strategic_synthesis' most már expliciten elvárja, hogy a Próféta
-//    narratíváját támassza alá.
+// --- AI_Service.ts (v69.1 - Elit Narrátor, Javított Prompt) ---
+// MÓDOSÍTÁS (v69.1):
+// 1. JAVÍTVA: A Stratéga (Ügynök 6) promptjában (PROMPT_STRATEGIST_V69) a
+//    "prophetic_timeline" rész hibásan hivatkozott a '{mu_cards_sim}'
+//    változóra. Ez javítva a helyes '{simulatorReport.mu_cards_sim}' hivatkozásra.
+// 2. A (v69.0) összes többi logikája (narrative_theme, stb.) változatlan.
 
 import { _callGemini } from './DataFetch.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
@@ -156,8 +152,8 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 }
 `;
 
-// === MÓDOSÍTOTT (v69.0): 6. ÜGYNÖK (A STRATÉGA) PROMPT ===
-// Most már a "narrative_theme"-re építi a "prophetic_timeline"-t.
+// === MÓDOSÍTOTT (v69.1): 6. ÜGYNÖK (A STRATÉGA) PROMPT (JAVÍTVA) ===
+// A "prophetic_timeline" {mu_cards_sim} hivatkozása javítva {simulatorReport.mu_cards_sim}-re.
 const PROMPT_STRATEGIST_V69 = `
 TASK: You are 'The Strategist', the 6th and FINAL Agent.
 You are the King.
@@ -202,7 +198,7 @@ Analyze the relationship between (6) and (7) and choose one of these two paths:
 [OUTPUT STRUCTURE]:
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
 {
-  "prophetic_timeline": "<(A PRÓFÉTA) FELADAT: Te vagy 'A Próféta', egy elit sport-történetmesélő. BEMENETEK: 1. Narratíva Téma (Ügynök 5): '{criticReport.narrative_theme}'. 2. Súlyozott xG (Ügynök 3): H={specialistReport.mu_h}, A={specialistReport.mu_a}. 3. Várható Lapok/Szögletek (Ügynök 4): {simulatorReport.mu_cards_sim} lap, {simulatorReport.mu_corners_sim} szöglet. UTASÍTÁSOK: Írj egy **élethű, részletes és magával ragadó narratívát** (magyarul) a meccs lefolyásáról, mintha már megtörtént volna. A történetednek **TÖKÉLETESEN tükröznie kell** a kapott xG adatokat és a narratív témát. Ne csak összefoglalj, hanem mesélj! Írd le a meccs hangulatát (a 'Téma' alapján). Írd le, hogyan születnek a gólok (az xG arányában). Fesd le a kulcspillanatokat (pl. egy piros lap a {mu_cards_sim} alapján). A történetnek logikusan el kell vezetnie a legvalószínűbb végeredményhez (pl. 2-0, 1-1).>",
+  "prophetic_timeline": "<(A PRÓFÉTA) FELADAT: Te vagy 'A Próféta', egy elit sport-történetmesélő. BEMENETEK: 1. Narratíva Téma (Ügynök 5): '{criticReport.narrative_theme}'. 2. Súlyozott xG (Ügynök 3): H={specialistReport.mu_h}, A={specialistReport.mu_a}. 3. Várható Lapok/Szögletek (Ügynök 4): {simulatorReport.mu_cards_sim} lap, {simulatorReport.mu_corners_sim} szöglet. UTASÍTÁSOK: Írj egy **élethű, részletes és magával ragadó narratívát** (magyarul) a meccs lefolyásáról, mintha már megtörtént volna. A történetednek **TÖKÉLETESEN tükröznie kell** a kapott xG adatokat és a narratív témát. Ne csak összefoglalj, hanem mesélj! Írd le a meccs hangulatát (a 'Téma' alapján). Írd le, hogyan születnek a gólok (az xG arányában). Fesd le a kulcspillanatokat (pl. egy piros lap a {simulatorReport.mu_cards_sim} alapján). A történetnek logikusan el kell vezetnie a legvalószínűbb végeredményhez (pl. 2-0, 1-1).>",
   
   "strategic_synthesis": "<Egy 2-3 bekezdéses holisztikus elemzés (magyarul). Magyarázd el a teljes láncot. **KRITIKUS: Kezeld a 'Critic's Risks'-t (5) és fejtsd ki a 'Próféta' (prophetic_timeline) által vázolt meccsképet!** Indokold meg, hogy a 'PATH A' vagy 'PATH B' mellett döntöttél.>",
   
@@ -265,7 +261,7 @@ export async function runStep_Strategist(data: StrategistInput): Promise<any> {
     try {
         // Biztosítjuk, hogy a simJson (a 4. Ügynök jelentése) a 'simulatorReport' kulcson legyen
         const dataForPrompt = { ...data, simulatorReport: data.simulatorReport };
-        const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V69, dataForPrompt); // v69-es prompt használata
+        const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V69, dataForPrompt); // v69-es (javított v69.1) prompt használata
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Strategist");
     } catch (e: any) {
         console.error(`AI Hiba (Strategist): ${e.message}`);
