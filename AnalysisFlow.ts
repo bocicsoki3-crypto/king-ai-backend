@@ -1,11 +1,16 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v81.0 ("Taktikai Kritikus" Logika)
-// MÓDOSÍTÁS (v81.0):
-// 1. JAVÍTVA: A 5. Ügynök (Kritikus) hívása (kb. 300. sor).
-// 2. HOZZÁADVA: A `psyProfileHome` és `psyProfileAway` változók átadása
-//    a `criticInput`-nak, hogy az AI "taktikai" elemzést végezhessen.
-// 3. MÓDOSÍTVA: A Cache kulcs `v81.0_tactical_fix`-re.
-// 4. JAVÍTVA: A 'XGSource' (TS2552) build hiba javítása 'xgSource'-ra.
+// VERZIÓ: v93.0 ("Piac-Tudatos Pszichológus" Lánc)
+// MÓDOSÍTÁS (v93.0):
+// 1. IMPORT: Behozza az új `runStep_Psychologist`-t (2.5 Ügynök).
+// 2. ELTÁVOLÍTVA: A primitív `calculatePsychologicalProfile` hívásai törölve.
+// 3. HOZZÁADVA: A 2. Ügynök (Scout) után azonnal meghívja a 2.5-ös Ügynököt
+//    (Pszichológus), hogy narratív profilt alkosson.
+// 4. MÓDOSÍTVA: A `criticInput` (5. Ügynök) megkapja a `marketIntel`-t
+//    (a "Piaci Vészjelző" aktiválásához).
+// 5. MÓDOSÍTVA: A 3-as, 5-ös és 6-os Ügynökök (Specialista, Kritikus, Stratéga)
+//    már a 2.5-ös Ügynök narratív (string) profilját kapják meg, nem a régi
+//    primitív indexet.
+// 6. MÓDOSÍTVA: A Cache kulcs `v93.0_market_aware_psych`-ra.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -15,7 +20,7 @@ import type {
     ICanonicalRawData,
     ICanonicalStats,
     ICanonicalOdds,
-    IPlayerStub // ÚJ (v62.1)
+    IPlayerStub 
 } from './src/types/canonical.d.ts';
 // A 'findMainTotalsLine'-t a központi 'utils' fájlból importáljuk
 import { findMainTotalsLine } from './providers/common/utils.js';
@@ -25,21 +30,22 @@ import {
     type IDataFetchOptions, 
     type IDataFetchResponse 
 } from './DataFetch.js';
-// v54.16 importok (1., 3., 4. Ügynökök)
+// Statisztikai modellek (1. és 4. Ügynök)
 import {
-    estimatePureXG,           // ÚJ (1. Ügynök - Quant)
+    estimatePureXG,           // (1. Ügynök - Quant)
     estimateAdvancedMetrics,
     simulateMatchProgress,    // (4. Ügynök - Szimulátor)
     calculateModelConfidence,
-    calculatePsychologicalProfile,
+    // calculatePsychologicalProfile, // ELTÁVOLÍTVA (v93.0)
     calculateValue,
     analyzeLineMovement
 } from './Model.js';
-// AI Szolgáltatás Importok (5. és 6. Ügynökök)
+// AI Szolgáltatás Importok (2.5, 3, 5, 6. Ügynökök)
 import {
-    runStep_Specialist, // ÚJ (3. Ügynök - AI Specialista)
-    runStep_Critic,     // ÚJ (5. Ügynök - Kritikus)
-    runStep_Strategist  // ÚJ (6. Ügynök - Stratéga)
+    runStep_Psychologist, // ÚJ (2.5 Ügynök - Pszichológus)
+    runStep_Specialist,   // (3. Ügynök - AI Specialista)
+    runStep_Critic,       // (5. Ügynök - Kritikus)
+    runStep_Strategist    // (6. Ügynök - Stratéga)
 } from './AI_Service.js';
 import { saveAnalysisToSheet } from './sheets.js'; 
 
@@ -47,19 +53,21 @@ import { saveAnalysisToSheet } from './sheets.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v81.0): Az 5. Ügynök (Kritikus) "bekötése" a pszichológiai adatokkal
-* **************************************************************/
+* VÁLTOZÁS (v93.0): A teljes AI lánc frissítve a "Piac-Tudatos Pszichológus"
+* modellre, amely magában foglalja a 2.5-ös Ügynököt és a piaci vészjelzőket.
+**************************************************************/
 
-// Az új, strukturált JSON válasz (MÓDOSÍTVA v70.0)
+// Az új, strukturált JSON válasz
 interface IAnalysisResponse {
     analysisData: {
         committee: {
             quant: { mu_h: number, mu_a: number, source: string };
-            specialist: { // Ez most már az AI Specialista jelentése
-                mu_h: number, // AI által súgyozott xG
-                mu_a: number, // AI által súgyozott xG
-                log: string,  // AI indoklása
-                report: any   // A teljes AI JSON válasz
+            psychologist: any; // ÚJ (v93.0)
+            specialist: { 
+                mu_h: number, 
+                mu_a: number, 
+                log: string,  
+                report: any   
             };
             critic: any;
             strategist: any;
@@ -69,22 +77,20 @@ interface IAnalysisResponse {
             away: string;
             sport: string;
             mainTotalsLine: number | string;
-            mu_h: number | string; // Ez a SÚLYOZOTT (AI Specialista) xG
+            mu_h: number | string; 
             mu_a: number | string;
         };
         oddsData: ICanonicalOdds | null;
         valueBets: any[];
-        modelConfidence: number; // Ez a Quant/Statisztikai bizalom (4. Ügynök)
-        finalConfidenceScore: number; // Ez a Stratéga (6. Ügynök) által MEGHATÁROZOTT bizalom
+        modelConfidence: number; 
+        finalConfidenceScore: number; 
         sim: any; 
         recommendation: any;
-        xgSource: string; // JAVÍTVA: String típus a Cache-kompatibilitás miatt
-        // === ÚJ (v62.1) ===
+        xgSource: string; 
         availableRosters: {
             home: IPlayerStub[];
             away: IPlayerStub[];
         };
-        // === VÉGE ===
     };
     debugInfo: any;
 }
@@ -94,39 +100,24 @@ interface IAnalysisError {
 }
 
 // === Segédfüggvény a tizedesvesszők kezelésére (Változatlan) ===
-/**
- * Biztonságosan konvertál egy stringet (akár ','-vel) számmá.
-* Helyesen kezeli a 0-t, null-t, és a "0,9" formátumot.
- */
 function safeConvertToNumber(value: any): number | null {
-    if (value == null || value === '') { // Kezeli a null, undefined, ""
+    if (value == null || value === '') { 
         return null;
-}
-    
+    }
     let strValue = String(value);
-    
-    // A kritikus hiba javítása: ',' -> '.'
     strValue = strValue.replace(',', '.');
-    
     const num = Number(strValue);
-    
-    // Ha a konverzió után 'NaN', akkor adjon null-t vissza
     if (isNaN(num)) {
         console.warn(`[AnalysisFlow] HIBÁS BEMENET: Nem sikerült számmá alakítani: "${value}"`);
         return null;
     }
-    
-    // Helyesen adja vissza a 0-t vagy a konvertált számot
     return num;
 }
-// === JAVÍTÁS VÉGE ===
-
 
 export async function runFullAnalysis(params: any, sport: string, openingOdds: any): Promise<IAnalysisResponse | IAnalysisError> {
     let analysisCacheKey = 'unknown_analysis';
     let fixtureIdForSaving: number | string | null = null;
     try {
-        // === v63.0: P1 Komponens és P1 Hiányzók olvasása ===
         const { 
             home: rawHome, 
             away: rawAway, 
@@ -134,16 +125,12 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             sheetUrl, 
             utcKickoff, 
             leagueName,
-            // P1 (Komponens)
             manual_H_xG, 
             manual_H_xGA,
             manual_A_xG, 
             manual_A_xGA,
-            // P1 (Hiányzók)
-            manual_absentees // <- MÓDOSÍTÁS (6 FŐS BIZOTTSÁG)
-        
+            manual_absentees
         } = params;
-        // === Olvasás Vége ===
 
         if (!rawHome || !rawAway || !sport || !utcKickoff) {
             throw new Error("Hiányzó kötelező paraméterek: 'home', 'away', 'sport', 'utcKickoff'.");
@@ -155,13 +142,14 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         
-        // === MÓDOSÍTVA (v81.0) ===
-        // Cache kulcs (v81.0) - az 'v80.0_realism_fix' -> 'v81.0_tactical_fix'
+        // === MÓDOSÍTVA (v93.0) ===
         const p1AbsenteesHash = manual_absentees ?
             `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
-        analysisCacheKey = `analysis_v81.0_tactical_fix_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
+        // Új cache kulcs
+        analysisCacheKey = `analysis_v93.0_market_aware_psych_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
         // === MÓDOSÍTÁS VÉGE ===
+        
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
             if (cachedResult) {
@@ -180,7 +168,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             throw new Error(`Nincs konfiguráció a(z) '${sport}' sporthoz.`);
         }
 
-        // === 2. ÜGYNÖK (SCOUT): Kontextus, Piac és P1 Hiányzók Kezelése ===
+        // === 2. ÜGYNÖK (SCOUT): Kontextus, Piac és P1 Kezelése ===
         console.log(`[Lánc 2/6] Scout Ügynök: Kontextus és Piac lekérése...`);
         const dataFetchOptions: IDataFetchOptions = {
             sport: sport,
@@ -189,18 +177,13 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             leagueName: leagueName,
             utcKickoff: utcKickoff,
             forceNew: forceNew,
-  
-            // P1 (Komponens) (v61.0)
             manual_H_xG: safeConvertToNumber(manual_H_xG),
             manual_H_xGA: safeConvertToNumber(manual_H_xGA),
             manual_A_xG: safeConvertToNumber(manual_A_xG),
             manual_A_xGA: safeConvertToNumber(manual_A_xGA),
-            
-            // P1 (Hiányzók) (v63.0)
             manual_absentees: manual_absentees 
-        
         };
-        // A 'getRichContextualData' (Scout) most már kezeli a 'manual_absentees' (Plan A/B) logikát
+        // A 'getRichContextualData' (Scout) most már kezeli a P1 hibatűrést (v93.0)
         const { 
             rawStats, 
             richContext,
@@ -208,10 +191,9 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             form, 
             rawData, 
             leagueAverages = {}, 
-
             oddsData,
             xgSource,
-            availableRosters // <- (v62.1)
+            availableRosters
         }: IDataFetchResponse = await getRichContextualData(dataFetchOptions);
         // === Scout Végzett ===
         
@@ -236,20 +218,32 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const mainTotalsLine = findMainTotalsLine(mutableOddsData, sport) || sportConfig.totals_line;
         console.log(`Meghatározott fő gól/pont vonal: ${mainTotalsLine}`);
 
-        // === JAVÍTÁS (v80.0): Pszichológiai profilok kiszámítása (MÁR MEGVOLT) ===
-        const psyProfileHome = calculatePsychologicalProfile(home, away, rawData);
-        const psyProfileAway = calculatePsychologicalProfile(away, home, rawData);
+        // === ELTÁVOLÍTVA (v93.0): Primitív pszichológiai profilok ===
+        // const psyProfileHome = calculatePsychologicalProfile(home, away, rawData);
+        // const psyProfileAway = calculatePsychologicalProfile(away, home, rawData);
+        
+        // === ÚJ (v93.0): 2.5 ÜGYNÖK (PSZICHOLÓGUS) ===
+        console.log(`[Lánc 2.5/6] Pszichológus Ügynök: Narratív profilalkotás...`);
+        const psychologistReport = await runStep_Psychologist({
+            rawDataJson: rawData,
+            homeTeamName: home,
+            awayTeamName: away
+        });
+        // Kinyerjük az AI által generált narratív profilokat
+        const { psy_profile_home, psy_profile_away } = psychologistReport;
+        console.log(`[Lánc 2.5/6] Pszichológus végzett.`);
+        // === PSZICHOLÓGUS VÉGZETT ===
         
         // === 1. ÜGYNÖK (QUANT): "Tiszta xG" számítása ===
         console.log(`[Lánc 1/6] Quant Ügynök: Tiszta xG számítása...`);
         const { pure_mu_h, pure_mu_a, source: quantSource } = estimatePureXG(
             home, away, rawStats, sport, form, leagueAverages, 
-            advancedData // Ez tartalmazza a P1-es 4-komponensű adatokat
+            advancedData
         );
         console.log(`Quant (Tiszta xG) [${quantSource}]: H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)}`);
         
-        // === MÓDOSÍTÁS (v70.0): 3. ÜGYNÖK (SPECIALISTA) - AI HÍVÁS ===
-        console.log(`[Lánc 3/6] Specialista Ügynök (AI): Kontextuális módosítók alkalmazása (v80.0)...`);
+        // === MÓDOSÍTVA (v93.0): 3. ÜGYNÖK (SPECIALISTA) - AI HÍVÁS ===
+        console.log(`[Lánc 3/6] Specialista Ügynök (AI): Kontextuális módosítók alkalmazása (v93.0)...`);
         
         const specialistInput = {
             pure_mu_h: pure_mu_h,
@@ -257,17 +251,15 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             quant_source: quantSource,
             rawDataJson: rawData, // A 2. Ügynök teljes kontextusa
             sport: sport,
-            psyProfileHome: psyProfileHome, // (v80.0) Átadva a v80-as promptnak
-            psyProfileAway: psyProfileAway  // (v80.0) Átadva a v80-as promptnak
+            psy_profile_home: psy_profile_home, // (v93.0) Átadva a v93-as promptnak
+            psy_profile_away: psy_profile_away  // (v93.0) Átadva a v93-as promptnak
         };
-        // Aszinkron hívás az AI Specialista felé
         const specialistReport = await runStep_Specialist(specialistInput);
 
-        // Kinyerjük az AI által módosított értékeket
         const { 
             modified_mu_h: mu_h, 
             modified_mu_a: mu_a 
-        } = specialistReport; // Az AI JSON válaszából
+        } = specialistReport; 
         
         console.log(`Specialista (AI) (Súlyozott xG): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
         // === MÓDOSÍTÁS VÉGE ===
@@ -288,37 +280,34 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const valueBets = calculateValue(sim, mutableOddsData, sport, home, away);
         console.log(`Szimulátor végzett. (Modell bizalom: ${modelConfidence.toFixed(1)})`);
 
-        // === 5. ÜGYNÖK (KRITIKUS): Ellentmondások keresése ===
-        console.log(`[Lánc 5/6] Kritikus Ügynök: Ellentmondások keresése (v81.0)...`);
+        // === MÓDOSÍTVA (v93.0): 5. ÜGYNÖK (PIAC-TUDATOS KRITIKUS) ===
+        console.log(`[Lánc 5/6] Kritikus Ügynök: Ellentmondások keresése (v93.0 - Piac-Tudatos)...`);
         
-        // JAVÍTVA (v81.0): A HIÁNYZÓ "VEZETÉK" BEKÖTVE a Kritikushoz
         const criticInput = {
             simJson: sim,
-            marketIntel: marketIntel,
+            marketIntel: marketIntel, // HOZZÁADVA (v93.0): A "Piaci Vészjelző"
             rawDataJson: rawData,
             modelConfidence: parseFloat(modelConfidence.toFixed(1)), 
             valueBetsJson: valueBets,
-            // === JAVÍTÁS (v81.0) ===
-            psyProfileHome: psyProfileHome,
-            psyProfileAway: psyProfileAway
-            // === JAVÍTÁS VÉGE ===
+            psy_profile_home: psy_profile_home, // MÓDOSÍTVA (v93.0)
+            psy_profile_away: psy_profile_away  // MÓDOSÍTVA (v93.0)
         };
         const criticReport = await runStep_Critic(criticInput);
-        // JAVÍTVA (v81.0): A kimenet mélyebb objektumban van
-        const contradictionScore = criticReport?.risk_analysis?.contradiction_score || 0.0;
-        console.log(`[Lánc 5/6] Kritikus végzett. Kockázati Pontszám: ${contradictionScore.toFixed(2)}`);
-
-        // === 6. ÜGYNÖK (STRATÉGA): Végső döntés ===
-        console.log(`[Lánc 6/6] Stratéga Ügynök: Végső döntés meghozatala (v80.0)...`);
         
-        // JAVÍTVA (v80.0): A HIÁNYZÓ "VEZETÉK" BEKÖTVE
-        // Hozzáadtuk a `psyProfileHome` és `psyProfileAway` változókat
+        // A kimenet mélyebb objektumban van (v93)
+        const finalConfidenceFromCritic = criticReport?.final_confidence_report?.final_confidence_score || 1.0;
+        console.log(`[Lánc 5/6] Kritikus végzett. Végső (Piac-Tudatos) Bizalmi Pontszám: ${finalConfidenceFromCritic.toFixed(2)}`);
+        // === MÓDOSÍTÁS VÉGE ===
+
+        // === MÓDOSÍTVA (v93.0): 6. ÜGYNÖK (STRATÉGA) ===
+        console.log(`[Lánc 6/6] Stratéga Ügynök: Végső döntés meghozatala (v93.0)...`);
+        
         const strategistInput = {
             matchData: { home, away, sport, leagueName },
             quantReport: { pure_mu_h: pure_mu_h, pure_mu_a: pure_mu_a, source: quantSource },
             specialistReport: specialistReport, 
             simulatorReport: sim,
-            criticReport: criticReport, 
+            criticReport: criticReport, // Ez már a v93-as Piac-Tudatos riport
             modelConfidence: parseFloat(modelConfidence.toFixed(1)),
             rawDataJson: rawData,
             realXgJson: { 
@@ -327,10 +316,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 manual_A_xG: advancedData?.manual_A_xG ?? null,
                 manual_A_xGA: advancedData?.manual_A_xGA ?? null
             },
-            // === JAVÍTÁS (v80.0) ===
-            psyProfileHome: psyProfileHome,
-            psyProfileAway: psyProfileAway
-            // === JAVÍTÁS VÉGE ===
+            psy_profile_home: psy_profile_home, // MÓDOSÍTVA (v93.0)
+            psy_profile_away: psy_profile_away  // MÓDOSÍTVA (v93.0)
         };
 
         const strategistReport = await runStep_Strategist(strategistInput);
@@ -339,7 +326,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             console.error("A Stratéga (6. Ügynök) hibát adott vissza:", strategistReport.error);
         }
         
-        // JAVÍTÁS (v77.9): Biztonságos hozzáférés a master_recommendation-höz
         const masterRecommendation = strategistReport?.master_recommendation;
         let finalConfidenceScore = 1.0; // Alapértelmezett hiba esetén
         
@@ -348,7 +334,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         } else {
             console.error("KRITIKUS HIBA: A Stratéga (6. Ügynök) nem adott vissza érvényes 'final_confidence' számot! 1.0-ra állítva.");
         }
-        // === JAVÍTÁS VÉGE ===
+        // === MÓDOSÍTÁS VÉGE ===
 
         console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterRecommendation)} (Végső bizalom: ${finalConfidenceScore})`);
 
@@ -361,12 +347,12 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
         };
         
-        // === A VÁLASZ OBJEKTUM ÖSSZEÁLLÍTÁSA (MÓDOSÍTVA v71.2) ===
-        // Csak a karcsúsított (lean) adatok mentése a Sheets 50k limit miatt
+        // A karcsúsított (lean) adatok mentése a Sheets 50k limit miatt
         const auditData = {
             analysisData: {
                 committee: {
                     quant: { mu_h: pure_mu_h, mu_a: pure_mu_a, source: quantSource },
+                    psychologist: psychologistReport, // HOZZÁADVA (v93.0)
                     specialist: { mu_h: mu_h, mu_a: mu_a, log: specialistReport.reasoning, report: specialistReport },
                     critic: criticReport,
                     strategist: strategistReport
@@ -393,8 +379,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         };
         
         const jsonResponse: IAnalysisResponse = { 
-            // JAVÍTVA (v77.6): A szétszórt objektumok helyett
-            // KÖZVETLENÜL mentjük az analysisData és xGSource mezőket
             analysisData: {
                 committee: auditData.analysisData.committee,
                 matchData: auditData.analysisData.matchData,
@@ -404,17 +388,15 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 finalConfidenceScore: auditData.analysisData.finalConfidenceScore,
                 sim: sim, // A teljes sim objektum a UI számára
                 recommendation: masterRecommendation,
-                xgSource: finalXgSource, // A hiányzó mező
-                availableRosters: availableRosters // A teljes roster
+                xgSource: finalXgSource, 
+                availableRosters: availableRosters
             },
             debugInfo: debugInfo 
         };
-        // === MÓDOSÍTÁS VÉGE ===
 
         scriptCache.set(analysisCacheKey, jsonResponse);
         console.log(`Elemzés befejezve és cache mentve (${analysisCacheKey})`);
         if (params.sheetUrl && typeof params.sheetUrl === 'string') {
-            // A Google Sheet-be már csak a karcsúsított JSON-t mentjük (v71.2)
             saveAnalysisToSheet(params.sheetUrl, {
                 sport, 
                 home, 
@@ -431,13 +413,10 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
 
         return jsonResponse;
     } catch (error: any) {
-        // === JAVÍTÁS (TS2448 / TS2454) ===
         const homeParam = params?.home || 'N-A';
         const awayParam = params?.away || 'N-A';
         const sportParam = sport || params?.sport || 'N-A';
-        // 'sport' (függvény argumentum) itt elérhető
         console.error(`Súlyos hiba az elemzési folyamatban (${sportParam} - ${homeParam} vs ${awayParam}): ${error.message}`, error.stack);
         return { error: `Elemzési hiba: ${error.message}` };
-        // === JAVÍTÁS VÉGE ===
     }
 }
