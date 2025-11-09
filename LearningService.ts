@@ -1,12 +1,15 @@
-// LearningService.ts (v94.1 - Build Fix)
-// MÓDOSÍTÁS (v94.1):
-// 1. JAVÍTVA: A 'PROMPT_AUDITOR_V94' (kb. 330. sor) template literálban
-//    a belső aposztrófok (`'`) escape-elve (`\'` és `\\'`) lettek.
-// 2. CÉL: Ez kijavítja a 'TS1005' és 'TS1443' build hibákat, amelyeket
-//    a TypeScript parser hibásan jelzett a string belsejében.
-// 3. Az "Önjavító Hurok" logikája (v94.0) érintetlen marad.
+// LearningService.ts (v94.7 - Syntax Fix)
+// MÓDOSÍTÁS:
+// 1. JAVÍTVA: A `runAuditAnalysis` funkció (kb. 425. sor) `try...catch`
+//    blokkja helyreállítva, kijavítva a `TS1472` build hibát.
+// 2. JAVÍTVA: A `logLearningInsight` hívása (kb. 445. sor) helyesen,
+//    egy objektum-argumentummal hívódik meg, javítva a `TS2554` hibát.
+// 3. JAVÍTVA: A `PROMPT_AUDITOR_V94` (kb. 330. sor) template literálban
+//    a belső aposztrófok (`'`) escape-elve (`\'` és `\\'`) vannak (TS1005 fix).
+// 4. Az "Önjavító Hurok" logikája (v94.0) érintetlen marad.
 
 import NodeCache from 'node-cache';
+// === JAVÍTÁS (v94.7): A 'logLearningInsight' importálása a 'sheets.ts'-ből ===
 import { getHistorySheet, logLearningInsight } from './sheets.js';
 import { GoogleSpreadsheetRow } from 'google-spreadsheet';
 import { 
@@ -236,6 +239,7 @@ export async function runConfidenceCalibration(): Promise<CalibrationResult> {
     console.log("Meta-tanulás: Bizalmi kalibráció indítása a 'History' alapján...");
     try {
         const sheet = await getHistorySheet();
+        // === JAVÍTÁS (v94.7): A 'loadInfo()' hívás a 'getHistorySheet'-be került ===
         const rows = await sheet.getRows();
         
         if (rows.length < 10) {
@@ -386,7 +390,7 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 
 /**
  * Elindítja a 7. Ügynök (Auditor) elemzését egy hibás, magas bizalmú tippről.
- * MÓDOSÍTÁS: A kapott 'learnings' tömböt elküldi az 'updateNarrativeRatings'-nek.
+ * MÓDOSÍTVA (v94.7): Helyreállított try...catch blokk és TS2554 javítás.
  */
 export async function runAuditAnalysis(
     leanAuditData: any, // A "karcsúsított" 'auditData' objektum
@@ -407,17 +411,19 @@ export async function runAuditAnalysis(
         wlpStatus: wlpStatus
     };
     
-    console.log(`[LearningService] 7. ÜGYNÖK (AUDITOR v94.0) INDÍTÁSA: Magas bizalmú hiba (${confidence}/10) elemzése a(z) ${analysisContext.analysisData.matchData.home} vs ${analysisContext.analysisData.matchData.away} meccsen.`);
+    console.log(`[LearningService] 7. ÜGYNÖK (AUDITOR v94.1) INDÍTÁSA: Magas bizalmú hiba (${confidence}/10) elemzése a(z) ${analysisContext.analysisData.matchData.home} vs ${analysisContext.analysisData.matchData.away} meccsen.`);
 
+    // === JAVÍTÁS (v94.7): A 'try...catch' blokk helyreállítása ===
     try {
         const filledPrompt = fillPromptTemplate(PROMPT_AUDITOR_V94, input);
         const auditResult = await _callGeminiWithJsonRetry(filledPrompt, "Step_Auditor (v94)");
 
+        if (auditResult && auditResult.flaw_analysis && auditResult.corrective_insight && Array.isArray(auditResult.learnings)) {
             console.log(`[LearningService] 7. ÜGÖNK (AUDITOR) SIKERES: ${auditResult.corrective_insight}`);
             
             // 1. Tanulság mentése a "Learning_Insights" Google Sheet lapra (Embereknek)
             // === JAVÍTÁS (v94.6 - TS2554): A 'sheetUrl' paraméter eltávolítva ===
-            await logLearningInsight({
+            await logLearningInsight({ // <-- JAVÍTVA: 1 argumentum
                 date: new Date(),
                 sport: analysisContext.analysisData.matchData.sport,
                 home: analysisContext.analysisData.matchData.home,
@@ -444,4 +450,5 @@ export async function runAuditAnalysis(
     } catch (e: any) {
         console.error(`[LearningService] 7. ÜGYNÖK (AUDITOR) KRITIKUS HIBA: ${e.message}`);
     }
+    // === JAVÍTÁS VÉGE ===
 }
