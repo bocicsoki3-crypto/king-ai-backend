@@ -1,8 +1,10 @@
-// --- AI_Service.ts (v83.4 - Végleges Szintaktikai Javítás) ---
-// MÓDOSÍTÁS (v83.4):
-// 1. JAVÍTVA: A `StrategistInput` interfész (kb. 182-184. sor) kritikus
-//    szintaktikai hibája. A belső típusdefiníciókban a vesszők (,)
-//    pontosvesszőre (;) lettek cserélve a TS1005 build hiba elhárításához.
+// --- AI_Service.ts (v92.0 - "Jövőbelátó" Modell) ---
+// MÓDOSÍTÁS (v92.0):
+// 1. ELAVULT: PROMPT_CRITIC_V81 (piaci "value" alapú)
+// 2. ÚJ: PROMPT_CRITIC_V92 ("Belső Koherencia" alapú, piacot ignorálja)
+// 3. ELAVULT: PROMPT_STRATEGIST_V83 (piaci kockázatkezelő)
+// 4. ÚJ: PROMPT_STRATEGIST_V92 ("Maximális Valószínűség" választó)
+// 5. JAVÍTVA: A TS1005 szintaktikai hiba (StrategistInput interfész)
 
 import { 
     _callGemini, 
@@ -13,6 +15,7 @@ import { getConfidenceCalibrationMap } from './LearningService.js';
 import type { ICanonicalPlayerStats, ICanonicalRawData } from './src/types/canonical.d.ts';
 
 // === ÚJ (v77.0): 8. ÜGYNÖK (A TÉRKÉPÉSZ) PROMPT ===
+// ... (Változatlan a v83.5-ből) ...
 const PROMPT_TEAM_RESOLVER_V1 = `
 TASK: You are 'The Mapper', an expert sports data mapping assistant.
 Your goal is to find the correct team ID for a misspelled or alternative team name.
@@ -33,7 +36,8 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 }
 `;
 
-// === JAVÍTVA (v80.0): 3. ÜGYNÖK (AZ AI SPECIALISTA) PROMPT - "VALÓSÁGHŰ" LOGIKA ===
+// === JAVÍTVA (v80.0): 3. ÜGYNÖK (AZ AI SPECIALISTA) PROMPT ===
+// ... (Változatlan a v83.5-ből) ...
 const PROMPT_SPECIALIST_V80 = `
 TASK: You are 'The Specialist', the 3rd Agent.
 Your job is to apply contextual modifiers to a baseline statistical model.
@@ -80,134 +84,125 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 }
 `;
 
-// === JAVÍTVA (v81.0): 5. ÜGYNÖK (A KRITIKUS / TAKTIKUS) PROMPT ===
-const PROMPT_CRITIC_V81 = `
+
+// === ÚJ (v92.0): 5. ÜGYNÖK (A "JÖVŐBELÁTÓ" KRITIKUSA) PROMPT ===
+// FELÜLBÍRJA: PROMPT_CRITIC_V81
+// LOGIKA: Eltávolítva minden piaci "value" és "contradiction" elemzés.
+// A cél a BELSŐ KOHERENCIA mérése.
+const PROMPT_CRITIC_V92 = `
 TASK: You are 'The Critic', the 5th Agent.
-You have two roles:
-1.  **Tactician:** Define the tactical setup based on formations and psychology.
-2.  **Critic:** Find contradictions and risks based on market data and simulation.
+Your job is to determine the INTERNAL CONFIDENCE of the system, ignoring the market.
 
 [INPUTS]:
 1. Simulation (Agent 4 Output): {simJson}
    (P(Home): {simJson.pHome}%, P(Draw): {simJson.pDraw}%, P(Away): {simJson.pAway}%)
-2. Market Sentiment (Scout Data): "{marketIntel}"
-3. Value Bets (Calculated): {valueBetsJson}
-4. Model Confidence (Statistical): {modelConfidence}/10
-5. Raw Contextual Data (Formations, etc.): {rawDataJson}
-6. Psychological Profile (Home): {psyProfileHome}
-7. Psychological Profile (Away): {psyProfileAway}
+2. Model Confidence (Statistical): {modelConfidence}/10
+3. Raw Contextual Data (Agent 2 Output): {rawDataJson}
+   (Includes: Formations, Absentees, Weather, Morale)
+4. Psychological Profile (Home): {psyProfileHome}
+5. Psychological Profile (Away): {psyProfileAway}
 
-[YOUR TASK]:
-Perform your roles in this order:
+[YOUR TASK (v92.0 - "Maximum Confidence" Model)]:
+**PIACI ADATOK (ODDS, MARKET INTEL, VALUE BETS) SZÁNDÉKOSAN IGNORÁLVA.**
+Your goal is to find the INTERNAL COHERENCE (Belső Koherencia).
 
-**PART 1: TACTICAL ANALYSIS (A Taktikus)**
-   - Analyze 'Raw Contextual Data' (5) (especially 'home_formation', 'away_formation') and 'Psychological Profiles' (6, 7).
+**1. Taktikai Elemzés (A Taktikus):**
+   - Analyze 'Raw Contextual Data' (3) and 'Psychological Profiles' (4, 5).
    - Define the tactical approach for both teams.
-   - Define the key battlefield.
 
-**PART 2: RISK ANALYSIS (A Kritikus)**
-   - Review ALL inputs (1-7) and identify the top 1-3 most significant risks or contradictions.
-   - Generate a "Contradiction Score" (a number between -10.0 and +1.0).
-     - **Extrém Negatív (pl. -8.0):** Kritikus kockázat (pl. a modellünk Undert mond, de a piac Overt vesz).
-     - **Semleges (0.0):** Nincs ellentmondás.
-     - **Pozitív (Max 1.0):** A kontextus támogatja a modellt.
-   - Generate a "Tactical Summary" synthesizing the simulation and the raw context.
-   - Generate a "Narrative Theme" (a single, descriptive Hungarian sentence) that captures the core tactical story.
+**2. Belső Bizalom Elemzés (A Kritikus):**
+   - Review ALL inputs (1-5).
+   - Identify the TOP 1-3 most significant risks or confirmations *based ONLY on the internal data chain*.
+   - **Generate an "Internal Confidence Score" (a number between 1.0 and 10.0).**
+     - **Magas (pl. 9.5):** Tökéletes koherencia. A statisztika (1) és a kontextus (3) tökéletesen egyetért. (Pl. Statisztika=Over, Kontextus=Nincsenek védők, Morál=Magas).
+     - **Közepes (pl. 6.0):** Enyhe eltérés. (Pl. Statisztika=Home, de a Hazai morál (3) alacsony).
+     - **Alacsony (pl. 2.0):** Kritikus belső ellentmondás. (Pl. a Statisztikai modell (1) 3.5 xG-t ad (Over), de a kontextus (3) -10°C havazást és két parkoló buszt jelez (Under)).
+   - Generate a "Narrative Theme" capturing the core tactical story.
 
 [OUTPUT STRUCTURE]:
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
 {
   "tactical_analysis": {
-    "home_tactic_analysis": "<A Hazai csapat (5, 6) elemzése. Pl: 'A 4-3-3-as felállás és a 'High Morale' (8.5) agresszív, letámadó játékot vetít előre.'>",
-    "away_tactic_analysis": "<A Vendég csapat (5, 7) elemzése. Pl: 'Az 5-3-2-es felállás és a 'High Pressure' (9.0) mély védekezésre és gyors kontrákra utal.'>",
-    "key_battlefield": "<A kulcs küzdelem helye. Pl: 'Középpályás dominancia' vagy 'Hazai szélsők vs. Vendég szélső védők.'>"
+    "home_tactic_analysis": "<A Hazai csapat (3, 4) elemzése. Pl: 'A 4-3-3-as felállás és a 'High Morale' (8.5) agresszív, letámadó játékot vetít előre.'>",
+    "away_tactic_analysis": "<A Vendég csapat (3, 5) elemzése. Pl: 'Az 5-3-2-es felállás és a 'High Pressure' (9.0) mély védekezésre és gyors kontrákra utal.'>",
+    "key_battlefield": "<A kulcs küzdelem helye. Pl: 'Középpályás dominancia'>"
   },
-  "risk_analysis": {
-    "contradiction_score": <Number, from -10.0 to +1.0. Example: -3.5>,
-    "key_risks": [
-      "<List of 1-3 string bullet points describing the main risks. Example: 'KOCKÁZAT: A szimuláció (1) 65%-ot ad a Hazaira, de a 'smart money' (2) a Vendégre mozog.'>"
+  "internal_coherence_report": {
+    "internal_confidence_score": <Number, from 1.0 to 10.0. Example: 9.0>,
+    "key_coherence_factors": [
+      "<List of 1-3 string bullet points describing the internal coherence factors. Example: 'MEGERŐSÍTÉS: A Szimuláció (1) 85% BTTS-t ad, amit a kontextus (3) (mindkét csapat 4-3-3, kulcs védők hiányoznak) erősen támogat.'>"
     ],
     "tactical_summary": "<A 2. (Scout) és 4. (Sim) Ügynök adatainak rövid, 1-2 mondatos narratív összefoglalása.>",
-    "narrative_theme": "<A single, descriptive Hungarian sentence describing the core tactical story. Example: 'Egyoldalú küzdelem: A Hazaiak agresszív letámadása egy mélyen, 10 emberrel védekező Vendég csapat ellen, akik a kontrákra építenek.'>"
+    "narrative_theme": "<A single, descriptive Hungarian sentence describing the core tactical story. Example: 'Nyílt sisakos küzdelem várható, ahol a statisztika és a hiányzók is gólzáport jósolnak.'>"
   }
 }
 `;
 
-// === JAVÍTVA (v83.0): 6. ÜGYNÖK (A STRATÉGA) PROMPT - "A SZINTETIZÁTOR" LOGIKA ===
-const PROMPT_STRATEGIST_V83 = `
+// === ÚJ (v92.0): 6. ÜGYNÖK (A "MAXIMUM CONFIDENCE" STRATÉGA) PROMPT ===
+// FELÜLBÍRJA: PROMPT_STRATEGIST_V83
+// LOGIKA: Eltávolítva minden piaci kockázatkezelés ("CASE 2", "Contradiction Score").
+// A cél a legmagasabb valószínűségű kimenet kiválasztása.
+const PROMPT_STRATEGIST_V92 = `
 TASK: You are 'The Strategist', the 6th and FINAL Agent.
-You are the King.
-Your job is to synthesize ALL previous reports into a single, final, decisive analysis and recommendation.
-You resolve all contradictions.
+Your job is to synthesize ALL previous reports into a single, final, decisive recommendation.
+**Your goal (v92.0): Find the single MOST PROBABLE outcome, ignoring market price.**
 
 [INPUTS - THE CHAIN OF THOUGHT]:
 1. Match Data: {matchData.home} vs {matchData.away} ({matchData.leagueName})
 2. Agent 1 (Quant) Report:
    - "Pure xG": H={quantReport.pure_mu_h}, A={quantReport.pure_mu_a}
-   - P1 Input Used: {realXgJson}
-3. Agent 3 (Specialist) Report (v80.0):
+3. Agent 3 (Specialist) Report:
    - "Final Weighted xG": H={specialistReport.mu_h}, A={specialistReport.mu_a}
-   - Reasoning: {specialistReport.reasoning}
-4. Agent 4 (Simulator) Report:
-   - Simulation based on Agent 3's Weighted xG: {simulatorReport}
-5. Agent 5 (Critic/Tactician) Report (v81.0):
+4. Agent 4 (Simulator) Report (FULL PROBABILITIES): {simulatorReport}
+   (P(Home), P(Draw), P(Away), pBTTS, pOver/Under(0.5..4.5), etc.)
+5. Agent 5 (Critic/Tactician) Report (v92.0):
    - Tactical Setup: {criticReport.tactical_analysis}
-   - Risk Analysis: {criticReport.risk_analysis}
+   - **Internal Coherence Report: {criticReport.internal_coherence_report}**
 
 [KEY DECISION FACTORS]:
-6. **Statistical Model Confidence (Agent 4): {modelConfidence}/10**
-7. **Contextual Risk Score (Agent 5): {criticReport.risk_analysis.contradiction_score}/10**
-8. **Psychological Profile (Home): {psyProfileHome}**
-9. **Psychological Profile (Away): {psyProfileAway}**
+6. **Internal Confidence Score (Agent 5): {criticReport.internal_coherence_report.internal_confidence_score}/10**
+7. Psychological Profile (Home): {psyProfileHome}
+8. Psychological Profile (Away): {psyProfileAway}
 
-[YOUR TASK - FINAL DECISION (v83.0)]:
-Your response MUST be a single JSON object. You have 3 tasks:
+[YOUR TASK - FINAL DECISION (v92.0)]:
+Your response MUST be a single JSON object.
 
 **TASK 1: (A PRÓFÉTA) - A "prophetic_timeline" mező generálása.**
-   - (Változatlan v81.0): Írj egy élethű, taktikai alapú narratívát (magyarul) a meccs lefolyásáról.
-   - BEMENETEK: Használd a 3., 4., 5., 8. és 9. Ügynökök adatait.
-   - A történetednek **TÖKÉLETESEN tükröznie kell** a kapott xG adatokat (3), a 'Pszichológiai Profilokat' (8, 9) és a **'Taktikai Elemzést' (5)**.
-   - Ezt a szöveget helyezd a 'prophetic_timeline' mezőbe.
+   - Írj egy élethű, taktikai alapú narratívát (magyarul) a meccs lefolyásáról.
+   - BEMENETEK: Használd a 3., 4., 5., 7. és 8. Ügynökök adatait.
+   - A történetednek **TÖKÉLETESEN tükröznie kell** a kapott xG adatokat (3), a 'Pszichológiai Profilokat' (7, 8) és a **'Taktikai Elemzést' (5)**.
 
-**TASK 2: (A STRATÉGA / SZINTETIZÁTOR) - A "strategic_synthesis" és "final_confidence_report" mezők generálása.**
-   - FELADAT: Elemezd az ÖSSZES bemenetet (különösen 6, 7, 8, 9).
-   - **KRITIKUS DÖNTÉS (A SZINTÉZIS - v83.0):**
-     - **CASE 1 (Standard):** A 'Contextual Risk Score' (7) semleges (pl. -4.0 felett).
-       - **THEN:** A modelled megbízható. A 'final_confidence' = (Statistical Confidence (6) + Contextual Risk (7)).
-     
-     - **CASE 2 (VÖRÖS ZÁSZLÓ / "Arsenal Hiba"):** A 'Contextual Risk Score' (7) extrém negatív (pl. -4.0 alatt).
-       - **THEN:** Ez azt jelenti, hogy a Piac (a "Smart Money") aktívan ellened fogad. A modelled (4) és a piac (5) ellentmond.
-       - **NE FUTAMODJ MEG (NE vágd 1.0-ra a bizalmat, mint a v82.0-ban)!**
-       - **A FELADATOD:** Légy "A Szintetizátor". **Találd meg a REJTETT VÁTOZÓT.**
-       - 1. Elemezd a 'Risk Analysis' (5) 'key_risks' mezőjét (ez megmondja, mi az ellentmondás, pl. "Modell=Under, Piac=Over").
-       - 2. Elemezd a 'Raw Contextual Data'-t (pl. 'rawDataJson.absentees', 'rawDataJson.lineup_news', pletykák) és a 'Market Sentiment'-et (5).
-       - 3. **Indokold meg, MIÉRT** mozog a piac? Lát a piac egy utolsó pillanatos sérülést, amit a statisztikai modelled nem? (Pl. "A Piac valószínűleg arra reagál, hogy a Hazai csapat két kezdő védője (P4 adat) mégis kétséges, ezért az 'Over' felé mozog, felülbírálva a mi 'Under' modellünket.")
-       - 4. **Szintetizáld a Döntést:** Ha az ellentmondás oka súlyos (a Piacnak igaza van), **VÁLTS OLDALT** (pl. változtasd a tippet 'Under'-ről 'Over'-re) VAGY tarts ki a modelled mellett, de drasztikusan csökkentett bizalommal.
+**TASK 2: (A STRATÉGA / JÖVŐBELÁTÓ) - A "strategic_synthesis" és "final_confidence_report" mezők generálása.**
+   - FELADAT: Elemezd az ÖSSZES bemenetet (különösen 4, 5, 6, 7, 8).
+   - **KRITIKUS DÖNTÉS (A "Jövőbelátó" - v92.0):**
+     - 1. Vizsgáld meg a 4. Ügynök (Simulator) teljes valószínűségi listáját ({simulatorReport}).
+     - 2. **Válaszd ki a legmagasabb százalékos valószínűséggel rendelkező kimenetelt** a fő piacok közül (1X2, O/U 2.5, BTTS).
+     - 3. A 'final_confidence' PONTOSAN egyenlő az 5. Ügynök 'internal_confidence_score'-jával (6). A piacot ignoráljuk.
    
-   - Írj egy 2-3 bekezdéses holisztikus elemzés a 'strategic_synthesis'-be (magyarul). Magyarázd el a láncot, és INDOKOLD a 'CASE 1' vagy 'CASE 2' döntést.
-   - Írj egy részletes indoklást a 'final_confidence_report'-ba (magyarul), és **HATÁROZD MEG A VÉGSŐ BIZALMI PONTSZÁMOT (1.0-10.0)**.
+   - Írj egy 2-3 bekezdéses holisztikus elemzést a 'strategic_synthesis'-be (magyarul). Magyarázd el a láncot, és INDOKOLD, miért a kiválasztott kimenetel a legvalószínűbb.
+   - Írj egy részletes indoklást a 'final_confidence_report'-ba (magyarul), amely az 5. Ügynök 'internal_coherence_factors' mezőjére (5) épül.
 
 **TASK 3: (A VÉGREHAJTÓ) - A "micromodels" és "master_recommendation" mezők kitöltése.**
    - Töltsd ki a 'micromodels' mezőit a 4-es Ügynök (Simulator) adatai alapján.
-   - Töltsd ki a 'master_recommendation' mezőt. MINDIG válassz egy tippet.
+   - Töltsd ki a 'master_recommendation' mezőt a (TASK 2) döntése alapján.
 
 [OUTPUT STRUCTURE]:
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure.
 {
   "prophetic_timeline": "<A (TASK 1) alapján generált, élethű, TAKTIKAI alapú, magyar nyelvű meccs-narratíva.>",
-  "strategic_synthesis": "<A (TASK 2) alapján generált 2-3 bekezdéses holisztikus elemzés (magyarul), amely magában foglalja a taktikát (5), a pszichológiát (8, 9) és a 'CASE 1/CASE 2' (v83.0) szintézisének indoklását.>",
+  "strategic_synthesis": "<A (TASK 2) alapján generált 2-3 bekezdéses holisztikus elemzés (magyarul), amely a taktikát (5) és a pszichológiát (7, 8) szintetizálja.>",
   "micromodels": {
     "btts_analysis": "<BTTS elemzés. A {simulatorReport.pBTTS}% (4) valószínűség alapján.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]",
-    "goals_ou_analysis": "<Gól O/U elemzés. **KRITIKUS: Kizárólag a {simulatorReport.mainTotalsLine} gólvonalat (pl. 2.5, 3.5) elemezd!** A {simulatorReport.pOver}% (4) valószínűség alapján.>\\nBizalom: [Alacsony/Közepes/Magas]",
+    "goals_ou_analysis": "<Gól O/U elemzés. **Kizárólag a {simulatorReport.mainTotalsLine} gólvonalat (pl. 2.5) elemezd!** A {simulatorReport.pOver}% (4) valószínűség alapján.>\\nBizalom: [Alacsony/Közepes/Magas]",
     "corner_analysis": "<Szöglet O/U elemzés. Csak ha a simulatorReport.mu_corners_sim > 0.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]",
     "card_analysis": "<Lap O/U elemzés. Csak ha a simulatorReport.mu_cards_sim > 0.>\\nBizalom: [Alacsony/Közepes/Magas/N/A]"
   },
-  "final_confidence_report": "**<Number>/10** - Részletes indoklás (magyarul). <A (TASK 2) alapján meghatározott VÉGSŐ pontszám és a 'CASE 1/CASE 2' (v83.0) szintézisének indoklása.>",
+  "final_confidence_report": "**<Number>/10** - Részletes indoklás (magyarul). <Az 5. Ügynök 'internal_confidence_score'-ja (5) és a (TASK 2) döntése alapján.>",
   "master_recommendation": {
-    "__INSTRUCTION__": "**KRITIKUS FONTOSSÁGÚ:** Soha ne adj 'No Bet' vagy 'Nincs Tipp' ajánlást. MINDIG válaszd ki a legvalószínűbb kimenetelt.",
-    "recommended_bet": "<A (TASK 3) alapján meghatározott végső, szintetizált ajánlás (CSAK fő piac: 1X2, O/U, BTTS, Moneyline)>",
-    "final_confidence": <Number, a (TASK 2) 'final_confidence_report'-ban meghatározott végső bizalmi pontszám 1.0-10.0 között.>,
-    "brief_reasoning": "<Egyetlen, tömör magyar mondatos indoklás, amely tükrözi a 'CASE 1/CASE 2' (v83.0) szintézisének döntését.>"
+    "__INSTRUCTION__": "**KRITIKUS FONTOSSÁGÚ:** Soha ne adj 'No Bet' vagy 'Nincs Tipp' ajánlást. MINDIG válaszd ki a (TASK 2) alapján meghatározott legvalószínűbb kimenetelt.",
+    "recommended_bet": "<A (TASK 2) alapján meghatározott, legmagasabb valószínűségű kimenetel (CSAK fő piac: 1X2, O/U, BTTS)>",
+    "final_confidence": <Number, az 5. Ügynök 'internal_confidence_score'-ja (5) alapján (1.0-10.0).>,
+    "brief_reasoning": "<Egyetlen, tömör magyar mondatos indoklás, amely a belső koherenciára (5) épül.>"
   }
 }
 `;
@@ -246,13 +241,11 @@ interface SpecialistInput {
     quant_source: string;
     rawDataJson: ICanonicalRawData;
     sport: string;
-    // JAVÍTVA (v80.0): Hozzáadva az interfészhez
     psyProfileHome: any;
     psyProfileAway: any;
 }
 export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
     try {
-        // JAVÍTVA (v80.0): Az új, "valósághű" prompt használata
         const filledPrompt = fillPromptTemplate(PROMPT_SPECIALIST_V80, data);
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Specialist (v80)");
     } catch (e: any) {
@@ -262,28 +255,27 @@ export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
             "modified_mu_h": data.pure_mu_h,
             "modified_mu_a": data.pure_mu_a,
             "key_factors": [`KRITIKUS HIBA: A 3. Ügynök (Specialista) nem tudott lefutni: ${e.message}`],
-            "reasoning": "AI Hiba: A 3. Ügynök (Specialista) hibát dobott, a Súlyozott xG megegezik a Tiszta xG-vel."
+            "reasoning": "AI Hiba: A 3. Ügynök (Specialista) hibát dobott, a Súlyozott xG megegyezik a Tiszta xG-vel."
         };
     }
 }
 
 
-// === JAVÍTVA (v81.0): 5. LÉPÉS (KRITIKUS / TAKTIKUS) ===
+// === JAVÍTVA (v92.0): 5. LÉPÉS (KRITIKUS / JÖVŐBELÁTÓ) ===
 interface CriticInput {
     simJson: any;
-    marketIntel: string;
-    valueBetsJson: any[];
+    // TÖRÖLVE (v92.0): marketIntel: string;
+    // TÖRÖLVE (v92.0): valueBetsJson: any[];
     modelConfidence: number;
     rawDataJson: ICanonicalRawData;
-    // JAVÍTVA (v81.0): Hozzáadva az interfészhez
     psyProfileHome: any;
     psyProfileAway: any;
 }
 export async function runStep_Critic(data: CriticInput): Promise<any> {
     try {
-        // JAVÍTVA (v81.0): A v81-es "Taktikai Kritikus" prompt használata
-        const filledPrompt = fillPromptTemplate(PROMPT_CRITIC_V81, data); 
-        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Critic (v81)");
+        // JAVÍTVA (v92.0): Az új, "Belső Koherencia" (piacot ignoráló) prompt használata
+        const filledPrompt = fillPromptTemplate(PROMPT_CRITIC_V92, data); 
+        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Critic (v92)");
     } catch (e: any) {
         console.error(`AI Hiba (Critic): ${e.message}`);
         // Kritikus hiba esetén is adjunk vissza egy alap jelentést, hogy a lánc ne álljon le
@@ -293,25 +285,23 @@ export async function runStep_Critic(data: CriticInput): Promise<any> {
             "away_tactic_analysis": "AI Hiba: A taktikai elemzés nem futott le.",
             "key_battlefield": "N/A"
           },
-          "risk_analysis": {
-            "contradiction_score": 0.0,
-            "key_risks": [`KRITIKUS HIBA: Az 5. Ügynök (Kritikus) nem tudott lefutni: ${e.message}`],
+          "internal_coherence_report": {
+            "internal_confidence_score": 1.0, // HIBA esetén a bizalom 1.0
+            "key_coherence_factors": [`KRITIKUS HIBA: Az 5. Ügynök (Kritikus) nem tudott lefutni: ${e.message}`],
             "tactical_summary": `AI Hiba (Critic): ${e.message}`,
             "narrative_theme": `Hiba: A Kritikus (5. Ügynök) nem tudott lefutni.`
           }
         };
     }
-}
+} // <-- Biztosítva a helyes lezárás (v83.5 javítás)
 
-// === JAVÍTVA (v83.4): 6. LÉPÉS (STRATÉGA) - VÉGLEGES SZINTAKTIKAI JAVÍTÁS ===
-// A 183. sor környéki hiba javítva: A belső vesszők (,) pontosvesszőre (;)
-// lettek cserélve a TS1005 build hiba elhárításához.
+// === JAVÍTVA (v83.5): 6. LÉPÉS (STRATÉGA) - Szintaktikai javítás ===
 interface StrategistInput {
-    matchData: { home: string; away: string; sport: string; leagueName: string; }; // <-- JAVÍTVA
-    quantReport: { pure_mu_h: number; pure_mu_a: number; source: string; }; // <-- JAVÍTVA
+    matchData: { home: string; away: string; sport: string; leagueName: string; }; // <-- JAVÍTVA (;)
+    quantReport: { pure_mu_h: number; pure_mu_a: number; source: string; }; // <-- JAVÍTVA (;)
     specialistReport: any; 
     simulatorReport: any;
-    criticReport: any; 
+    criticReport: any; // Ez most már a v92-es Critic riportot fogja tartalmazni
     modelConfidence: number; 
     rawDataJson: ICanonicalRawData; 
     realXgJson: any;
@@ -320,9 +310,9 @@ interface StrategistInput {
 }
 // === JAVÍTÁS VÉGE ===
 
+// === JAVÍTVA (v92.0): 6. LÉPÉS (STRATÉGA) - "Maximum Confidence" Logika ===
 export async function runStep_Strategist(data: StrategistInput): Promise<any> {
     try {
-        // JAVÍTVA (v80.0): A 'data' objektum már tartalmazza a pszichológiai adatokat
         const dataForPrompt = { 
             ...data, 
             simulatorReport: data.simulatorReport,
@@ -331,11 +321,12 @@ export async function runStep_Strategist(data: StrategistInput): Promise<any> {
                 mu_h: data.specialistReport.modified_mu_h, 
                 mu_a: data.specialistReport.modified_mu_a  
             }
+            // A 'criticReport' most már a v92-es ('internal_coherence_report')
         };
         
-        // JAVÍTVA (v83.0): Az új, "Szintetizátor" prompt használata
-        const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V83, dataForPrompt); 
-        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Strategist (v83)");
+        // JAVÍTVA (v92.0): Az új, "Maximális Valószínűség" prompt használata
+        const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V92, dataForPrompt); 
+        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Strategist (v92)");
     } catch (e: any) {
         console.error(`AI Hiba (Strategist): ${e.message}`);
         return {
@@ -389,11 +380,11 @@ If the answer isn't in the context or history, politely state that the informati
     }
 }
 
-// --- FŐ EXPORT (MÓDOSÍTVA v77.0) ---
+// --- FŐ EXPORT (MÓDOSÍTVA v92.0) ---
 export default {
-    runStep_TeamNameResolver, // HOZZÁADVA
+    runStep_TeamNameResolver,
     runStep_Specialist, 
-    runStep_Critic,
-    runStep_Strategist,
+    runStep_Critic, // Most már a v92-es Critic-re mutat
+    runStep_Strategist, // Most már a v92-es Strategist-re mutat
     getChatResponse
 };
