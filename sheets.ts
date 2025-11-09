@@ -1,13 +1,14 @@
 // FÁJL: sheets.ts
-// VERZIÓ: v94.4 (Kritikus Cache Javítás)
-// MÓDOSÍTÁS:
-// 1. LÉTREHOZVA: Ez a fájl hiányzott. Újraépítve a projekt importjai alapján.
-// 2. KRITIKUS JAVÍTÁS: Minden adatot olvasó funkció (getHistoryFromSheet,
+// VERZIÓ: v94.5 (Mentési Hurok és Cache Javítás)
+// MÓDOSÍTÁS (v94.5):
+// 1. JAVÍTVA (Mentés): A `saveAnalysisToSheet` funkció már nem fogad el
+//    'sheetUrl' paramétert. Belsőleg, a .env-ből hívja meg a helyes lapot.
+//    Ez javítja a kritikus "nincs mentés" hibát az AnalysisFlow.ts-ben.
+// 2. JAVÍTVA (Olvasás): Minden adatot olvasó funkció (getHistoryFromSheet,
 //    getAnalysisDetailFromSheet, deleteHistoryItemFromSheet) most már
 //    tartalmazza az `await sheet.loadInfo();` parancsot.
 // 3. CÉL: Ez a parancs "feltöri" a google-spreadsheet cache-t, és biztosítja,
-//    hogy az Előzmények modal mindig a legfrissebb, valós adatokat olvassa be
-//    (megoldva a "nincs mentve" hibát).
+//    hogy az Előzmények modal mindig a legfrissebb, valós adatokat olvassa be.
 
 import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
@@ -64,7 +65,23 @@ export async function getHistorySheet(): Promise<GoogleSpreadsheetWorksheet> {
     const doc = await getDoc();
     const sheet = doc.sheetsByTitle['History'];
     if (!sheet) {
-        throw new Error("A 'History' munkalap nem található a Google Sheet dokumentumban.");
+        // Kritikus hiba: Ha nincs History lap, hozzunk létre egyet
+        try {
+            console.warn("A 'History' munkalap nem található, létrehozás...");
+            const headers = [
+                "ID", "FixtureID", "Dátum", "Sport", "Home", "Away", "Tipp",
+                "Bizalom", "Valós Eredmény", "Helyes (W/L/P)", "JSON_Data"
+            ];
+            const newSheet = await doc.addSheet({ 
+                title: 'History', 
+                headerValues: headers
+            });
+            console.log("A 'History' munkalap sikeresen létrehozva.");
+            return newSheet;
+        } catch (e: any) {
+             console.error(`[Sheets] KRITIKUS HIBA: Nem sikerült létrehozni a 'History' munkalapot: ${e.message}`);
+             throw new Error("A 'History' munkalap nem található és nem is hozható létre.");
+        }
     }
     return sheet;
 }
@@ -76,7 +93,19 @@ async function getLearningSheet(): Promise<GoogleSpreadsheetWorksheet> {
     const doc = await getDoc();
     const sheet = doc.sheetsByTitle['Learning_Insights'];
     if (!sheet) {
-        throw new Error("A 'Learning_Insights' munkalap nem található a Google Sheet dokumentumban.");
+         try {
+            console.warn("A 'Learning_Insights' munkalap nem található, létrehozás...");
+            const headers = ["Dátum", "Sport", "Home", "Away", "Tipp", "Bizalom", "Valós Eredmény", "Tanulság (AI)"];
+            const newSheet = await doc.addSheet({ 
+                title: 'Learning_Insights', 
+                headerValues: headers
+            });
+            console.log("A 'Learning_Insights' munkalap sikeresen létrehozva.");
+            return newSheet;
+        } catch (e: any) {
+             console.error(`[Sheets] KRITIKUS HIBA: Nem sikerült létrehozni a 'Learning_Insights' munkalapot: ${e.message}`);
+             throw new Error("A 'Learning_Insights' munkalap nem található és nem is hozható létre.");
+        }
     }
     return sheet;
 }
@@ -87,22 +116,22 @@ async function getLearningSheet(): Promise<GoogleSpreadsheetWorksheet> {
 /**
  * Elment egy elemzést a "History" lapra.
  * Ha az ID már létezik, frissíti a sort. Ha nem, új sort ad hozzá.
+ * JAVÍTVA (v94.5): Már nem kér 'sheetUrl' paramétert.
  */
-export async function saveAnalysisToSheet(sheetUrl: string, data: {
+export async function saveAnalysisToSheet(data: {
     sport: string,
     home: string,
     away: string,
     date: Date,
-    html: string, // Ez valójában a 'JSON_Data'
+    html: string, // Ez valójában a 'JSON_Data' (az AnalysisFlow <pre> taggel küldi)
     id: string,
     fixtureId: number | string | null,
     recommendation: any
 }) {
     try {
+        // === JAVÍTÁS (v94.5): A funkció már belsőleg hívja a getHistorySheet()-et ===
         const sheet = await getHistorySheet();
         
-        // Optimalizálás: Nem törjük a cache-t írás előtt,
-        // de biztosítjuk a fejléceket, ha még nincsenek betöltve.
         if (sheet.headerValues.length === 0) {
              await sheet.loadHeaderRow();
         }
@@ -124,10 +153,6 @@ export async function saveAnalysisToSheet(sheetUrl: string, data: {
             'JSON_Data': data.html // A v71.0+ <pre>JSON</pre> string
         };
 
-        // 1. Próbáljuk megkeresni a meglévő sort (ID alapján)
-        // Mivel a getRows() lassú lehet, először megpróbálunk egy gyorsítótárazott
-        // keresést, de ha a mentés kritikus, akkor a lassabb `getRows` kell.
-        
         // Mivel a `getRows` cache-elhet, a biztonságos mentés érdekében
         // először betöltjük a friss infókat, ahogy a `getHistory` is teszi.
         await sheet.loadInfo(); // v94.4 - Biztonsági cache-törés
@@ -141,7 +166,6 @@ export async function saveAnalysisToSheet(sheetUrl: string, data: {
             existingRow.set('Tipp', rowData.Tipp);
             existingRow.set('Bizalom', rowData.Bizalom);
             existingRow.set('JSON_Data', rowData.JSON_Data);
-            // Biztosítjuk, hogy a FixtureID is frissüljön, ha esetleg hiányzott
             existingRow.set('FixtureID', rowData.FixtureID); 
             await existingRow.save();
         } else {
@@ -150,7 +174,7 @@ export async function saveAnalysisToSheet(sheetUrl: string, data: {
         }
         
     } catch (e: any) {
-        console.error(`[Sheets] KRITIKUS HIBA a 'saveAnalysisToSheet' során: ${e.message}`, e.stack);
+        console.error(`[Sheets] KRITIKUS HIBA a 'saveAnalysisToSheet' során (ID: ${data.id}): ${e.message}`, e.stack);
         // Ne dobjunk hibát, hogy az AnalysisFlow folytatódhasson
     }
 }
@@ -179,7 +203,7 @@ export async function getHistoryFromSheet(): Promise<{ history: any[]; error?: s
             away: row.get('Away')
         })).filter(item => item.id && item.home && item.date); // Csak valid sorok
 
-        // Dátum szerint rendezés (legújabb elöl) - Bár a kliens is rendezi
+        // Dátum szerint rendezés (legújabb elöl)
         history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
         return { history };
@@ -251,9 +275,9 @@ export async function deleteHistoryItemFromSheet(id: string): Promise<{ success?
 
 /**
  * Naplózza a 7. Ügynök (Auditor) tanulságait a 'Learning_Insights' lapra.
- * (Ez a funkció csak Hozzáad, cache-törlés nem szükséges).
+ * JAVÍTVA (v94.5): Már nem kér 'sheetUrl' paramétert.
  */
-export async function logLearningInsight(sheetUrl: string, data: {
+export async function logLearningInsight(data: {
     date: Date;
     sport: string;
     home: string;
@@ -263,9 +287,8 @@ export async function logLearningInsight(sheetUrl: string, data: {
     actual: string;
     insight: string;
 }) {
-    if (!sheetUrl) return; // Ne álljon le a rendszer, ha nincs URL
-
     try {
+        // === JAVÍTÁS (v94.5): Belső hívás ===
         const sheet = await getLearningSheet();
         await sheet.addRow({
             'Dátum': data.date.toISOString(),
