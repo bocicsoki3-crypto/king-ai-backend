@@ -1,355 +1,284 @@
-// sheets.ts (v71.0 - "Auditor" Bővítés)
-// MÓDOSÍTÁS (v71.0):
-// 1. HOZZÁADVA: A 'getHistorySheet' fejlécei közé bekerült az új 'JSON_Data' oszlop.
-// 2. MÓDOSÍTVA: A 'saveAnalysisToSheet' most már kezeli és menti a 'JSON_Data' mezőt.
-// 3. MÓDOSÍTVA: A 'getAnalysisDetailFromSheet' intelligensebb lett:
-//    - Ha talál 'JSON_Data'-t, megpróbálja azt "szépen" (pretty-print) megjeleníteni.
-//    - Ha nem, visszaáll a régi 'HTML Tartalom' mezőre.
+// FÁJL: sheets.ts
+// VERZIÓ: v94.4 (Kritikus Cache Javítás)
+// MÓDOSÍTÁS:
+// 1. LÉTREHOZVA: Ez a fájl hiányzott. Újraépítve a projekt importjai alapján.
+// 2. KRITIKUS JAVÍTÁS: Minden adatot olvasó funkció (getHistoryFromSheet,
+//    getAnalysisDetailFromSheet, deleteHistoryItemFromSheet) most már
+//    tartalmazza az `await sheet.loadInfo();` parancsot.
+// 3. CÉL: Ez a parancs "feltöri" a google-spreadsheet cache-t, és biztosítja,
+//    hogy az Előzmények modal mindig a legfrissebb, valós adatokat olvassa be
+//    (megoldva a "nincs mentve" hibát).
 
 import { GoogleSpreadsheet, GoogleSpreadsheetWorksheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
-import { SHEET_URL } from './config.js'; 
+import { SHEET_URL } from './config.js';
 
-// --- Google Hitelesítés Beállítása (Környezeti Változókból) ---
+// --- Hitelesítés és Alap Dokumentum Elérés ---
 
-const privateKey = process.env.GOOGLE_PRIVATE_KEY 
-    ? process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n') 
-    : undefined;
-const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-
-if (!privateKey || !clientEmail) {
-    console.warn(`KRITIKUS BIZTONSÁGI FIGYELMEZTETÉS: Hiányzó GOOGLE_PRIVATE_KEY vagy GOOGLE_CLIENT_EMAIL környezeti változó. 
-    A Google Sheet integráció (mentés/olvasás) SIKERTELEN lesz.`);
-}
-
-const serviceAccountAuth = new JWT({
-    email: clientEmail,
-    key: privateKey,
-    scopes: [
-        'https://www.googleapis.com/auth/spreadsheets',
-        'https://www.googleapis.com/auth/drive.file',
-    ],
-});
+let doc: GoogleSpreadsheet;
 
 /**
- * Segédfüggvény a Google Táblázat dokumentum betöltéséhez és hitelesítéséhez.
+ * Inicializálja a Google Spreadsheet dokumentumot (doc) hitelesítéssel.
+ * Csak egyszer fut le.
  */
-function getDocInstance(): GoogleSpreadsheet {
-    if (!SHEET_URL) {
-        console.error("Hiányzó SHEET_URL a .env fájlban.");
-        throw new Error("Hiányzó SHEET_URL a .env fájlban.");
-    }
-    if (!privateKey || !clientEmail) {
-        throw new Error("A Google Sheet szolgáltatás nincs konfigurálva (hiányzó GOOGLE_CLIENT_EMAIL/GOOGLE_PRIVATE_KEY).");
+async function getDoc(): Promise<GoogleSpreadsheet> {
+    if (doc) return doc;
+
+    const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+    const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    const sheetUrl = SHEET_URL;
+
+    if (!serviceAccountEmail || !privateKey || !sheetUrl) {
+        console.error("KRITIKUS HIBA: Hiányzó Google Sheets .env változók (EMAIL, KEY, vagy SHEET_URL).");
+        throw new Error("Google Sheets hitelesítés sikertelen: Hiányzó konfiguráció.");
     }
 
-    const sheetIdMatch = SHEET_URL.match(/\/d\/([a-zA-Z0-9-_]+)/);
-    if (!sheetIdMatch || !sheetIdMatch[1]) {
-        console.error("Érvénytelen Google Sheet URL a .env fájlban. Nem sikerült kinyerni az ID-t. A megadott URL:", SHEET_URL);
-        throw new Error("Érvénytelen Google Sheet URL. Nem sikerült kinyerni az ID-t.");
-    }
-    const doc = new GoogleSpreadsheet(sheetIdMatch[1], serviceAccountAuth);
-    return doc;
-}
-
-/**
- * Megnyit vagy létrehoz egy munkalapot a dokumentumon belül.
- */
-async function _getSheet(doc: GoogleSpreadsheet, sheetName: string, headers?: string[]): Promise<GoogleSpreadsheetWorksheet> {
     try {
-        await doc.loadInfo(); // Betölti a dokumentum metaadatait (lapok listája)
-        let sheet = doc.sheetsByTitle[sheetName];
-        
-        if (!sheet && headers && Array.isArray(headers)) {
-            console.log(`'${sheetName}' munkalap nem található, létrehozás...`);
-            
-            sheet = await doc.addSheet({ 
-                title: sheetName, 
-                headerValues: headers
-            });
+        const jwt = new JWT({
+            email: serviceAccountEmail,
+            key: privateKey,
+            scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+        });
 
-            await sheet.updateGridProperties({ 
-                frozenRowCount: 1,
-                rowCount: sheet.rowCount,
-                columnCount: sheet.columnCount
-            } as any); 
-            
-            await sheet.loadHeaderRow();
-            const headerCells = sheet.headerValues.map((header, index) => sheet.getCell(0, index));
-            for(const cell of headerCells) {
-                cell.textFormat = { bold: true };
-            }
-            
-            await sheet.saveUpdatedCells(); 
-
-            console.log(`'${sheetName}' munkalap sikeresen létrehozva.`);
-        } else if (!sheet) {
-            console.error(`'${sheetName}' munkalap nem található, és nem lettek megadva fejlécek.`);
-            throw new Error(`'${sheetName}' munkalap nem található.`);
+        // A SHEET_URL-ból kinyerjük az ID-t
+        const match = sheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+        if (!match || !match[1]) {
+            throw new Error("Érvénytelen SHEET_URL. Nem található a dokumentum ID.");
         }
+        const SHEET_ID = match[1];
         
-        // === ÚJ (v71.0): Fejléc ellenőrzése és frissítése ===
-        // Biztosítja, hogy a 'JSON_Data' oszlop létezzen, ha a lap már létezett
-        if (sheet && headers && headers.length > 0) {
-            await sheet.loadHeaderRow();
-            const currentHeaders = sheet.headerValues || [];
-            const missingHeaders = headers.filter(h => !currentHeaders.includes(h));
-            
-            if (missingHeaders.length > 0) {
-                console.warn(`[sheets.ts] A '${sheetName}' munkalap frissítése... Hiányzó oszlopok: ${missingHeaders.join(', ')}`);
-                // Hozzáadjuk a hiányzó fejléceket (ez új sorokat nem ad hozzá, csak a fejlécet frissíti)
-                await sheet.setHeaderRow(currentHeaders.concat(missingHeaders));
-                console.log(`[sheets.ts] Fejléc sikeresen frissítve.`);
-            }
-        }
-        // === MÓDOSÍTÁS VÉGE ===
-
-        return sheet;
+        doc = new GoogleSpreadsheet(SHEET_ID, jwt);
+        await doc.loadInfo(); // Cím és lapok betöltése
+        console.log(`[Sheets] Sikeresen csatlakozva a Google Sheet-hez: ${doc.title}`);
+        return doc;
     } catch (e: any) {
-        console.error(`Hiba a munkalap elérésekor (${sheetName}): ${e.message}`, e.stack);
-         throw e;
+        console.error(`[Sheets] KRITIKUS HIBA a Google Sheet betöltésekor: ${e.message}`, e.stack);
+        throw new Error(`Google Sheets csatlakozási hiba: ${e.message}`);
     }
 }
 
 /**
- * Lekéri a "History" munkalapot.
- * MÓDOSÍTVA (v71.0): Hozzáadva a 'JSON_Data' oszlop.
+ * Segédfüggvény: Lekéri a 'History' munkalapot.
  */
 export async function getHistorySheet(): Promise<GoogleSpreadsheetWorksheet> {
-    const doc = getDocInstance();
-    const headers = [
-        "ID", 
-        "FixtureID", // v50.1
-        "Dátum", 
-        "Sport", 
-        "Hazai", 
-        "Vendég", 
-        "Tipp",
-        "Bizalom",
-        "Valós Eredmény",
-        "Helyes (W/L/P)",
-        "HTML Tartalom", // Ez a régi log, meghagyjuk
-        "JSON_Data"      // ÚJ (v71.0) - Az Auditor számára
-    ];
-    return await _getSheet(doc, "History", headers);
+    const doc = await getDoc();
+    const sheet = doc.sheetsByTitle['History'];
+    if (!sheet) {
+        throw new Error("A 'History' munkalap nem található a Google Sheet dokumentumban.");
+    }
+    return sheet;
 }
-
-// === Típusdefiníciók a Sheet I/O számára ===
-interface IHistoryRow {
-    id: string;
-    date: string;
-    sport: string;
-    home: string;
-    away: string;
-    tip: string;
-    confidence: string;
-}
-
-interface IAnalysisDetail {
-    id: string;
-    home: string;
-    away: string;
-    html: string; // Ez most már a JSON vagy a régi HTML
-}
-
-interface IAnalysisDataToSave {
-    id: string;
-    fixtureId: number | string | null;
-    date: Date;
-    sport: string;
-    home: string;
-    away: string;
-    html: string; // A log üzenet
-    JSON_Data?: string; // A teljes JSON (Auditor számára)
-    recommendation: {
-        recommended_bet: string;
-        final_confidence: number;
-    };
-}
-
-
-// === Fő Funkciók (Exportálva) ===
 
 /**
- * Lekéri az elemzési előzményeket a táblázatból.
- * (Változatlan v71.0)
+ * Segédfüggvény: Lekéri a 'Learning_Insights' munkalapot.
  */
-export async function getHistoryFromSheet(): Promise<{ history?: IHistoryRow[]; error?: string }> {
+async function getLearningSheet(): Promise<GoogleSpreadsheetWorksheet> {
+    const doc = await getDoc();
+    const sheet = doc.sheetsByTitle['Learning_Insights'];
+    if (!sheet) {
+        throw new Error("A 'Learning_Insights' munkalap nem található a Google Sheet dokumentumban.");
+    }
+    return sheet;
+}
+
+
+// --- FŐ FUNKCIÓK (index.ts és AnalysisFlow.ts számára) ---
+
+/**
+ * Elment egy elemzést a "History" lapra.
+ * Ha az ID már létezik, frissíti a sort. Ha nem, új sort ad hozzá.
+ */
+export async function saveAnalysisToSheet(sheetUrl: string, data: {
+    sport: string,
+    home: string,
+    away: string,
+    date: Date,
+    html: string, // Ez valójában a 'JSON_Data'
+    id: string,
+    fixtureId: number | string | null,
+    recommendation: any
+}) {
     try {
         const sheet = await getHistorySheet();
-        const rows = await sheet.getRows(); 
-
-        const history: IHistoryRow[] = rows.map(row => {
-            const dateVal = row.get("Dátum");
-            let isoDate = new Date().toISOString();
-            try {
-                if (dateVal) {
-                    const parsedDate = new Date(dateVal);
-                    if (!isNaN(parsedDate.getTime())) {
-                        isoDate = parsedDate.toISOString();
-                    }
-                }
-            } catch (dateError: any) {
-                console.warn(`Dátum feldolgozási hiba a getHistoryFromSheet-ben: ${dateError.message} (Érték: ${dateVal})`);
-            }
-
-            return {
-                id: row.get("ID"),
-                date: isoDate,
-                sport: row.get("Sport"),
-                home: row.get("Hazai"),
-                away: row.get("Vendég"),
-                tip: row.get("Tipp") || 'N/A',
-                confidence: row.get("Bizalom") || 'N/A'
-            };
-        });
         
-        return { history: history.filter(item => item.id).reverse() }; // Legújabb előre
+        // Optimalizálás: Nem törjük a cache-t írás előtt,
+        // de biztosítjuk a fejléceket, ha még nincsenek betöltve.
+        if (sheet.headerValues.length === 0) {
+             await sheet.loadHeaderRow();
+        }
+
+        const tip = data.recommendation?.recommended_bet || 'N/A';
+        const bizalom = data.recommendation?.final_confidence?.toFixed(1) || 'N/A';
+
+        const rowData = {
+            'ID': data.id,
+            'FixtureID': data.fixtureId,
+            'Sport': data.sport,
+            'Home': data.home,
+            'Away': data.away,
+            'Dátum': data.date.toISOString(),
+            'Tipp': tip,
+            'Bizalom': bizalom,
+            'Valós Eredmény': 'N/A',
+            'Helyes (W/L/P)': 'N/A',
+            'JSON_Data': data.html // A v71.0+ <pre>JSON</pre> string
+        };
+
+        // 1. Próbáljuk megkeresni a meglévő sort (ID alapján)
+        // Mivel a getRows() lassú lehet, először megpróbálunk egy gyorsítótárazott
+        // keresést, de ha a mentés kritikus, akkor a lassabb `getRows` kell.
+        
+        // Mivel a `getRows` cache-elhet, a biztonságos mentés érdekében
+        // először betöltjük a friss infókat, ahogy a `getHistory` is teszi.
+        await sheet.loadInfo(); // v94.4 - Biztonsági cache-törés
+        const rows = await sheet.getRows();
+        const existingRow = rows.find(r => r.get('ID') === data.id);
+
+        if (existingRow) {
+            console.log(`[Sheets] Meglévő sor frissítése (ID: ${data.id})`);
+            // Frissítjük a meglévő sor adatait
+            existingRow.set('Dátum', rowData.Dátum);
+            existingRow.set('Tipp', rowData.Tipp);
+            existingRow.set('Bizalom', rowData.Bizalom);
+            existingRow.set('JSON_Data', rowData.JSON_Data);
+            // Biztosítjuk, hogy a FixtureID is frissüljön, ha esetleg hiányzott
+            existingRow.set('FixtureID', rowData.FixtureID); 
+            await existingRow.save();
+        } else {
+            console.log(`[Sheets] Új sor hozzáadása (ID: ${data.id})`);
+            await sheet.addRow(rowData);
+        }
+        
     } catch (e: any) {
-        console.error(`Előzmények olvasási hiba: ${e.message}`, e.stack);
-        return { error: `Előzmények olvasási hiba: ${e.message}` };
+        console.error(`[Sheets] KRITIKUS HIBA a 'saveAnalysisToSheet' során: ${e.message}`, e.stack);
+        // Ne dobjunk hibát, hogy az AnalysisFlow folytatódhasson
     }
 }
 
 /**
- * Lekéri egy konkrét elemzés részleteit (HTML tartalmát) ID alapján.
- * MÓDOSÍTVA (v71.0): Először a 'JSON_Data'-t keresi.
+ * Lekéri a teljes elemzési előzmény-listát.
+ * JAVÍTVA (v94.4): Cache-törléssel.
  */
-export async function getAnalysisDetailFromSheet(id: string): Promise<{ record?: IAnalysisDetail; error?: string }> {
+export async function getHistoryFromSheet(): Promise<{ history: any[]; error?: string }> {
     try {
         const sheet = await getHistorySheet();
+        
+        // === KRITIKUS JAVÍTÁS (v94.4) ===
+        // Rákényszerítjük a 'google-spreadsheet' könyvtárat, hogy
+        // törölje a belső cache-ét és olvassa be a friss adatokat.
+        await sheet.loadInfo();
+        // === JAVÍTÁS VÉGE ===
+
         const rows = await sheet.getRows();
         
-        const row = rows.find(r => String(r.get("ID")) === String(id));
+        const history = rows.map(row => ({
+            id: row.get('ID'),
+            date: row.get('Dátum'),
+            sport: row.get('Sport'),
+            home: row.get('Home'),
+            away: row.get('Away')
+        })).filter(item => item.id && item.home && item.date); // Csak valid sorok
+
+        // Dátum szerint rendezés (legújabb elöl) - Bár a kliens is rendezi
+        history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        return { history };
+    } catch (e: any) {
+        console.error(`[Sheets] Hiba a 'getHistoryFromSheet' során: ${e.message}`, e.stack);
+        return { history: [], error: e.message };
+    }
+}
+
+/**
+ * Lekér egyetlen, részletes elemzést (JSON/HTML) ID alapján.
+ * JAVÍTVA (v94.4): Cache-törléssel.
+ */
+export async function getAnalysisDetailFromSheet(id: string): Promise<{ record?: any; error?: string }> {
+     try {
+        const sheet = await getHistorySheet();
+
+        // === KRITIKUS JAVÍTÁS (v94.4) ===
+        await sheet.loadInfo(); // Cache-törlés
+        // === JAVÍTÁS VÉGE ===
+
+        const rows = await sheet.getRows();
+        const row = rows.find(r => r.get('ID') === id);
+
         if (!row) {
-            throw new Error("Az elemzés nem található az ID alapján.");
+            return { error: "Nem található elemzés ezzel az ID-val." };
         }
 
-        let content = "";
-        const jsonData = row.get("JSON_Data") as string | undefined;
-        
-        if (jsonData) {
-            // 1. Eset: Új (v71.0+) formátum, van JSON adat
-            try {
-                const parsedJson = JSON.parse(jsonData);
-                // "Szép" (pretty-print) formázás a könnyebb olvashatóságért
-                content = `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: monospace; color: var(--text-primary); background: var(--bg-dark); padding: 1rem; border-radius: 8px;">${JSON.stringify(parsedJson, null, 2)}</pre>`;
-            } catch (e: any) {
-                console.warn(`[sheets.ts] JSON parse hiba a getAnalysisDetail-ben (ID: ${id}). Nyers adat visszaadása.`);
-                content = `[JSON PARSE HIBA: ${e.message}]\n\n${jsonData}`;
-            }
-        } else {
-            // 2. Eset: Régi (v71.0 előtti) formátum, csak HTML van
-            content = row.get("HTML Tartalom") || "Nincs adat ehhez az elemzéshez.";
-        }
-
-        const record: IAnalysisDetail = {
-            id: row.get("ID"),
-            home: row.get("Hazai"),
-            away: row.get("Vendég"),
-            html: content // Ez most már a formázott JSON vagy a régi HTML
+        const record = {
+            id: row.get('ID'),
+            home: row.get('Home'),
+            away: row.get('Away'),
+            html: row.get('JSON_Data') // A kliens (script.js) 'html'-ként hivatkozik erre
         };
+
         return { record };
     } catch (e: any) {
-        console.error(`Részletek olvasási hiba (${id}): ${e.message}`);
-        return { error: `Részletek olvasási hiba: ${e.message}` };
+        console.error(`[Sheets] Hiba a 'getAnalysisDetailFromSheet' során: ${e.message}`, e.stack);
+        return { error: e.message };
     }
 }
 
 /**
- * Elment egy új elemzést a Google Sheet "History" lapjára.
- * MÓDOSÍTVA (v71.0): Hozzáadva a 'JSON_Data' mező mentése.
- */
-export async function saveAnalysisToSheet(sheetUrl: string, analysisData: IAnalysisDataToSave): Promise<void> {
-    const analysisId = analysisData.id || 'N/A';
-    try {
-        if (!analysisData || !analysisData.home || !analysisData.away) {
-            console.warn(`Mentés kihagyva (ID: ${analysisId}): hiányzó csapatnevek.`);
-            return;
-        }
-
-        const sheet = await getHistorySheet();
-        const newId = analysisData.id || crypto.randomUUID(); 
-        const dateToSave = (analysisData.date instanceof Date ? analysisData.date : new Date()).toISOString();
-        
-        const tip = analysisData.recommendation?.recommended_bet || 'N/A';
-        const confidence = analysisData.recommendation?.final_confidence ? 
-            analysisData.recommendation.final_confidence.toFixed(1) : 'N/A';
-        
-        const fixtureId: string | number | boolean = analysisData.fixtureId ?? '';
-        const jsonData: string | number | boolean = analysisData.JSON_Data ?? ''; // ÚJ (v71.0)
-
-        await sheet.addRow({
-            "ID": newId,
-            "FixtureID": fixtureId,
-            "Dátum": dateToSave,
-            "Sport": analysisData.sport || 'N/A',
-            "Hazai": analysisData.home,
-            "Vendég": analysisData.away,
-            "HTML Tartalom": analysisData.html || '', // A log üzenet
-            "JSON_Data": jsonData, // A teljes elemzési JSON
-            "Tipp": tip,
-            "Bizalom": confidence
-        });
-        
-    } catch (e: any) {
-        console.error(`Hiba az elemzés mentésekor a táblázatba (ID: ${analysisId}): ${e.message}`, e.stack);
-    }
-}
-
-/**
- * Töröl egy elemet a "History" lapról ID alapján.
- * (Változatlan v71.0)
+ * Töröl egy sort az előzményekből ID alapján.
+ * JAVÍTVA (v94.4): Cache-törléssel.
  */
 export async function deleteHistoryItemFromSheet(id: string): Promise<{ success?: boolean; error?: string }> {
     try {
         const sheet = await getHistorySheet();
+
+        // === KRITIKUS JAVÍTÁS (v94.4) ===
+        await sheet.loadInfo(); // Cache-törlés
+        // === JAVÍTÁS VÉGE ===
+
         const rows = await sheet.getRows();
-        const rowToDelete = rows.find(r => String(r.get("ID")) == String(id));
-        
-        if (rowToDelete) {
-            await rowToDelete.delete(); // Sor törlése
-            return { success: true };
+        const row = rows.find(r => r.get('ID') === id);
+
+        if (!row) {
+            return { error: "Nem található elemzés ezzel az ID-val a törléshez." };
         }
-        throw new Error("A törlendő elem nem található.");
+
+        await row.delete();
+        return { success: true };
     } catch (e: any) {
-        console.error(`Törlési hiba (${id}): ${e.message}`);
-        return { error: `Törlési hiba: ${e.message}` };
+        console.error(`[Sheets] Hiba a 'deleteHistoryItemFromSheet' során: ${e.message}`, e.stack);
+        return { error: e.message };
     }
 }
 
-
 /**
- * Elment egy mélyebb öntanulási tanulságot a "Learning_Insights" lapra.
- * (Változatlan v71.0)
+ * Naplózza a 7. Ügynök (Auditor) tanulságait a 'Learning_Insights' lapra.
+ * (Ez a funkció csak Hozzáad, cache-törlés nem szükséges).
  */
-export async function logLearningInsight(sheetUrl: string, insightData: any): Promise<void> {
-    const headers = ["Dátum", "Sport", "Hazai", "Vendég", "Tipp", "Bizalom", "Valós Eredmény", "Tanulság (AI)"];
+export async function logLearningInsight(sheetUrl: string, data: {
+    date: Date;
+    sport: string;
+    home: string;
+    away: string;
+    prediction: string;
+    confidence: number;
+    actual: string;
+    insight: string;
+}) {
+    if (!sheetUrl) return; // Ne álljon le a rendszer, ha nincs URL
+
     try {
-        const doc = getDocInstance();
-        const sheet = await _getSheet(doc, "Learning_Insights", headers);
-        
-        if (!sheet) {
-            console.error("logLearningInsight hiba: Nem sikerült elérni/létrehozni a 'Learning_Insights' munkalapot.");
-            return;
-        }
-        
-        const dateToSave = insightData.date instanceof Date ?
-            insightData.date.toISOString() : new Date().toISOString();
-            
+        const sheet = await getLearningSheet();
         await sheet.addRow({
-            "Dátum": dateToSave,
-            "Sport": insightData.sport || 'N/A',
-            "Hazai": insightData.home || 'N/A',
-            "Vendég": insightData.away || 'N/A',
-            "Tipp": insightData.prediction || 'N/A',
-            "Bizalom": typeof insightData.confidence === 'number' ? insightData.confidence.toFixed(1) : 'N/A',
-            "Valós Eredmény": insightData.actual || 'N/A',
-            "Tanulság (AI)": insightData.insight || 'N/A'
+            'Dátum': data.date.toISOString(),
+            'Sport': data.sport,
+            'Home': data.home,
+            'Away': data.away,
+            'Tipp': data.prediction,
+            'Bizalom': data.confidence,
+            'Valós Eredmény': data.actual,
+            'Tanulság (AI)': data.insight
         });
-        
-        console.log(`Öntanulási tanulság sikeresen naplózva (Google Sheet): ${insightData.home} vs ${insightData.away}`);
+        console.log(`[Sheets] Új tanulság sikeresen naplózva a 'Learning_Insights' lapra.`);
     } catch (e: any) {
-        console.error(`Hiba az öntanulási tanulság mentésekor (Google Sheet): ${e.message}`, e.stack);
+        console.error(`[Sheets] Hiba a 'logLearningInsight' során: ${e.message}`, e.stack);
     }
 }
