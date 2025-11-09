@@ -314,15 +314,15 @@ export function simulateMatchProgress(
             
             // === ÚJ (v95.1): AH Számítás (Foci/Hoki) ===
             const diff = gh - ga;
-            if (diff > -0.5) ah_h_p0_5++;
-            if (diff > -1.5) ah_h_p1_5++;
-            if (diff > 0.5) ah_h_m0_5++;
-            if (diff > 1.5) ah_h_m1_5++;
+            if (diff > -0.5) ah_h_p0_5++; // H +0.5
+            if (diff > -1.5) ah_h_p1_5++; // H +1.5
+            if (diff > 0.5) ah_h_m0_5++;  // H -0.5
+            if (diff > 1.5) ah_h_m1_5++;  // H -1.5
             
-            if (diff < 0.5) ah_a_p0_5++;
-            if (diff < 1.5) ah_a_p1_5++;
-            if (diff < -0.5) ah_a_m0_5++;
-            if (diff < -1.5) ah_a_m1_5++;
+            if (diff < 0.5) ah_a_p0_5++;  // A +0.5
+            if (diff < 1.5) ah_a_p1_5++;  // A +1.5
+            if (diff < -0.5) ah_a_m0_5++; // A -0.5
+            if (diff < -1.5) ah_a_m1_5++; // A -1.5
             // ========================================
 
             if (sport === 'soccer') {
@@ -342,7 +342,8 @@ export function simulateMatchProgress(
     }
     
     if (sport === 'hockey' && draw > 0) {
-        const homeOTWinPct = 0.55;
+        // Hoki "Moneyline" szimuláció: A döntetleneket szétosztjuk
+        const homeOTWinPct = 0.55; // Hazai pálya előnye hosszabbításban
         const awayOTWinPct = 0.45;
         home += draw * homeOTWinPct;
         away += draw * awayOTWinPct;
@@ -412,6 +413,7 @@ export function calculateModelConfidence(
     let score = 5.0;
     const MAX_SCORE = 10.0; const MIN_SCORE = 1.0;
     try {
+        // Forma pontszám %-osítása (W=3, D=1, L=0)
         const getFormPointsPerc = (formString: string | null | undefined): number | null => {
              if (!formString || typeof formString !== 'string' || formString === "N/A") return null;
             const wins = (formString.match(/W/g) || []).length;
@@ -421,62 +423,72 @@ export function calculateModelConfidence(
         };
         const homeOverallFormScore = getFormPointsPerc(form?.home_overall);
         const awayOverallFormScore = getFormPointsPerc(form?.away_overall);
+        // 1. Forma vs Szimuláció (Koherencia)
         if (homeOverallFormScore != null && awayOverallFormScore != null && sim && sim.pHome != null && sim.pAway != null) {
-             const formDiff = homeOverallFormScore - awayOverallFormScore;
-            const simDiff = (sim.pHome - sim.pAway) / 100;
-             if ((sim.pHome > 65 && formDiff < -0.2) || (sim.pAway > 65 && formDiff > 0.2)) { score -= 1.5;
+             const formDiff = homeOverallFormScore - awayOverallFormScore; // Pozitív = Hazai jobb formában
+            const simDiff = (sim.pHome - sim.pAway) / 100; // Pozitív = Szimuláció a hazait várja
+             // Ellentmondás: A szimuláció favorizálja, de a forma rossz
+             if ((sim.pHome > 65 && formDiff < -0.2) || (sim.pAway > 65 && formDiff > 0.2)) { score -= 1.5; // Nagy ellentmondás
             }
-            else if ((sim.pHome > 60 && formDiff > 0.25) || (sim.pAway > 60 && formDiff < -0.25)) { score += 0.75;
+            // Egyetértés: A szimuláció favorizálja ÉS a forma is jó
+            else if ((sim.pHome > 60 && formDiff > 0.25) || (sim.pAway > 60 && formDiff < -0.25)) { score += 0.75; // Koherencia
             }
         }
+        // 2. xG Különbség (Magabiztosság)
         if (sim && sim.mu_h_sim != null && sim.mu_a_sim != null) {
             const xgDiff = Math.abs(sim.mu_h_sim - sim.mu_a_sim);
             const thresholdHigh = sport === 'basketball' ? 15 : sport === 'hockey' ? 0.8 : 0.4;
             const thresholdLow = sport === 'basketball' ? 5 : sport === 'hockey' ? 0.25 : 0.15;
-            if (xgDiff > thresholdHigh) score += 1.5;
-            if (xgDiff < thresholdLow) score -= 1.0;
+            if (xgDiff > thresholdHigh) score += 1.5; // Magabiztos xG különbség
+            if (xgDiff < thresholdLow) score -= 1.0; // Túl szoros xG
         }
+        // 3. H2H Adat (Frissesség)
         if (rawData?.h2h_structured && rawData.h2h_structured.length > 0) {
             try {
                  const latestH2HDate = new Date(rawData.h2h_structured[0].date);
                 const twoYearsAgo = new Date(); twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
                  if (!isNaN(latestH2HDate.getTime())) {
-                      if (latestH2HDate < twoYearsAgo) { score -= 0.75;
+                      if (latestH2HDate < twoYearsAgo) { score -= 0.75; // Elavult H2H
                     }
-                      else { score += 0.25;
+                      else { score += 0.25; // Friss, releváns H2H
                     }
                  }
             } catch(e: any) { console.warn("H2H dátum parse hiba:", e.message);
             }
-        } else { score -= 0.25;
+        } else { score -= 0.25; // Nincs H2H adat
         }
+        // 4. Kulcsfontosságú hiányzók (v54.44)
         const homeKeyAbsentees = rawData?.detailedPlayerStats?.home_absentees?.filter(p => p.status === 'confirmed_out' && p.importance === 'key').length || 0;
         const awayKeyAbsentees = rawData?.detailedPlayerStats?.away_absentees?.filter(p => p.status === 'confirmed_out' && p.importance === 'key').length || 0;
         if (sim && sim.pHome != null && sim.pAway != null) {
-            if (sim.pHome > 65 && homeKeyAbsentees > 0) { score -= (1.5 * homeKeyAbsentees);
+            if (sim.pHome > 65 && homeKeyAbsentees > 0) { score -= (1.5 * homeKeyAbsentees); // A favorit hiányzik
             }
-            if (sim.pAway > 65 && awayKeyAbsentees > 0) { score -= (1.5 * awayKeyAbsentees);
+            if (sim.pAway > 65 && awayKeyAbsentees > 0) { score -= (1.5 * awayKeyAbsentees); // A favorit hiányzik
             }
-            if (sim.pHome > 60 && awayKeyAbsentees > 0) { score += (0.75 * awayKeyAbsentees);
+            if (sim.pHome > 60 && awayKeyAbsentees > 0) { score += (0.75 * awayKeyAbsentees); // Az esélytelenebb hiányzik
             }
-            if (sim.pAway > 60 && homeKeyAbsentees > 0) { score += (0.75 * homeKeyAbsentees);
+            if (sim.pAway > 60 && homeKeyAbsentees > 0) { score += (0.75 * homeKeyAbsentees); // Az esélytelenebb hiányzik
             }
         }
+        // 5. Piaci Mozgás (v76.0)
          const marketIntelLower = marketIntel?.toLowerCase() || 'n/a';
         if (marketIntelLower !== 'n/a' && marketIntelLower !== 'nincs jelentős oddsmozgás.' && sim && sim.pHome != null && sim.pAway != null) {
             const homeFavoredBySim = sim.pHome > sim.pAway && sim.pHome > 45;
             const awayFavoredBySim = sim.pAway > sim.pHome && sim.pAway > 45;
             const homeNameLower = home.toLowerCase();
             const awayNameLower = away.toLowerCase();
-            if (homeFavoredBySim && marketIntelLower.includes(homeNameLower) && marketIntelLower.includes('+')) { score -= 1.5;
+            // Piac vs Modell Ellentmondás
+            if (homeFavoredBySim && marketIntelLower.includes(homeNameLower) && marketIntelLower.includes('+')) { score -= 1.5; // A piac a modell ellen mozog
             }
-             else if (awayFavoredBySim && marketIntelLower.includes(awayNameLower) && marketIntelLower.includes('+')) { score -= 1.5;
+             else if (awayFavoredBySim && marketIntelLower.includes(awayNameLower) && marketIntelLower.includes('+')) { score -= 1.5; // A piac a modell ellen mozog
             }
-            else if (homeFavoredBySim && marketIntelLower.includes(homeNameLower) && marketIntelLower.includes('-')) { score += 1.0;
+            // Piac vs Modell Egyetértés
+            else if (homeFavoredBySim && marketIntelLower.includes(homeNameLower) && marketIntelLower.includes('-')) { score += 1.0; // A piac a modellel mozog
             }
-            else if (awayFavoredBySim && marketIntelLower.includes(awayNameLower) && marketIntelLower.includes('-')) { score += 1.0;
+            else if (awayFavoredBySim && marketIntelLower.includes(awayNameLower) && marketIntelLower.includes('-')) { score += 1.0; // A piac a modellel mozog
             }
         }
+        // 6. Öntanuló Bónusz (v70.0)
          const adjustedRatings = getAdjustedRatings();
         const homeHistory = adjustedRatings[home.toLowerCase()];
         const awayHistory = adjustedRatings[away.toLowerCase()];
@@ -485,10 +497,10 @@ export function calculateModelConfidence(
         if (awayHistory && awayHistory.matches > 10) historyBonus += 0.25;
         if (homeHistory && homeHistory.matches > 25) historyBonus += 0.25;
         if (awayHistory && awayHistory.matches > 25) historyBonus += 0.25;
-        score += Math.min(1.0, historyBonus);
+        score += Math.min(1.0, historyBonus); // Max +1.0 bónusz tapasztalt csapatokra
      } catch(e: any) {
         console.error(`Hiba model konfidencia számításakor (${home} vs ${away}): ${e.message}`, e.stack);
-        return Math.max(MIN_SCORE, 4.0);
+        return Math.max(MIN_SCORE, 4.0); // Hiba esetén alacsony-közepes bizalom
     }
     return Math.max(MIN_SCORE, Math.min(MAX_SCORE, score));
 }
@@ -505,7 +517,7 @@ export function calculatePsychologicalProfile(...) {}
  * Segédfüggvény: Decimális odds átalakítása implikált valószínűséggé (vig nélkül).
  */
 function _getImpliedProbability(price: number): number {
-    if (price <= 1.0) return 100.0;
+    if (price <= 1.0) return 100.0; // Érvénytelen odds
     return (1 / price) * 100;
 }
 
@@ -731,5 +743,6 @@ export function analyzeLineMovement(
 
 // === analyzePlayerDuels (Változatlan v95.1 - Stub) ===
 export function analyzePlayerDuels(keyPlayers: any, sport: string): string | null {
+    // TODO: Jövőbeli implementáció
     return null;
 }
