@@ -1,12 +1,11 @@
-// --- JAVÍTOTT Model.ts (v76.0 - "Okos" Piaci Elemzés) ---
-// MÓDOSÍTÁS (v76.0):
-// 1. MEGOLDVA (A "Bielefeld -5.00" Hiba): A 'calculateValue' és 'analyzeLineMovement'
-//    függvények "stub" (placeholder) implementációja lecserélve egy
-//    "production-ready" piaci elemző logikára.
-// 2. LOGIKA: A 'calculateValue' most már összeveti a szimuláció (sim)
-//    eredményeit a kapott oddsokkal (oddsData), és valódi értéket számol.
-// 3. LOGIKA: Az 'analyzeLineMovement' most már összeveti a 'currentOddsData'-t
-//    az 'openingOddsData'-val, és valós piaci mozgást észlel.
+// --- JAVÍTOTT Model.ts (v93.0 - "Pszichológus Eltávolítva") ---
+// MÓDOSÍTÁS (v93.0):
+// 1. ELTÁVOLÍTVA: A primitív, nem-AI `calculatePsychologicalProfile`
+//    függvény teljes egészében törölve (kb. 586. sor).
+// 2. LOGIKA: A pszichológiai profilalkotás felelőssége átkerült
+//    az `AI_Service.ts` v93.0-ban definiált új "2.5-ös Ügynökhöz" (Pszichológus).
+// 3. VÁLTOZATLAN: A v76.0-s "Okos Piaci Elemzés" logika (calculateValue,
+//    analyzeLineMovement) érintetlen és érvényben marad.
 
 import { SPORT_CONFIG } from './config.js';
 import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
@@ -18,8 +17,8 @@ import type {
 } from './src/types/canonical.d.ts';
 /**************************************************************
 * Model.ts - Statisztikai Modellező Modul (Node.js Verzió)
-* VÁLTOZÁS (v76.0):
-* - Piaci elemző logika (Value, Line Movement) implementálva.
+* VÁLTOZÁS (v93.0):
+* - A primitív 'calculatePsychologicalProfile' törölve.
 **************************************************************/
 
 // --- Segédfüggvények (Poisson és Normális eloszlás mintavétel) ---
@@ -57,7 +56,7 @@ function sampleGoals(mu_h: number, mu_a: number): { gh: number, ga: number } {
 }
 
 
-// === 1. ÜGYNÖK (QUANT): Tiszta xG Számítása (Változatlan v70.0) ===
+// === 1. ÜGYNÖK (QUANT): Tiszta xG Számítása (Változatlan v93.0) ===
 export function estimatePureXG(
     homeTeam: string, 
     awayTeam: string, 
@@ -79,16 +78,22 @@ export function estimatePureXG(
                       advancedData?.manual_A_xG != null && advancedData?.manual_A_xGA != null;
     const p4Required = !hasP1Data;
     
-    if (p4Required && (!areStatsValid(homeStats) || !areStatsValid(awayStats))) {
+    // === MÓDOSÍTÁS (v93.0): Hibatűrés a P4 (automatikus) hibához ===
+    // Ha a P4 (automatikus) módban vagyunk, de a DataFetch (a P1 hibatűrés miatt)
+    // üres stubot adott vissza (gp=1, gf=0, ga=0), akkor default xG-t kell használnunk.
+    const p4IsStub = (homeStats?.gp === 1 && homeStats?.gf === 0) || (awayStats?.gp === 1 && awayStats?.gf === 0);
+
+    if (p4Required && (!areStatsValid(homeStats) || !areStatsValid(awayStats) || p4IsStub)) {
         console.warn(`HIÁNYOS/ÉRVÉNYTELEN STATS (P4 módban): ${homeTeam} (GP:${homeStats?.gp}) vs ${awayTeam} (GP:${awayStats?.gp}). Default xG.`);
         const defaultGoals = SPORT_CONFIG[sport]?.avg_goals || (sport === 'basketball' ? 110 : (sport === 'hockey' ? 3.0 : 1.35));
         const homeAdv = SPORT_CONFIG[sport]?.home_advantage || { home: 1.05, away: 0.95 };
         return { 
             pure_mu_h: defaultGoals * homeAdv.home, 
             pure_mu_a: defaultGoals * homeAdv.away, 
-            source: 'Default (Hiányos Stat)' 
+            source: 'Default (Hiányos/Stub Stat)' 
         };
     }
+    // === MÓDOSÍTÁS VÉGE ===
 
     let mu_h: number, mu_a: number;
     let source: string;
@@ -161,7 +166,7 @@ export function applyContextualModifiers(...) {}
 */
 
 
-// === estimateAdvancedMetrics (Változatlan v70.0) ===
+// === estimateAdvancedMetrics (Változatlan v93.0) ===
 export function estimateAdvancedMetrics(rawData: ICanonicalRawData, sport: string, leagueAverages: any): { mu_corners: number, mu_cards: number } {
     const avgCorners = leagueAverages?.avg_corners || 10.5;
     const avgCards = leagueAverages?.avg_cards || 4.5;
@@ -248,7 +253,7 @@ export function estimateAdvancedMetrics(rawData: ICanonicalRawData, sport: strin
 }
 
 
-// === 4. ÜGYNÖK (SZIMULÁTOR): Meccs Szimuláció (Változatlan v70.0) ===
+// === 4. ÜGYNÖK (SZIMULÁTOR): Meccs Szimuláció (Változatlan v93.0) ===
 export function simulateMatchProgress(
     mu_h: number, 
     mu_a: number, 
@@ -350,7 +355,7 @@ export function simulateMatchProgress(
 }
 
 
-// === calculateModelConfidence (Változatlan v70.0) ===
+// === calculateModelConfidence (Változatlan v93.0) ===
 export function calculateModelConfidence(
     sport: string, 
     home: string, 
@@ -444,44 +449,23 @@ export function calculateModelConfidence(
     return Math.max(MIN_SCORE, Math.min(MAX_SCORE, score));
 }
 
-// === calculatePsychologicalProfile (Változatlan v70.0) ===
-export function calculatePsychologicalProfile(teamName: string, opponentName: string, rawData: ICanonicalRawData | null = null): { moraleIndex: number, pressureIndex: number } {
-    let moraleIndex = 1.0;
-    let pressureIndex = 1.0;
-    if (rawData) {
-        const teamSide = rawData.stats.home ? 'home_overall' : 'away_overall';
-        const formString = rawData.form?.[teamSide as 'home_overall' | 'away_overall'];
-        if (formString && formString !== "N/A") {
-            const recentLosses = (formString.slice(-3).match(/L/g) || []).length;
-            const recentWins = (formString.slice(-3).match(/W/g) || []).length;
-            if (recentLosses >= 2) moraleIndex *= 0.95;
-            if (recentWins >= 2) moraleIndex *= 1.05;
-        }
-        const tension = rawData.contextual_factors?.match_tension_index?.toLowerCase();
-        if (tension === 'high') pressureIndex *= 1.05;
-        if (tension === 'extreme') pressureIndex *= 1.10;
-        if (tension === 'low' || tension === 'friendly') pressureIndex *= 0.95;
-    }
-    moraleIndex = Math.max(0.8, Math.min(1.2, moraleIndex));
-    pressureIndex = Math.max(0.8, Math.min(1.2, pressureIndex));
-    return { moraleIndex, pressureIndex };
-}
+// === ELTÁVOLÍTVA (v93.0) ===
+/*
+export function calculatePsychologicalProfile(...) {}
+*/
+// === ELTÁVOLÍTÁS VÉGE ===
 
-// === MÓDOSÍTÁS (v76.0): 'calculateValue' (Implementálva) ===
 
+// === calculateValue (Változatlan v93.0) ===
 /**
  * Segédfüggvény: Decimális odds átalakítása implikált valószínűséggé (vig nélkül).
- * @param price A decimális szorzó (pl. 2.50)
- * @returns A valószínűség (pl. 40.0)
  */
 function _getImpliedProbability(price: number): number {
     if (price <= 1.0) return 100.0;
     return (1 / price) * 100;
 }
-
 /**
  * 4. ÜGYNÖK (B) RÉSZE: Érték (Value) Kiszámítása
- * Összehasonlítja a szimuláció (sim) valószínűségeit a piaci oddsokkal (oddsData).
  */
 export function calculateValue(
     sim: any, 
@@ -538,7 +522,6 @@ export function calculateValue(
     }
 
     // 2. Piac: Fő Totals (Over/Under)
-    // Csak a 'sim.mainTotalsLine'-t elemezzük!
     const totalsMarket = oddsData.allMarkets.find(m => m.key === 'totals');
     if (totalsMarket && totalsMarket.outcomes && sim.mainTotalsLine) {
         const mainLine = String(sim.mainTotalsLine); // Pl. "2.5"
@@ -619,11 +602,9 @@ export function calculateValue(
     return valueBets;
 }
 
-// === MÓDOSÍTÁS (v76.0): 'analyzeLineMovement' (Implementálva) ===
-
+// === analyzeLineMovement (Változatlan v93.0) ===
 /**
  * 4. ÜGYNÖK (C) RÉSZE: Piaci Mozgás Elemzése
- * Összehasonlítja a nyitó és a jelenlegi oddsokat.
  */
 export function analyzeLineMovement(
     currentOddsData: ICanonicalOdds | null, 
@@ -702,7 +683,7 @@ export function analyzeLineMovement(
     }
 }
 
-// === analyzePlayerDuels (Változatlan v70.0 - Stub) ===
+// === analyzePlayerDuels (Változatlan v93.0 - Stub) ===
 export function analyzePlayerDuels(keyPlayers: any, sport: string): string | null {
     return null;
 }
