@@ -1,13 +1,10 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v94.0 ("Önjavító Hurok")
-// MÓDOSÍTÁS (v94.0):
-// 1. IMPORT: Behozza a `getNarrativeRatings`-t a `LearningService`-ből.
-// 2. HOZZÁADVA: A 2.5-ös Ügynök (Pszichológus) után beillesztésre került egy új lépés,
-//    amely beolvassa a "Narratív Cache"-t (a 7. Ügynök múltbeli tanulságait).
-// 3. MÓDOSÍTVA: A 3-as, 5-ös és 6-os Ügynökök (Specialista, Kritikus, Stratéga)
-//    `Input` objektumai most már megkapják a `homeNarrativeRating` és
-//    `awayNarrativeRating` mezőket, bezárva ezzel az öntanuló hurkot.
-// 4. MÓDOSÍTVA: A Cache kulcs `v94.0_self_learning_loop`-ra.
+// VERZIÓ: v94.7 (Mentési Hurok Javítás)
+// MÓDOSÍTÁS (v94.7):
+// 1. JAVÍTVA (TS2554): A `saveAnalysisToSheet` hívás (kb. 450. sor)
+//    javítva, hogy 1 argumentumot várjon (az `options` objektumot),
+//    megfelelve a `sheets.ts` (v94.6+) új aláírásának.
+// 2. LOGIKA: Az "Önjavító Hurok" (v94.0) logikája érintetlen marad.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -43,6 +40,7 @@ import {
     runStep_Critic,       // (5. Ügynök - Kritikus)
     runStep_Strategist    // (6. Ügynök - Stratéga)
 } from './AI_Service.js';
+// === JAVÍTÁS (v94.6): A 'SHEET_URL' import TÖRÖLVE (már nem kell) ===
 import { saveAnalysisToSheet } from './sheets.js'; 
 // === ÚJ (v94.0): Önjavító Hurok importálása ===
 import { getNarrativeRatings } from './LearningService.js';
@@ -51,7 +49,7 @@ import { getNarrativeRatings } from './LearningService.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v94.0): Az öntanuló hurok bezárása. A lánc most már
+* VÁLTOZÁS (v94.7): Az öntanuló hurok bezárása. A lánc most már
 * beolvassa a 7. Ügynök (Revizor) múltbeli tanulságait.
 **************************************************************/
 
@@ -120,7 +118,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             home: rawHome, 
             away: rawAway, 
             force: forceNewStr, 
-            sheetUrl, 
+            sheetUrl, // Ez a paraméter még bejön, de már nem használjuk
             utcKickoff, 
             leagueName,
             manual_H_xG, 
@@ -357,11 +355,12 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
         };
         
+        // A "karcsúsított" (lean) adatok mentése a v71.0+ 'sheets.ts' számára
         const auditData = {
             analysisData: {
                 committee: {
                     quant: { mu_h: pure_mu_h, mu_a: pure_mu_a, source: quantSource },
-                    psychologist: psychologistReport, 
+                    psychologist: psychologistReport, // v94.0
                     specialist: { mu_h: mu_h, mu_a: mu_a, log: specialistReport.reasoning, report: specialistReport },
                     critic: criticReport,
                     strategist: strategistReport
@@ -410,20 +409,25 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
 
         scriptCache.set(analysisCacheKey, jsonResponse);
         console.log(`Elemzés befejezve és cache mentve (${analysisCacheKey})`);
-        if (params.sheetUrl && typeof params.sheetUrl === 'string') {
-            saveAnalysisToSheet(params.sheetUrl, {
-                sport, 
-                home, 
-                away, 
-                date: new Date(), 
-                html: `<pre style="white-space: pre-wrap;">${JSON.stringify(auditData, null, 2)}</pre>`, 
-                id: analysisCacheKey,
-                fixtureId: fixtureIdForSaving,
-                recommendation: masterRecommendation
-            })
-                .then(() => console.log(`Elemzés (JSON) mentve a Google Sheet-be (${analysisCacheKey})`))
-                .catch(sheetError => console.error(`Hiba az elemzés Google Sheet-be mentésekor (${analysisCacheKey}): ${sheetError.message}`));
-        }
+        
+        // === JAVÍTÁS (v94.7 - TS2554): A hívás 1 argumentumra javítva ===
+        // A hibás 'if (params.sheetUrl ...)' blokk eltávolítva.
+        // A 'saveAnalysisToSheet' aláírása (signature) megváltozott (nincs 'sheetUrl').
+        saveAnalysisToSheet({ // <-- JAVÍTÁS
+            sport, 
+            home, 
+            away, 
+            date: new Date(), 
+            // Az 'auditData' a karcsúsított JSON, ahogy a sheets.ts (v71.0+) elvárja
+            html: `<pre style="white-space: pre-wrap;">${JSON.stringify(auditData, null, 2)}</pre>`, 
+            JSON_Data: JSON.stringify(auditData), // Redundáns, de biztosítjuk a v94.6 logikát
+            id: analysisCacheKey,
+            fixtureId: fixtureIdForSaving,
+            recommendation: masterRecommendation
+        })
+            .then(() => console.log(`Elemzés (JSON) mentve a Google Sheet-be (${analysisCacheKey})`))
+            .catch(sheetError => console.error(`Hiba az elemzés Google Sheet-be mentésekor (${analysisCacheKey}): ${sheetError.message}`));
+        // === JAVÍTÁS VÉGE ===
 
         return jsonResponse;
     } catch (error: any) {
