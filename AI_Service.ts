@@ -13,7 +13,9 @@ import {
     _callGemini, 
     fillPromptTemplate 
 } from './providers/common/utils.js';
-import type { IPlayerStub } from './src/types/canonical.d.ts';
+// v96.0: A 'IPlayerStub' importálása a 'canonical.d.ts' helyett a 'DataFetch.js'-ből
+// (Mivel a 'DataFetch.ts' exportálja, és elkerüljük a .d.ts importálási problémákat)
+import type { IPlayerStub } from './DataFetch.js';
 
 // Típus az AI JSON válaszaihoz
 type GeminiJsonResponse = Record<string, any> | null;
