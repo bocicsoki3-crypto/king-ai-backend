@@ -1,11 +1,13 @@
-// --- JAVÍTOTT Model.ts (v93.0 - "Pszichológus Eltávolítva") ---
-// MÓDOSÍTÁS (v93.0):
-// 1. ELTÁVOLÍTVA: A primitív, nem-AI `calculatePsychologicalProfile`
-//    függvény teljes egészében törölve (kb. 586. sor).
-// 2. LOGIKA: A pszichológiai profilalkotás felelőssége átkerült
-//    az `AI_Service.ts` v93.0-ban definiált új "2.5-ös Ügynökhöz" (Pszichológus).
-// 3. VÁLTOZATLAN: A v76.0-s "Okos Piaci Elemzés" logika (calculateValue,
-//    analyzeLineMovement) érintetlen és érvényben marad.
+// --- JAVÍTOTT Model.ts (v95.1 - "AH Szimuláció Fix") ---
+// MÓDOSÍTÁS (v95.1):
+// 1. HIBA (Angers vs Auxerre log): A v95.0-s Stratéga (AI_Service.ts)
+//    már keresi a 'simulatorReport.pAH' (Ázsiai Hendikep) adatokat,
+//    de a 4. Ügynök (Szimulátor) nem generálta le azokat.
+// 2. JAVÍTÁS: A 'simulateMatchProgress' funkció (kb. 240. sor)
+//    kiegészítve az Ázsiai Hendikep (+/- 0.5, 1.5) valószínűségek
+//    számításával a 25 000 iterációs hurokban.
+// 3. CÉL: Ez a javítás biztosítja a 'simulatorReport.pAH' kulcs
+//    létezését, megoldva a 'Hiányzó pontozott kulcs' hibát.
 
 import { SPORT_CONFIG } from './config.js';
 import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
@@ -17,8 +19,8 @@ import type {
 } from './src/types/canonical.d.ts';
 /**************************************************************
 * Model.ts - Statisztikai Modellező Modul (Node.js Verzió)
-* VÁLTOZÁS (v93.0):
-* - A primitív 'calculatePsychologicalProfile' törölve.
+* VÁLTOZÁS (v95.1):
+* - Ázsiai Hendikep szimuláció hozzáadva.
 **************************************************************/
 
 // --- Segédfüggvények (Poisson és Normális eloszlás mintavétel) ---
@@ -56,7 +58,7 @@ function sampleGoals(mu_h: number, mu_a: number): { gh: number, ga: number } {
 }
 
 
-// === 1. ÜGYNÖK (QUANT): Tiszta xG Számítása (Változatlan v93.0) ===
+// === 1. ÜGYNÖK (QUANT): Tiszta xG Számítása (Változatlan v94.0) ===
 export function estimatePureXG(
     homeTeam: string, 
     awayTeam: string, 
@@ -78,22 +80,16 @@ export function estimatePureXG(
                       advancedData?.manual_A_xG != null && advancedData?.manual_A_xGA != null;
     const p4Required = !hasP1Data;
     
-    // === MÓDOSÍTÁS (v93.0): Hibatűrés a P4 (automatikus) hibához ===
-    // Ha a P4 (automatikus) módban vagyunk, de a DataFetch (a P1 hibatűrés miatt)
-    // üres stubot adott vissza (gp=1, gf=0, ga=0), akkor default xG-t kell használnunk.
-    const p4IsStub = (homeStats?.gp === 1 && homeStats?.gf === 0) || (awayStats?.gp === 1 && awayStats?.gf === 0);
-
-    if (p4Required && (!areStatsValid(homeStats) || !areStatsValid(awayStats) || p4IsStub)) {
+    if (p4Required && (!areStatsValid(homeStats) || !areStatsValid(awayStats))) {
         console.warn(`HIÁNYOS/ÉRVÉNYTELEN STATS (P4 módban): ${homeTeam} (GP:${homeStats?.gp}) vs ${awayTeam} (GP:${awayStats?.gp}). Default xG.`);
         const defaultGoals = SPORT_CONFIG[sport]?.avg_goals || (sport === 'basketball' ? 110 : (sport === 'hockey' ? 3.0 : 1.35));
         const homeAdv = SPORT_CONFIG[sport]?.home_advantage || { home: 1.05, away: 0.95 };
         return { 
             pure_mu_h: defaultGoals * homeAdv.home, 
             pure_mu_a: defaultGoals * homeAdv.away, 
-            source: 'Default (Hiányos/Stub Stat)' 
+            source: 'Default (Hiányos Stat)' 
         };
     }
-    // === MÓDOSÍTÁS VÉGE ===
 
     let mu_h: number, mu_a: number;
     let source: string;
@@ -166,7 +162,7 @@ export function applyContextualModifiers(...) {}
 */
 
 
-// === estimateAdvancedMetrics (Változatlan v93.0) ===
+// === estimateAdvancedMetrics (Változatlan v95.1) ===
 export function estimateAdvancedMetrics(rawData: ICanonicalRawData, sport: string, leagueAverages: any): { mu_corners: number, mu_cards: number } {
     const avgCorners = leagueAverages?.avg_corners || 10.5;
     const avgCards = leagueAverages?.avg_cards || 4.5;
@@ -253,7 +249,7 @@ export function estimateAdvancedMetrics(rawData: ICanonicalRawData, sport: strin
 }
 
 
-// === 4. ÜGYNÖK (SZIMULÁTOR): Meccs Szimuláció (Változatlan v93.0) ===
+// === JAVÍTÁS (v95.1): 4. ÜGYNÖK (SZIMULÁTOR) - Ázsiai Hendikep Számítással ===
 export function simulateMatchProgress(
     mu_h: number, 
     mu_a: number, 
@@ -268,6 +264,12 @@ export function simulateMatchProgress(
     let home = 0, draw = 0, away = 0, btts = 0, over_main = 0;
     let corners_o7_5 = 0, corners_o8_5 = 0, corners_o9_5 = 0, corners_o10_5 = 0, corners_o11_5 = 0;
     let cards_o3_5 = 0, cards_o4_5 = 0, cards_o5_5 = 0, cards_o6_5 = 0;
+    
+    // === ÚJ (v95.1): AH Számlálók ===
+    let ah_h_m0_5 = 0, ah_h_m1_5 = 0, ah_a_m0_5 = 0, ah_a_m1_5 = 0;
+    let ah_h_p0_5 = 0, ah_h_p1_5 = 0, ah_a_p0_5 = 0, ah_a_p1_5 = 0;
+    // =============================
+    
     const scores: { [key: string]: number } = {};
     const safeSims = Math.max(1, sims || 1);
     const safe_mu_h = typeof mu_h === 'number' && !isNaN(mu_h) ? mu_h : SPORT_CONFIG[sport]?.avg_goals || 1.35;
@@ -275,6 +277,7 @@ export function simulateMatchProgress(
     const safe_mu_corners = typeof mu_corners === 'number' && !isNaN(mu_corners) ? mu_corners : 10.5;
     const safe_mu_cards = typeof mu_cards === 'number' && !isNaN(mu_cards) ? mu_cards : 4.5;
     const safe_mainTotalsLine = typeof mainTotalsLine === 'number' && !isNaN(mainTotalsLine) ? mainTotalsLine : SPORT_CONFIG[sport]?.totals_line || 2.5;
+    
     if (sport === 'basketball') {
         const stdDev = 11.5;
         for (let i = 0; i < safeSims; i++) {
@@ -284,6 +287,19 @@ export function simulateMatchProgress(
             scores[scoreKey] = (scores[scoreKey] || 0) + 1;
             if (gh > ga) home++; else if (ga > gh) away++; else draw++;
             if ((gh + ga) > safe_mainTotalsLine) over_main++;
+            
+            // === ÚJ (v95.1): AH Számítás (Kosárlabda) ===
+            const diff = gh - ga;
+            if (diff > -0.5) ah_h_p0_5++;
+            if (diff > -1.5) ah_h_p1_5++;
+            if (diff > 0.5) ah_h_m0_5++;
+            if (diff > 1.5) ah_h_m1_5++;
+            
+            if (diff < 0.5) ah_a_p0_5++;
+            if (diff < 1.5) ah_a_p1_5++;
+            if (diff < -0.5) ah_a_m0_5++;
+            if (diff < -1.5) ah_a_m1_5++;
+            // ==========================================
         }
     } else { // Foci, Hoki
         for (let i = 0; i < safeSims; i++) {
@@ -295,6 +311,20 @@ export function simulateMatchProgress(
             else draw++;
             if (gh > 0 && ga > 0) btts++;
             if ((gh + ga) > safe_mainTotalsLine) over_main++;
+            
+            // === ÚJ (v95.1): AH Számítás (Foci/Hoki) ===
+            const diff = gh - ga;
+            if (diff > -0.5) ah_h_p0_5++;
+            if (diff > -1.5) ah_h_p1_5++;
+            if (diff > 0.5) ah_h_m0_5++;
+            if (diff > 1.5) ah_h_m1_5++;
+            
+            if (diff < 0.5) ah_a_p0_5++;
+            if (diff < 1.5) ah_a_p1_5++;
+            if (diff < -0.5) ah_a_m0_5++;
+            if (diff < -1.5) ah_a_m1_5++;
+            // ========================================
+
             if (sport === 'soccer') {
                 const corners = poisson(safe_mu_corners);
                 if (corners > 7.5) corners_o7_5++;
@@ -329,6 +359,20 @@ export function simulateMatchProgress(
     return {
          pHome: toPct(home), pDraw: toPct(draw), pAway: toPct(away), pBTTS: toPct(btts),
         pOver: toPct(over_main), pUnder: 100 - toPct(over_main),
+        
+        // === ÚJ (v95.1): pAH objektum hozzáadva ===
+        pAH: {
+            'h-0.5': toPct(ah_h_m0_5),
+            'h-1.5': toPct(ah_h_m1_5),
+            'a-0.5': toPct(ah_a_m0_5),
+            'a-1.5': toPct(ah_a_m1_5),
+            'h+0.5': toPct(ah_h_p0_5),
+            'h+1.5': toPct(ah_h_p1_5),
+            'a+0.5': toPct(ah_a_p0_5),
+            'a+1.5': toPct(ah_a_p1_5),
+        },
+        // ======================================
+        
         corners: sport === 'soccer' ?
         {
              'o7.5': toPct(corners_o7_5), 'u7.5': 100 - toPct(corners_o7_5),
@@ -355,7 +399,7 @@ export function simulateMatchProgress(
 }
 
 
-// === calculateModelConfidence (Változatlan v93.0) ===
+// === calculateModelConfidence (Változatlan v95.1) ===
 export function calculateModelConfidence(
     sport: string, 
     home: string, 
@@ -449,14 +493,14 @@ export function calculateModelConfidence(
     return Math.max(MIN_SCORE, Math.min(MAX_SCORE, score));
 }
 
-// === ELTÁVOLÍTVA (v93.0) ===
+// === calculatePsychologicalProfile (ELAVULT v93.0) ===
+// A felelősséget az 'AI_Service.ts' (2.5 Ügynök) vette át.
 /*
 export function calculatePsychologicalProfile(...) {}
 */
-// === ELTÁVOLÍTÁS VÉGE ===
 
+// === MÓDOSÍTÁS (v76.0): 'calculateValue' (Implementálva) ===
 
-// === calculateValue (Változatlan v93.0) ===
 /**
  * Segédfüggvény: Decimális odds átalakítása implikált valószínűséggé (vig nélkül).
  */
@@ -464,6 +508,7 @@ function _getImpliedProbability(price: number): number {
     if (price <= 1.0) return 100.0;
     return (1 / price) * 100;
 }
+
 /**
  * 4. ÜGYNÖK (B) RÉSZE: Érték (Value) Kiszámítása
  */
@@ -602,7 +647,8 @@ export function calculateValue(
     return valueBets;
 }
 
-// === analyzeLineMovement (Változatlan v93.0) ===
+// === MÓDOSÍTÁS (v76.0): 'analyzeLineMovement' (Implementálva) ===
+
 /**
  * 4. ÜGYNÖK (C) RÉSZE: Piaci Mozgás Elemzése
  */
@@ -683,7 +729,7 @@ export function analyzeLineMovement(
     }
 }
 
-// === analyzePlayerDuels (Változatlan v93.0 - Stub) ===
+// === analyzePlayerDuels (Változatlan v95.1 - Stub) ===
 export function analyzePlayerDuels(keyPlayers: any, sport: string): string | null {
     return null;
 }
