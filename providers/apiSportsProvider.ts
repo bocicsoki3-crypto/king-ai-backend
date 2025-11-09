@@ -181,7 +181,7 @@ export async function getApiSportsTeamId(teamName: string, sport: string, league
     }
 
     if (foundTeam && foundTeam.id) {
-        apiSportsNameMappingCache.set(cacheKey, foundTeam.id);
+        apiSportsNameMappingCache.set(nameCacheKey, foundTeam.id);
         return foundTeam.id;
     }
     
