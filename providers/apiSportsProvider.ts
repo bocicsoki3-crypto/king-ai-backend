@@ -184,7 +184,7 @@ export async function getApiSportsTeamId(teamName: string, sport: string, league
         return foundTeam.id;
     }
     // A DataFetch.ts (v93.0) most már elkapja ezt a null-t és elindítja a 8. Ügynököt (AI Fallback).
-    console.warn(`[apiSportsProvider] A statikus csapat ID azonosítás sikertelen (H:${homeTeamId}, A:${awayTeamId}). A DataFetch.ts most elindítja az AI Fallback-et...`);
+     console.warn(`[apiSportsProvider] A statikus csapat ID azonosítás sikertelen ("${searchName}"). A DataFetch.ts most elindítja az AI Fallback-et...`);
     apiSportsNameMappingCache.set(nameCacheKey, 'not_found');
     return null;
 }
