@@ -1,10 +1,11 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v94.7 (Mentési Hurok Javítás)
-// MÓDOSÍTÁS (v94.7):
-// 1. JAVÍTVA (TS2554): A `saveAnalysisToSheet` hívás (kb. 450. sor)
-//    javítva, hogy 1 argumentumot várjon (az `options` objektumot),
-//    megfelelve a `sheets.ts` (v94.6+) új aláírásának.
-// 2. LOGIKA: Az "Önjavító Hurok" (v94.0) logikája érintetlen marad.
+// VERZIÓ: v96.1 (TS2345 Hiba Javítva)
+// MÓDOSÍTÁS (v96.1):
+// 1. JAVÍTVA (TS2345): A 'strategistInput' objektum (kb. 337. sor)
+//    kiegészítve a hiányzó 'oddsDataJson: mutableOddsData' kulccsal.
+// 2. CÉL: Ez a javítás szinkronizálja az AnalysisFlow-t az
+//    AI_Service.ts (v96.1) "Piac-Kereső" Stratégájával.
+// 3. LOGIKA: Az "Önjavító Hurok" (v94.0) logikája érintetlen marad.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -40,7 +41,6 @@ import {
     runStep_Critic,       // (5. Ügynök - Kritikus)
     runStep_Strategist    // (6. Ügynök - Stratéga)
 } from './AI_Service.js';
-// === JAVÍTÁS (v94.6): A 'SHEET_URL' import TÖRÖLVE (már nem kell) ===
 import { saveAnalysisToSheet } from './sheets.js'; 
 // === ÚJ (v94.0): Önjavító Hurok importálása ===
 import { getNarrativeRatings } from './LearningService.js';
@@ -49,8 +49,8 @@ import { getNarrativeRatings } from './LearningService.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v94.7): Az öntanuló hurok bezárása. A lánc most már
-* beolvassa a 7. Ügynök (Revizor) múltbeli tanulságait.
+* VÁLTOZÁS (v96.1): A 'strategistInput' szinkronizálva a
+* v96.1-es "Piac-Kereső" Stratégával (AI_Service.ts).
 **************************************************************/
 
 // Az új, strukturált JSON válasz
@@ -138,13 +138,11 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         
-        // === MÓDOSÍTVA (v94.0) ===
         const p1AbsenteesHash = manual_absentees ?
             `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
-        // Új cache kulcs
-        analysisCacheKey = `analysis_v94.0_self_learning_loop_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
-        // === MÓDOSÍTÁS VÉGE ===
+        // Új cache kulcs (v96.0)
+        analysisCacheKey = `analysis_v96.0_market_hunter_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
         
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
@@ -272,7 +270,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const finalXgSource = xgSource;
 
         // === 4. ÜGYNÖK (SZIMULÁTOR): Meccs szimulálása ===
-        console.log(`[Lánc 4/6] Szimulátor Ügynök: 25000 szimuláció futtatása...`);
+        console.log(`[Lánc 4/6] Szimulátor Ügynök: 25000 szimuláció futtatása (v95.1 - AH Számítással)...`);
         const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
         const sim = simulateMatchProgress(
             mu_h, mu_a, 
@@ -305,15 +303,19 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         console.log(`[Lánc 5/6] Kritikus végzett. Végső (Piac-Tudatos) Bizalmi Pontszám: ${finalConfidenceFromCritic.toFixed(2)}`);
         // === MÓDOSÍTÁS VÉGE ===
 
-        // === MÓDOSÍTVA (v94.0): 6. ÜGYNÖK (STRATÉGA) ===
-        console.log(`[Lánc 6/6] Stratéga Ügynök: Végső döntés meghozatala (v94.0)...`);
+        // === MÓDOSÍTVA (v96.1): 6. ÜGYNÖK (STRATÉGA) ===
+        // JAVÍTVA: A 'strategistInput' most már tartalmazza
+        // a 'v96.0'-s "Piac-Kereső" Stratéga által megkövetelt
+        // 'oddsDataJson' kulcsot. Ez javítja a TS2345 hibát.
+        console.log(`[Lánc 6/6] Stratéga Ügynök: Végső döntés meghozatala (v96.1 - Piac-Kereső)...`);
         
         const strategistInput = {
             matchData: { home, away, sport, leagueName },
             quantReport: { pure_mu_h: pure_mu_h, pure_mu_a: pure_mu_a, source: quantSource },
             specialistReport: specialistReport, 
             simulatorReport: sim,
-            criticReport: criticReport, // Ez már a v94-es Piac-Tudatos riport
+            criticReport: criticReport,
+            oddsDataJson: mutableOddsData, // <-- JAVÍTÁS (v96.1): Hiányzó kulcs hozzáadva
             modelConfidence: parseFloat(modelConfidence.toFixed(1)),
             rawDataJson: rawData,
             realXgJson: { 
@@ -411,9 +413,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         console.log(`Elemzés befejezve és cache mentve (${analysisCacheKey})`);
         
         // === JAVÍTÁS (v94.7 - TS2554): A hívás 1 argumentumra javítva ===
-        // A hibás 'if (params.sheetUrl ...)' blokk eltávolítva.
-        // A 'saveAnalysisToSheet' aláírása (signature) megváltozott (nincs 'sheetUrl').
-        saveAnalysisToSheet({ // <-- JAVÍTÁS
+        saveAnalysisToSheet({
             sport, 
             home, 
             away, 
