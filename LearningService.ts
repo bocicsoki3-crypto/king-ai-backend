@@ -338,11 +338,11 @@ ACTIONABLE, STRUCTURED learnings for the system's Narrative Cache.
    - Provide a 1-2 sentence Hungarian analysis of the flaw.
 
 4. **GENERATE NARRATIVE LEARNINGS (FOR MACHINE):**
-   - Based on the flaw, create a `learnings` array.
+   - Based on the flaw, create a 'learnings1 array.
    - This array tells the system *what* it learned about *which* team.
-   - Use standardized `rating` keys (e.g., 'pressure_handling', 'rain_performance', 'derby_performance', 'key_defender_missing_impact').
-   - Use `adjustment` values: 1 (for positive insight, e.g., "underestimated them") or -1 (for negative insight, e.g., "overestimated them").
-   - If the flaw was unpredictable (e.g., red card), return an empty `learnings` array.
+   - Use standardized 'rating' keys (e.g., 'pressure_handling', 'rain_performance', 'derby_performance', 'key_defender_missing_impact').
+   - Use 'adjustment' values: 1 (for positive insight, e.g., "underestimated them") or -1 (for negative insight, e.g., "overestimated them").
+   - If the flaw was unpredictable (e.g., red card), return an empty 'learnings' array.
 
 [EXAMPLE OUTPUT (v94.0)]:
 {
