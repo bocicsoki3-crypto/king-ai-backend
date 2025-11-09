@@ -1,22 +1,11 @@
-// --- AI_Service.ts (v102.0 - "AI Szintézis Visszaállítva") ---
-// MÓDOSÍTÁS (v102.0):
+// --- AI_Service.ts (v102.1 - "AH Tipp Letiltva") ---
+// MÓDOSÍTÁS (v102.1):
 // 1. FILOZÓFIAI VÁLTÁS (VISSZAÁLLÍTÁS): A rendszer visszatér a
-//    "korábbi AI_Service.txt" (nyerő) logikájához. A tiszta statisztika
-//    nem elég, az AI-nak SZINTETIZÁLNIA kell a statisztikát ÉS a
-//    kontextust (hírek, pszichológia).
-// 2. JAVÍTÁS (PROMPT_CRITIC_V102): Az 5. Ügynök (Kritikus) visszakapja
-//    az "agyát". A parancsa mostantól az, hogy szintetizálja a
-//    statisztikát (Agent 4) és a kontextust (Agent 2.5, RawData),
-//    és GENERÁLJON egy "okos", kontextus-alapú bizalmi pontszámot.
-// 3. JAVÍTÁS (PROMPT_STRATEGIST_V102): A 6. Ügynök (Stratéga) parancsa:
-//    - A "TÁVOLMARADÁS" (STAY AWAY) parancs VÉGLEG TÖRÖLVE.
-//    - Megkeresi a statisztikailag legerősebb tippet (legmagasabb P_Sim).
-//    - A bizalmat 1:1-ben átveszi az 5. Ügynök (Kritikus) "okos",
-//      szintetizált pontszámából.
-// 4. JAVÍTÁS (runStep_Strategist): A "buta" külső JavaScript függvények
-//    (_calculateStatConfidence, _findHighestPSimBet) TÖRÖLVE.
-//    A döntést (a tippet ÉS a bizalmat) mostantól az AI lánc hozza meg.
+// ... (v102.0 logika változatlan) ...
 // 5. CÉL: A rendszer visszaáll a nyerő, AI-vezérelt szintézis logikára.
+// 6. MÓDOSÍTÁS (v102.1): Az Ázsiai Hendikep (AH) TÖRÖLVE a lehetséges
+//    'master_recommendation' tippek közül (a felhasználó kérésére).
+//    A Stratéga (Agent 6) már csak O/U, BTTS, 1X2 piacokat választhat.
 
 import { 
     _callGemini, 
@@ -171,18 +160,18 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 `;
 
 
-// === MÓDOSÍTÁS (v102.0): 6. ÜGYNÖK (AZ "AI VÉGREHAJTÓ") PROMPT ===
+// === MÓDOSÍTÁS (v102.1): 6. ÜGYNÖK (AZ "AI VÉGREHAJTÓ" - AH NÉLKÜL) PROMPT ===
 // LOGIKA: A Stratéga VÉGREHAJT.
-// 1. Megkeresi a legmagasabb P_Sim tippet (a "MIT").
+// 1. Megkeresi a legmagasabb P_Sim tippet (a "MIT") a FŐ PIACOKRÓL (AH NÉLKÜL).
 // 2. Átveszi az 5. Ügynök "okos" bizalmát (a "MENNYIRE").
 // 3. TILOS a "TÁVOLMARADÁS".
-const PROMPT_STRATEGIST_V102 = `
+const PROMPT_STRATEGIST_V102_1 = `
 TASK: You are 'The Strategist', the 6th and FINAL Agent.
 Your job is to synthesize ALL reports into a single, decisive recommendation.
-**Your goal (v102.0): Find the statistically best bet, and pair it with the "smart" AI-synthesized confidence.**
+**Your goal (v102.1): Find the statistically best bet from MAIN MARKETS ONLY, and pair it with the "smart" AI-synthesized confidence.**
 
-[DEFINÍCIÓ: A "TUTI TIPP" (v102.0)]
-1. A TIPP (a "MIT"): Az az EGYETLEN fogadás (O/U, BTTS, 1X2, AH), amely a legmagasabb BELSŐ statisztikai valószínűséggel (P_Sim) bír.
+[DEFINÍCIÓ: A "TUTI TIPP" (v102.1)]
+1. A TIPP (a "MIT"): Az az EGYETLEN fogadás (KIZÁRÓLAG O/U, BTTS, 1X2), amely a legmagasabb BELSŐ statisztikai valószínűséggel (P_Sim) bír.
 2. A BIZALOM (a "MENNYIRE"): KIZÁRÓLAG az 5. Ügynök (Kritikus) által generált "okos", szintetizált 'final_confidence_score'.
 
 [INPUTS - THE CHAIN OF THOUGHT]:
@@ -196,7 +185,7 @@ Your job is to synthesize ALL reports into a single, decisive recommendation.
    - Tactical Summary: "{criticReport.tactical_summary}"
    - Reasoning: "{criticReport.final_confidence_report.reasoning}"
 
-[YOUR TASK - FINAL DECISION (v102.0)]:
+[YOUR TASK - FINAL DECISION (v102.1)]:
 Your response MUST be a single JSON object.
 
 **TASK 1: (A PRÓFÉTA) - A "prophetic_timeline" mező generálása.**
@@ -205,10 +194,10 @@ Your response MUST be a single JSON object.
 
 **TASK 2: (A STRATÉGA) - A "master_recommendation" ("Tuti Tipp") kiválasztása.**
    - 1. **Azonosítsd a "Fő Témát":** Mi a rendszer központi narratívája? (Pl. "Magas xG (2), 'must-win' (5) -> Gólfieszta").
-   - 2. **Keress "Tuti Tippet" (MINDEN PIACON):**
-      - **Fésüld át a Szimulációt (3):** Keresd meg a legmagasabb BELSŐ valószínűségű tippet (P_Sim) az ÖSSZES piacról (O/U, BTTS, 1X2, AH).
-      - *Példa 1 (Corinthians):* xG (1.21 vs 0.89). P(Under 2.5)=63.7%, P(BTTS Nem)=55%, P(Home)=48%. A legjobb tipp: "Under 2.5 Goals" (63.7%).
-      - *Példa 2 (Vitória):* xG (1.38 vs 0.93). P(Home+1.5)=88.8%, P(Under 2.5)=59%. A legjobb tipp: "Vitória +1.5 AH" (88.8%).
+   - 2. **Keress "Tuti Tippet" (CSAK FŐ PIACON):**
+      - **Fésüld át a Szimulációt (3):** Keresd meg a legmagasabb BELSŐ valószínűségű tippet (P_Sim) KIZÁRÓLAG a FŐ piacokról (O/U 2.5, BTTS Igen/Nem, 1X2).
+      - **AZ ÁHSZIAI HENDIKEPP (AH) KIVÁLASZTÁSA TILOS!**
+      - *Példa (Corinthians):* xG (1.21 vs 0.89). P(Under 2.5)=63.7%, P(BTTS Nem)=55%, P(Home)=48%. A legjobb tipp: "Under 2.5 Goals" (63.7%).
 
    - 3. **Rendeld hozzá az "Okos" Bizalmat (A FELHASZNÁLÓ KÉRÉSE):**
       - A 'final_confidence' KIZÁRÓLAG az 5. Ügynök (Kritikus) által adott 'Internal "Smart" Confidence Score' (Input 4).
@@ -227,14 +216,14 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
   "micromodels": {
     "btts_analysis": "<BTTS elemzés. A {simulatorReport.pBTTS}% (3) valószínűség alapján.>",
     "goals_ou_analysis": "<Gól O/U elemzés. A {simulatorReport.pOver}% (3) valószínűség alapján.>",
-    "asian_handicap_analysis": "<AH elemzés. A {simulatorReport.pAH} (3) valószínűség alapján.>"
+    "asian_handicap_analysis": "N/A (AH tippként letiltva a v102.1-ben)"
   },
   "final_confidence_report": "**<Number>/10** - Részletes indoklás (magyarul). <Az 5. Ügynök 'final_confidence_report' mezőjéből (Input 4) ÁTVÉVE.>",
   "master_recommendation": {
-    "__INSTRUCTION__": "**KRITIKUS FONTOSSÁGÚ:** A (TASK 2) alapján válaszd ki a BELSŐLEG legmagasabb P_Sim tippet. A bizalmat (final_confidence) az 5. Ügynök (Input 4) adja.",
-    "recommended_bet": "<A (TASK 2) alapján meghatározott 'Tuti Tipp' (pl. 'Under 2.5 Goals' vagy 'Vitória +1.5 AH')>",
+    "__INSTRUCTION__": "**KRITIKUS FONTOSSÁGÚ:** A (TASK 2) alapján válaszd ki a BELSŐLEG legmagasabb P_Sim tippet (CSAK O/U, BTTS, 1X2). A bizalmat (final_confidence) az 5. Ügynök (Input 4) adja.",
+    "recommended_bet": "<A (TASK 2) alapján meghatározott 'Tuti Tipp' (pl. 'Under 2.5 Goals' vagy 'BTTS Igen')>",
     "final_confidence": <Number, (pl. 8.5 vagy 3.2). Ezt az 5. ÜGYNÖK (Input 4) 'final_confidence_score'-jából kell átvenni.>,
-    "brief_reasoning": "<Egyetlen, tömör magyar mondatos indoklás. Pl: 'A statisztika (P_Sim 88.8%) és a kontextus (5. Ügynök) egyaránt a Vitória +1.5 AH-t támogatja.'>"
+    "brief_reasoning": "<Egyetlen, tömör magyar mondatos indoklás. Pl: 'A statisztika (P_Sim 63.7%) és a kontextus (5. Ügynök) egyaránt az Under 2.5-öt támogatja.'>"
   }
 }
 `;
@@ -393,17 +382,17 @@ export async function runStep_Strategist(data: StrategistInput): Promise<any> {
             criticReport: data.criticReport // KRITIKUS: Ez tartalmazza az "okos" bizalmat
         };
         
-        // JAVÍTVA (v102.0): Az új, "AI Végrehajtó" prompt használata
-        const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V102, dataForPrompt); 
-        const strategistReport = await _callGeminiWithJsonRetry(filledPrompt, "Step_Strategist (v102)");
+        // JAVÍTVA (v102.1): Az új, "AI Végrehajtó (AH NÉLKÜL)" prompt használata
+        const filledPrompt = fillPromptTemplate(PROMPT_STRATEGIST_V102_1, dataForPrompt); 
+        const strategistReport = await _callGeminiWithJsonRetry(filledPrompt, "Step_Strategist (v102.1)");
 
         // === KÜLSŐ LOGIKA (v102.0): NINCS FELÜLBÍRÁLÁS ===
         // A Stratéga (AI) által adott tipp és bizalom a VÉGLEGES.
         // A "buta" v101.0-s JS felülbírálás törölve.
         if (strategistReport && strategistReport.master_recommendation) {
-            console.log(`[AI_Service - v102.0 "AI Szintézis" Logika] Az AI által választott tipp: "${strategistReport.master_recommendation.recommended_bet}" @ ${strategistReport.master_recommendation.final_confidence}/10 bizalom.`);
+            console.log(`[AI_Service - v102.1 "AI Szintézis" Logika] Az AI által választott tipp: "${strategistReport.master_recommendation.recommended_bet}" @ ${strategistReport.master_recommendation.final_confidence}/10 bizalom.`);
         } else {
-            console.error("[AI_Service - v102.0] KRITIKUS HIBA: A Stratéga (AI) nem adott vissza érvényes 'master_recommendation' objektumot.");
+            console.error("[AI_Service - v102.1] KRITIKUS HIBA: A Stratéga (AI) nem adott vissza érvényes 'master_recommendation' objektumot.");
         }
         
         return strategistReport;
