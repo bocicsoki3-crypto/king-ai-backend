@@ -1,7 +1,8 @@
 // FÁJL: providers/oddsFeedProvider.ts
-// VERZIÓ: v1.0
-// CÉL: Az 'Odds Feed' API-t (RapidAPI) hívja, hogy lekérje a
-//       megbízható odds adatokat. Ez az "Aggregátor" modell egyik fele.
+// VERZIÓ: v1.1 (TS18048 Fix)
+// CÉL: Az 'Odds Feed' API-t (RapidAPI) hívja.
+// JAVÍTÁS: Null/undefined ellenőrzés hozzáadva az 'events' tömbhöz
+//          a 'findEventId' függvényben (TS18048).
 
 import { makeRequest } from './common/utils.js';
 import { ODDS_API_HOST, ODDS_API_KEY } from '../config.js';
@@ -12,6 +13,7 @@ const oddsApiCache = new NodeCache({ stdTTL: 60 * 10, checkperiod: 60 * 2 }); //
 
 // Központi hívó függvény (Odds Feed)
 async function makeOddsFeedRequest(endpoint: string, params: any = {}) {
+// ... (függvény törzse változatlan)
     if (!ODDS_API_HOST || !ODDS_API_KEY) {
         throw new Error(`Kritikus konfigurációs hiba: Hiányzó ODDS_API_HOST vagy ODDS_API_KEY a .env fájlban.`);
     }
@@ -26,9 +28,8 @@ async function makeOddsFeedRequest(endpoint: string, params: any = {}) {
     };
 
     try {
-        // A 'common/utils.js'-ből importált 'makeRequest' hívása
         const response = await makeRequest(url, fullConfig, 0); 
-        return response.data; // Az Odds Feed API a 'data' kulcsban adja vissza a választ
+        return response.data; 
     } catch (error: any) {
         console.error(`[OddsFeedProvider] Hiba: ${error.message}. Endpoint: ${endpoint}`);
         throw error;
@@ -53,6 +54,7 @@ async function findEventId(
 ): Promise<string | null> {
     
     const sportKey = SPORT_KEY_MAP[sport];
+// ... (függvény törzse változatlan)
     if (!sportKey) {
         console.warn(`[OddsFeedProvider] Nem támogatott sportág: ${sport}`);
         return null;
@@ -71,21 +73,30 @@ async function findEventId(
         events = response.events;
         oddsApiCache.set(cacheKey, events);
     } else {
-        console.log(`[OddsFeedProvider] Események a cache-ből (Events: ${events.length})`);
+        console.log(`[OddsFeedProvider] Események a cache-ből (Events: ${events?.length})`);
     }
+
+    // === JAVÍTÁS (v1.1 - TS18048) ===
+    // Ha az 'events' tömb a cache-ből vagy az API-ból továbbra is hiányzik,
+    // biztonságosan lépjünk ki, mielőtt a .find() metódust hívnánk.
+    if (!events || !Array.isArray(events)) {
+        console.warn(`[OddsFeedProvider] Az 'events' tömb érvénytelen vagy üres a findEventId futása során.`);
+        return null;
+    }
+    // === JAVÍTÁS VÉGE ===
 
     // Csapatnevek normalizálása
     const searchHome = homeTeamName.toLowerCase();
     const searchAway = awayTeamName.toLowerCase();
 
-    // Megkeressük a meccset a válaszban
-    // Az Odds Feed API 'description'-t vagy 'name'-t használ a meccs nevére
+    // Megkeressük a meccset a válaszban (Ez a sor most már biztonságos)
     const foundEvent = events.find((e: any) => {
         const eventName = (e.description || e.name || "").toLowerCase();
         return eventName.includes(searchHome) && eventName.includes(searchAway);
     });
 
     if (foundEvent && foundEvent.id) {
+// ... (függvény törzse változatlan)
         console.log(`[OddsFeedProvider] Esemény TALÁLAT: ${foundEvent.description} (EventID: ${foundEvent.id})`);
         return foundEvent.id;
     }
@@ -103,17 +114,20 @@ export async function fetchOddsData(
     matchDateISO: string, 
     sport: string
 ): Promise<ICanonicalOdds | null> {
+// ... (függvény törzse változatlan)
     
     const matchDate = new Date(matchDateISO).toISOString().split('T')[0];
 
     try {
         const eventId = await findEventId(homeTeamName, awayTeamName, matchDate, sport);
+// ... (függvény törzse változatlan)
         if (!eventId) {
             console.warn(`[OddsFeedProvider] Nem sikerült EventID-t találni, az odds lekérés sikertelen.`);
             return null;
         }
 
         const cacheKey = `oddsfeed_odds_v1_${eventId}`;
+// ... (függvény törzse változatlan)
         const cached = oddsApiCache.get<ICanonicalOdds>(cacheKey);
         if (cached) {
             console.log(`[OddsFeedProvider] Odds cache találat (EventID: ${eventId})`);
@@ -121,20 +135,22 @@ export async function fetchOddsData(
         }
 
         console.log(`[OddsFeedProvider] Odds lekérése... (EventID: ${eventId})`);
+// ... (függvény törzse változatlan)
         const oddsResponse = await makeOddsFeedRequest(`events/${eventId}/odds`);
         
         if (!oddsResponse || !Array.isArray(oddsResponse.sports) || !oddsResponse.sports[0]) {
+// ... (függvény törzse változatlan)
             console.warn(`[OddsFeedProvider] Az API nem adott vissza odds adatot (EventID: ${eventId})`);
             return null;
         }
 
-        // Az Odds Feed API mélyen beágyazza az adatokat
         const bookmakers = oddsResponse.sports[0].bookmakers;
+// ... (függvény törzse változatlan)
         const allMarkets: ICanonicalOdds['allMarkets'] = [];
         const currentOdds: ICanonicalOdds['current'] = [];
 
-        // Itt feltételezzük, hogy az első elérhető bukméker (pl. Pinnacle) adatait használjuk
         const primaryBookmaker = bookmakers.find((b: any) => b.key === "pinnacle") || bookmakers[0];
+// ... (függvény törzse változatlan)
         if (!primaryBookmaker) {
             console.warn(`[OddsFeedProvider] Nem található bukméker az adatokban.`);
             return null;
@@ -145,15 +161,19 @@ export async function fetchOddsData(
         const markets = primaryBookmaker.markets || [];
         
         // Moneyline (H2H)
+// ... (függvény törzse változatlan)
         const moneylineMarket = markets.find((m: any) => m.key === "h2h");
         if (moneylineMarket && Array.isArray(moneylineMarket.outcomes)) {
             const homeOutcome = moneylineMarket.outcomes.find((o: any) => o.name.toLowerCase() === homeTeamName.toLowerCase());
+// ... (függvény törzse változatlan)
             const awayOutcome = moneylineMarket.outcomes.find((o: any) => o.name.toLowerCase() === awayTeamName.toLowerCase());
             
             if (homeOutcome) currentOdds.push({ name: 'Hazai győzelem', price: parseFloat(homeOutcome.price) });
+// ... (függvény törzse változatlan)
             if (awayOutcome) currentOdds.push({ name: 'Vendég győzelem', price: parseFloat(awayOutcome.price) });
             
             allMarkets.push({
+// ... (függvény törzse változatlan)
                 key: 'h2h',
                 outcomes: moneylineMarket.outcomes.map((o: any) => ({
                     name: o.name,
@@ -163,9 +183,11 @@ export async function fetchOddsData(
         }
 
         // Totals (Over/Under)
+// ... (függvény törzse változatlan)
         const totalsMarket = markets.find((m: any) => m.key === "totals");
         if (totalsMarket && Array.isArray(totalsMarket.outcomes)) {
              allMarkets.push({
+// ... (függvény törzse változatlan)
                 key: 'totals',
                 outcomes: totalsMarket.outcomes.map((o: any) => ({
                     name: o.name, // "Over" vagy "Under"
@@ -176,9 +198,11 @@ export async function fetchOddsData(
         }
         
         // Spreads (Handicap)
+// ... (függvény törzse változatlan)
         const spreadsMarket = markets.find((m: any) => m.key === "spreads");
          if (spreadsMarket && Array.isArray(spreadsMarket.outcomes)) {
              allMarkets.push({
+// ... (függvény törzse változatlan)
                 key: 'spreads',
                 outcomes: spreadsMarket.outcomes.map((o: any) => ({
                     name: o.name,
@@ -189,6 +213,7 @@ export async function fetchOddsData(
         }
 
         const result: ICanonicalOdds = {
+// ... (függvény törzse változatlan)
             current: currentOdds,
             allMarkets: allMarkets,
             fullApiData: oddsResponse,
@@ -196,6 +221,7 @@ export async function fetchOddsData(
         };
 
         if (result.current.length > 0) {
+// ... (függvény törzse változatlan)
             oddsApiCache.set(cacheKey, result);
         } else {
              console.warn(`[OddsFeedProvider] Nem sikerült Moneyline (h2h) piacot találni.`);
@@ -204,6 +230,7 @@ export async function fetchOddsData(
         return result;
 
     } catch (e: any) {
+// ... (függvény törzse változatlan)
         console.error(`[OddsFeedProvider] KRITIKUS HIBA a fetchOddsData során: ${e.message}`, e.stack);
         return null; // Hibatűrés
     }
