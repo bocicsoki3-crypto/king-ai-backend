@@ -1,8 +1,9 @@
 // FÁJL: providers/oddsFeedProvider.ts
-// VERZIÓ: v1.2 (404 Fix)
-// JAVÍTÁS: A Log napló (404 hiba) alapján a végpont hívása hibás volt.
+// VERZIÓ: v1.2 (404/TS18048 Fix)
+// JAVÍTÁS (404 Hiba): A Log napló (404 hiba) alapján a végpont hívása hibás volt.
 // A 'date' nem az URL része, hanem egy 'params' kell legyen.
 // A 'findEventId' függvény javítva, hogy a 'date'-et paraméterként adja át.
+// JAVÍTÁS (TS18048): Az 'events' változóhoz null guard hozzáadva.
 
 import { makeRequest } from './common/utils.js';
 import { ODDS_API_HOST, ODDS_API_KEY } from '../config.js';
@@ -74,7 +75,7 @@ async function findEventId(
         });
         // === JAVÍTÁS VÉGE ===
 
-        // JAVÍTÁS (v1.1 - TS18048 Fix): Null guard hozzáadva
+        // JAVÍTÁS (v1.2 - TS18048 Fix): Null guard hozzáadva
         if (!response || !Array.isArray(response.events) || response.events.length === 0) {
             console.warn(`[OddsFeedProvider] Nem található esemény a(z) ${matchDate} napon.`);
             return null;
@@ -84,6 +85,14 @@ async function findEventId(
     } else {
         console.log(`[OddsFeedProvider] Események a cache-ből (Events: ${events?.length})`);
     }
+
+    // === JAVÍTÁS (v1.2 - TS18048 Fix) ===
+    // Biztosítjuk, hogy az 'events' ne legyen 'undefined'
+    if (!events) {
+        console.warn(`[OddsFeedProvider] Az 'events' tömb érvénytelen (null/undefined) a findEventId futása során.`);
+        return null;
+    }
+    // === JAVÍTÁS VÉGE ===
 
     // Csapatnevek normalizálása
     const searchHome = homeTeamName.toLowerCase();
