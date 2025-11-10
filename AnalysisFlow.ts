@@ -1,19 +1,13 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v103.2 ("Sheets Fix - Extra Slim" Architektúra)
-// MÓDOSÍTÁS (v103.2):
-// 1. JAVÍTVA: Az 'auditData' objektum (kb. 410. sor) "karcsúsítva" (slimmed down).
-// 2. LOGIKA: Eltávolítottuk a masszív, teljes objektumokat (mint 'sim' és 'oddsData')
-//    a Google Sheets-be mentett JSON-ból, hogy elkerüljük a 50.000 karakteres
-//    cella-limit hibát (Google API Error 400).
-// 3. CÉL: A frontend továbbra is a teljes JSON-t kapja, de a naplózás
-//    már csak a "lényeget" menti a Google Sheets-be.
+// VERZIÓ: v103.5 ("Frontend Struktúra Javítás")
+// MÓDOSÍTÁS (v103.5):
+// 1. JAVÍTVA: A 'jsonResponse' objektum (kb. 300. sor) át lett alakítva.
+// 2. OK: A frontend (script.js) a 'committee.strategist' kulcsot kereste,
+//    de ez a fájl (v103.2) 'committee.finalReport' kulcsra mentette az adatokat.
+// 3. JAVÍTÁS: A 'finalReport: finalReport' sor cserélve 'strategist: finalReport'-ra,
+//    hogy az adatstruktúra illeszkedjen a frontend elvárásaihoz.
 //
-// MÓDOSÍTÁS (v103.2):
-// 1. JAVÍTVA: Az 'auditData' MÉG TOVÁBB "karcsúsítva".
-// 2. LOGIKA: A 'committee' (bizottság) objektumból minden AI-generált
-//    riportot (psy, spec, critic, strategist) eltávolítottunk.
-// 3. CÉL: A Google Sheets 50k limit hiba végleges elhárítása. A Sheets
-//    már csak a kvantitatív adatokat és a VÉGSŐ tippet naplózza.
+// (A v103.2-es "Sheets Fix" módosítások érintetlenül hagyva)
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -56,7 +50,7 @@ import { getNarrativeRatings } from './LearningService.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v103.2): Google Sheets 50k limit agresszív javítása.
+* VÁLTOZÁS (v103.5): Frontend 'strategist' kulcs javítása.
 **************************************************************/
 
 // Az új, strukturált JSON válasz
@@ -71,9 +65,8 @@ interface IAnalysisResponse {
                 log: string,  
                 report: any   
             };
-            // v103: A "finalReport" (amit a frontend használ)
-            //       tartalmazza a critic/strategist/prophet mezőket
-            finalReport: any;
+            // v103.5 JAVÍTÁS: 'finalReport' átnevezve 'strategist'-re
+            strategist: any;
         };
         matchData: {
             home: string;
@@ -88,7 +81,7 @@ interface IAnalysisResponse {
         modelConfidence: number; 
         finalConfidenceScore: number; 
         sim: any; 
-        // A 'recommendation' a 'finalReport.master_recommendation' másolata
+        // A 'recommendation' a 'strategist.master_recommendation' másolata
         recommendation: any;
         xgSource: string; 
         availableRosters: {
@@ -402,7 +395,14 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                         log: specialistReport.reasoning,  
                         report: specialistReport   
                     },
-                    finalReport: finalReport // Ez tartalmazza a hiányzó szövegeket (v103.3)
+                    
+                    // === JAVÍTÁS (v103.5): A 'finalReport' kulcs átnevezve 'strategist'-re ===
+                    // A frontend (script.js) a 'committee.strategist' kulcsot keresi.
+                    // A 'finalReport' (ami az AI_Service.ts-ből jön) tartalmazza
+                    // a 'strategic_synthesis', 'prophetic_timeline' stb. mezőket.
+                    // Ez a sor javítja a hibás adatstruktúrális illesztést.
+                    strategist: finalReport 
+                    // === JAVÍTÁS VÉGE ===
                 },
                 matchData: auditData.analysisData.matchData,
                 oddsData: mutableOddsData, // A FRONTEND A TELJES ODDS ADATOT KAPJA
