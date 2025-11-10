@@ -1,5 +1,7 @@
-// config.ts (v78.0 - Sportradar Keys)
-// JAVÍTÁS: Hozzáadva a SPORTRADAR kulcsok, eltávolítva a régi APISPORTS_HOCKEY kulcsok.
+// config.ts (v78.1 - TS2411 Fix)
+// JAVÍTÁS: Az 'API_HOSTS' (91. sor) explicit 'IApiHostMap' típust kapott,
+//          hogy megszüntesse a TS2411-es ütközést az 'ISportConfigMap'-pal.
+// JAVÍTÁS: Az 'IApiHostMap' (55. sor) index típusa '[key: string]: IApiHostConfig' lett.
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -49,12 +51,13 @@ interface IApiHostConfig {
 
 /**
  * Az összes API szolgáltató konfigurációja.
+ * JAVÍTÁS (v78.1): Index típus hozzáadva a TS2411 elkerülésére.
  */
 interface IApiHostMap {
   soccer: IApiHostConfig;
   hockey: IApiHostConfig; 
   basketball: IApiHostConfig;
-  [key: string]: ISportConfig; // Lehetővé teszi a [sport] indexelést
+  [key: string]: IApiHostConfig; // Lehetővé teszi a [sport] indexelést
 }
 
 // --- SZERVER BEÁLLÍTÁSOK ---
@@ -88,8 +91,8 @@ export const ODDS_API_HOST: string = process.env.ODDS_API_HOST || 'odds-feed.p.r
 
 // --- API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
 // Ez a struktúra felel a kulcsrotációért.
-
-export const API_HOSTS: { [key: string]: any } = {
+// JAVÍTÁS (v78.1): Explicit 'IApiHostMap' típus hozzáadva.
+export const API_HOSTS: IApiHostMap = {
     soccer: {
         host: process.env.APIFOOTBALL_HOST || 'api-football-v1.p.rapidapi.com',
         keys: [
