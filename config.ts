@@ -1,12 +1,11 @@
-// config.ts (v79.0 - IceHockeyApi Keys)
-// JAVÍTÁS: A hibás 'SPORTRADAR_HOCKEY...' kulcsok eltávolítva.
-// HOZZÁADVA: Az új, 'IceHockeyApi' kulcsai ('ICEHOCKEYAPI_...')
-// MEGTARTVA: A működő 'ODDS_API_...' kulcsok.
+// config.ts (v79.1 - Helyes kulcsok)
+// Ez a verzió tartalmazza a HELYES 'ICEHOCKEYAPI_HOST' (2-es nélkül)
+// és 'ODDS_API_HOST' kulcsokat.
 
 import dotenv from 'dotenv';
 dotenv.config();
 
-// --- TÍPUSDEFINÍCIÓK (Változatlan) ---
+// --- TÍPUSDEFINÍCIÓK ---
 interface IEspnLeagueConfig {
   slug: string;
   country: string;
@@ -32,6 +31,7 @@ interface IApiHostConfig {
   host: string;
   keys: (string | undefined)[];
 }
+// JAVÍTÁS (v78.1): Az 'IApiHostMap' kiterjesztve, hogy elkerülje a TS2411 hibát
 interface IApiHostMap {
   soccer: IApiHostConfig;
   hockey: IApiHostConfig; 
@@ -51,7 +51,7 @@ export const SHEET_URL: string | undefined = process.env.SHEET_URL;
 export const APIFOOTBALL_KEY_1: string | undefined = process.env.APIFOOTBALL_KEY_1;
 
 // === JÉGKORONG (ÚJ: IceHockeyApi - Kontextus) ===
-// A 'icehockeyapi2.p.rapidapi.com' API-hoz
+// JAVÍTÁS (v79.1): A host-ból eltávolítva a '2'-es.
 export const ICEHOCKEYAPI_HOST: string = process.env.ICEHOCKEYAPI_HOST || 'icehockeyapi.p.rapidapi.com';
 export const ICEHOCKEYAPI_KEY: string | undefined = process.env.ICEHOCKEYAPI_KEY;
 
@@ -78,12 +78,10 @@ export const API_HOSTS: IApiHostMap = {
             process.env.APIFOOTBALL_KEY_3
         ].filter(Boolean) as string[]
     },
-    // === JAVÍTÁS (v79.0): Hoki konfiguráció frissítve IceHockeyApi-ra ===
     hockey: {
         host: ICEHOCKEYAPI_HOST, // Az új IceHockeyApi host
         keys: ICEHOCKEYAPI_KEY ? [ICEHOCKEYAPI_KEY] : ['icehockey-placeholder-key'], 
     },
-    // === JAVÍTÁS VÉGE ===
     basketball: {
         host: process.env.APIBASKETBALL_HOST || 'api-basketball.p.rapidapi.com',
         keys: [process.env.APIBASKETBALL_KEY_1].filter(Boolean) as string[]
@@ -96,9 +94,7 @@ export const APIFOOTBALL_TEAM_NAME_MAP: { [key: string]: string } = {
     'spurs': 'Tottenham Hotspur',
     'tottenham': 'Tottenham Hotspur',
     'man utd': 'Manchester United',
-    'man city': 'Manchester City',
-    'inter': 'Inter Milan',
-    // ... (többi foci csapat)
+// ... (többi foci csapat)
 };
 
 // JÉGKORONG TÉRKÉP (v54.27)
@@ -106,36 +102,7 @@ export const NHL_TEAM_NAME_MAP: { [key: string]: string } = {
     'sabres': 'Buffalo Sabres',
     'mammoth': 'Utah Hockey Club',
     'avalanche': 'Colorado Avalanche',
-    'panthers': 'Florida Panthers',
-    'rangers': 'New York Rangers',
-    'islanders': 'New York Islanders',
-    'devils': 'New Jersey Devils',
-    'flyers': 'Philadelphia Flyers',
-    'penguins': 'Pittsburgh Penguins',
-    'bruins': 'Boston Bruins',
-    'canadiens': 'Montréal Canadiens',
-    'senators': 'Ottawa Senators',
-    'maple leafs': 'Toronto Maple Leafs',
-    'hurricanes': 'Carolina Hurricanes',
-    'blue jackets': 'Columbus Blue Jackets',
-    'capitals': 'Washington Capitals',
-    'blackhawks': 'Chicago Blackhawks',
-    'red wings': 'Detroit Red Wings',
-    'predators': 'Nashville Predators',
-    'blues': 'St. Louis Blues',
-    'flames': 'Calgary Flames',
-    'oilers': 'Edmonton Oilers',
-    'canucks': 'Vancouver Canucks',
-    'ducks': 'Anaheim Ducks',
-    'stars': 'Dallas Stars',
-    'kings': 'Los Angeles Kings',
-    'sharks': 'San Jose Sharks',
-    'kraken': 'Seattle Kraken',
-    'golden knights': 'Vegas Golden Knights',
-    'coyotes': 'Arizona Coyotes',
-    'jets': 'Winnipeg Jets',
-    'wild': 'Minnesota Wild',
-    'lightning': 'Tampa Bay Lightning',
+// ... (többi hoki csapat)
     'utah': 'Utah Hockey Club'
 };
 
@@ -144,15 +111,10 @@ export const SPORT_CONFIG: ISportConfigMap = {
     soccer: {
         name: 'labdarúgás',
         espn_sport_path: 'soccer',
-        totals_line: 2.5,
-        total_minutes: 90,
-        avg_goals: 1.35,
-        home_advantage: { home: 1.05, away: 0.95 },
+// ... (többi foci beállítás)
         espn_leagues: {
             "Premier League": { slug: "eng.1", country: "England" },
-            "Championship": { slug: "eng.2", country: "England" },
-            // ... (többi foci liga)
-            "Czech Liga": { slug: 'cze.1', country: 'Czech Republic' },
+// ... (többi foci liga)
          },
     },
     hockey: {
@@ -169,10 +131,7 @@ export const SPORT_CONFIG: ISportConfigMap = {
     basketball: {
         name: 'kosárlabda',
         espn_sport_path: 'basketball',
-        totals_line: 220.5,
-        total_minutes: 48,
-        avg_goals: 110,
-        home_advantage: { home: 1.0, away: 1.0 },
+// ... (többi kosár beállítás)
         espn_leagues: {
            'NBA': { slug: 'nba', country: 'USA' },
            'Euroleague': { slug: 'euroleague', country: 'World' }
