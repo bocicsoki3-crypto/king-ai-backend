@@ -129,10 +129,15 @@ async function findMatchId(
 // TODO: Ezeket az átalakító (parser) függvényeket implementálni kell
 function parseH2H(apiH2h: any): any[] { 
     console.log("[IceHockeyApiProvider] H2H feldolgozás (TODO)...");
-    return []; 
+    // Implementáld a H2H adatfeldolgozást az 'apiH2h' válasz alapján
+    return apiH2h?.events || []; 
 }
 function parseLineups(apiLineups: any): ICanonicalRawData['detailedPlayerStats'] { 
     console.log("[IceHockeyApiProvider] Keretek/Sérülések feldolgozás (TODO)...");
+    // Implementáld a keret és sérülés adatfeldolgozást
+    // Példa (ezt ki kell dolgozni az API válasz alapján):
+    // const home_absentees = apiLineups?.home?.filter(p => p.status === 'injured').map(p => p.name) || [];
+    // const away_absentees = apiLineups?.away?.filter(p => p.status === 'injured').map(p => p.name) || [];
     return {
         home_absentees: [], 
         away_absentees: [], 
@@ -141,11 +146,17 @@ function parseLineups(apiLineups: any): ICanonicalRawData['detailedPlayerStats']
 }
 function parseStats(apiStats: any): { home: ICanonicalStats, away: ICanonicalStats, form: any } { 
     console.log("[IceHockeyApiProvider] Statisztikák/Forma feldolgozás (TODO)...");
+    // Implementáld a statisztika feldolgozást
     const emptyStats: ICanonicalStats = { gp: 1, gf: 0, ga: 0, form: null };
+    
+    // Példa (ezt ki kell dolgozni az API válasz alapján):
+    const homeStats = apiStats?.home ? { gp: apiStats.home.gp, gf: apiStats.home.gf, ga: apiStats.home.ga, form: apiStats.home.form } : emptyStats;
+    const awayStats = apiStats?.away ? { gp: apiStats.away.gp, gf: apiStats.away.gf, ga: apiStats.away.ga, form: apiStats.away.form } : emptyStats;
+
     return {
-        home: emptyStats,
-        away: emptyStats,
-        form: { home_overall: null, away_overall: null }
+        home: homeStats,
+        away: awayStats,
+        form: { home_overall: apiStats?.home?.form || null, away_overall: apiStats?.away?.form || null }
     };
 }
 
