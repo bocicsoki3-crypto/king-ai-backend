@@ -52,7 +52,7 @@ export const APIFOOTBALL_KEY_1: string | undefined = process.env.APIFOOTBALL_KEY
 
 // === JÉGKORONG (ÚJ: IceHockeyApi - Kontextus) ===
 // A 'icehockeyapi2.p.rapidapi.com' API-hoz
-export const ICEHOCKEYAPI_HOST: string = process.env.ICEHOCKEYAPI_HOST || 'icehockeyapi2.p.rapidapi.com';
+export const ICEHOCKEYAPI_HOST: string = process.env.ICEHOCKEYAPI_HOST || 'icehockeyapi.p.rapidapi.com';
 export const ICEHOCKEYAPI_KEY: string | undefined = process.env.ICEHOCKEYAPI_KEY;
 
 // === KOSÁRLABDA (Hagyományos RapidAPI - Még nincs használatban) ===
