@@ -1,10 +1,9 @@
-// config.ts (v81.0 - Végleges Szinkron Javítás)
-// JAVÍTÁS (TS2739): A 'soccer' és 'basketball' definíciók kiegészítve a
-// hiányzó 'totals_line', 'total_minutes', 'avg_goals', 'home_advantage'
-// kulcsokkal, hogy megfeleljenek az 'ISportConfig' interfésznek.
-// JAVÍTÁS (TS2305): A 'SPORTRADAR_HOCKEY_...' kulcsok VISSZAÁLLÍTVA
-// a 'newHockeyProvider.ts' import igénye és a felhasználói kérés
-// ("legyen minden benne") alapján.
+// config.ts (v81.1 - Kritikus Foci Javítás)
+// JAVÍTÁS (v81.1): Az 'espn_sport_path' a 'soccer' blokkban
+// 'football'-ra javítva. Az ESPN API ezen az útvonalon
+// várja a labdarúgás hívásokat, nem a 'soccer'-en.
+// Ez a hiba okozta, hogy a foci meccslista (0) nem töltődött be,
+// míg a 'hockey' útvonal (helyes lévén) betöltődött.
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -119,7 +118,12 @@ export const NHL_TEAM_NAME_MAP: { [key: string]: string } = {
 export const SPORT_CONFIG: ISportConfigMap = {
     soccer: {
         name: 'labdarúgás',
-        espn_sport_path: 'soccer',
+        
+        // === JAVÍTÁS (v81.1) ===
+        // Az ESPN API 'football'-t vár, nem 'soccer'-t ezen az útvonalon.
+        espn_sport_path: 'football', 
+        // === JAVÍTÁS VÉGE ===
+
         // JAVÍTÁS (TS2739): Hiányzó kulcsok hozzáadva
         totals_line: 2.5,
         total_minutes: 90,
@@ -129,7 +133,17 @@ export const SPORT_CONFIG: ISportConfigMap = {
             "Premier League": { slug: "eng.1", country: "England" },
             "Championship": { slug: "eng.2", country: "England" },
             "Ligue 1": { slug: "fra.1", country: "France" },
-// ... (többi foci liga)
+            "LaLiga": { slug: "esp.1", country: "Spain" },
+            "LaLiga2": { slug: "esp.2", country: "Spain" },
+            "Bundesliga": { slug: "ger.1", country: "Germany" },
+            "Serie A": { slug: "ita.1", country: "Italy" },
+            "Eredivisie": { slug: "ned.1", country: "Netherlands" },
+            "Primeira Liga": { slug: "por.1", country: "Portugal" },
+            "MLS": { slug: "usa.1", country: "USA" },
+            "Champions League": { slug: "uefa.champions", country: "World" },
+            "Europa League": { slug: "uefa.europa", country: "World" },
+            "Süper Lig": { slug: 'tur.1', country: 'Turkey' },
+            "NB I": { slug: 'hun.1', country: 'Hungary' },
             "Czech Liga": { slug: 'cze.1', country: 'Czech Republic' },
          },
     },
