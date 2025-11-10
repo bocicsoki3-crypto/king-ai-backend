@@ -1,10 +1,10 @@
-// config.ts (v80.1 - Végleges Szinkron Javítás)
+// config.ts (v81.0 - Végleges Szinkron Javítás)
 // JAVÍTÁS (TS2739): A 'soccer' és 'basketball' definíciók kiegészítve a
 // hiányzó 'totals_line', 'total_minutes', 'avg_goals', 'home_advantage'
 // kulcsokkal, hogy megfeleljenek az 'ISportConfig' interfésznek.
-// JAVÍTÁS (TS2305): Az 'ICEHOCKEYAPI_...' kulcsok VISSZAÁLLÍTVA, hogy
-// az 'iceHockeyApiProvider.ts' importálni tudja őket.
-// A hibás 'SPORTRADAR_...' kulcsok eltávolítva.
+// JAVÍTÁS (TS2305): A 'SPORTRADAR_HOCKEY_...' kulcsok VISSZAÁLLÍTVA
+// a 'newHockeyProvider.ts' import igénye és a felhasználói kérés
+// ("legyen minden benne") alapján.
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -53,7 +53,12 @@ export const SHEET_URL: string | undefined = process.env.SHEET_URL;
 // === FOCI (RapidAPI) ===
 export const APIFOOTBALL_KEY_1: string | undefined = process.env.APIFOOTBALL_KEY_1;
 
-// === JÉGKORONG (JAVÍTVA: IceHockeyApi - Kontextus) ===
+// === JÉGKORONG (VISSZAÁLLÍTVA: Sportradar - TS2305 JAVÍTÁS) ===
+// Ezekre a kulcsokra szüksége van a 'newHockeyProvider.ts'-nek
+export const SPORTRADAR_HOCKEY_HOST: string = process.env.SPORTRADAR_HOCKEY_HOST || 'sportrader-realtime-fast-stable-data.p.rapidapi.com';
+export const SPORTRADAR_HOCKEY_KEY: string | undefined = process.env.SPORTRADAR_HOCKEY_KEY;
+
+// === JÉGKORONG (Alternatíva: IceHockeyApi - Kontextus) ===
 export const ICEHOCKEYAPI_HOST: string = process.env.ICEHOCKEYAPI_HOST || 'icehockeyapi.p.rapidapi.com';
 export const ICEHOCKEYAPI_KEY: string | undefined = process.env.ICEHOCKEYAPI_KEY;
 
@@ -71,6 +76,8 @@ export const ODDS_API_HOST: string = process.env.ODDS_API_HOST || 'odds-feed.p.r
 
 
 // --- API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
+// A 'hockey' kulcs most a 'SPORTRADAR'-t használja, mivel
+// a 'newHockeyProvider.ts' fordítása a célunk.
 export const API_HOSTS: IApiHostMap = {
     soccer: {
         host: process.env.APIFOOTBALL_HOST || 'api-football-v1.p.rapidapi.com',
@@ -81,8 +88,8 @@ export const API_HOSTS: IApiHostMap = {
         ].filter(Boolean) as string[]
     },
     hockey: {
-        host: ICEHOCKEYAPI_HOST, // JAVÍTVA: A helyes host
-        keys: ICEHOCKEYAPI_KEY ? [ICEHOCKEYAPI_KEY] : ['icehockey-placeholder-key'], 
+        host: SPORTRADAR_HOCKEY_HOST, // JAVÍTVA: A 'newHockeyProvider.ts' ezt várja
+        keys: SPORTRADAR_HOCKEY_KEY ? [SPORTRADAR_HOCKEY_KEY] : ['sportradar-placeholder-key'], 
     },
     basketball: {
         host: BASKETBALL_API_HOST,
