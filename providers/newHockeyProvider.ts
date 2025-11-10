@@ -1,13 +1,15 @@
 // FÁJL: providers/newHockeyProvider.ts
-// VERZIÓ: v75.0 (Teljes csere Sportradar logikára)
+// VERZIÓ: v75.1 (Teljes Típus-hierarchia Javítás)
 // MÓDOSÍTÁS:
-// 1. TELJES CSERE: A fájl teljes tartalma lecserélve.
-// 2. API VÁLTÁS: A régi 'api-sports-hockey-v1' logikája eltávolítva.
-// 3. ÚJ LOGIKA: Az új, Tier 1 'Sportradar' (RapidAPI-n keresztül) logikája implementálva.
-// 4. KONFIGURÁCIÓ: Az új 'SPORTRADAR_HOCKEY_HOST' és 'SPORTRADAR_HOCKEY_KEY' kulcsokat használja a 'config.ts'-ből.
-// 5. EGYSZERŰSÍTÉS: A 'fetchMatchData' most már egy önálló, robusztus függvény,
-//    ami belsőleg kezeli az ID-keresést. Nincs többé szükség a DataFetch.ts
-//    oldaláról exportált '_getLeagueRoster' vagy 'getApiSportsTeamId' hívásokra.
+// 1. JAVÍTVA (TS2339, TS2740): A 'fetchMatchData' és a 'generate...'
+//    függvények logikája átalakítva.
+// 2. OK: A hiba az volt, hogy 'ICanonicalRichContext'-et próbáltunk
+//    módosítani, mintha az 'ICanonicalRawData' lenne.
+// 3. MEGOLDÁS: A 'generateStubRawData' (átnevezve) most már helyesen
+//    'ICanonicalRawData'-t ad vissza. A 'fetchMatchData' ezt az
+//    objektumot (`finalData`) módosítja, és CSAK a végén csomagolja
+//    be 'ICanonicalRichContext'-be.
+// 4. JAVÍTVA (TS2561): Az elírás ('home_absentee') javítva 'home_absentees'-re.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -186,14 +188,14 @@ async function _getLeagueRoster(leagueId: number, season: number): Promise<any[]
 }
 
 
-// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (MÓDOSÍTVA v75.0) ---
+// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (MÓDOSÍTVA v75.1) ---
+// JAVÍTVA: A logika átalakítva, hogy először 'ICanonicalRawData'-t építsen,
+// és csak a végén csomagolja 'ICanonicalRichContext'-be.
 export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
     const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
     
-    console.log(`Adatgyűjtés indul (v75.0 - Sportradar): ${homeTeamName} vs ${awayTeamName}...`);
+    console.log(`Adatgyűjtés indul (v75.1 - Sportradar): ${homeTeamName} vs ${awayTeamName}...`);
     
-    // A Sportradar API (feltételezve) nem igényel szezon paramétert a 'get-results' híváshoz,
-    // csak dátumot.
     const matchDate = new Date(utcKickoff).toISOString().split('T')[0];
 
     try {
@@ -216,15 +218,11 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         }
 
         // 3. LÉPÉS: Meccs (Fixture) és Odds-ok keresése
-        // A Sportradar API (a képed alapján) a 'get-results' endpointon adja vissza a meccseket,
-        // és valószínűleg az odds-okat is.
-        
         const cacheKey = `sportradar_match_v1_${homeTeamId}_${awayTeamId}_${matchDate}`;
         let matchData = srApiCache.get<any>(cacheKey);
 
         if (!matchData) {
             console.log(`[Sportradar (Hockey)] Meccs adat lekérése... (Dátum: ${matchDate})`);
-            // Endpoint név az API doksiból kell!
             const dailyResults = await makeSportradarRequest('get-results', {
                 sport_id: 4, // Hoki (feltételezés)
                 league_id: leagueId,
@@ -236,7 +234,6 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
                 return generateEmptyStubContext(options);
             }
             
-            // Megkeressük a mi meccsünket a napi eredmények között
             matchData = dailyResults.find((m: any) => 
                 (m.home?.id === homeTeamId && m.away?.id === awayTeamId)
             );
@@ -256,19 +253,14 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         const fixtureDate = matchData.time ? new Date(matchData.time * 1000).toISOString() : utcKickoff;
 
         // Statisztikák (H2H, Forma) - Ezeket külön endpointokból kellene lekérni
-        // (pl. 'get-h2h', 'get-team-stats'). Mivel ezek nincsenek a képen,
-        // feltételezzük, hogy most csak az alap meccsadatot és odds-ot kapjuk meg.
-        
         const apiSportsH2HData = null; // TODO: Implementálni a 'get-h2h' endpoint alapján
         const apiSportsHomeSeasonStats = null; // TODO: Implementálni a 'get-team-stats' endpoint alapján
         const apiSportsAwaySeasonStats = null; // TODO: Implementálni a 'get-team-stats' endpoint alapján
         const availableRosters = { home: [], away: [] }; // TODO: Implementálni a 'get-rosters' endpoint alapján
 
-        // Odds adatok kinyerése (feltételezve, hogy a 'get-results' tartalmazza)
+        // Odds adatok kinyerése
         let fetchedOddsData: ICanonicalOdds | null = null;
         if (matchData.odds) {
-             // Az adatszerkezetet az API doksi alapján kell átalakítani!
-             // Ez csak egy PÉLDA:
              const moneyline = matchData.odds?.moneyline;
              const currentOdds: { name: string; price: number }[] = [];
              if (moneyline) {
@@ -283,10 +275,11 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
              };
         }
         
-        // --- VÉGLEGES ADAT EGYESÍTÉS (v75.0 - Sportradar) ---
-        const finalData = generateStubDataWithIds(homeTeamId, awayTeamId, leagueId, fixtureId, fixtureDate);
+        // --- VÉGLEGES ADAT EGYESÍTÉS (v75.1 - JAVÍTOTT TÍPUSOK) ---
+        // 1. Létrehozzuk a 'ICanonicalRawData' objektumot
+        const finalData: ICanonicalRawData = generateStubRawData(homeTeamId, awayTeamId, leagueId, fixtureId, fixtureDate);
         
-        // FELÜLÍRÁS A VALÓS ADATOKKAL (amiket eddig megszereztünk)
+        // 2. Feltöltjük a 'finalData' (ICanonicalRawData) objektumot
         finalData.apiFootballData.seasonStats = { home: apiSportsHomeSeasonStats, away: apiSportsAwaySeasonStats };
         finalData.h2h_structured = apiSportsH2HData || [];
         finalData.form = {
@@ -295,7 +288,6 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         };
         finalData.availableRosters = availableRosters;
         
-        // Statisztikák (ha vannak)
         const homeGP = apiSportsHomeSeasonStats?.gamesPlayed || 1; 
         finalData.stats.home = {
             gp: homeGP,
@@ -311,13 +303,14 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
             form: apiSportsAwaySeasonStats?.form || null
         };
 
+        // 3. Befejezzük és becsomagoljuk 'ICanonicalRichContext'-be
         const result: ICanonicalRichContext = {
              rawStats: finalData.stats,
              leagueAverages: {},
-             richContext: "Sportradar Adat (v75.0) - H2H/Forma implementáció szükséges.",
+             richContext: "Sportradar Adat (v75.1) - H2H/Forma implementáció szükséges.",
              advancedData: { home: { xg: null }, away: { xg: null } }, // xG-t te adod
              form: finalData.form,
-             rawData: finalData,
+             rawData: finalData, // Itt adjuk át a teljes 'ICanonicalRawData' objektumot
              oddsData: fetchedOddsData, // Az új Sportradar odds-ok
              fromCache: false,
              availableRosters: finalData.availableRosters
@@ -355,22 +348,40 @@ async function _getApiSportsTeamId(
 }
 // === DEPRECATED VÉGE ===
 
+
 // === "Stub" Válasz Generátor ===
-// Ezt használjuk, ha az API hívás BÁRHOL hibára fut.
+// JAVÍTVA (v75.1): Ez most már a 'generateStubRawData'-t hívja és becsomagolja.
 function generateEmptyStubContext(options: any): ICanonicalRichContext {
     const { homeTeamName, awayTeamName } = options;
     console.warn(`[Sportradar (Hockey) - generateEmptyStubContext] Visszaadok egy üres adatszerkezetet (${homeTeamName} vs ${awayTeamName}). Az elemzés P1 adatokra fog támaszkodni.`);
-    return generateStubDataWithIds(null, null, null, null, null);
+    
+    // 1. Létrehozzuk az üres 'RawData' objektumot
+    const emptyRawData = generateStubRawData(null, null, null, null, null);
+    
+    // 2. Becsomagoljuk 'RichContext'-be
+    const result: ICanonicalRichContext = {
+         rawStats: emptyRawData.stats,
+         leagueAverages: {},
+         richContext: "Figyelem: Az automatikus API adatgyűjtés (Sportradar v75.1) sikertelen vagy hiányos. Az elemzés P1 adatokra támaszkodhat.",
+         advancedData: { home: { xg: null }, away: { xg: null } },
+         form: emptyRawData.form,
+         rawData: emptyRawData,
+         oddsData: null,
+         fromCache: false,
+         availableRosters: emptyRawData.availableRosters
+    };
+    
+    return result;
 }
 
-// ÚJ (v75.0) Segédfüggvény az adatszerkezet feltöltéséhez
-function generateStubDataWithIds(
+// ÚJ (v75.1) Segédfüggvény, ami CSAK 'ICanonicalRawData'-t ad vissza.
+function generateStubRawData(
     homeTeamId: number | null,
     awayTeamId: number | null,
     leagueId: number | null,
     fixtureId: number | string | null,
     fixtureDate: string | null
-): ICanonicalRichContext {
+): ICanonicalRawData {
     
     const emptyStats: ICanonicalStats = { gp: 1, gf: 0, ga: 0, form: null };
     const emptyWeather: IStructuredWeather = {
@@ -378,6 +389,7 @@ function generateStubDataWithIds(
         wind_speed_kmh: null, precipitation_mm: null, source: 'N/A'
     };
     
+    // JAVÍTVA (v75.1 - TS2561): 'home_absentee' -> 'home_absentees'
     const emptyRawData: ICanonicalRawData = {
         stats: { home: emptyStats, away: emptyStats },
         apiFootballData: {
@@ -387,7 +399,9 @@ function generateStubDataWithIds(
         h2h_structured: [],
         form: { home_overall: null, away_overall: null },
         detailedPlayerStats: {
-            home_absentee: [], away_absentees: [], key_players_ratings: { home: {}, away: {} }
+            home_absentees: [], // JAVÍTVA
+            away_absentees: [], 
+            key_players_ratings: { home: {}, away: {} }
         },
         absentees: { home: [], away: [] },
         referee: { name: "N/A", style: null },
@@ -398,19 +412,7 @@ function generateStubDataWithIds(
         availableRosters: { home: [], away: [] }
     };
     
-    const result: ICanonicalRichContext = {
-         rawStats: emptyRawData.stats,
-         leagueAverages: {},
-         richContext: "Figyelem: Az automatikus API adatgyűjtés (Sportradar v75.0) sikertelen vagy hiányos. Az elemzés P1 adatokra támaszkodhat.",
-         advancedData: { home: { xg: null }, away: { xg: null } },
-         form: emptyRawData.form,
-         rawData: emptyRawData,
-         oddsData: null,
-         fromCache: false,
-         availableRosters: { home: [], away: [] }
-    };
-    
-    return result;
+    return emptyRawData;
 }
 
 // A getApiSportsFixtureResult függvényt meghagyjuk, hátha a régi rendszer
@@ -438,7 +440,7 @@ export async function getApiSportsFixtureResult(fixtureId: number | string, spor
         const scores = fixture.scores; // Pl. { home: 3, away: 2 }
         
         if (status === 'finished' || status === 'FT') {
-            const result: FixtureResult = { 
+            const result: FiResult = { 
                 home: scores.home,
                 away: scores.away,
                 status: 'FT'
