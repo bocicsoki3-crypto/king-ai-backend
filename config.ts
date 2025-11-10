@@ -1,6 +1,11 @@
-// config.ts (v77.9 - Visszaállítva a "régi, működő" verzióra)
-// OK: Ez a verzió tartalmazza a helyes 'espn_sport_path: 'soccer''
-//     és a teljes, helyes liga listát (a hibás 'hun.1' NÉLKÜL).
+// config.ts (v81.3 - Kritikus Build Hiba Javítása)
+// JAVÍTÁS (TS2305): A 'régi' v77.9-es config fájlból hiányoztak
+// azok az exportok, amiket az újabb Hoki providerek (iceHockeyApiProvider,
+// newHockeyProvider) igényelnek.
+//
+// HOZZÁADVA: A hiányzó 4 export (ICEHOCKEYAPI_... és SPORTRADAR_HOCKEY_...)
+// hozzáadva az "API KULCSOK" szekcióhoz, hogy a TypeScript
+// build ('tsc') sikeresen lefusson.
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -25,17 +30,17 @@ interface ISportConfigMap {
   soccer: ISportConfig;
   hockey: ISportConfig;
   basketball: ISportConfig;
-  [key: string]: ISportConfig; // Lehetővé teszi a [sport] indexelést
+  [key: string]: ISportConfig;
 }
 interface IApiHostConfig {
   host: string;
-  keys: (string | undefined)[]; // Lehetnek undefined kulcsok a .env-ből
+  keys: (string | undefined)[];
 }
 interface IApiHostMap {
   soccer: IApiHostConfig;
   hockey: IApiHostConfig; 
   basketball: IApiHostConfig;
-  [key: string]: IApiHostConfig; // Lehetővé teszi a [sport] indexelést
+  [key: string]: IApiHostConfig;
 }
 
 // --- SZERVER BEÁLLÍTÁSOK ---
@@ -46,17 +51,32 @@ export const GEMINI_API_KEY: string | undefined = process.env.GEMINI_API_KEY;
 export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-2.5-pro';
 export const SHEET_URL: string | undefined = process.env.SHEET_URL;
 
+// === FOCI (RapidAPI) ===
 export const APIFOOTBALL_KEY_1: string | undefined = process.env.APIFOOTBALL_KEY_1;
 
+// === JÉGKORONG (Régi - api-sports) ===
 export const APISPORTS_HOCKEY_HOST: string = process.env.APISPORTS_HOCKEY_HOST || 'v1.hockey.api-sports.io';
 export const APISPORTS_HOCKEY_KEY: string | undefined = process.env.APISPORTS_HOCKEY_KEY;
 
+// === JAVÍTÁS (v81.3): HIÁNYZÓ EXPORT HOZZÁADVA (TS2305) ===
+// A 'providers/iceHockeyApiProvider.ts' ezt keresi
+export const ICEHOCKEYAPI_HOST: string = process.env.ICEHOCKEYAPI_HOST || 'icehockeyapi.p.rapidapi.com';
+export const ICEHOCKEYAPI_KEY: string | undefined = process.env.ICEHOCKEYAPI_KEY;
+
+// A 'providers/newHockeyProvider.ts' ezt keresi
+export const SPORTRADAR_HOCKEY_HOST: string = process.env.SPORTRADAR_HOCKEY_HOST || 'sportrader-realtime-fast-stable-data.p.rapidapi.com';
+export const SPORTRADAR_HOCKEY_KEY: string | undefined = process.env.SPORTRADAR_HOCKEY_KEY;
+// === JAVÍTÁS VÉGE ===
+
+// === KOSÁRLABDA (Hagyományos RapidAPI - Még nincs használatban) ===
 export const BASKETBALL_API_KEY: string | undefined = process.env.BASKETBALL_API_KEY;
 export const BASKETBALL_API_HOST: string = process.env.BASKETBALL_API_HOST || 'basketball-api.p.rapidapi.com';
 
+// === SOFASCORE (RapidAPI) ===
 export const SOFASCORE_API_KEY: string | undefined = process.env.SOFASCORE_API_KEY; 
 export const SOFASCORE_API_HOST: string = process.env.SOFASCORE_API_HOST || 'sportapi7.p.rapidapi.com';
 
+// === REDUNDÁNS ODDS FEED (KÉZI VÁLASZTÁS) ===
 export const ODDS_API_KEY: string | undefined = process.env.ODDS_API_KEY;
 export const ODDS_API_HOST: string = process.env.ODDS_API_HOST || 'odds-feed.p.rapidapi.com';
 
@@ -71,6 +91,9 @@ export const API_HOSTS: { [key: string]: any } = {
             process.env.APIFOOTBALL_KEY_3
         ].filter(Boolean) as string[]
     },
+    // A 'hockey' kulcs itt most az 'APISPORTS_HOCKEY_HOST'-ot használja
+    // A többi provider (IceHockeyApi, Sportradar) a saját,
+    // fent exportált kulcsát használja.
     hockey: {
         host: APISPORTS_HOCKEY_HOST,
         keys: APISPORTS_HOCKEY_KEY ? [APISPORTS_HOCKEY_KEY] : ['hockey-placeholder-key'], 
@@ -194,11 +217,6 @@ export const SPORT_CONFIG: ISportConfigMap = {
             "Super League": { slug: "sui.1", country: "Switzerland" },
             "Super League 1": { slug: "gre.1", country: "Greece" },
             "Czech Liga": { slug: 'cze.1', country: 'Czech Republic' },
-            // HIBA: A 'hun.1' slug itt nem szerepel, és a log alapján
-            // az ESPN API 400-as hibát ad rá.
-            // A 'régi, működő' configban sem volt benne, tehát
-            // valószínűleg egy rossz, Ön által nem látott config fut a szerveren.
-            // Ez a verzió biztosan nem hívja a 'hun.1'-et.
          },
     },
     hockey: {
