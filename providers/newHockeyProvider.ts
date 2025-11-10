@@ -1,13 +1,16 @@
 // FÁJL: providers/newHockeyProvider.ts
-// VERZIÓ: v75.3 (Helyes Végpont Javítás)
+// VERZIÓ: v75.4 (Végleges Végpont Javítás)
 // MÓDOSÍTÁS:
-// 1. OK: A v75.2-es kód egy nem létező '/get-teams' végpontot hívott (404-es hiba a logban).
-// 2. JAVÍTVA: A teljes logika átírva, hogy a felhasználó által biztosított
-//    képernyőfotón (image_34eede.png) látható, valós végpontokat használja.
-// 3. ÚJ LOGIKA: A rendszer 'LeagueID' -> 'TeamID' helyett
-//    'Event list flow' (esemény keresés) -> 'Get marketsodds' / 'Get results' (adatlekérés 'event_id' alapján)
-//    logikára állt át.
-// 4. ELTÁVOLÍTVA: A hibás 'getSportradarLeagueId' és 'getSportradarTeamId' függvények eltávolítva.
+// 1. OK: A v75.3-as kód hibás, nem létező végpontokat hívott (pl. '/eventlistflow').
+//    A log (Log napló.txt) ezt 404-es hibaként ("Endpoint does not exist") igazolta.
+// 2. JAVÍTVA: A makeSportradarRequest hívások (findSportradarEvent, fetchMatchData)
+//    frissítve lettek, hogy a felhasználó által biztosított képernyőfotón
+//    (image_35d017.png) látható, valós végpont-útvonalakat használják.
+// 3. HELYES VÉGPONTOK:
+//    - 'eventlistflow' -> 'sportradarevents/sport/event/list/flow'
+//    - 'getresults' -> 'sportradarevents/sport/event/getresults'
+//    - 'getmarketsodds' -> 'sportradarevents/sport/event/getmarketsodds'
+// 4. A 'sportid: 4' paraméter 'sport_id: 4'-re javítva (valószínűsíthető elírás).
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -38,14 +41,13 @@ const srApiCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 600, useClones
 const fixtureResultCache = new NodeCache({ stdTTL: 3600 * 24 * 30, checkperiod: 3600 * 12 });
 
 // --- SPORTRADAR KÖZPONTI HÍVÓ FÜGGVÉNY (v75.3) ---
-// JAVÍTVA: 'endpoint' most már a valós végpontot jelenti (pl. 'eventlistflow')
 async function makeSportradarRequest(endpoint: string, params: any = {}, config: AxiosRequestConfig = {}) {
     const sport = 'hockey';
     if (!SPORTRADAR_HOCKEY_HOST || !SPORTRADAR_HOCKEY_KEY) {
         throw new Error(`Kritikus konfigurációs hiba: Hiányzó SPORTRADAR_HOCKEY_HOST vagy SPORTRADAR_HOCKEY_KEY a .env fájlban.`);
     }
     
-    // Az API 'getresults', 'eventlistflow' stb. endpointokat használ
+    // JAVÍTVA (v75.4): Az 'endpoint' most már a teljes útvonalat tartalmazza
     const url = `https://${SPORTRADAR_HOCKEY_HOST}/${endpoint}`;
     
     const fullConfig: AxiosRequestConfig = {
@@ -60,11 +62,7 @@ async function makeSportradarRequest(endpoint: string, params: any = {}, config:
 
     try {
         const response = await makeRequest(url, fullConfig, 0); 
-        // A 'sportrader-realtime-fast-stable-data' API válasz formátuma
-        // ismeretlen (lehet 'results' vagy közvetlen adat).
-        // A biztonság kedvéért az egész 'data' objektumot visszaadjuk.
         if (response?.data) {
-            // A 'getresults' 'results' kulcsot használ, de az 'eventlistflow' talán nem.
             return response.data.results || response.data;
         } else {
              console.warn(`[Sportradar (Hockey)] API válasz nem tartalmazott 'data' kulcsot. Endpoint: ${endpoint}`);
@@ -74,7 +72,6 @@ async function makeSportradarRequest(endpoint: string, params: any = {}, config:
         if (error.isQuotaError) {
             throw new Error(`API KULCS Kimerült (${sport} - Sportradar).`);
         } else {
-            // A 404-es hibát (Endpoint does not exist) itt fogjuk el
             console.error(`[Sportradar (Hockey)] Hiba: ${error.message}. Endpoint: ${endpoint}`);
             throw error;
         }
@@ -98,7 +95,7 @@ async function findSportradarEvent(
     const awayMapped = NHL_TEAM_NAME_MAP[awayLower] || awayTeamName;
     const searchAwayName = awayMapped.toLowerCase();
 
-    const cacheKey = `sportradar_event_v1_${searchHomeName}_${searchAwayName}_${matchDate}`;
+    const cacheKey = `sportradar_event_v1.1_${searchHomeName}_${searchAwayName}_${matchDate}`;
     const cached = srApiCache.get<any>(cacheKey);
     if (cached) {
         console.log(`[Sportradar (Hockey)] Esemény CACHE TALÁLAT.`);
@@ -108,15 +105,18 @@ async function findSportradarEvent(
     console.log(`[Sportradar (Hockey)] Esemény keresése: "${searchHomeName}" vs "${searchAwayName}" (${matchDate})...`);
 
     try {
-        // 2. Az 'eventlistflow' végpont hívása (a képernyőfotó alapján)
-        // TODO: A 'sportid' és 'date' paraméterek helyességét az API doksinak meg kell erősítenie.
-        const events = await makeSportradarRequest('eventlistflow', { 
-            sportid: 4, // Hoki (feltételezés)
+        // 2. JAVÍTVA (v75.4): A 'eventlistflow' végpont javítva a helyes útvonalra
+        //    A képernyőfotó (image_35d017.png) alapján:
+        const endpointPath = 'sportradarevents/sport/event/list/flow';
+        
+        // TODO: A 'sport_id' és 'date' paraméterek helyességét az API doksinak meg kell erősítenie.
+        const events = await makeSportradarRequest(endpointPath, { 
+            sport_id: 4, // Hoki (feltételezés)
             date: matchDate 
         });
         
         if (!events || !Array.isArray(events) || events.length === 0) {
-            console.warn(`[Sportradar (Hockey)] Nem található esemény a(z) ${matchDate} napon. (Végpont: 'eventlistflow')`);
+            console.warn(`[Sportradar (Hockey)] Nem található esemény a(z) ${matchDate} napon. (Végpont: '${endpointPath}')`);
             return null;
         }
 
@@ -140,27 +140,25 @@ async function findSportradarEvent(
         return null;
 
     } catch (e: any) {
-        console.error(`[Sportradar (Hockey)] Hiba az esemény keresésekor ('eventlistflow'): ${e.message}`);
-        // A log (404) alapján ez a hívás is el fog hasalni, ha a végpont neve
-        // (pl. 'eventlistflow') helytelen.
+        console.error(`[Sportradar (Hockey)] Hiba az esemény keresésekor ('${'sportradarevents/sport/event/list/flow'}'): ${e.message}`);
         if (e.message.includes('404')) {
-            console.error(`[Sportradar (Hockey)] KRITIKUS: Az 'eventlistflow' végpont nem létezik vagy hibás. Ellenőrizd a RapidAPI felületet (image_34eede.png) a pontos névhez!`);
+            console.error(`[Sportradar (Hockey)] KRITIKUS (v75.4): A '${'sportradarevents/sport/event/list/flow'}' végpont nem létezik vagy hibás. Ellenőrizd a RapidAPI felületet!`);
         }
         return null;
     }
 }
 
 
-// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (MÓDOSÍTVA v75.3) ---
+// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (MÓDOSÍTVA v75.4) ---
 export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
     const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
     
-    console.log(`Adatgyűjtés indul (v75.3 - Helyes Végpont): ${homeTeamName} vs ${awayTeamName}...`);
+    console.log(`Adatgyűjtés indul (v75.4 - Végleges Végpont): ${homeTeamName} vs ${awayTeamName}...`);
     
     const matchDate = new Date(utcKickoff).toISOString().split('T')[0];
 
     try {
-        // 1. LÉPÉS: Esemény (Event) keresése az 'eventlistflow' végponton
+        // 1. LÉPÉS: Esemény (Event) keresése (JAVÍTOTT VÉGPONT)
         const eventData = await findSportradarEvent(homeTeamName, awayTeamName, matchDate, sport);
 
         if (!eventData || !eventData.id) {
@@ -169,10 +167,9 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         }
 
         const eventId = eventData.id;
-        const fixtureId = eventId; // Az event ID-t használjuk fixtureId-ként
+        const fixtureId = eventId; 
         const fixtureDate = eventData.time ? new Date(eventData.time * 1000).toISOString() : utcKickoff;
         
-        // A 'generateStubRawData' biztosítja a helyes (TS2339) struktúrát
         const finalData: ICanonicalRawData = generateStubRawData(
             eventData.home?.id || null, 
             eventData.away?.id || null, 
@@ -184,18 +181,16 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         // 2. LÉPÉS: Odds és Eredmények lekérése (párhuzamosan)
         console.log(`[Sportradar (Hockey)] Odds és Eredmény lekérése... (EventID: ${eventId})`);
         
+        // JAVÍTVA (v75.4): Végpont nevek javítva a képernyőfotó alapján
         const [matchDetails, oddsDetails] = await Promise.all([
-            // 'Get results' hívása (a képernyőfotó alapján)
-            makeSportradarRequest('getresults', { eventid: eventId }),
-            // 'Get marketsodds' hívása (a képernyőfotó alapján)
-            makeSportradarRequest('getmarketsodds', { eventid: eventId })
+            makeSportradarRequest('sportradarevents/sport/event/getresults', { eventid: eventId }),
+            makeSportradarRequest('sportradarevents/sport/event/getmarketsodds', { eventid: eventId })
         ]);
 
         // 3. LÉPÉS: Odds adatok feldolgozása
         let fetchedOddsData: ICanonicalOdds | null = null;
         if (oddsDetails && oddsDetails.markets) {
              // TODO: Az 'oddsDetails.markets' struktúráját fel kell térképezni
-             // az 'ICanonicalOdds' interfészre. Ez egy PÉLDA.
              const moneylineMarket = oddsDetails.markets.find((m: any) => m.name === "Moneyline");
              const currentOdds: { name: string; price: number }[] = [];
              
@@ -208,7 +203,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
              
              fetchedOddsData = {
                  current: currentOdds,
-                 allMarkets: [], // TODO: Feldolgozni a többi piacot
+                 allMarkets: [], // TODO
                  fullApiData: oddsDetails,
                  fromCache: false
              };
@@ -217,25 +212,22 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         }
         
         // 4. LÉPÉS: Meccs adatok feldolgozása (H2H, Stat, Keret)
-        // TODO: A 'matchDetails' ('getresults') válaszát fel kell térképezni,
-        // hogy kinyerjük a H2H, Szezon Stat, és Keret (Roster) adatokat.
-        // Amíg ez nincs implementálva, a 'finalData' a 'stub' értékeket tartalmazza.
+        // TODO: A 'matchDetails' ('getresults') válaszát fel kell térképezni
         
         // finalData.h2h_structured = parseH2H(matchDetails.h2h);
         // finalData.stats.home = parseStats(matchDetails.stats.home);
-        // finalData.stats.away = parseStats(matchDetails.stats.away);
-        // finalData.availableRosters = parseRosters(matchDetails.rosters);
+        // ...
 
         
         // 5. Befejezzük és becsomagoljuk 'ICanonicalRichContext'-be
         const result: ICanonicalRichContext = {
              rawStats: finalData.stats, 
              leagueAverages: {},
-             richContext: "Sportradar Adat (v75.3) - Odds implementálva. H2H/Forma implementáció szükséges.",
-             advancedData: { home: { xg: null }, away: { xg: null } }, // xG-t te adod
+             richContext: "Sportradar Adat (v75.4) - Odds/Végpont implementálva. H2H/Forma implementáció szükséges.",
+             advancedData: { home: { xg: null }, away: { xg: null } }, 
              form: finalData.form, 
              rawData: finalData, 
-             oddsData: fetchedOddsData, // Az új Sportradar odds-ok
+             oddsData: fetchedOddsData, 
              fromCache: false,
              availableRosters: finalData.availableRosters
         };
@@ -251,7 +243,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
 // Meta-adat a logoláshoz
 export const providerName = 'sportradar-hockey-v1';
 
-// === Ezt a két függvényt a DataFetch.ts (v95.0) már NEM hívja ===
+// === DEPRECATED (v75.3) ===
 async function _getApiSportsLeagueId(
     leagueName: string, 
     countryName: string, 
@@ -282,7 +274,7 @@ function generateEmptyStubContext(options: any): ICanonicalRichContext {
     const result: ICanonicalRichContext = {
          rawStats: emptyRawData.stats,
          leagueAverages: {},
-         richContext: "Figyelem: Az automatikus API adatgyűjtés (Sportradar v75.3) sikertelen vagy hiányos. Az elemzés P1 adatokra támaszkodhat.",
+         richContext: "Figyelem: Az automatikus API adatgyűjtés (Sportradar v75.4) sikertelen vagy hiányos. Az elemzés P1 adatokra támaszkodhat.",
          advancedData: { home: { xg: null }, away: { xg: null } },
          form: emptyRawData.form,
          rawData: emptyRawData,
@@ -339,15 +331,15 @@ export async function getApiSportsFixtureResult(fixtureId: number | string, spor
     if (sport !== 'hockey' || !fixtureId) {
         return null;
     }
-    const cacheKey = `fixture_result_v1_SR_${sport}_${fixtureId}`;
+    const cacheKey = `fixture_result_v1.1_SR_${sport}_${fixtureId}`;
     const cached = fixtureResultCache.get<FixtureResult>(cacheKey);
     if (cached) return cached;
     
     console.log(`[Sportradar (Hockey)] Eredmény lekérése... (EventID: ${fixtureId})`);
     
     try {
-        // A 'fixtureId'-t most már 'eventid'-ként kezeljük
-        const fixture = await makeSportradarRequest('getresults', { eventid: fixtureId });
+        // JAVÍTVA (v75.4): Helyes végpont
+        const fixture = await makeSportradarRequest('sportradarevents/sport/event/getresults', { eventid: fixtureId });
 
         if (!fixture) {
              console.warn(`[Sportradar (Hockey)] Nem található meccs a ${fixtureId} EventID alatt.`);
