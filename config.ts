@@ -1,21 +1,20 @@
-// config.ts (v77.9 - Final Configuration Fix)
+// config.ts (v81.3 - Kritikus Build Hiba Javítása)
+// JAVÍTÁS (TS2305): A 'régi' v77.9-es config fájlból hiányoztak
+// azok az exportok, amiket az újabb Hoki providerek (iceHockeyApiProvider,
+// newHockeyProvider) igényelnek.
+//
+// HOZZÁADVA: A hiányzó 4 export (ICEHOCKEYAPI_... és SPORTRADAR_HOCKEY_...)
+// hozzáadva az "API KULCSOK" szekcióhoz, hogy a TypeScript
+// build ('tsc') sikeresen lefusson.
 
 import dotenv from 'dotenv';
 dotenv.config();
 
 // --- TÍPUSDEFINÍCIÓK A KONFIGURÁCIÓHOZ ---
-
-/**
- * Egyetlen ESPN liga konfigurációja.
- */
 interface IEspnLeagueConfig {
   slug: string;
   country: string;
 }
-
-/**
- * Egy sportág teljes konfigurációja.
- */
 interface ISportConfig {
   name: string;
   espn_sport_path: string;
@@ -27,33 +26,21 @@ interface ISportConfig {
     [leagueName: string]: IEspnLeagueConfig;
   };
 }
-
-/**
- * A teljes sportág-specifikus konfigurációs térkép.
- */
 interface ISportConfigMap {
   soccer: ISportConfig;
   hockey: ISportConfig;
   basketball: ISportConfig;
-  [key: string]: ISportConfig; // Lehetővé teszi a [sport] indexelést
+  [key: string]: ISportConfig;
 }
-
-/**
- * Egy API szolgáltató (pl. API-Football) kulcsait és hosztját tárolja.
- */
 interface IApiHostConfig {
   host: string;
-  keys: (string | undefined)[]; // Lehetnek undefined kulcsok a .env-ből
+  keys: (string | undefined)[];
 }
-
-/**
- * Az összes API szolgáltató konfigurációja.
- */
 interface IApiHostMap {
   soccer: IApiHostConfig;
   hockey: IApiHostConfig; 
   basketball: IApiHostConfig;
-  [key: string]: IApiHostConfig; // Lehetővé teszi a [sport] indexelést
+  [key: string]: IApiHostConfig;
 }
 
 // --- SZERVER BEÁLLÍTÁSOK ---
@@ -67,9 +54,19 @@ export const SHEET_URL: string | undefined = process.env.SHEET_URL;
 // === FOCI (RapidAPI) ===
 export const APIFOOTBALL_KEY_1: string | undefined = process.env.APIFOOTBALL_KEY_1;
 
-// === JÉGKORONG (Közvetlen API-SPORTS) ===
+// === JÉGKORONG (Régi - api-sports) ===
 export const APISPORTS_HOCKEY_HOST: string = process.env.APISPORTS_HOCKEY_HOST || 'v1.hockey.api-sports.io';
 export const APISPORTS_HOCKEY_KEY: string | undefined = process.env.APISPORTS_HOCKEY_KEY;
+
+// === JAVÍTÁS (v81.3): HIÁNYZÓ EXPORT HOZZÁADVA (TS2305) ===
+// A 'providers/iceHockeyApiProvider.ts' ezt keresi
+export const ICEHOCKEYAPI_HOST: string = process.env.ICEHOCKEYAPI_HOST || 'icehockeyapi.p.rapidapi.com';
+export const ICEHOCKEYAPI_KEY: string | undefined = process.env.ICEHOCKEYAPI_KEY;
+
+// A 'providers/newHockeyProvider.ts' ezt keresi
+export const SPORTRADAR_HOCKEY_HOST: string = process.env.SPORTRADAR_HOCKEY_HOST || 'sportrader-realtime-fast-stable-data.p.rapidapi.com';
+export const SPORTRADAR_HOCKEY_KEY: string | undefined = process.env.SPORTRADAR_HOCKEY_KEY;
+// === JAVÍTÁS VÉGE ===
 
 // === KOSÁRLABDA (Hagyományos RapidAPI - Még nincs használatban) ===
 export const BASKETBALL_API_KEY: string | undefined = process.env.BASKETBALL_API_KEY;
@@ -80,15 +77,11 @@ export const SOFASCORE_API_KEY: string | undefined = process.env.SOFASCORE_API_K
 export const SOFASCORE_API_HOST: string = process.env.SOFASCORE_API_HOST || 'sportapi7.p.rapidapi.com';
 
 // === REDUNDÁNS ODDS FEED (KÉZI VÁLASZTÁS) ===
-// Hozzáadva a "Bielefeld-hiba" és a piaci redundancia javításához.
-// Host: odds-feed.p.rapidapi.com
 export const ODDS_API_KEY: string | undefined = process.env.ODDS_API_KEY;
 export const ODDS_API_HOST: string = process.env.ODDS_API_HOST || 'odds-feed.p.rapidapi.com';
 
 
 // --- API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
-// Ez a struktúra felel a kulcsrotációért.
-
 export const API_HOSTS: { [key: string]: any } = {
     soccer: {
         host: process.env.APIFOOTBALL_HOST || 'api-football-v1.p.rapidapi.com',
@@ -98,14 +91,13 @@ export const API_HOSTS: { [key: string]: any } = {
             process.env.APIFOOTBALL_KEY_3
         ].filter(Boolean) as string[]
     },
-    // === JAVÍTÁS (v77.9): HOCKEY konfiguráció hozzáadva a kritikus hiba elkerülésére ===
-    // Ez a kulcs csak PLACEHOLDER, mivel a Tiszta P1 Stratégiát alkalmazzuk, 
-    // de a kódnak szüksége van rá a konfigurációs összeomlás elkerüléséhez.
+    // A 'hockey' kulcs itt most az 'APISPORTS_HOCKEY_HOST'-ot használja
+    // A többi provider (IceHockeyApi, Sportradar) a saját,
+    // fent exportált kulcsát használja.
     hockey: {
-        host: APISPORTS_HOCKEY_HOST, // Használja a definiált hostot
+        host: APISPORTS_HOCKEY_HOST,
         keys: APISPORTS_HOCKEY_KEY ? [APISPORTS_HOCKEY_KEY] : ['hockey-placeholder-key'], 
     },
-    // === JAVÍTÁS VÉGE ===
     basketball: {
         host: process.env.APIBASKETBALL_HOST || 'api-basketball.p.rapidapi.com',
         keys: [process.env.APIBASKETBALL_KEY_1].filter(Boolean) as string[]
@@ -113,8 +105,6 @@ export const API_HOSTS: { [key: string]: any } = {
 };
 
 // --- CSAPATNÉV HOZZÁRENDELÉSEK ---
-
-// FOCI TÉRKÉP (Változatlan)
 export const APIFOOTBALL_TEAM_NAME_MAP: { [key: string]: string } = {
     'spurs': 'Tottenham Hotspur',
     'tottenham': 'Tottenham Hotspur',
@@ -137,7 +127,6 @@ export const APIFOOTBALL_TEAM_NAME_MAP: { [key: string]: string } = {
     'FC Utrecht': 'Utrecht',
 };
 
-// JÉGKORONG TÉRKÉP (v54.27)
 export const NHL_TEAM_NAME_MAP: { [key: string]: string } = {
     'sabres': 'Buffalo Sabres',
     'mammoth': 'Utah Hockey Club',
@@ -176,15 +165,15 @@ export const NHL_TEAM_NAME_MAP: { [key: string]: string } = {
 };
 
 // --- SPORTÁG-SPECIFIKUS KONFIGURÁCIÓ ---
-// Típusosítva az ISportConfigMap interfész alapján
 export const SPORT_CONFIG: ISportConfigMap = {
     soccer: {
         name: 'labdarúgás',
-        espn_sport_path: 'soccer',
+        espn_sport_path: 'soccer', // OK: Ez a helyes (a v77.9 alapján)
         totals_line: 2.5,
         total_minutes: 90,
         avg_goals: 1.35,
         home_advantage: { home: 1.05, away: 0.95 },
+        // OK: Ez a teljes, helyes liga lista (a v77.9 alapján)
         espn_leagues: {
             "Premier League": { slug: "eng.1", country: "England" },
             "Championship": { slug: "eng.2", country: "England" },
