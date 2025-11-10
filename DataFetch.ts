@@ -1,14 +1,15 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v94.1 ("Import Javítás")
-// MÓDOSÍTÁS (v94.1):
-// 1. OK: A v94.0-s verzió importálási hibákat (TS2459, TS2305, TS2339) okozott.
-// 2. JAVÍTVA: Az importok (30-38. sor) most már helyesen 'import * as ...'
-//    szintaxist használnak a default export nélküli modulokhoz.
-// 3. JAVÍTVA: A `getProvider` függvény (153. sor) most már helyesen
-//    adja vissza a teljes 'hockeyProvider' és 'basketballProvider'
-//    modul objektumot (a '.default' hivatkozás eltávolítva).
-// 4. JAVÍTVA: A 'hockeyGetLeagueId' import (32. sor) most már
-//    a 'newHockeyProvider.ts'-re (v74.1) hivatkozik, ahol azt létrehoztuk.
+// VERZIÓ: v94.2 ("Argumentum Javítás")
+// MÓDOSÍTÁS (v94.2):
+// 1. OK: A v94.1-es verzió hibásan 5 argumentumot (TS2554) adott át
+//    a 'soccerGetTeamId' és 'hockeyGetTeamId' függvényeknek.
+// 2. JAVÍTVA: A `getRichContextualData` (kb. 290. sor) és a `getRostersForMatch`
+//    (kb. 530. sor) függvényekben a 'getApiSportsTeamId' hívások javítva
+//    a helyes, 4-argumentumos aláírásra.
+// 3. JAVÍTVA: A felesleges `leagueRosterData` lekérések (amelyek az 5.
+//    argumentumhoz kellettek) eltávolítva a hívások elől.
+// 4. A (v94.1) import- és elágazási logikája (ami a 'BTTS' hibát hivatott
+//    javítani) érintetlen marad.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -84,7 +85,7 @@ export interface IDataFetchResponse extends ICanonicalRichContext {
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v94.1 (Import Javítás)
+* VERZIÓ: v94.2 (Argumentum Javítás)
 **************************************************************/
 
 function generateEmptyStubContext(options: IDataFetchOptions): IDataFetchResponse {
@@ -174,7 +175,7 @@ function getRoleFromPos(pos: string): CanonicalRole {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FÜGGVÉNY (v94.1)
+ * FŐ ADATGYŰJTŐ FÜGGVÉNY (v94.2)
  */
 export async function getRichContextualData(
     options: IDataFetchOptions,
@@ -263,10 +264,10 @@ export async function getRichContextualData(
         const currentYear = new Date(decodedUtcKickoff).getFullYear();
 
         if (sport === 'hockey') {
-            console.log("[DataFetch v94.1] Hoki-specifikus ID kereső hívása...");
+            console.log("[DataFetch v94.2] Hoki-specifikus ID kereső hívása...");
             leagueDataResponse = await hockeyGetLeagueId(decodedLeagueName, countryContext, currentYear, sport);
         } else {
-            console.log("[DataFetch v94.1] Foci-specifikus (soccerGetLeagueId) ID kereső hívása...");
+            console.log("[DataFetch v94.2] Foci-specifikus (soccerGetLeagueId) ID kereső hívása...");
             leagueDataResponse = await soccerGetLeagueId(decodedLeagueName, countryContext, currentYear, sport);
         }
 
@@ -279,18 +280,16 @@ export async function getRichContextualData(
         const { leagueId, foundSeason } = leagueDataResponse;
 
         // 2. LÉPÉS: Csapat ID-k lekérése (Sportág-specifikus)
+        // === JAVÍTÁS (v94.2): Az 5. argumentum ('leagueRosterData') eltávolítva a hívásokból ===
+        // A 'getApiSportsTeamId' függvények (mindkét providerben) maguk hívják a '_getLeagueRoster'-t.
         if (sport === 'hockey') {
-             console.log("[DataFetch v94.1] Hoki-specifikus (hockeyGetTeamId) ID kereső hívása...");
-             // A 'newHockeyProvider.ts'-nek (v74.1) saját, hatékonyabb 'getApiSportsTeamId' logikája van
-             // JAVÍTÁS v94.1: A 'hockeyGetLeagueRoster'-t először meg kell hívni
-             const leagueRosterData = await hockeyGetLeagueRoster(leagueId, foundSeason, sport);
-             homeTeamId = await hockeyGetTeamId(decodedHomeTeam, sport, leagueId, foundSeason, leagueRosterData);
-             awayTeamId = await hockeyGetTeamId(decodedAwayTeam, sport, leagueId, foundSeason, leagueRosterData);
+             console.log("[DataFetch v94.2] Hoki-specifikus (hockeyGetTeamId) ID kereső hívása (4 argumentummal)...");
+             homeTeamId = await hockeyGetTeamId(decodedHomeTeam, sport, leagueId, foundSeason);
+             awayTeamId = await hockeyGetTeamId(decodedAwayTeam, sport, leagueId, foundSeason);
         } else {
-             console.log("[DataFetch v94.1] Foci-specifikus (soccerGetTeamId) ID kereső hívása...");
-             const leagueRosterData = await soccerGetLeagueRoster(leagueId, foundSeason, sport);
-             homeTeamId = await soccerGetTeamId(decodedHomeTeam, sport, leagueId, foundSeason, leagueRosterData);
-             awayTeamId = await soccerGetTeamId(decodedAwayTeam, sport, leagueId, foundSeason, leagueRosterData);
+             console.log("[DataFetch v94.2] Foci-specifikus (soccerGetTeamId) ID kereső hívása (4 argumentummal)...");
+             homeTeamId = await soccerGetTeamId(decodedHomeTeam, sport, leagueId, foundSeason);
+             awayTeamId = await soccerGetTeamId(decodedAwayTeam, sport, leagueId, foundSeason);
             
             // AI Fallback (Csak Focihoz)
             if (sport === 'soccer' && (!homeTeamId || !awayTeamId)) {
@@ -322,7 +321,7 @@ export async function getRichContextualData(
                 }
             }
         }
-        // --- MÓDOSÍTÁS VÉGE (v94.1) ---
+        // --- MÓDOSÍTÁS VÉGE (v94.2) ---
 
         // 3. LÉPÉS: Ellenőrzés
         if (!homeTeamId || !awayTeamId) {
@@ -467,18 +466,18 @@ export async function getRichContextualData(
         };
         
         preFetchAnalysisCache.set(ck, response);
-        console.log(`Sikeres adat-egyesítés (v94.1), cache mentve (${ck}).`);
+        console.log(`Sikeres adat-egyesítés (v94.2), cache mentve (${ck}).`);
         return { ...response, fromCache: false };
         
     } catch (e: any) {
-         console.error(`KRITIKUS HIBA a getRichContextualData (v94.1) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
+         console.error(`KRITIKUS HIBA a getRichContextualData (v94.2) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
          console.warn(`[DataFetch] TISZTA P1 MÓD KÉNYSZERÍTVE (Catch Blokk). A rendszer üres adat-stubot ad vissza.`);
          return generateEmptyStubContext(options);
     }
 }
 
 /**
- * === MÓDOSÍTVA (v94.1): Sportág-specifikus ID keresők ===
+ * === MÓDOSÍTVA (v94.2): Sportág-specifikus ID keresők ===
  */
 export async function getRostersForMatch(options: {
     sport: string;
@@ -520,16 +519,15 @@ null> {
         }
         const { leagueId, foundSeason } = leagueDataResponse;
         
+        // === JAVÍTÁS (v94.2): Az 5. argumentum eltávolítva ===
         if (options.sport === 'hockey') {
-             const leagueRosterData = await hockeyGetLeagueRoster(leagueId, foundSeason, options.sport);
-             homeTeamId = await hockeyGetTeamId(decodedHomeTeam, options.sport, leagueId, foundSeason, leagueRosterData);
-             awayTeamId = await hockeyGetTeamId(decodedAwayTeam, options.sport, leagueId, foundSeason, leagueRosterData);
+             homeTeamId = await hockeyGetTeamId(decodedHomeTeam, options.sport, leagueId, foundSeason);
+             awayTeamId = await hockeyGetTeamId(decodedAwayTeam, options.sport, leagueId, foundSeason);
         } else {
-             const leagueRosterData = await soccerGetLeagueRoster(leagueId, foundSeason, options.sport);
-             homeTeamId = await soccerGetTeamId(decodedHomeTeam, options.sport, leagueId, foundSeason, leagueRosterData);
-             awayTeamId = await soccerGetTeamId(decodedAwayTeam, options.sport, leagueId, foundSeason, leagueRosterData);
+             homeTeamId = await soccerGetTeamId(decodedHomeTeam, options.sport, leagueId, foundSeason);
+             awayTeamId = await soccerGetTeamId(decodedAwayTeam, options.sport, leagueId, foundSeason);
         }
-        // --- MÓDOSÍTÁS VÉGE (v94.1) ---
+        // --- MÓDOSÍTÁS VÉGE (v94.2) ---
         
         if (!homeTeamId || !awayTeamId) {
              console.warn(`[DataFetch] Csapat ID hiányzik a keret lekéréséhez. (HomeID: ${homeTeamId}, AwayID: ${awayTeamId}).`);
