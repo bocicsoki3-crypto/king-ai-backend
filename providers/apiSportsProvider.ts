@@ -1005,4 +1005,3 @@ null
 
 // Meta-adat a logoláshoz
 export const providerName = 'api-sports-soccer';
-}
