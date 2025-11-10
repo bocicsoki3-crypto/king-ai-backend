@@ -1,18 +1,16 @@
-// --- AI_Service.ts (v103.3 "Frontend Fix") ---
+// --- AI_Service.ts (v103.5 "Mikromodell Javítás") ---
 //
-// HIBAJAVÍTÁS (v103.3):
-// A háttér (backend) sikeresen lefutott, de a felület (frontend)
-// "Stratéga hiba" és "Próféta nem adott meg jóslatot" üzenetet mutatott.
-// OK: A v103.0 "Hibrid Főnök" más JSON kulcsneveket használt, mint amit a frontend várt.
+// HIBAJAVÍTÁS (v103.5):
+// Az AnalysisFlow.ts (v103.5) javítása sikeres volt, a Próféta és
+// a Szintézis kártyák már működnek.
 //
-// 1. JAVÍTVA: A `runStep_FinalAnalysis` (kb. 710. sor) kimeneti kulcsa
-//    `strategic_closing_thoughts`-ról VISSZANEVEZVE `strategic_synthesis`-re.
-// 2. JAVÍTVA: A `prophetic_timeline` kulcs "N/A"-ról egy valós AI hívásra cserélve.
-// 3. HOZZÁADVA: Visszakerült a `PROPHETIC_SCENARIO_PROMPT` és a futtatója
-//    (a "régi, nyerő" kódból), hogy a Próféta újra működjön.
+// HIBA: A "Piaci Mikromodellek" kártya nem jelent meg.
+// OK: Az `AI_Service.ts` `camelCase` neveket (pl. `bttsAnalysis`)
+//     használt a mikromodell objektumban, de a `script.js` (frontend)
+//     `snake_case` neveket (pl. `btts_analysis`) várt.
 //
-// CÉL: A háttér JSON kimenete most már 100%-ban illeszkedik ahhoz,
-//      amit a frontend (HtmlBuilder.ts) vár.
+// 1. JAVÍTVA: A `runStep_FinalAnalysis` (kb. 710. sor) `microAnalyses`
+//    objektuma most már a helyes `snake_case` kulcsneveket használja.
 //
 
 import { 
@@ -36,12 +34,14 @@ async function getAndParse(
         
         if (result && typeof result === 'object' && result.hasOwnProperty(keyToExtract)) {
             const value = result[keyToExtract];
-            return value || "N/A";
+            // Biztosítjuk, hogy SOHA ne adjunk vissza null/undefined értéket, csak stringet
+            return value || "N/A (AI nem adott értéket)";
         }
-        console.error(`[AI_Service v103.3] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
+        console.error(`[AI_Service v103.5] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
         return `AI Hiba: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot.`;
     } catch (e: any) {
-        console.error(`[AI_Service v103.3] Végleges AI Hiba (${stepName}): ${e.message}`);
+        console.error(`[AI_Service v103.5] Végleges AI Hiba (${stepName}): ${e.message}`);
+        // Fontos: Hibát *adunk vissza*, nem *dobjuk* tovább, hogy a lánc folytatódhasson
         return `AI Hiba (${keyToExtract}): ${e.message}`;
     }
 }
@@ -133,7 +133,7 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 }
 `;
 
-// === MIKROMODELL PROMPTOK (VISSZAÁLLÍTVA a "régi, nyerő" fájlból) ===
+// === MIKROMODELL PROMPTOK (Változatlan) ===
 
 const EXPERT_CONFIDENCE_PROMPT = `You are a master betting risk analyst.
 Provide a confidence score and justification in Hungarian.
@@ -174,7 +174,6 @@ Mention the model's confidence: {modelConfidence}/10.
 Highlight key conclusions or turning points with **asterisks**.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"general_analysis": "<Your two-paragraph Hungarian summary here>"}.`;
 
-// === HOZZÁADVA (v103.3): A "Próféta" prompt visszaállítva ===
 const PROPHETIC_SCENARIO_PROMPT = `You are an elite sports journalist. Write a compelling, descriptive, prophetic scenario in Hungarian for {home} vs {away}.
 CONTEXT: First, read the Tactical Briefing: "{tacticalBriefing}". Your narrative MUST match this tactical assessment.
 DATA: {home} ({home_style}) vs {away} ({away_style}), Tension: {tension}.
@@ -226,7 +225,7 @@ Conclude with confidence level towards Over or Under a likely line (e.g., 4.5 or
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"card_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
 
-// === A "BRUTÁLIS" FŐNÖK (v103.0) PROMPTJA (VISSZAÁLLÍTVA ÉS FEJLESZTVE) ===
+// === A "BRUTÁLIS" FŐNÖK (v103.0) PROMPTJA (Változatlan) ===
 const MASTER_AI_PROMPT_TEMPLATE_V103 = `
 CRITICAL TASK: You are the Head Analyst (AI Advisor).
 Your task is to analyze ALL provided reports and determine the SINGLE most compelling betting recommendation.
@@ -262,7 +261,7 @@ OUTPUT FORMAT: Your response MUST be ONLY a single, valid JSON object with this 
 `;
 
 
-// --- ÜGYNÖK FUTTATÓ FÜGGVÉNYEK (v103.3) ---
+// --- ÜGYNÖK FUTTATÓ FÜGGVÉNYEK (v103.5) ---
 
 // === 8. ÜGYNÖK (TÉRKÉPÉSZ) HÍVÁSA ===
 interface TeamNameResolverInput {
@@ -278,14 +277,14 @@ export async function runStep_TeamNameResolver(data: TeamNameResolverInput): Pro
         if (result && result.matched_id) {
             const foundId = Number(result.matched_id);
             const matchedTeam = data.rosterJson.find(t => t.id === foundId);
-            console.log(`[AI_Service v103.3 - Térképész] SIKER: Az AI a "${data.searchTerm}" nevet ehhez a csapathoz rendelte: "${matchedTeam?.name || 'N/A'}" (ID: ${foundId})`);
+            console.log(`[AI_Service v103.5 - Térképész] SIKER: Az AI a "${data.searchTerm}" nevet ehhez a csapathoz rendelte: "${matchedTeam?.name || 'N/A'}" (ID: ${foundId})`);
             return foundId;
         } else {
-            console.error(`[AI_Service v103.3 - Térképész] HIBA: Az AI nem talált egyezést (matched_id: null) a "${data.searchTerm}" névre.`);
+            console.error(`[AI_Service v103.5 - Térképész] HIBA: Az AI nem talált egyezést (matched_id: null) a "${data.searchTerm}" névre.`);
             return null;
         }
     } catch (e: any) {
-        console.error(`[AI_Service v103.3 - Térképész] KRITIKUS HIBA a Gemini hívás vagy JSON parse során: ${e.message}`);
+        console.error(`[AI_Service v103.5 - Térképész] KRITIKUS HIBA a Gemini hívás vagy JSON parse során: ${e.message}`);
         return null;
     }
 }
@@ -301,7 +300,7 @@ export async function runStep_Psychologist(data: PsychologistInput): Promise<any
         const filledPrompt = fillPromptTemplate(PROMPT_PSYCHOLOGIST_V93, data);
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Psychologist (v93)");
     } catch (e: any) {
-        console.error(`[AI_Service v103.3] AI Hiba (Psychologist): ${e.message}`);
+        console.error(`[AI_Service v103.5] AI Hiba (Psychologist): ${e.message}`);
         return {
             "psy_profile_home": "AI Hiba: A 2.5-ös Ügynök (Pszichológus) nem tudott lefutni.",
             "psy_profile_away": "AI Hiba: A 2.5-ös Ügynök (Pszichológus) nem tudott lefutni."
@@ -326,7 +325,7 @@ export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
         const filledPrompt = fillPromptTemplate(PROMPT_SPECIALIST_V94, data);
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Specialist (v94)");
     } catch (e: any) {
-        console.error(`[AI_Service v103.3] AI Hiba (Specialist): ${e.message}`);
+        console.error(`[AI_Service v103.5] AI Hiba (Specialist): ${e.message}`);
         return {
             "modified_mu_h": data.pure_mu_h,
             "modified_mu_a": data.pure_mu_a,
@@ -336,7 +335,7 @@ export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
     }
 }
 
-// === MIKROMODELL FUTTATÓK ===
+// === MIKROMODELL FUTTATÓK (Változatlan) ===
 
 async function getExpertConfidence(modelConfidence: number, richContext: string, rawData: ICanonicalRawData, psyReport: any, specialistReport: any) {
      const safeModelConfidence = typeof modelConfidence === 'number' ? modelConfidence : 5.0;
@@ -400,7 +399,6 @@ async function getFinalGeneralAnalysis(sim: any, tacticalBriefing: string, rawDa
     return await getAndParse(FINAL_GENERAL_ANALYSIS_PROMPT, data, "general_analysis", "FinalGeneralAnalysis");
 }
 
-// === HOZZÁADVA (v103.3): A "Próféta" futtatója ===
 async function getPropheticTimeline(rawData: ICanonicalRawData, home: string, away: string, sport: string, tacticalBriefing: string) {
      const data = {
          sport, home, away,
@@ -409,6 +407,7 @@ async function getPropheticTimeline(rawData: ICanonicalRawData, home: string, aw
          away_style: rawData?.tactics?.away?.style || "N/A",
          tension: rawData?.contextual_factors?.match_tension_index || "N/A",
      };
+    // A log alapján ez a hívás néha hibát dobott
     return await getAndParse(PROPHETIC_SCENARIO_PROMPT, data, "scenario", "PropheticScenario");
 }
 
@@ -484,7 +483,9 @@ async function getStrategicClosingThoughts(
     modelConfidence: number, expertConfidence: string, psyReport: any, specialistReport: any
 ) {
     const safeSim = sim || {};
+    // === MÓDOSÍTÁS (v103.5): A microSummary-t most már a HELYES 'snake_case' kulcsokból építjük ===
     const microSummary = Object.entries(microAnalyses || {}).map(([key, val]) => {
+        // A 'key' már 'btts_analysis', 'goals_ou_analysis' stb.
         const analysisPart = typeof val === 'string' ? val.split('\nBizalom:')[0].trim() : 'N/A';
         return `${key}: ${analysisPart}`;
     }).join('; ');
@@ -507,7 +508,7 @@ async function getStrategicClosingThoughts(
 }
 
 
-// === A "FŐNÖK" (v103.2) HÍVÁSA: A "régi, nyerő" getMasterRecommendation ===
+// === A "FŐNÖK" (v103.2) HÍVÁSA: A "régi, nyerő" getMasterRecommendation (Változatlan) ===
 async function getMasterRecommendation(
     valueBets: any[], 
     sim: any, 
@@ -523,6 +524,7 @@ async function getMasterRecommendation(
 ) {
     try {
         const safeSim = sim || {};
+        // === MÓDOSÍTÁS (v103.5): A microSummary-t most már a HELYES 'snake_case' kulcsokból építjük ===
         const microSummary = Object.entries(microAnalyses || {}).map(([key, val]) => `${key}: ${val || 'N/A'}`).join('; ');
 
         // Expert confidence pontszám kinyerése
@@ -536,13 +538,13 @@ async function getMasterRecommendation(
             if (match && match[1]) {
                 expertConfScore = parseFloat(match[1]);
                 expertConfScore = Math.max(1.0, Math.min(10.0, expertConfScore));
-                console.log(`[AI_Service v103.3 - Főnök] Expert bizalom sikeresen kinyerve: ${expertConfScore}`);
+                console.log(`[AI_Service v103.5 - Főnök] Expert bizalom sikeresen kinyerve: ${expertConfScore}`);
             } else {
-                console.warn(`[AI_Service v103.3 - Főnök] Nem sikerült kinyerni az expert bizalmat: "${expertConfidence}". Alapértelmezett: 1.0`);
+                console.warn(`[AI_Service v103.5 - Főnök] Nem sikerült kinyerni az expert bizalmat: "${expertConfidence}". Alapértelmezett: 1.0`);
                 expertConfScore = 1.0;
             }
         } catch(e: any) {
-            console.warn("[AI_Service v103.3 - Főnök] Hiba az expert bizalom kinyerésekor:", e);
+            console.warn("[AI_Service v103.5 - Főnök] Hiba az expert bizalom kinyerésekor:", e);
             expertConfScore = 1.0;
         }
 
@@ -568,12 +570,13 @@ async function getMasterRecommendation(
         let rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation");
 
         if (!rec || !rec.recommended_bet || typeof rec.final_confidence !== 'number') {
-            console.error("[AI_Service v103.3 - Főnök] Master AI hiba: Érvénytelen JSON struktúra a válaszban:", rec);
+            console.error("[AI_Service v103.5 - Főnök] Master AI hiba: Érvénytelen JSON struktúra a válaszban:", rec);
+            // Dobunk egy hibát, hogy a runStep_FinalAnalysis elkapja
             throw new Error("AI hiba: Érvénytelen JSON struktúra a MasterRecommendation-ben.");
         }
         
         // --- 2. LÉPÉS: KÓD (A "Főnök") átveszi az irányítást ---
-        console.log(`[AI_Service v103.3 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
+        console.log(`[AI_Service v103.5 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
 
         // 1. Eltérés-alapú büntetés (Modell vs Expert)
         const confidenceDiff = Math.abs(safeModelConfidence - expertConfScore);
@@ -614,7 +617,7 @@ async function getMasterRecommendation(
                 }
             }
         } catch(calError: any) { 
-            console.warn(`[AI_Service v103.3 - Főnök] Bizalmi kalibráció hiba: ${calError.message}`); 
+            console.warn(`[AI_Service v103.5 - Főnök] Bizalmi kalibráció hiba: ${calError.message}`); 
         }
 
         // Megjegyzések hozzáadása az indokláshoz
@@ -623,23 +626,20 @@ async function getMasterRecommendation(
             rec.brief_reasoning = rec.brief_reasoning.substring(0, 497) + "...";
         }
 
-        console.log(`[AI_Service v103.3 - Főnök] VÉGLEGES KORRIGÁLT Tipp: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
+        console.log(`[AI_Service v103.5 - Főnök] VÉGLEGES KORRIGÁLT Tipp: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
         
         // Visszaadjuk a "Főnök" által finomított ajánlást
         return rec;
 
     } catch (e: any) {
-        console.error(`[AI_Service v103.3 - Főnök] Végleges hiba a Mester Ajánlás generálása során: ${e.message}`, e.stack);
-        return { 
-            "recommended_bet": "Hiba", 
-            "final_confidence": 1.0, 
-            "brief_reasoning": `AI Hiba (Főnök): ${e.message.substring(0, 100)}` 
-        };
+        console.error(`[AI_Service v103.5 - Főnök] Végleges hiba a Mester Ajánlás generálása során: ${e.message}`, e.stack);
+        // Dobunk egy hibát, hogy a runStep_FinalAnalysis elkapja
+        throw new Error(`AI Hiba (Főnök): ${e.message.substring(0, 100)}`);
     }
 }
 
 
-// === FŐ ORCHESTRÁCIÓS LÉPÉS (v103.3 - FRONTEND FIX) ===
+// === FŐ ORCHESTRÁCIÓS LÉPÉS (v103.5 - FRONTEND FIX) ===
 interface FinalAnalysisInput {
     matchData: { home: string; away: string; sport: string; leagueName: string; };
     rawDataJson: ICanonicalRawData; 
@@ -650,6 +650,11 @@ interface FinalAnalysisInput {
     richContext: string;
 }
 
+/**
+ * Ez a "Hibrid Főnök" (v103.0) fő futtatója.
+ * Ez a függvény adja vissza a LAPOS objektumot, amit az AnalysisFlow.ts
+ * beágyaz a 'committee.strategist' kulcs alá.
+ */
 export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<any> {
     
     // Alap adatok kinyerése
@@ -662,103 +667,139 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
     // Statisztikai bizalom kinyerése a szimulátorból (KRITIKUS)
     const modelConfidence = typeof sim.stat_confidence === 'number' ? sim.stat_confidence : 5.0;
     
-    // --- 1. LÉPÉS: Mikromodellek párhuzamos futtatása ---
-    
-    // A. Expert Confidence (A legfontosabb a kalibrációhoz)
-    const expertConfidencePromise = getExpertConfidence(modelConfidence, richContext, rawDataJson, psyReport, specialistReport);
-
-    // B. Kockázat
-    const riskAssessmentPromise = getRiskAssessment(sim, rawDataJson, sport);
-    
-    // C. Piac-specifikus mikromodellek
-    const bttsPromise = getBTTSAnalysis(sim, rawDataJson);
-    const goalsOUPromise = getSoccerGoalsOUAnalysis(sim, rawDataJson, sim.mainTotalsLine || 2.5);
-    const cornerPromise = getCornerAnalysis(sim, rawDataJson);
-    const cardPromise = getCardAnalysis(sim, rawDataJson);
-    const playerMarketsPromise = getPlayerMarkets(rawDataJson.key_players, richContext);
-
-    // Eredmények összegyűjtése (kivéve a függő hívásokat)
-    const [
-        expertConfidence,
-        riskAssessment,
-        bttsAnalysis,
-        goalsOUAnalysis,
-        cornerAnalysis,
-        cardAnalysis,
-        playerMarketAnalysis
-    ] = await Promise.all([
-        expertConfidencePromise,
-        riskAssessmentPromise,
-        bttsPromise,
-        goalsOUPromise,
-        cornerPromise,
-        cardPromise,
-        playerMarketsPromise
-    ]);
-
-    const microAnalyses = {
-        bttsAnalysis,
-        goalsOUAnalysis,
-        cornerAnalysis,
-        cardAnalysis,
-        playerMarketAnalysis
+    // === MÓDOSÍTÁS (v103.5): A kimeneti objektumok inicializálása ===
+    // Ezeket a változókat fogjuk feltölteni, és a try...catch blokkok
+    // biztosítják, hogy egyik hívás se akassza meg a másikat.
+    let expertConfidence = `**${modelConfidence.toFixed(1)}/10** - AI Hiba: Az Expert Confidence hívás nem futott le.`;
+    let riskAssessment = "AI Hiba: A Risk Assessment hívás nem futott le.";
+    let tacticalBriefing = "AI Hiba: A Tactical Briefing hívás nem futott le.";
+    let generalAnalysis = "AI Hiba: A General Analysis hívás nem futott le.";
+    let propheticTimeline = "AI Hiba: A Prophetic Timeline hívás nem futott le."; // A log alapján ez volt a hibás
+    let strategic_synthesis = "AI Hiba: A Strategic Synthesis hívás nem futott le.";
+    let masterRecommendation = { 
+        "recommended_bet": "Hiba", 
+        "final_confidence": 1.0, 
+        "brief_reasoning": "AI Hiba: A Master Recommendation lánc megszakadt." 
     };
-
-    // --- 2. LÉPÉS: Fő elemzések futtatása (ezek függhetnek az előzőektől) ---
     
-    // A. Taktikai elemzés (függ a kockázattól)
-    const tacticalBriefing = await getTacticalBriefing(rawDataJson, sport, home, away, riskAssessment);
+    // === MÓDOSÍTÁS (v103.5): A kulcsnevek itt már helyesek (snake_case) ===
+    let microAnalyses = {
+        btts_analysis: "N/A",
+        goals_ou_analysis: "N/A",
+        corner_analysis: "N/A",
+        card_analysis: "N/A",
+        player_market_analysis: "N/A"
+    };
     
-    // B. Általános elemzés (függ a taktikától és pszichológiától)
-    const generalAnalysis = await getFinalGeneralAnalysis(sim, tacticalBriefing, rawDataJson, modelConfidence, psyReport);
+    try {
+        // --- 1. LÉPÉS: Mikromodellek párhuzamos futtatása (Hibatűréssel) ---
+        
+        const expertConfidencePromise = getExpertConfidence(modelConfidence, richContext, rawDataJson, psyReport, specialistReport);
+        const riskAssessmentPromise = getRiskAssessment(sim, rawDataJson, sport);
+        
+        // Piac-specifikus mikromodellek
+        const bttsPromise = getBTTSAnalysis(sim, rawDataJson);
+        const goalsOUPromise = getSoccerGoalsOUAnalysis(sim, rawDataJson, sim.mainTotalsLine || 2.5);
+        const cornerPromise = getCornerAnalysis(sim, rawDataJson);
+        const cardPromise = getCardAnalysis(sim, rawDataJson);
+        const playerMarketsPromise = getPlayerMarkets(rawDataJson.key_players, richContext);
 
-    // === HOZZÁADVA (v103.3): Próféta futtatása (függ a taktikától) ===
-    const propheticTimeline = await getPropheticTimeline(rawDataJson, home, away, sport, tacticalBriefing);
+        // Eredmények összegyűjtése (kivéve a függő hívásokat)
+        const results = await Promise.allSettled([
+            expertConfidencePromise,
+            riskAssessmentPromise,
+            bttsPromise,
+            goalsOUPromise,
+            cornerPromise,
+            cardPromise,
+            playerMarketsPromise
+        ]);
 
-    // C. Stratégiai zárógondolatok (függ szinte mindentől)
-    // JAVÍTVA (v103.3): Átnevezve 'strategicClosingThoughts'-ról 'strategic_synthesis'-re,
-    // hogy a frontend (HtmlBuilder) biztosan megtalálja.
-    const strategic_synthesis = await getStrategicClosingThoughts(
-        sim, rawDataJson, richContext, microAnalyses, riskAssessment,
-        tacticalBriefing, valueBetsJson, modelConfidence, expertConfidence,
-        psyReport, specialistReport
-    );
+        // Eredmények biztonságos hozzárendelése
+        expertConfidence = (results[0].status === 'fulfilled') ? results[0].value : `**1.0/10** - AI Hiba: ${results[0].reason?.message || 'Ismeretlen'}`;
+        riskAssessment = (results[1].status === 'fulfilled') ? results[1].value : `AI Hiba: ${results[1].reason?.message || 'Ismeretlen'}`;
+        
+        // === MÓDOSÍTÁS (v103.5): Helyes 'snake_case' kulcsok használata ===
+        microAnalyses = {
+            btts_analysis: (results[2].status === 'fulfilled') ? results[2].value : `AI Hiba: ${results[2].reason?.message || 'Ismeretlen'}`,
+            goals_ou_analysis: (results[3].status === 'fulfilled') ? results[3].value : `AI Hiba: ${results[3].reason?.message || 'Ismeretlen'}`,
+            corner_analysis: (results[4].status === 'fulfilled') ? results[4].value : `AI Hiba: ${results[4].reason?.message || 'Ismeretlen'}`,
+            card_analysis: (results[5].status === 'fulfilled') ? results[5].value : `AI Hiba: ${results[5].reason?.message || 'Ismeretlen'}`,
+            player_market_analysis: (results[6].status === 'fulfilled') ? results[6].value : `AI Hiba: ${results[6].reason?.message || 'Ismeretlen'}`,
+        };
+        
+        // --- 2. LÉPÉS: Fő elemzések futtatása (ezek függhetnek az előzőektől) ---
+        
+        // A. Taktikai elemzés (függ a kockázattól)
+        try {
+            tacticalBriefing = await getTacticalBriefing(rawDataJson, sport, home, away, riskAssessment);
+        } catch (e: any) { tacticalBriefing = `AI Hiba (Tactical): ${e.message}`; }
+        
+        // B. Általános elemzés (függ a taktikától és pszichológiától)
+        try {
+            generalAnalysis = await getFinalGeneralAnalysis(sim, tacticalBriefing, rawDataJson, modelConfidence, psyReport);
+        } catch (e: any) { generalAnalysis = `AI Hiba (General): ${e.message}`; }
 
-    // --- 3. LÉPÉS: A "FŐNÖK" (JS KÓD + AI TANÁCSADÓ) HÍVÁSA ---
-    const masterRecommendation = await getMasterRecommendation(
-        valueBetsJson,
-        sim,
-        modelConfidence,
-        expertConfidence, // A kritikus string, pl. "**8.5/10** - Indoklás..."
-        riskAssessment,
-        microAnalyses,
-        generalAnalysis,
-        strategic_synthesis, // JAVÍTVA (v103.3): Átadjuk az átnevezett változót
-        "N/A", // ContradictionAnalysis (a régiből, most N/A)
-        psyReport, // ÚJ (v103)
-        specialistReport // ÚJ (v103)
-    );
+        // C. Próféta futtatása (függ a taktikától) - A log alapján ez hibát dobott
+        try {
+            propheticTimeline = await getPropheticTimeline(rawDataJson, home, away, sport, tacticalBriefing);
+        } catch (e: any) { 
+            console.error(`[AI_Service v103.5] Hiba elkapva a 'getPropheticTimeline' hívásakor: ${e.message}`);
+            propheticTimeline = `AI Hiba (Prophetic): ${e.message}`; 
+        }
 
-    // --- 4. LÉPÉS: Végső riport összeállítása (v103.3 Frontend Fix) ---
-    // A kimeneti JSON kulcsnevei PONTOSAN meg kell egyezzenek
-    // a "régi" rendszerével, amit a frontended vár.
+        // D. Stratégiai zárógondolatok (függ szinte mindentől)
+        try {
+            strategic_synthesis = await getStrategicClosingThoughts(
+                sim, rawDataJson, richContext, microAnalyses, riskAssessment,
+                tacticalBriefing, valueBetsJson, modelConfidence, expertConfidence,
+                psyReport, specialistReport
+            );
+        } catch (e: any) { strategic_synthesis = `AI Hiba (Strategic): ${e.message}`; }
+
+        // --- 3. LÉPÉS: A "FŐNÖK" (JS KÓD + AI TANÁCSADÓ) HÍVÁSA ---
+        // Ez az egyetlen lépés, ami hibát *dobhat*, mert a fő tipp kritikus
+        masterRecommendation = await getMasterRecommendation(
+            valueBetsJson,
+            sim,
+            modelConfidence,
+            expertConfidence, 
+            riskAssessment,
+            microAnalyses,
+            generalAnalysis,
+            strategic_synthesis,
+            "N/A", // ContradictionAnalysis (a régiből, most N/A)
+            psyReport, // ÚJ (v103)
+            specialistReport // ÚJ (v103)
+        );
+
+    } catch (e: any) {
+        // Ha a *kritikus* lánc (a MasterRecommendation) megszakad,
+        // a többi adatot még akkor is megpróbáljuk visszaküldeni.
+        console.error(`[AI_Service v103.5] KRITIKUS HIBA a runStep_FinalAnalysis során (valószínűleg a MasterRecommendation-ben): ${e.message}`);
+        masterRecommendation.brief_reasoning = `KRITIKUS HIBA: ${e.message}. A többi elemzés (ha van) még érvényes lehet.`;
+    }
+    
+    // --- 4. LÉPÉS: Végső LAPOS riport összeállítása (v103.5) ---
+    // Ezt a lapos objektumot fogja az AnalysisFlow.ts (v103.5)
+    // egy az egyben beletenni a 'committee.strategist' kulcs alá.
     return {
-        // A "régi" elemzői mezők, amiket a frontend vár
+        // A "régi" elemzői mezők, amiket a frontend (script.js)
+        // a 'committee.strategist' OBJEKTUMBAN keres:
+        
+        // Fő szöveges mezők
         risk_assessment: riskAssessment,
         tactical_briefing: tacticalBriefing,
         general_analysis: generalAnalysis,
+        strategic_synthesis: strategic_synthesis, // A 'script.js' ezt 'strategist.strategic_synthesis'-ként keresi
+        prophetic_timeline: propheticTimeline,     // A 'script.js' ezt 'strategist.prophetic_timeline'-ként keresi
         
-        // JAVÍTVA (v103.3): Ez a kulcs, amit a frontend vár
-        strategic_synthesis: strategic_synthesis, 
+        // Bizalmi riport
+        final_confidence_report: expertConfidence,
         
-        expert_confidence_report: expertConfidence,
-        
-        // JAVÍTVA (v103.3): Ez a kulcs, amit a frontend vár
-        prophetic_timeline: propheticTimeline,
-
-        // Mikromodellek (az "új" struktúra szerint)
+        // === JAVÍTÁS (v103.5): 'micromodels' objektum HELYES 'snake_case' kulcsokkal ===
         micromodels: microAnalyses,
-
+        
         // A "régi, nyerő" JS Főnök által kalibrált végső ajánlás
         master_recommendation: masterRecommendation,
 
@@ -801,12 +842,12 @@ If the answer isn't in the context or history, politely state that the informati
         const rawAnswer = await _callGemini(prompt, false); // forceJson = false
         return rawAnswer ? { answer: rawAnswer } : { error: "Az AI nem tudott válaszolni." };
     } catch (e: any) {
-        console.error(`[AI_Service v103.3] Chat hiba: ${e.message}`, e.stack);
+        console.error(`[AI_Service v103.5] Chat hiba: ${e.message}`, e.stack);
         return { error: `Chat AI Hiba: ${e.message}` };
     }
 }
 
-// --- FŐ EXPORT (v103.3) ---
+// --- FŐ EXPORT (v103.5) ---
 export default {
     runStep_TeamNameResolver,   // Újból (MEGTARTVA)
     runStep_Psychologist,     // Újból (MEGTARTVA)
