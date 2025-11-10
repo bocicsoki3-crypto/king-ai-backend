@@ -3,6 +3,7 @@
 // 1. JAVÍTVA: A '/runAnalysis' végponton a 'manual_absentees' típusa már a 
 //    helyes, objektum-alapú szerkezetet várja el, ahogy azt a DataFetch.ts is igényli.
 // 2. LOGIKA MEGERŐSÍTVE: Minden v63.3-as javítás (CORS, History) érvényben van.
+// 3. HOZZÁADVA: BFF Transzformációs réteg a /runAnalysis végponthoz.
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
@@ -13,6 +14,9 @@ import { fileURLToPath } from 'url';
 import { PORT } from './config.js';
 // Importáljuk a típusosított fő funkciókat
 import { runFullAnalysis } from './AnalysisFlow.js';
+// === ÚJ IMPORT A "FORDÍTÓ" FÜGGVÉNYHEZ ===
+import { transformAnalysisToLegacyFormat } from './bff_transformer.js'; 
+// ==========================================
 import { _getFixturesFromEspn, getRostersForMatch } from './DataFetch.js'; // <- ÚJ IMPORT
 import { getHistoryFromSheet, getAnalysisDetailFromSheet, deleteHistoryItemFromSheet } from './sheets.js';
 import { getChatResponse } from './AI_Service.js';
@@ -194,7 +198,7 @@ app.post('/getRosters', protect, async (req: Request, res: Response) => {
 });
 
 
-// === MÓDOSÍTOTT VÉGPONT (v72.0 - Típusbiztonság) ===
+// === MÓDOSÍTOTT VÉGPONT (v72.0 - Típusbiztonság + BFF Fordítás) ===
 // === runAnalysis (v62.1-es mezőkkel) ===
 app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
     try {
@@ -242,13 +246,27 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             manual_A_xGA,
             manual_absentees: manual_absentees as ManualAbsentees | null // Típus kényszerítése
         };
-        const result = await runFullAnalysis(params, sport, openingOdds);
+        
+        // 1. LÉPÉS: Az "ÚJ, TISZTA" AI válasz lekérése az AnalysisFlow-ból
+        // Fontos: Az `AnalysisFlow.js`-nek az ÚJ struktúrát (NewAnalysisResult) kell visszaadnia.
+        const result: any = await runFullAnalysis(params, sport, openingOdds);
+        
         if ('error' in result) {
             console.error(`Elemzési hiba (AnalysisFlow): ${result.error}`);
             return res.status(500).json({ error: result.error });
         }
         
-        res.status(200).json(result);
+        // 2. LÉPÉS (ÚJ): ÁTALAKÍTÁS (TRANSZFORMÁCIÓ)
+        // Átalakítjuk az "új" választ a "régi" formátumra, amit a frontend (script.js) elvár.
+        console.log("[BFF] Fordítás indítása a frontend (legacy) formátumára...");
+        // A 'result' típusát 'any'-ként kezeljük, de a transformAnalysisToLegacyFormat
+        // elvárja (és megpróbálja feldolgozni) a NewAnalysisResult struktúrát.
+        const legacyResponse = transformAnalysisToLegacyFormat(result);
+        console.log("[BFF] Fordítás sikeres.");
+        
+        // 3. LÉPÉS (MÓDOSÍTVA): A "RÉGI" (lefordított) választ küldjük vissza
+        res.status(200).json(legacyResponse);
+        
     } catch (e: any) {
         console.error(`Hiba a /runAnalysis végpont-on: ${e.message}`, e.stack);
         res.status(500).json({ error: `Szerver hiba (runAnalysis): ${e.message}` });
