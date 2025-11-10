@@ -1,11 +1,11 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v96.1 (TS2345 Hiba Javítva)
-// MÓDOSÍTÁS (v96.1):
-// 1. JAVÍTVA (TS2345): A 'strategistInput' objektum (kb. 337. sor)
-//    kiegészítve a hiányzó 'oddsDataJson: mutableOddsData' kulccsal.
-// 2. CÉL: Ez a javítás szinkronizálja az AnalysisFlow-t az
-//    AI_Service.ts (v96.1) "Piac-Kereső" Stratégájával.
-// 3. LOGIKA: Az "Önjavító Hurok" (v94.0) logikája érintetlen marad.
+// VERZIÓ: v103.0 ("Hibrid Főnök" Architektúra)
+// MÓDOSÍTÁS (v103.0):
+// 1. ARCHITEKTÚRA VÁLTÁS: A 'runStep_Critic' és 'runStep_Strategist'
+//    hívások TÖRÖLVE.
+// 2. ÚJ HÍVÁS: Helyettük az új, egyesített 'runStep_FinalAnalysis'
+//    (a "Hibrid Főnök" futtatója az AI_Service.ts-ből) van bekötve.
+// 3. CÉL: Szinkronizálás a v103.0-s "nyerő" AI logikával.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -38,8 +38,11 @@ import {
 import {
     runStep_Psychologist, // (2.5 Ügynök - Pszichológus)
     runStep_Specialist,   // (3. Ügynök - AI Specialista)
-    runStep_Critic,       // (5. Ügynök - Kritikus)
-    runStep_Strategist    // (6. Ügynök - Stratéga)
+    // TÖRÖLVE (v103.0): A Critic és Strategist helyett a FinalAnalysis-t használjuk
+    // runStep_Critic,       // (5. Ügynök - Kritikus)
+    // runStep_Strategist    // (6. Ügynök - Stratéga)
+    // HOZZÁADVA (v103.0): Az új "Hibrid Főnök" futtató
+    runStep_FinalAnalysis
 } from './AI_Service.js';
 import { saveAnalysisToSheet } from './sheets.js'; 
 // === ÚJ (v94.0): Önjavító Hurok importálása ===
@@ -49,8 +52,7 @@ import { getNarrativeRatings } from './LearningService.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v96.1): A 'strategistInput' szinkronizálva a
-* v96.1-es "Piac-Kereső" Stratégával (AI_Service.ts).
+* VÁLTOZÁS (v103.0): Átállás a "Hibrid Főnök" architektúrára.
 **************************************************************/
 
 // Az új, strukturált JSON válasz
@@ -65,6 +67,7 @@ interface IAnalysisResponse {
                 log: string,  
                 report: any   
             };
+            // v103: A critic/strategist egybeolvad
             critic: any;
             strategist: any;
         };
@@ -141,8 +144,9 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const p1AbsenteesHash = manual_absentees ?
             `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
-        // Új cache kulcs (v96.0)
-        analysisCacheKey = `analysis_v96.0_market_hunter_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
+        
+        // v103.0 Cache kulcs
+        analysisCacheKey = `analysis_v103.0_hybrid_boss_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
         
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
@@ -177,7 +181,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             manual_A_xGA: safeConvertToNumber(manual_A_xGA),
             manual_absentees: manual_absentees 
         };
-        // A 'getRichContextualData' (Scout) most már kezeli a P1 hibatűrést (v93.0)
+        
         const { 
             rawStats, 
             richContext,
@@ -223,7 +227,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const { psy_profile_home, psy_profile_away } = psychologistReport;
         console.log(`[Lánc 2.5/6] Pszichológus végzett.`);
         
-        // === ÚJ (v94.0): 2.6 LÉPÉS (ÖNJAVÍTÓ HUROK BEOLVASÁSA) ===
+        // === (v94.0): 2.6 LÉPÉS (ÖNJAVÍTÓ HUROK BEOLVASÁSA) ===
         console.log(`[Lánc 2.6/6] Önjavító Hurok: 7. Ügynök (Revizor) múltbeli tanulságainak beolvasása...`);
         const narrativeRatings = getNarrativeRatings();
         const homeNarrativeRating = narrativeRatings[home.toLowerCase()] || {};
@@ -243,7 +247,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         );
         console.log(`Quant (Tiszta xG) [${quantSource}]: H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)}`);
         
-        // === MÓDOSÍTVA (v94.0): 3. ÜGYNÖK (SPECIALISTA) ===
+        // === (v94.0): 3. ÜGYNÖK (SPECIALISTA) ===
         console.log(`[Lánc 3/6] Specialista Ügynök (AI): Kontextuális módosítók alkalmazása (v94.0)...`);
         
         const specialistInput = {
@@ -254,8 +258,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             sport: sport,
             psy_profile_home: psy_profile_home, 
             psy_profile_away: psy_profile_away,
-            homeNarrativeRating: homeNarrativeRating, // ÚJ (v94.0)
-            awayNarrativeRating: awayNarrativeRating  // ÚJ (v94.0)
+            homeNarrativeRating: homeNarrativeRating, // (v94.0)
+            awayNarrativeRating: awayNarrativeRating  // (v94.0)
         };
         const specialistReport = await runStep_Specialist(specialistInput);
 
@@ -265,86 +269,71 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         } = specialistReport; 
         
         console.log(`Specialista (AI) (Súlyozott xG): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
-        // === MÓDOSÍTÁS VÉGE ===
-
+        
         const finalXgSource = xgSource;
 
         // === 4. ÜGYNÖK (SZIMULÁTOR): Meccs szimulálása ===
-        console.log(`[Lánc 4/6] Szimulátor Ügynök: 25000 szimuláció futtatása (v95.1 - AH Számítással)...`);
+        console.log(`[Lánc 4/6] Szimulátor Ügynök: 25000 szimuláció futtatása...`);
         const { mu_corners, mu_cards } = estimateAdvancedMetrics(rawData, sport, leagueAverages);
         const sim = simulateMatchProgress(
             mu_h, mu_a, 
             mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData
         );
         sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a;
-        sim.mu_corners_sim = mu_corners;
-        sim.mu_cards_sim = mu_cards; sim.mainTotalsLine = mainTotalsLine;
+        sim.mu_corners_sim = mu_corners; sim.mu_cards_sim = mu_cards; sim.mainTotalsLine = mainTotalsLine;
         const modelConfidence = calculateModelConfidence(sport, home, away, rawData, form, sim, marketIntel);
         const valueBets = calculateValue(sim, mutableOddsData, sport, home, away);
         console.log(`Szimulátor végzett. (Modell bizalom: ${modelConfidence.toFixed(1)})`);
 
-        // === MÓDOSÍTVA (v94.0): 5. ÜGYNÖK (PIAC-TUDATOS KRITIKUS) ===
-        console.log(`[Lánc 5/6] Kritikus Ügynök: Ellentmondások keresése (v94.0 - Önjavító)...`);
-        
-        const criticInput = {
-            simJson: sim,
-            marketIntel: marketIntel, 
-            rawDataJson: rawData,
-            modelConfidence: parseFloat(modelConfidence.toFixed(1)), 
-            valueBetsJson: valueBets,
-            psy_profile_home: psy_profile_home, 
-            psy_profile_away: psy_profile_away,
-            homeNarrativeRating: homeNarrativeRating, // ÚJ (v94.0)
-            awayNarrativeRating: awayNarrativeRating  // ÚJ (v94.0)
-        };
-        const criticReport = await runStep_Critic(criticInput);
-        
-        const finalConfidenceFromCritic = criticReport?.final_confidence_report?.final_confidence_score || 1.0;
-        console.log(`[Lánc 5/6] Kritikus végzett. Végső (Piac-Tudatos) Bizalmi Pontszám: ${finalConfidenceFromCritic.toFixed(2)}`);
-        // === MÓDOSÍTÁS VÉGE ===
 
-        // === MÓDOSÍTVA (v96.1): 6. ÜGYNÖK (STRATÉGA) ===
-        // JAVÍTVA: A 'strategistInput' most már tartalmazza
-        // a 'v96.0'-s "Piac-Kereső" Stratéga által megkövetelt
-        // 'oddsDataJson' kulcsot. Ez javítja a TS2345 hibát.
-        console.log(`[Lánc 6/6] Stratéga Ügynök: Végső döntés meghozatala (v96.1 - Piac-Kereső)...`);
+        // === MÓDOSÍTVA (v103.0): 5. és 6. ÜGYNÖK CSERÉJE "HIBRID FŐNÖK"-RE ===
+        // TÖRÖLVE: runStep_Critic (v94.0) hívás
+        // TÖRÖLVE: runStep_Strategist (v96.1) hívás
+        // A v103.0-s "Hibrid Főnök" architektúra egyetlen lépésben
+        // futtatja az összes mikromodellt és a "Főnök" kalibrációját.
         
-        const strategistInput = {
+        console.log(`[Lánc 5/6] "Hibrid Főnök" (v103.0) hívása...`);
+        
+        // Definiáljuk az interfészt (vagy importáljuk, ha létezik)
+        interface FinalAnalysisInput {
+            matchData: { home: string; away: string; sport: string; leagueName: string; };
+            rawDataJson: ICanonicalRawData; 
+            specialistReport: any; // Agent 3
+            simulatorReport: any;  // Agent 4 (Sim)
+            psyReport: any;        // Agent 2.5
+            valueBetsJson: any[];
+            richContext: string;
+        }
+
+        const finalAnalysisInput: FinalAnalysisInput = {
             matchData: { home, away, sport, leagueName },
-            quantReport: { pure_mu_h: pure_mu_h, pure_mu_a: pure_mu_a, source: quantSource },
-            specialistReport: specialistReport, 
-            simulatorReport: sim,
-            criticReport: criticReport,
-            oddsDataJson: mutableOddsData, // <-- JAVÍTÁS (v96.1): Hiányzó kulcs hozzáadva
-            modelConfidence: parseFloat(modelConfidence.toFixed(1)),
             rawDataJson: rawData,
-            realXgJson: { 
-                manual_H_xG: advancedData?.manual_H_xG ?? null,
-                manual_H_xGA: advancedData?.manual_H_xGA ?? null,
-                manual_A_xG: advancedData?.manual_A_xG ?? null,
-                manual_A_xGA: advancedData?.manual_A_xGA ?? null
-            },
-            psy_profile_home: psy_profile_home, 
-            psy_profile_away: psy_profile_away,
-            homeNarrativeRating: homeNarrativeRating, // ÚJ (v94.0)
-            awayNarrativeRating: awayNarrativeRating  // ÚJ (v94.0)
+            specialistReport: specialistReport, // Agent 3
+            simulatorReport: sim,              // Agent 4
+            psyReport: psychologistReport,     // Agent 2.5
+            valueBetsJson: valueBets,
+            richContext: richContext
         };
 
-        const strategistReport = await runStep_Strategist(strategistInput);
-        
-        if (strategistReport.error) {
-            console.error("A Stratéga (6. Ügynök) hibát adott vissza:", strategistReport.error);
+        // Ez a függvény most már tartalmazza a "régi, nyerő"
+        // JS-alapú kalibrációs logikát (a "Főnököt").
+        // A 'finalReport' tartalmaz mindent (micromodels, master_recommendation stb.)
+        const finalReport: any = await runStep_FinalAnalysis(finalAnalysisInput);
+
+        if (finalReport.error) { // Hibakezelés, ha a runStep_FinalAnalysis hibát dob
+            console.error("A Hibrid Főnök (v103.0) hibát adott vissza:", finalReport.error);
+            throw new Error(finalReport.error);
         }
         
-        const masterRecommendation = strategistReport?.master_recommendation;
+        const masterRecommendation = finalReport?.master_recommendation;
         let finalConfidenceScore = 1.0; 
         
         if (masterRecommendation && typeof masterRecommendation.final_confidence === 'number') {
             finalConfidenceScore = masterRecommendation.final_confidence;
         } else {
-            console.error("KRITIKUS HIBA: A Stratéga (6. Ügynök) nem adott vissza érvényes 'final_confidence' számot! 1.0-ra állítva.");
+            console.error("KRITIKUS HIBA: A Hibrid Főnök (v103.0) nem adott vissza érvényes 'final_confidence' számot! 1.0-ra állítva.");
         }
-        // === MÓDOSÍTÁS VÉGE ===
+        // === MÓDOSÍTÁS VÉGE (v103.0) ===
 
         console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterRecommendation)} (Végső bizalom: ${finalConfidenceScore})`);
 
@@ -357,15 +346,27 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
         };
         
-        // A "karcsúsított" (lean) adatok mentése a v71.0+ 'sheets.ts' számára
+        // A "karcsúsított" (lean) adatok mentése a v103.0 struktúrája alapján
         const auditData = {
             analysisData: {
                 committee: {
                     quant: { mu_h: pure_mu_h, mu_a: pure_mu_a, source: quantSource },
-                    psychologist: psychologistReport, // v94.0
-                    specialist: { mu_h: mu_h, mu_a: mu_a, log: specialistReport.reasoning, report: specialistReport },
-                    critic: criticReport,
-                    strategist: strategistReport
+                    psychologist: finalReport.agent_reports.psychologist,
+                    specialist: { 
+                        mu_h: mu_h, mu_a: mu_a, 
+                        log: finalReport.agent_reports.specialist.reasoning, 
+                        report: finalReport.agent_reports.specialist 
+                    },
+                    // A v103.0-ban a 'Critic' és 'Strategist' egybeolvadt.
+                    // A 'Hibrid Főnök' riportjait logoljuk.
+                    critic: { 
+                        expert_confidence_report: finalReport.expert_confidence_report,
+                        risk_assessment: finalReport.risk_assessment
+                    },
+                    strategist: {
+                        master_recommendation: finalReport.master_recommendation,
+                        strategic_closing_thoughts: finalReport.strategic_closing_thoughts
+                    }
                 },
                 matchData: {
                     home, 
@@ -385,7 +386,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                     topScore: sim.topScore
                 },
                 recommendation: masterRecommendation,
-                // === ÚJ (v94.0): A felhasznált tanulságok naplózása ===
+                // === (v94.0): A felhasznált tanulságok naplózása ===
                 narrativeRatingsUsed: {
                     home: homeNarrativeRating,
                     away: awayNarrativeRating
@@ -412,15 +413,15 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         scriptCache.set(analysisCacheKey, jsonResponse);
         console.log(`Elemzés befejezve és cache mentve (${analysisCacheKey})`);
         
-        // === JAVÍTÁS (v94.7 - TS2554): A hívás 1 argumentumra javítva ===
+        // === (v94.7): A hívás 1 argumentumra javítva ===
         saveAnalysisToSheet({
             sport, 
             home, 
             away, 
             date: new Date(), 
-            // Az 'auditData' a karcsúsított JSON, ahogy a sheets.ts (v71.0+) elvárja
+            // Az 'auditData' a karcsúsított JSON
             html: `<pre style="white-space: pre-wrap;">${JSON.stringify(auditData, null, 2)}</pre>`, 
-            JSON_Data: JSON.stringify(auditData), // Redundáns, de biztosítjuk a v94.6 logikát
+            JSON_Data: JSON.stringify(auditData),
             id: analysisCacheKey,
             fixtureId: fixtureIdForSaving,
             recommendation: masterRecommendation
