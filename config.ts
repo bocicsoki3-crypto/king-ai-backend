@@ -121,7 +121,7 @@ export const SPORT_CONFIG: ISportConfigMap = {
         
         // === JAVÍTÁS (v81.1) ===
         // Az ESPN API 'football'-t vár, nem 'soccer'-t ezen az útvonalon.
-        espn_sport_path: 'football', 
+        espn_sport_path: 'soccer', 
         // === JAVÍTÁS VÉGE ===
 
         // JAVÍTÁS (TS2739): Hiányzó kulcsok hozzáadva
