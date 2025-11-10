@@ -1,11 +1,12 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v103.0 ("Hibrid Főnök" Architektúra)
-// MÓDOSÍTÁS (v103.0):
-// 1. ARCHITEKTÚRA VÁLTÁS: A 'runStep_Critic' és 'runStep_Strategist'
-//    hívások TÖRÖLVE.
-// 2. ÚJ HÍVÁS: Helyettük az új, egyesített 'runStep_FinalAnalysis'
-//    (a "Hibrid Főnök" futtatója az AI_Service.ts-ből) van bekötve.
-// 3. CÉL: Szinkronizálás a v103.0-s "nyerő" AI logikával.
+// VERZIÓ: v103.1 ("Sheets Fix" Architektúra)
+// MÓDOSÍTÁS (v103.1):
+// 1. JAVÍTVA: Az 'auditData' objektum (kb. 410. sor) "karcsúsítva" (slimmed down).
+// 2. LOGIKA: Eltávolítottuk a masszív, teljes objektumokat (mint 'sim' és 'oddsData')
+//    a Google Sheets-be mentett JSON-ból, hogy elkerüljük a 50.000 karakteres
+//    cella-limit hibát (Google API Error 400).
+// 3. CÉL: A frontend továbbra is a teljes JSON-t kapja, de a naplózás
+//    már csak a "lényeget" menti a Google Sheets-be.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -52,7 +53,7 @@ import { getNarrativeRatings } from './LearningService.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v103.0): Átállás a "Hibrid Főnök" architektúrára.
+* VÁLTOZÁS (v103.1): Google Sheets 50k limit javítása.
 **************************************************************/
 
 // Az új, strukturált JSON válasz
@@ -279,19 +280,19 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             mu_h, mu_a, 
             mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData
         );
+        // A szimulátor most már a statisztikai bizalmat is visszaadja
+        const modelConfidence = calculateModelConfidence(sport, home, away, rawData, form, sim, marketIntel);
+        // A v103.0-s Hibrid Főnök kedvéért hozzáadjuk a stat bizalmat a sim objektumhoz
+        sim.stat_confidence = modelConfidence; 
+        
         sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a;
         sim.mu_corners_sim = mu_corners; sim.mu_cards_sim = mu_cards; sim.mainTotalsLine = mainTotalsLine;
-        const modelConfidence = calculateModelConfidence(sport, home, away, rawData, form, sim, marketIntel);
+        
         const valueBets = calculateValue(sim, mutableOddsData, sport, home, away);
         console.log(`Szimulátor végzett. (Modell bizalom: ${modelConfidence.toFixed(1)})`);
 
 
         // === MÓDOSÍTVA (v103.0): 5. és 6. ÜGYNÖK CSERÉJE "HIBRID FŐNÖK"-RE ===
-        // TÖRÖLVE: runStep_Critic (v94.0) hívás
-        // TÖRÖLVE: runStep_Strategist (v96.1) hívás
-        // A v103.0-s "Hibrid Főnök" architektúra egyetlen lépésben
-        // futtatja az összes mikromodellt és a "Főnök" kalibrációját.
-        
         console.log(`[Lánc 5/6] "Hibrid Főnök" (v103.0) hívása...`);
         
         // Definiáljuk az interfészt (vagy importáljuk, ha létezik)
@@ -309,7 +310,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             matchData: { home, away, sport, leagueName },
             rawDataJson: rawData,
             specialistReport: specialistReport, // Agent 3
-            simulatorReport: sim,              // Agent 4
+            simulatorReport: sim,              // Agent 4 (tartalmazza a stat_confidence-t)
             psyReport: psychologistReport,     // Agent 2.5
             valueBetsJson: valueBets,
             richContext: richContext
@@ -346,19 +347,24 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
         };
         
-        // A "karcsúsított" (lean) adatok mentése a v103.0 struktúrája alapján
+        // === JAVÍTÁS (v103.1): "Karcsúsított" (Slim) 'auditData' a Google Sheets limit (50k) miatt ===
+        // A 'jsonResponse' (amit a frontend kap) továbbra is a TELJES adatot tartalmazza.
+        // Csak a Google Sheets-be mentett napló lesz "karcsú".
+        
         const auditData = {
             analysisData: {
                 committee: {
                     quant: { mu_h: pure_mu_h, mu_a: pure_mu_a, source: quantSource },
-                    psychologist: finalReport.agent_reports.psychologist,
+                    // Csak a szöveges riportokat mentjük, nem a teljes objektumot
+                    psychologist: { 
+                        home: psychologistReport.psy_profile_home, 
+                        away: psychologistReport.psy_profile_away 
+                    },
                     specialist: { 
                         mu_h: mu_h, mu_a: mu_a, 
-                        log: finalReport.agent_reports.specialist.reasoning, 
-                        report: finalReport.agent_reports.specialist 
+                        log: specialistReport.reasoning 
+                        // Törölve: report: specialistReport (túl nagy)
                     },
-                    // A v103.0-ban a 'Critic' és 'Strategist' egybeolvadt.
-                    // A 'Hibrid Főnök' riportjait logoljuk.
                     critic: { 
                         expert_confidence_report: finalReport.expert_confidence_report,
                         risk_assessment: finalReport.risk_assessment
@@ -376,33 +382,42 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                     mu_h: sim.mu_h_sim,
                     mu_a: sim.mu_a_sim
                 },
-                oddsData: mutableOddsData,
-                valueBets: valueBets,
+                // Törölve: oddsData: mutableOddsData (túl nagy)
+                valueBets: valueBets, // Ez kicsi és fontos
                 modelConfidence: parseFloat(modelConfidence.toFixed(1)),
                 finalConfidenceScore: parseFloat(finalConfidenceScore.toFixed(1)),
-                sim: {
+                sim: { // Csak a "lényeg" a szimulációból
                     pHome: sim.pHome, pDraw: sim.pDraw, pAway: sim.pAway,
                     pOver: sim.pOver, pUnder: sim.pUnder, pBTTS: sim.pBTTS,
                     topScore: sim.topScore
                 },
                 recommendation: masterRecommendation,
-                // === (v94.0): A felhasznált tanulságok naplózása ===
                 narrativeRatingsUsed: {
                     home: homeNarrativeRating,
                     away: awayNarrativeRating
                 }
             }
         };
+        // === JAVÍTÁS VÉGE (v103.1) ===
         
         const jsonResponse: IAnalysisResponse = { 
             analysisData: {
-                committee: auditData.analysisData.committee,
+                // A BIZOTTSÁG (v103.1) - A "karcsú" adatokat használjuk itt is,
+                // A frontendnek nincs szüksége a teljes 'strategist' és 'critic' objektumra,
+                // csak az eredményeikre, amik már a 'finalReport'-ban vannak.
+                committee: {
+                    quant: auditData.analysisData.committee.quant,
+                    psychologist: auditData.analysisData.committee.psychologist,
+                    specialist: auditData.analysisData.committee.specialist,
+                    critic: auditData.analysisData.committee.critic,
+                    strategist: auditData.analysisData.committee.strategist
+                },
                 matchData: auditData.analysisData.matchData,
-                oddsData: mutableOddsData,
+                oddsData: mutableOddsData, // A FRONTEND A TELJES ODDS ADATOT KAPJA
                 valueBets: valueBets,
                 modelConfidence: auditData.analysisData.modelConfidence,
                 finalConfidenceScore: auditData.analysisData.finalConfidenceScore,
-                sim: sim, 
+                sim: sim, // A FRONTEND A TELJES SIMULÁCIÓT KAPJA
                 recommendation: masterRecommendation,
                 xgSource: finalXgSource, 
                 availableRosters: availableRosters
@@ -419,7 +434,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             home, 
             away, 
             date: new Date(), 
-            // Az 'auditData' a karcsúsított JSON
+            // Az 'auditData' a "karcsúsított" (v103.1) JSON
             html: `<pre style="white-space: pre-wrap;">${JSON.stringify(auditData, null, 2)}</pre>`, 
             JSON_Data: JSON.stringify(auditData),
             id: analysisCacheKey,
