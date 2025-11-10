@@ -435,7 +435,7 @@ null> {
         
         const sportConfig = SPORT_CONFIG[options.sport];
         const leagueData = sportConfig?.espn_leagues[decodedLeagueName];
-        const countryContext = leagueData?.country || 'N/A';
+        const countryContext = leagueData?.country || 'N/IA';
         
         let providerOptions: any = {
              sport: options.sport,
