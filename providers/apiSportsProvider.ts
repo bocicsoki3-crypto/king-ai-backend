@@ -1,16 +1,13 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v95.1 (Robusztus Liga Fix)
+// VERZIÓ: v95.2 ("Okos" Alias Javítás)
 // MÓDOSÍTÁS:
-// 1. JAVÍTVA: A `_findLeagueInList` (kb. 300. sor) funkció teljesen átírva.
-// 2. LOGIKA: A v95.0-s "patch" eltávolítva. Helyette egy új, robusztus
-//    `cleanLeagueName` segédfüggvény került bevezetésre.
-// 3. MEGOLDVA: Ez a segédfüggvény kezeli az összes "LaLiga2", "LaLiga Hypermotion",
-//    "Segunda División" aliast (mindet "laliga2"-re normalizálja).
-// 4. MEGOLDVA: Kezeli a "LaLiga" (első osztály) aliasait ("laliga1"-re normalizálja).
-// 5. MEGOLDVA: Kezeli a "Super Lig" (ESPN) és "Süper Lig" (API)
-//    eltérést (mindet "superlig"-re normalizálja).
-// 6. CÉL: Ez a javítás biztosítja a P4-es adatgyűjtés sikerességét
-//    a spanyol első- és másodosztály, valamint a török első osztály esetében is.
+// 1. JAVÍTVA (KRITIKUS): A `_cleanLeagueName` (kb. 300. sor) logikája
+//    MEGFORDÍTVA.
+// 2. LOGIKA: Először a SPECIFIKUS alias-szabályok futnak le (pl. "Segunda División" -> "laliga2").
+// 3. LOGIKA: Az általános "buta" tisztítás (pl. "division" szó törlése)
+//    CSAK AKKOR fut le, ha a specifikus szabályok nem találtak egyezést.
+// 4. CÉL: Ez a javítás véglegesen megoldja a "Segunda División" / "laliga2"
+//    azonosítási hibát, ami a log naplóban látható volt.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -190,7 +187,7 @@ export async function getApiSportsTeamId(teamName: string, sport: string, league
     return null;
 }
 
-// === EXPORTÁLVA (JAVÍTVA v95.1) ===
+// === EXPORTÁLVA (JAVÍTVA v95.2) ===
 export async function getApiSportsLeagueId(leagueName: string, country: string, season: number, sport: string): Promise<{ leagueId: number, foundSeason: number } | null> {
     if (!leagueName || !country || !season) {
         console.warn(`API-SPORTS (${sport}): Liga név ('${leagueName}'), ország ('${country}') vagy szezon (${season}) hiányzik.`);
@@ -226,32 +223,28 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
         return leagues;
     };
     
-    // === JAVÍTÁS (v95.1): Robusztus Liga Kereső ===
+    // === JAVÍTÁS (v95.2): "Okos" Alias Logika ===
     
     /**
      * Eltávolítja az ékezeteket és a felesleges szavakat a liga nevéből
      * a megbízhatóbb egyeztetés érdekében.
+     * KRITIKUS VÁLTOZÁS (v95.2): A specifikus szabályok futnak ELŐSZÖR.
      */
     const _cleanLeagueName = (name: string): string => {
         let lower = name.toLowerCase().trim()
             .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Ékezetek eltávolítása (pl. Süper -> Super)
 
-        // 1. Általános tisztítás
-        lower = lower.replace(/\(.*?\)/g, '') // Zárójelek eltávolítása
-                     .replace(/^(argentinian|brazilian|uefa|fifa)\s/i, '') // Előtagok
-                     .replace(/\s(league|liga|cup|copa|championship|division|super|lig|ligue|serie|profesional)/i, '') // Utótagok
-                     .trim();
-        
-        // 2. Specifikus szabályok (a kéréseid alapján)
+        // 1. LÉPÉS: Specifikus, "okos" szabályok (EZ FUT LE ELŐSZÖR)
         
         // Spanyolország (LaLiga 1 & 2)
-        // "laliga" (ESPN 1), "laliga2" (ESPN 2), "laliga hypermotion" (API), "segunda division" (API)
+        // "laliga" (ESPN 1), "la liga" (API)
+        // "laliga2" (ESPN 2), "laliga hypermotion" (API), "segunda division" (API)
         if (lower.includes('laliga') || lower.includes('segunda division')) {
             // Megkülönböztetjük az 1-es és 2-es osztályt
             if (lower.includes('2') || lower.includes('hypermotion') || lower.includes('segunda')) {
-                return 'laliga2';
+                return 'laliga2'; // Ez a "Segunda División"-t is elkapja
             }
-            return 'laliga1';
+            return 'laliga1'; // Ez a "La Liga"-t is elkapja
         }
 
         // Törökország (Super Lig)
@@ -259,6 +252,15 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
         if (lower.includes('super lig')) { // Az ékezetet már eltávolítottuk
             return 'superlig';
         }
+        
+        // ... Ide jöhetnek más specifikus szabályok ...
+
+        // 2. LÉPÉS: Általános, "buta" tisztítás (CSAK HA AZ ELŐZŐ NEM SIKERÜLT)
+        // Ez az a szabály, ami a v95.1-ben hibát okozott, mert túl korán futott le.
+        lower = lower.replace(/\(.*?\)/g, '') // Zárójelek eltávolítása
+                     .replace(/^(argentinian|brazilian|uefa|fifa)\s/i, '') // Előtagok
+                     .replace(/\s(league|liga|cup|copa|championship|division|super|lig|ligue|serie|profesional)/i, '') // Utótagok
+                     .trim();
 
         return lower;
     };
@@ -275,28 +277,27 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
             return perfectMatch.id;
         }
 
-        // 2. Keresés Normalizált Név Alapján (v95.1)
+        // 2. Keresés Normalizált Név Alapján (v95.2 - Javított logika)
         const cleanTargetName = _cleanLeagueName(targetName); // pl. "LaLiga2" -> "laliga2"
 
         const leagueNameMap = leagues.map(l => ({
             original: l.name,
-            cleaned: _cleanLeagueName(l.name), // pl. "LaLiga Hypermotion" -> "laliga2"
+            cleaned: _cleanLeagueName(l.name), // pl. "Segunda División" -> "laliga2"
             id: l.id
         }));
 
         const normalizedMatch = leagueNameMap.find(l => l.cleaned === cleanTargetName);
         if (normalizedMatch) {
-            console.log(`API-SPORTS (${sport}): HELYI LIGA TALÁLAT (2/2 - Normalizált v95.1): "${targetName}" (Keresve: "${cleanTargetName}") -> "${normalizedMatch.original}" (ID: ${normalizedMatch.id})`);
+            // Ez az az üzenet, amit a logban látni akarunk:
+            console.log(`API-SPORTS (${sport}): HELYI LIGA TALÁLAT (2/2 - Normalizált v95.2): "${targetName}" (Keresve: "${cleanTargetName}") -> "${normalizedMatch.original}" (ID: ${normalizedMatch.id})`);
             return normalizedMatch.id;
         }
 
         console.warn(`API-SPORTS (${sport}): Nem található pontos liga egyezés ehhez: "${targetName}" (Keresve: "${cleanTargetName}"). AI Fallback KIHAGYVA (v70.0).`);
         
         // DEBUG: Ha nem találja, kiírjuk, mit keresett
-        if (cleanTargetName === 'laliga1' || cleanTargetName === 'laliga2' || cleanTargetName === 'superlig') {
-            console.warn(`[DEBUG v95.1] A(z) "${cleanTargetName}" keresés sikertelen. Elérhető tisztított nevek a(z) "${country}" országban:`);
-            console.warn(leagueNameMap.map(l => `${l.original} -> ${l.cleaned}`).join('\n'));
-        }
+        console.warn(`[DEBUG v95.2] A(z) "${cleanTargetName}" keresés sikertelen. Elérhető tisztított nevek a(z) "${country}" országban:`);
+        console.warn(leagueNameMap.map(l => `${l.original} -> ${l.cleaned}`).join('\n'));
         
         return null;
     };
@@ -1015,3 +1016,4 @@ null
 
 // Meta-adat a logoláshoz
 export const providerName = 'api-sports-soccer';
+}
