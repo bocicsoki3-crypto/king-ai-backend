@@ -1,4 +1,5 @@
-// config.ts (v77.9 - Final Configuration Fix)
+// config.ts (v78.0 - Sportradar Keys)
+// JAVÍTÁS: Hozzáadva a SPORTRADAR kulcsok, eltávolítva a régi APISPORTS_HOCKEY kulcsok.
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -53,7 +54,7 @@ interface IApiHostMap {
   soccer: IApiHostConfig;
   hockey: IApiHostConfig; 
   basketball: IApiHostConfig;
-  [key: string]: IApiHostConfig; // Lehetővé teszi a [sport] indexelést
+  [key: string]: ISportConfig; // Lehetővé teszi a [sport] indexelést
 }
 
 // --- SZERVER BEÁLLÍTÁSOK ---
@@ -67,9 +68,10 @@ export const SHEET_URL: string | undefined = process.env.SHEET_URL;
 // === FOCI (RapidAPI) ===
 export const APIFOOTBALL_KEY_1: string | undefined = process.env.APIFOOTBALL_KEY_1;
 
-// === JÉGKORONG (Közvetlen API-SPORTS) ===
-export const APISPORTS_HOCKEY_HOST: string = process.env.APISPORTS_HOCKEY_HOST || 'v1.hockey.api-sports.io';
-export const APISPORTS_HOCKEY_KEY: string | undefined = process.env.APISPORTS_HOCKEY_KEY;
+// === JÉGKORONG (ÚJ: Sportradar - Tier 1) ===
+// A 'sportrader-realtime-fast-stable-data.p.rapidapi.com' API-hoz
+export const SPORTRADAR_HOCKEY_HOST: string = process.env.SPORTRADAR_HOCKEY_HOST || 'sportrader-realtime-fast-stable-data.p.rapidapi.com';
+export const SPORTRADAR_HOCKEY_KEY: string | undefined = process.env.SPORTRADAR_HOCKEY_KEY;
 
 // === KOSÁRLABDA (Hagyományos RapidAPI - Még nincs használatban) ===
 export const BASKETBALL_API_KEY: string | undefined = process.env.BASKETBALL_API_KEY;
@@ -80,8 +82,6 @@ export const SOFASCORE_API_KEY: string | undefined = process.env.SOFASCORE_API_K
 export const SOFASCORE_API_HOST: string = process.env.SOFASCORE_API_HOST || 'sportapi7.p.rapidapi.com';
 
 // === REDUNDÁNS ODDS FEED (KÉZI VÁLASZTÁS) ===
-// Hozzáadva a "Bielefeld-hiba" és a piaci redundancia javításához.
-// Host: odds-feed.p.rapidapi.com
 export const ODDS_API_KEY: string | undefined = process.env.ODDS_API_KEY;
 export const ODDS_API_HOST: string = process.env.ODDS_API_HOST || 'odds-feed.p.rapidapi.com';
 
@@ -98,12 +98,10 @@ export const API_HOSTS: { [key: string]: any } = {
             process.env.APIFOOTBALL_KEY_3
         ].filter(Boolean) as string[]
     },
-    // === JAVÍTÁS (v77.9): HOCKEY konfiguráció hozzáadva a kritikus hiba elkerülésére ===
-    // Ez a kulcs csak PLACEHOLDER, mivel a Tiszta P1 Stratégiát alkalmazzuk, 
-    // de a kódnak szüksége van rá a konfigurációs összeomlás elkerüléséhez.
+    // === JAVÍTÁS (v78.0): Hoki konfiguráció frissítve Sportradar-ra ===
     hockey: {
-        host: APISPORTS_HOCKEY_HOST, // Használja a definiált hostot
-        keys: APISPORTS_HOCKEY_KEY ? [APISPORTS_HOCKEY_KEY] : ['hockey-placeholder-key'], 
+        host: SPORTRADAR_HOCKEY_HOST, // Az új Sportradar host
+        keys: SPORTRADAR_HOCKEY_KEY ? [SPORTRADAR_HOCKEY_KEY] : ['sportradar-placeholder-key'], 
     },
     // === JAVÍTÁS VÉGE ===
     basketball: {
