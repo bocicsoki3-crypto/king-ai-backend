@@ -1,10 +1,11 @@
 // FÁJL: providers/common/utils.ts
-// VERZIÓ: v72.0 (Architekta Refaktor)
+// VERZIÓ: v72.1 (Kritikus Meccslista Javítás)
 // MÓDOSÍTÁS:
-// 1. Centralizált segédfüggvény modul.
-// 2. ÁTHOZVA: _callGemini és _getFixturesFromEspn a DataFetch.ts-ből (v73.0).
-// 3. ÁTHOZVA: _callGeminiWithJsonRetry és fillPromptTemplate az AI_Service.ts-ből (v70.0).
-// 4. MEGTARTVA: makeRequest és getStructuredWeatherData (a régi utils.txt v55.9-ből).
+// 1. JAVÍTVA (KRITIKUS): Az '_getFixturesFromEspn' (kb. 345. sor)
+//    státusz szűrője ('pre') túl szigorú volt, ami 0 meccset eredményezett.
+// 2. LOGIKA: A szűrő megfordítva. Most már minden meccset átenged,
+//    ami NEM 'post' (befejezett), így a 'scheduled' és 'upcoming'
+//    státuszú meccsek is bekerülnek a listába.
 
 import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import {
@@ -18,7 +19,7 @@ import type {
 } from '../../src/types/canonical.d.ts'; 
 
 // --- ÁLTALÁNOS API HÍVÓ ---
-
+// (Változatlan v72.0)
 export async function makeRequest(url: string, config: AxiosRequestConfig = {}, retries: number = 1): Promise<any> {
     let attempts = 0;
     const method = config.method?.toUpperCase() || 'GET';
@@ -78,10 +79,7 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
 }
 
 // --- GEMINI API HÍVÓK ---
-
-/**
- * Alap Gemini API Hívó
- */
+// (Változatlan v72.0)
 export async function _callGemini(prompt: string, forceJson: boolean = true): Promise<string> {
     if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') { throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY."); }
     if (!GEMINI_MODEL_ID) { throw new Error("Hiányzó GEMINI_MODEL_ID."); }
@@ -135,10 +133,7 @@ export async function _callGemini(prompt: string, forceJson: boolean = true): Pr
         throw e;
     }
 }
-
-/**
- * Robusztus AI hívó JSON parse retry logikával (AI_Service.ts-ből áthozva)
- */
+// (Változatlan v72.0)
 export async function _callGeminiWithJsonRetry(
     prompt: string, 
     stepName: string, 
@@ -149,7 +144,6 @@ export async function _callGeminiWithJsonRetry(
     while (attempts <= maxRetries) {
         attempts++;
         try {
-            // A belső, centralizált _callGemini-t hívja
             const jsonString = await _callGemini(prompt, true); 
             const result = JSON.parse(jsonString);
             
@@ -175,10 +169,7 @@ export async function _callGeminiWithJsonRetry(
 }
 
 // --- PROMPT SEGÉDFÜGGVÉNY ---
-
-/**
- * HELPER a promptok kitöltéséhez (AI_Service.ts-ből áthozva)
- */
+// (Változatlan v72.0)
 export function fillPromptTemplate(template: string, data: any): string {
     if (!template || typeof template !== 'string') return '';
     try {
@@ -290,7 +281,15 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
                 .then(response => {
                     if (!response?.data?.events) return [];
                     return response.data.events
-                         .filter((event: any) => event?.status?.type?.state?.toLowerCase() === 'pre')
+                        
+                        // === JAVÍTÁS (v72.1) ===
+                        // A régi, túl szigorú szűrő:
+                        // .filter((event: any) => event?.status?.type?.state?.toLowerCase() === 'pre')
+                        //
+                        // Az új, robusztusabb szűrő: Minden, ami nem 'post' (befejezett):
+                         .filter((event: any) => event?.status?.type?.state?.toLowerCase() !== 'post')
+                        // === JAVÍTÁS VÉGE ===
+
                         .map((event: any) => {
                             const competition = event.competitions?.[0];
                             if (!competition) return null;
@@ -304,7 +303,6 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
                                     away: awayTeam.name.trim(),
                                     utcKickoff: event.date,
                                     league: req.leagueName.trim(),
-                                    // (v72.0) Egyedi ID generálása az ingestor számára
                                     uniqueId: `${sport}_${homeTeam.name.toLowerCase().replace(/\s+/g, '')}_${awayTeam.name.toLowerCase().replace(/\s+/g, '')}`
                                 };
                             }
@@ -339,9 +337,8 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
     }
 }
 
-/**
- * Meghatározza a fő gól/pont vonalat az odds adatokból.
- */
+// --- findMainTotalsLine ---
+// (Változatlan v72.0)
 export function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: string): number {
     const defaultConfigLine = SPORT_CONFIG[sport]?.totals_line || (sport === 'soccer' ? 2.5 : 6.5);
     if (!oddsData?.fullApiData?.bookmakers || oddsData.fullApiData.bookmakers.length === 0) {
@@ -415,9 +412,8 @@ export function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: strin
 
 
 // --- IDŐJÁRÁS (v55.9) ---
-
+// (Változatlan v72.0)
 const geocodingCache = new Map<string, { latitude: number; longitude: number }>();
-
 interface IGeocodingResponse {
     results?: Array<{
         latitude: number;
@@ -425,7 +421,6 @@ interface IGeocodingResponse {
         country_code: string;
     }>;
 }
-
 interface IWeatherArchiveResponse {
     hourly: {
         time: string[];
@@ -439,7 +434,6 @@ interface IWeatherArchiveResponse {
         temperature_2m: string;
     };
 }
-
 async function getCoordinatesForCity(city: string): Promise<{ latitude: number; longitude: number } | null> {
     const normalizedCity = city.toLowerCase().trim();
     if (geocodingCache.has(normalizedCity)) {
@@ -475,12 +469,10 @@ async function getCoordinatesForCity(city: string): Promise<{ latitude: number; 
         return null;
     }
 }
-
 export async function getStructuredWeatherData(
     stadiumLocation: string | null, 
     utcKickoff: string | null
 ): Promise<IStructuredWeather> {
-    
     const fallbackWeather: IStructuredWeather = {
         description: "N/A (Hiányzó adat)",
         temperature_celsius: null,
