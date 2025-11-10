@@ -532,25 +532,25 @@ async function getMasterRecommendation(
         if (!match) { match = expertConfidence?.match(/(\d+(\.\d+)?)\s*\/\s*10/); }
         if (!match) { match = expertConfidence?.match(/(?<!\d|\.)([1-9](\.\d)?|10(\.0)?)(?!\d|\.)/); }
 
-        if (match && match[1]) {
-             expertConfScore = parseFloat(match[1]);
-             expertConfScore = Math.max(1.0, Math.min(10.0, expertConfScore));
-             console.log(`[AI_Service v103.0 - Főnök] Expert bizalom sikeresen kinyerve: ${expertConfScore}`);
-        } else {
-             console.warn(`[AI_Service v103.0 - Főnök] Nem sikerült kinyerni az expert bizalmat: "${expertConfidence}". Alapértelmezett: 1.0`);
-             expertConfScore = 1.0;
-        }
-    } catch(e: any) {
-         console.warn("[AI_Service v103.0 - Főnök] Hiba az expert bizalom kinyerésekor:", e);
-         expertConfScore = 1.0;
-    }
+async function getCornerAnalysis(sim: any, rawData: ICanonicalRawData) {
+    const safeSim = sim || {};
+    const muCorners = safeSim.mu_corners_sim;
 
-    const safeModelConfidence = typeof modelConfidence === 'number' && !isNaN(modelConfidence) ? modelConfidence : 5.0;
-
+    // JAVÍTÁS (TS2339): Számítsd ki a 'likelyLine'-t MIELŐTT
+    // létrehozod az 'data' objektumot, hogy a típus helyes legyen.
+    const likelyLine = muCorners ? (Math.round(muCorners - 0.1)) + 0.5 : 9.5;
+    
     const data = {
-        valueBetsJson: valueBets,
-        sim_pHome: safeSim.pHome, sim_pDraw: safeSim.pDraw, sim_pAway: safeSim.pAway,
-        sim_mainTotalsLine: safeSim.mainTotalsLine, sim_pOver: safeSim.pOver,
+        mu_corners: muCorners,
+        home_style: rawData?.tactics?.home?.style || "N/A",
+        away_style: rawData?.tactics?.away?.style || "N/A",
+        likelyLine: likelyLine // JAVÍTVA: Hozzáadva az objektum definíciójához
+    };
+    // data.likelyLine = likelyLine; // TÖRÖLVE: Innentől felesleges
+    return await getAndParse(CORNER_ANALYSIS_PROMPT, data, "corner_analysis", "CornerAnalysis");
+}
+
+async function getCardAnalysis(sim: any, rawData: ICanonicalRawData) {
         modelConfidence: safeModelConfidence,
         expertConfidence: expertConfidence || "N/A",
         riskAssessment: riskAssessment || "N/A",
