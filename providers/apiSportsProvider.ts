@@ -231,6 +231,7 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
      * KRITIKUS VÁLTOZÁS (v95.2): A specifikus szabályok futnak ELŐSZÖR.
      */
     const _cleanLeagueName = (name: string): string => {
+        if (!name) return 'n/a';
         let lower = name.toLowerCase().trim()
             .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Ékezetek eltávolítása (pl. Süper -> Super)
 
@@ -329,7 +330,6 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
 async function findApiSportsFixture(homeTeamId: number | null, awayTeamId: number | null, season: number, leagueId: number, utcKickoff: string, sport: string): Promise<any | null> {
     if (!homeTeamId || !awayTeamId || !season || !leagueId) return null;
     const cacheKey = `apisports_findfixture_v54.7_FULL_${sport}_${homeTeamId}_${awayTeamId}_${leagueId}_${season}`;
-// ... (további kód változatlan)
     const cached = apiSportsFixtureCache.get<any>(cacheKey);
     if (cached) {
         console.log(`API-SPORTS (${sport}): Teljes Fixture CACHE TALÁLAT! FixtureID: ${cached.fixture?.id}`);
@@ -359,7 +359,6 @@ export async function getApiSportsFixtureResult(fixtureId: number | string, spor
         console.warn(`[getApiSportsFixtureResult] Lekérés kihagyva: Csak 'soccer' támogatott vagy hiányzó fixtureId.`);
         return null;
     }
-// ... (további kód változatlan)
     const cacheKey = `fixture_result_v1_${fixtureId}`;
     const cached = fixtureResultCache.get<FixtureResult>(cacheKey);
     if (cached) {
@@ -398,7 +397,6 @@ export async function getApiSportsH2H(homeTeamId: number | null, awayTeamId: num
         console.warn(`[getApiSportsH2H] Lekérés kihagyva: Hiányzó csapat ID (H:${homeTeamId}, A:${awayTeamId}).`);
         return null;
     }
-// ... (további kód változatlan)
     const endpoint = `/v3/fixtures/headtohead`;
     const params = { h2h: `${homeTeamId}-${awayTeamId}` };
     const response = await makeRequestWithRotation(sport, endpoint, { params });
@@ -421,7 +419,6 @@ export async function getApiSportsTeamSeasonStats(teamId: number | null, leagueI
         console.warn(`[getApiSportsTeamSeasonStats] Lekérés kihagyva: Hiányzó csapat ID.`);
         return null;
     }
-// ... (további kód változatlan)
     const tryGetStats = async (currentSeason: number) => {
         const cacheKey = `apisports_seasonstats_v40_${sport}_${teamId}_${leagueId}_${currentSeason}`;
         const cachedStats = apiSportsStatsCache.get<any>(cacheKey);
@@ -471,7 +468,6 @@ async function getApiSportsOdds(fixtureId: number | string | null, sport: string
         console.warn(`API-SPORTS Odds (${sport}): Hiányzó fixtureId, a szorzók lekérése kihagyva.`);
         return null;
     }
-// ... (további kód változatlan)
     const cacheKey = `apisports_odds_v40_${sport}_${fixtureId}`;
     const cached = apiSportsOddsCache.get<ICanonicalOdds>(cacheKey);
     if (cached) {
@@ -540,7 +536,6 @@ async function getApiSportsFixtureStats(fixtureId: number | string | null, sport
         console.log(`API-SPORTS Fixture Stats (${sport}): Lekérés kihagyva (Sport nem foci, vagy hiányzó FixtureID).`);
         return null;
     }
-// ... (további kód változatlan)
     const cacheKey = `apisports_fixturestats_v50_${fixtureId}`;
     const cached = apiSportsFixtureStatsCache.get<{ home: number; away: number }>(cacheKey);
     if (cached) {
@@ -594,7 +589,6 @@ async function _getSquadForTeam(teamId: number | null, season: number, sport: st
         console.warn(`[API-SPORTS Squad] Lekérés kihagyva: Hiányzó csapat ID.`);
         return [];
     }
-// ... (további kód változatlan)
     const cacheKey = `apisports_squad_v1_${sport}_${teamId}_${season}`;
     const cachedSquad = apiSportsSquadCache.get<IPlayerStub[]>(cacheKey);
     if (cachedSquad) {
@@ -677,7 +671,6 @@ async function _getApiSportsLineupData(
         console.log(`[API-SPORTS LineupData] Lekérés kihagyva (Sport nem foci, vagy hiányzó FixtureID/Team ID).`);
         return null;
     }
-// ... (további kód változatlan)
     
     const cacheKey = `apisports_lineups_v4_squad_${fixtureId}_${season}`;
     const cached = apiSportsLineupCache.get<LineupDataPayload>(cacheKey);
@@ -767,7 +760,6 @@ async function _getApiSportsRefereeStyle(
     if (sport !== 'soccer' || !refereeName || refereeName === "N/A" || !leagueId || !season) {
         return null;
     }
-// ... (további kód változatlan)
     const cacheKey = `apisports_referee_v1_${refereeName.toLowerCase().replace(/\s/g, '')}_${leagueId}_${season}`;
     const cached = apiSportsRefereeCache.get<string>(cacheKey);
     if (cached) {
@@ -853,7 +845,6 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
 
     // 3. LÉPÉS: Meccskeresés (A kapott ID-kkal)
     const foundFixture = await findApiSportsFixture(homeTeamId, awayTeamId, foundSeason, leagueId, utcKickoff, sport);
-// ... (további kód változatlan)
     const fixtureId = foundFixture?.fixture?.id || null;
     const fixtureDate = foundFixture?.fixture?.date || null;
     const refereeData = foundFixture?.fixture?.referee || null;
@@ -899,10 +890,8 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         },
         apiFootballData: {
              homeTeamId, awayTeamId, leagueId, fixtureId, fixtureDate,
-           
-foundSeason: foundSeason,
-           
-  lineups: null, liveStats: null, 
+             foundSeason: foundSeason,
+             lineups: null, liveStats: null, 
             seasonStats: { home: apiSportsHomeSeasonStats, away: apiSportsAwaySeasonStats }
         },
         h2h_structured: apiSportsH2HData ||
@@ -949,7 +938,7 @@ null
         availableRosters: {
             home: lineupData?.rosters?.home ||
 [],
-            away: lineupData?.rosters?.away ||
+            away: lineupData?.rosters?.home ||
 []
         }
     };
