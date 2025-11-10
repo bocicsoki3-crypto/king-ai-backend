@@ -1,9 +1,9 @@
-// --- index.ts (v72.0 - Manuális Hiányzó Típus) ---
+// --- index.ts (v72.1 - BFF Transzformer ELTÁVOLÍTVA) ---
 // MÓDOSÍTÁS:
-// 1. JAVÍTVA: A '/runAnalysis' végponton a 'manual_absentees' típusa már a 
-//    helyes, objektum-alapú szerkezetet várja el, ahogy azt a DataFetch.ts is igényli.
-// 2. LOGIKA MEGERŐSÍTVE: Minden v63.3-as javítás (CORS, History) érvényben van.
-// 3. HOZZÁADVA: BFF Transzformációs réteg a /runAnalysis végponthoz.
+// 1. JAVÍTVA: A felesleges és hibás 'bff_transformer.js' importálása
+//    és hívása eltávolítva a /runAnalysis végpontról.
+// 2. VISSZAÁLLÍTVA: A /runAnalysis most már közvetlenül a 'runFullAnalysis'
+//    eredményét adja vissza, ahogy a kliens (script.js) elvárja.
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
@@ -14,10 +14,10 @@ import { fileURLToPath } from 'url';
 import { PORT } from './config.js';
 // Importáljuk a típusosított fő funkciókat
 import { runFullAnalysis } from './AnalysisFlow.js';
-// === ÚJ IMPORT A "FORDÍTÓ" FÜGGVÉNYHEZ ===
-import { transformAnalysisToLegacyFormat } from './bff_transformer.js'; 
-// ==========================================
-import { _getFixturesFromEspn, getRostersForMatch } from './DataFetch.js'; // <- ÚJ IMPORT
+// === HIBÁS IMPORT ELTÁVOLÍTVA ===
+// import { transformAnalysisToLegacyFormat } from './bff_transformer.js'; 
+// ================================
+import { _getFixturesFromEspn, getRostersForMatch } from './DataFetch.js';
 import { getHistoryFromSheet, getAnalysisDetailFromSheet, deleteHistoryItemFromSheet } from './sheets.js';
 import { getChatResponse } from './AI_Service.js';
 import { updatePowerRatings, runConfidenceCalibration } from './LearningService.js';
@@ -198,8 +198,7 @@ app.post('/getRosters', protect, async (req: Request, res: Response) => {
 });
 
 
-// === MÓDOSÍTOTT VÉGPONT (v72.0 - Típusbiztonság + BFF Fordítás) ===
-// === runAnalysis (v62.1-es mezőkkel) ===
+// === MÓDOSÍTOTT VÉGPONT (v72.1 - BFF ELTÁVOLÍTVA) ===
 app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
     try {
         // Típusosítjuk a bejövő manuális hiányzó mezőt, 
@@ -247,8 +246,7 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             manual_absentees: manual_absentees as ManualAbsentees | null // Típus kényszerítése
         };
         
-        // 1. LÉPÉS: Az "ÚJ, TISZTA" AI válasz lekérése az AnalysisFlow-ból
-        // Fontos: Az `AnalysisFlow.js`-nek az ÚJ struktúrát (NewAnalysisResult) kell visszaadnia.
+        // 1. LÉPÉS: Az elemzés lefuttatása (ez a JÓ, RÉGI struktúrát adja vissza)
         const result: any = await runFullAnalysis(params, sport, openingOdds);
         
         if ('error' in result) {
@@ -256,16 +254,11 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             return res.status(500).json({ error: result.error });
         }
         
-        // 2. LÉPÉS (ÚJ): ÁTALAKÍTÁS (TRANSZFORMÁCIÓ)
-        // Átalakítjuk az "új" választ a "régi" formátumra, amit a frontend (script.js) elvár.
-        console.log("[BFF] Fordítás indítása a frontend (legacy) formátumára...");
-        // A 'result' típusát 'any'-ként kezeljük, de a transformAnalysisToLegacyFormat
-        // elvárja (és megpróbálja feldolgozni) a NewAnalysisResult struktúrát.
-        const legacyResponse = transformAnalysisToLegacyFormat(result);
-        console.log("[BFF] Fordítás sikeres.");
+        // 2. LÉPÉS (JAVÍTVA): A felesleges BFF transzformáció eltávolítva.
         
-        // 3. LÉPÉS (MÓDOSÍTVA): A "RÉGI" (lefordított) választ küldjük vissza
-        res.status(200).json(legacyResponse);
+        // 3. LÉPÉS (JAVÍTVA): Közvetlenül visszaküldjük a 'runFullAnalysis'
+        // helyes eredményét, amit a frontend (script.js) elvár.
+        res.status(200).json(result);
         
     } catch (e: any) {
         console.error(`Hiba a /runAnalysis végpont-on: ${e.message}`, e.stack);
