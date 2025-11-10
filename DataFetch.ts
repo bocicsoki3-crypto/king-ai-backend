@@ -1,12 +1,9 @@
 // FÁJL: DataFetch.ts
 // VERZIÓ: v97.0 ("Szekvenciális Aggregátor")
-// JAVÍTÁS (429 Hiba): A Log napló (429 Too Many Requests) és a
-// felhasználói képernyőfotó (Rate Limit: 4 req/sec) bebizonyította,
-// hogy a 'Promise.all' (párhuzamosítás) az Aggregátor szinten
-// (Kontextus + Odds hívása egyszerre) is megsérti a rate limitet.
-// JAVÍTÁS: A 'getRichContextualData' (kb. 220. sor) átírva, hogy
-// SZEKVENCIÁLISAN hívja a Kontextus (IceHockeyApi) és az Odds
-// (OddsFeed) providereket.
+// VISSZAÁLLÍTÁS: A v97.1-es refaktorálás (az _getFixturesFromEspn
+// bemásolása) hibás volt. Visszaállunk a v97.0-s logikára,
+// ahol ez a fájl csak importálja és exportálja a meccslista
+// lekérőt a 'utils.ts'-ből.
 
 import NodeCache from 'node-cache';
 // Kanonikus típusok importálása
@@ -42,8 +39,12 @@ import { runStep_TeamNameResolver } from './AI_Service.js';
 import { SPORT_CONFIG } from './config.js';
 import {
     _callGemini as commonCallGemini,
+    // === JAVÍTÁS (v97.1 -> v97.0 Visszaállítás) ===
+    // Itt újra importáljuk a meccslista lekérőt
     _getFixturesFromEspn as commonGetFixtures,
-    _callGeminiWithJsonRetry as commonCallGeminiWithJsonRetry
+    // ===========================================
+    _callGeminiWithJsonRetry as commonCallGeminiWithJsonRetry,
+    // A 'makeRequest' és 'axios' importok eltávolítva (már nincsenek itt használva)
 } from './providers/common/utils.js';
 
 export const preFetchAnalysisCache = new NodeCache({ stdTTL: 3600 * 2, checkperiod: 600, useClones: false });
@@ -88,7 +89,7 @@ export interface IDataFetchResponse extends ICanonicalRichContext {
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v97.0 (Szekvenciális Aggregátor - Rate Limit Fix)
+* VERZIÓ: v97.0 (Szekvenciális Aggregátor)
 **************************************************************/
 
 function generateEmptyStubContext(options: IDataFetchOptions): IDataFetchResponse {
@@ -480,7 +481,9 @@ null> {
 }
 
 
-// --- KÖZÖS FÜGGVÉNYEK EXPORTÁLÁSA ---
+// === JAVÍTÁS (v97.1 -> v97.0 Visszaállítás) ===
+// Itt újra exportáljuk a meccslista lekérőt
 export const _getFixturesFromEspn = commonGetFixtures;
+// ===========================================
 export const _callGemini = commonCallGemini;
 export const _callGeminiWithJsonRetry = commonCallGeminiWithJsonRetry;
