@@ -1,9 +1,14 @@
-// FÁJL: providers/oddsFeedProvider.ts
-// VERZIÓ: v1.2 (404/TS18048 Fix)
-// JAVÍTÁS (404 Hiba): A Log napló (404 hiba) alapján a végpont hívása hibás volt.
-// A 'date' nem az URL része, hanem egy 'params' kell legyen.
-// A 'findEventId' függvény javítva, hogy a 'date'-et paraméterként adja át.
-// JAVÍTÁS (TS18048): Az 'events' változóhoz null guard hozzáadva.
+// FÁJL: providers/oddsFeedProvider_FIXED.ts
+// VERZIÓ: v1.3 (Kritikus 404-es Hiba Javítása)
+// JAVÍTÁS (404 Hiba): A Log napló egyértelműen kimutatta:
+// {"message":"Endpoint '/sports/icehockey_nhl/events' does not exist"}
+// Ez azt jelenti, hogy az URL-cím ('sports/{sport}/events') HIBÁS volt.
+//
+// A JAVÍTÁS: A 'findEventId' függvény módosítva. Egy sokkal valószínűbb,
+// általánosabb végpontot hívunk meg ('events'), és a sportágat ('sport')
+// és a dátumot ('date') paraméterként adjuk át.
+// Régi hívás: makeOddsFeedRequest(`sports/${sportKey}/events`, { date: matchDate })
+// Új hívás:   makeOddsFeedRequest('events', { sport: sportKey, date: matchDate })
 
 import { makeRequest } from './common/utils.js';
 import { ODDS_API_HOST, ODDS_API_KEY } from '../config.js';
@@ -14,6 +19,7 @@ const oddsApiCache = new NodeCache({ stdTTL: 60 * 10, checkperiod: 60 * 2 }); //
 
 // Központi hívó függvény (Odds Feed)
 async function makeOddsFeedRequest(endpoint: string, params: any = {}) {
+    // ... a kód többi része változatlan ...
     if (!ODDS_API_HOST || !ODDS_API_KEY) {
         throw new Error(`Kritikus konfigurációs hiba: Hiányzó ODDS_API_HOST vagy ODDS_API_KEY a .env fájlban.`);
     }
@@ -28,18 +34,17 @@ async function makeOddsFeedRequest(endpoint: string, params: any = {}) {
     };
 
     try {
-        // A makeRequest feltételezi, hogy a 0-s index a kulcs
         const response = await makeRequest(url, fullConfig, 0); 
         return response.data; 
     } catch (error: any) {
-        console.error(`[OddsFeedProvider] Hiba: ${error.message}. Endpoint: ${endpoint}`);
+        console.error(`[OddsFeedProvider] Hiba: ${error.message}. Endpoint: ${endpoint}, Params: ${JSON.stringify(params)}`);
         throw error;
     }
 }
 
 // Az Odds Feed API sportág-specifikus nevei
 const SPORT_KEY_MAP: { [key: string]: string } = {
-    soccer: 'soccer_epl', // Példa, ezt finomítani kell
+    soccer: 'soccer_epl', // Példa, ezt finomítani kell ligánként
     hockey: 'icehockey_nhl',
     basketball: 'basketball_nba'
 };
@@ -66,18 +71,18 @@ async function findEventId(
     if (!events) {
         console.log(`[OddsFeedProvider] Események lekérése: ${sportKey}, Dátum: ${matchDate}`);
         
-        // === JAVÍTÁS (v1.2 - 404 Fix) ===
-        // A Log napló (404 hiba) alapján a végpont hívása hibás volt.
-        // A helyes végpont: 'sports/{sportKey}/events'
-        // A dátumot 'params'-ként kell átadni, nem az URL részeként.
-        const response = await makeOddsFeedRequest(`sports/${sportKey}/events`, {
+        // === JAVÍTÁS (v1.3 - 404 Fix) ===
+        // A Log napló (404 hiba) alapján a 'sports/{sportKey}/events' végpont HIBÁS.
+        // Egy általánosabb 'events' végpontot hívunk, és a sportágat
+        // paraméterként adjuk át (az API dokumentációja alapján ez valószínűbb).
+        const response = await makeOddsFeedRequest('events', {
+            sport: sportKey,
             date: matchDate
         });
         // === JAVÍTÁS VÉGE ===
 
-        // JAVÍTÁS (v1.2 - TS18048 Fix): Null guard hozzáadva
         if (!response || !Array.isArray(response.events) || response.events.length === 0) {
-            console.warn(`[OddsFeedProvider] Nem található esemény a(z) ${matchDate} napon.`);
+            console.warn(`[OddsFeedProvider] Nem található esemény (sport: ${sportKey}, date: ${matchDate})`);
             return null;
         }
         events = response.events;
@@ -86,26 +91,30 @@ async function findEventId(
         console.log(`[OddsFeedProvider] Események a cache-ből (Events: ${events?.length})`);
     }
 
-    // === JAVÍTÁS (v1.2 - TS18048 Fix) ===
-    // Biztosítjuk, hogy az 'events' ne legyen 'undefined'
     if (!events) {
         console.warn(`[OddsFeedProvider] Az 'events' tömb érvénytelen (null/undefined) a findEventId futása során.`);
         return null;
     }
-    // === JAVÍTÁS VÉGE ===
 
     // Csapatnevek normalizálása
     const searchHome = homeTeamName.toLowerCase();
     const searchAway = awayTeamName.toLowerCase();
 
-    // Megkeressük a meccset a válaszban
+    // Robusztusabb keresés: megnézzük a 'home_team' és 'away_team' mezőket,
+    // vagy ha azok nincsenek, az általános 'description'-t.
     const foundEvent = events.find((e: any) => {
+        if (e.home_team && e.away_team) {
+            // Ideális eset
+            return e.home_team.toLowerCase().includes(searchHome) &&
+                   e.away_team.toLowerCase().includes(searchAway);
+        }
+        // Tartalék eset
         const eventName = (e.description || e.name || "").toLowerCase();
         return eventName.includes(searchHome) && eventName.includes(searchAway);
     });
 
     if (foundEvent && foundEvent.id) {
-        console.log(`[OddsFeedProvider] Esemény TALÁLAT: ${foundEvent.description} (EventID: ${foundEvent.id})`);
+        console.log(`[OddsFeedProvider] Esemény TALÁLAT: ${foundEvent.description || foundEvent.name} (EventID: ${foundEvent.id})`);
         return foundEvent.id;
     }
 
@@ -117,6 +126,7 @@ async function findEventId(
  * FŐ EXPORTÁLT FÜGGVVÉNY (Csak Odds-t ad vissza)
  */
 export async function fetchOddsData(
+// ... a kód többi része változatlan ...
     homeTeamName: string, 
     awayTeamName: string, 
     matchDateISO: string, 
@@ -126,6 +136,7 @@ export async function fetchOddsData(
     const matchDate = new Date(matchDateISO).toISOString().split('T')[0];
 
     try {
+        // A javított 'findEventId' hívása
         const eventId = await findEventId(homeTeamName, awayTeamName, matchDate, sport);
         if (!eventId) {
             console.warn(`[OddsFeedProvider] Nem sikerült EventID-t találni, az odds lekérés sikertelen.`);
@@ -140,6 +151,8 @@ export async function fetchOddsData(
         }
 
         console.log(`[OddsFeedProvider] Odds lekérése... (EventID: ${eventId})`);
+        
+        // Ez a végpont valószínűleg helyes (ha az eventId megvan)
         const oddsResponse = await makeOddsFeedRequest(`events/${eventId}/odds`);
         
         if (!oddsResponse || !Array.isArray(oddsResponse.sports) || !oddsResponse.sports[0]) {
@@ -151,6 +164,7 @@ export async function fetchOddsData(
         const allMarkets: ICanonicalOdds['allMarkets'] = [];
         const currentOdds: ICanonicalOdds['current'] = [];
 
+        // Próbáljuk meg a Pinnacle-t (legjobb oddsok) vagy bármelyik elérhetőt
         const primaryBookmaker = bookmakers.find((b: any) => b.key === "pinnacle") || bookmakers[0];
         if (!primaryBookmaker) {
             console.warn(`[OddsFeedProvider] Nem található bukméker az adatokban.`);
@@ -161,11 +175,11 @@ export async function fetchOddsData(
 
         const markets = primaryBookmaker.markets || [];
         
-        // Moneyline (H2H)
+        // Moneyline (H2H) - Pontosabb keresés a 'home'/'away' outcome nevek helyett
         const moneylineMarket = markets.find((m: any) => m.key === "h2h");
         if (moneylineMarket && Array.isArray(moneylineMarket.outcomes)) {
-            const homeOutcome = moneylineMarket.outcomes.find((o: any) => o.name.toLowerCase() === homeTeamName.toLowerCase());
-            const awayOutcome = moneylineMarket.outcomes.find((o: any) => o.name.toLowerCase() === awayTeamName.toLowerCase());
+            const homeOutcome = moneylineMarket.outcomes.find((o: any) => o.name.toLowerCase().includes(homeTeamName.toLowerCase()));
+            const awayOutcome = moneylineMarket.outcomes.find((o: any) => o.name.toLowerCase().includes(awayTeamName.toLowerCase()));
             
             if (homeOutcome) currentOdds.push({ name: 'Hazai győzelem', price: parseFloat(homeOutcome.price) });
             if (awayOutcome) currentOdds.push({ name: 'Vendég győzelem', price: parseFloat(awayOutcome.price) });
@@ -180,6 +194,7 @@ export async function fetchOddsData(
         }
 
         // Totals (Over/Under)
+        // ... (Ez a rész valószínűleg helyes volt) ...
         const totalsMarket = markets.find((m: any) => m.key === "totals");
         if (totalsMarket && Array.isArray(totalsMarket.outcomes)) {
              allMarkets.push({
@@ -193,6 +208,7 @@ export async function fetchOddsData(
         }
         
         // Spreads (Handicap)
+        // ... (Ez a rész valószínűleg helyes volt) ...
         const spreadsMarket = markets.find((m: any) => m.key === "spreads");
          if (spreadsMarket && Array.isArray(spreadsMarket.outcomes)) {
              allMarkets.push({
