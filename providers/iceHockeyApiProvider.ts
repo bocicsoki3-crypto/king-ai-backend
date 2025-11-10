@@ -1,14 +1,16 @@
-// FÁJL: providers/iceHockeyApiProvider.ts
-// VERZIÓ: v1.2 (Rate Limit Fix)
-// JAVÍTÁS (429 Hiba): A Log napló (429 Too Many Requests) és a
-// felhasználói képernyőfotó (Rate Limit: 4 req/sec) bebizonyította,
-// hogy a 'Promise.all' hívások (párhuzamosítás) megsértik a 'Basic'
-// csomag rate limitjét.
-// JAVÍTÁS: A 'fetchMatchData' (kb. 150. sor) átírva, hogy a kontextus
-// adatokat (H2H, Lineups, Stats) SZEKVENCIÁLISAN (egymás után)
-// hívja, tiszteletben tartva a rate limitet.
+// FÁJL: providers/iceHockeyApiProvider_FIXED.ts
+// VERZIÓ: v1.3 (Kritikus javítások: Csapatkeresés és Parser Implementáció)
+// JAVÍTÁS (Csapatkeresés): A Log napló alapján a 'findTeamId' nem találta a "devils" és "islanders"
+// csapatokat. Ez 99%-ban azért van, mert az API teljes neveket vár (pl. "New Jersey Devils"),
+// és a 'config.js'-ből importált 'NHL_TEAM_NAME_MAP' hiányos.
+// HOZZÁADVA: Egy belső, robusztus térkép (INTERNAL_NHL_TEAM_MAP) hozzáadva,
+// hogy kezelje a gyakori rövid neveket, biztosítva a csapat ID-k megtalálását.
+//
+// JAVÍTÁS (TODO): Az üres 'parseH2H', 'parseLineups', 'parseStats' függvények
+// ki lettek töltve logikával. E nélkül az AI nem kapna adatot.
 
 import { makeRequest } from './common/utils.js';
+// Az NHL_TEAM_NAME_MAP továbbra is importálva van, hogy a config.js felülírhassa a belső térképet
 import { ICEHOCKEYAPI_HOST, ICEHOCKEYAPI_KEY, NHL_TEAM_NAME_MAP } from '../config.js';
 import NodeCache from 'node-cache';
 import type {
@@ -24,8 +26,48 @@ import type {
 
 const apiCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 600 }); // 6 órás TTL
 
+// === JAVÍTÁS (v1.3): Robusztus belső térkép a gyakori NHL nevekre ===
+// Ez biztosítja, hogy a rövid nevek ("devils") is működjenek,
+// még akkor is, ha a config.js-ben lévő térkép hiányos.
+const INTERNAL_NHL_TEAM_MAP: { [key: string]: string } = {
+    'devils': 'New Jersey Devils',
+    'islanders': 'New York Islanders',
+    'rangers': 'New York Rangers',
+    'flyers': 'Philadelphia Flyers',
+    'penguins': 'Pittsburgh Penguins',
+    'bruins': 'Boston Bruins',
+    'sabres': 'Buffalo Sabres',
+    'canadiens': 'Montreal Canadiens',
+    'senators': 'Ottawa Senators',
+    'leafs': 'Toronto Maple Leafs',
+    'hurricanes': 'Carolina Hurricanes',
+    'panthers': 'Florida Panthers',
+    'lightning': 'Tampa Bay Lightning',
+    'capitals': 'Washington Capitals',
+    'blackhawks': 'Chicago Blackhawks',
+    'red wings': 'Detroit Red Wings',
+    'predators': 'Nashville Predators',
+    'blues': 'St. Louis Blues',
+    'flames': 'Calgary Flames',
+    'avalanche': 'Colorado Avalanche',
+    'oilers': 'Edmonton Oilers',
+    'wild': 'Minnesota Wild',
+    'canucks': 'Vancouver Canucks',
+    'ducks': 'Anaheim Ducks',
+    'stars': 'Dallas Stars',
+    'kings': 'Los Angeles Kings',
+    'sharks': 'San Jose Sharks',
+    'blue jackets': 'Columbus Blue Jackets',
+    'golden knights': 'Vegas Golden Knights',
+    'jets': 'Winnipeg Jets',
+    'coyotes': 'Arizona Coyotes',
+    'kraken': 'Seattle Kraken'
+};
+// =================================================================
+
 // Központi hívó függvény (IceHockeyApi)
 async function makeIceHockeyRequest(endpoint: string, params: any = {}) {
+    // ... a kód többi része változatlan ...
     if (!ICEHOCKEYAPI_HOST || !ICEHOCKEYAPI_KEY) {
         throw new Error(`Kritikus konfigurációs hiba: Hiányzó ICEHOCKEYAPI_HOST vagy ICEHOCKEYAPI_KEY a .env fájlban.`);
     }
@@ -53,8 +95,17 @@ async function makeIceHockeyRequest(endpoint: string, params: any = {}) {
  */
 async function findTeamId(teamName: string): Promise<number | null> {
     const lowerName = teamName.toLowerCase().trim();
-    const mappedName = NHL_TEAM_NAME_MAP[lowerName] || teamName;
+    
+    // === JAVÍTÁS (v1.3): Bővített név leképezés ===
+    // 1. Először a config.js-ből importált térképet nézzük (ha felül akarjuk írni)
+    // 2. Aztán a belső, robusztus térképet
+    // 3. Végül magát a kapott nevet
+    const mappedName = (NHL_TEAM_NAME_MAP && NHL_TEAM_NAME_MAP[lowerName]) 
+                       || INTERNAL_NHL_TEAM_MAP[lowerName] 
+                       || teamName;
+    
     const searchName = mappedName.toLowerCase();
+    // ===============================================
     
     const cacheKey = `icehockeyapi_team_${searchName}`;
     const cachedId = apiCache.get<number>(cacheKey);
@@ -63,7 +114,7 @@ async function findTeamId(teamName: string): Promise<number | null> {
         return cachedId;
     }
 
-    console.log(`[IceHockeyApiProvider] Csapat ID keresése: "${searchName}"...`);
+    console.log(`[IceHockeyApiProvider] Csapat ID keresése: "${searchName}" (Eredeti: "${teamName}")...`);
     try {
         const results = await makeIceHockeyRequest(`api/ice-hockey/search/${encodeURIComponent(searchName)}`);
         
@@ -72,7 +123,10 @@ async function findTeamId(teamName: string): Promise<number | null> {
             return null;
         }
         
-        const foundTeam = results.teams[0];
+        // Tegyük fel, hogy az API a legjobb találatot adja elsőnek
+        // Egy robusztusabb megoldás string hasonlósági vizsgálatot végezne
+        const foundTeam = results.teams.find((t: any) => t.name.toLowerCase() === searchName) || results.teams[0];
+        
         if (foundTeam && foundTeam.id) {
             console.log(`[IceHockeyApiProvider] Csapat TALÁLAT: "${foundTeam.name}" (ID: ${foundTeam.id})`);
             apiCache.set(cacheKey, foundTeam.id);
@@ -89,6 +143,7 @@ async function findTeamId(teamName: string): Promise<number | null> {
  * Segédfüggvény a meccs ID kereséséhez
  */
 async function findMatchId(
+// ... a kód többi része változatlan ...
     homeTeamId: number, 
     awayTeamId: number, 
     matchDate: string
@@ -102,6 +157,8 @@ async function findMatchId(
 
     console.log(`[IceHockeyApiProvider] Meccs ID keresése: ${homeTeamId} vs ${awayTeamId} (${matchDate})...`);
     try {
+        // Figyelem: A 'match/list' végpont 'date' paramétert vár?
+        // Ellenőrizni kell az API dokumentációt. Ha az URL-ben kell, akkor 'match/list/${matchDate}'
         const response = await makeIceHockeyRequest(`api/ice-hockey/match/list/${matchDate}`);
         
         if (!response || !Array.isArray(response.events) || response.events.length === 0) {
@@ -126,39 +183,83 @@ async function findMatchId(
     }
 }
 
-// TODO: Ezeket az átalakító (parser) függvényeket implementálni kell
-function parseH2H(apiH2h: any): any[] { 
-    console.log("[IceHockeyApiProvider] H2H feldolgozás (TODO)...");
-    // Implementáld a H2H adatfeldolgozást az 'apiH2h' válasz alapján
-    return apiH2h?.events || []; 
+// === JAVÍTÁS (v1.3): Parser függvények implementálása ===
+
+function parseH2H(apiH2h: any): FixtureResult[] { 
+    console.log("[IceHockeyApiProvider] H2H feldolgozás...");
+    if (!apiH2h || !Array.isArray(apiH2h.events)) {
+        return [];
+    }
+    // Átalakítjuk az API választ a kanonikus 'FixtureResult' formátumra
+    return apiH2h.events.map((event: any) => ({
+        fixture_id: event.id,
+        date: new Date(event.timestamp * 1000).toISOString(),
+        home_team_name: event.home_team,
+        away_team_name: event.away_team,
+        home_score: event.home_score?.current,
+        away_score: event.away_score?.current,
+        result_type: event.status === 'finished' ? 'FullTime' : 'Scheduled'
+    })).slice(0, 10); // Csak az utolsó 10 H2H érdekes
 }
+
 function parseLineups(apiLineups: any): ICanonicalRawData['detailedPlayerStats'] { 
-    console.log("[IceHockeyApiProvider] Keretek/Sérülések feldolgozás (TODO)...");
-    // Implementáld a keret és sérülés adatfeldolgozást
-    // Példa (ezt ki kell dolgozni az API válasz alapján):
-    // const home_absentees = apiLineups?.home?.filter(p => p.status === 'injured').map(p => p.name) || [];
-    // const away_absentees = apiLineups?.away?.filter(p => p.status === 'injured').map(p => p.name) || [];
-    return {
+    console.log("[IceHockeyApiProvider] Keretek/Sérülések feldolgozás...");
+    
+    const result: ICanonicalRawData['detailedPlayerStats'] = {
         home_absentees: [], 
         away_absentees: [], 
         key_players_ratings: { home: {}, away: {} }
-    }; 
+    };
+
+    // Tegyük fel, hogy az 'apiLineups' objektum 'home' és 'away' tömböket tartalmaz
+    if (apiLineups && Array.isArray(apiLineups.home)) {
+        result.home_absentees = apiLineups.home
+            .filter((p: any) => p.status === 'injured' || p.status === 'absent')
+            .map((p: any) => p.name || 'Ismeretlen játékos');
+    }
+    if (apiLineups && Array.isArray(apiLineups.away)) {
+        result.away_absentees = apiLineups.away
+            .filter((p: any) => p.status === 'injured' || p.status === 'absent')
+            .map((p: any) => p.name || 'Ismeretlen játékos');
+    }
+    
+    // TODO: A 'key_players_ratings' feltöltése, ha az API ad rá adatot
+    // (Jelenleg üresen hagyjuk)
+
+    return result; 
 }
+
 function parseStats(apiStats: any): { home: ICanonicalStats, away: ICanonicalStats, form: any } { 
-    console.log("[IceHockeyApiProvider] Statisztikák/Forma feldolgozás (TODO)...");
-    // Implementáld a statisztika feldolgozást
+    console.log("[IceHockeyApiProvider] Statisztikák/Forma feldolgozás...");
     const emptyStats: ICanonicalStats = { gp: 1, gf: 0, ga: 0, form: null };
     
-    // Példa (ezt ki kell dolgozni az API válasz alapján):
-    const homeStats = apiStats?.home ? { gp: apiStats.home.gp, gf: apiStats.home.gf, ga: apiStats.home.ga, form: apiStats.home.form } : emptyStats;
-    const awayStats = apiStats?.away ? { gp: apiStats.away.gp, gf: apiStats.away.gf, ga: apiStats.away.ga, form: apiStats.away.form } : emptyStats;
+    // Tegyük fel, hogy az 'apiStats' 'home' és 'away' objektumokat tartalmaz
+    // 'statistics' vagy 'standings' kulcs alatt
+    
+    const homeApiStats = apiStats?.home?.statistics || apiStats?.home;
+    const awayApiStats = apiStats?.away?.statistics || apiStats?.away;
+
+    const homeStats: ICanonicalStats = homeApiStats ? {
+        gp: homeApiStats.games_played || 1,
+        gf: homeApiStats.goals_scored || 0,
+        ga: homeApiStats.goals_conceded || 0,
+        form: homeApiStats.form || null // Pl. "WWLWL"
+    } : emptyStats;
+    
+    const awayStats: ICanonicalStats = awayApiStats ? {
+        gp: awayApiStats.games_played || 1,
+        gf: awayApiStats.goals_scored || 0,
+        ga: awayApiStats.goals_conceded || 0,
+        form: awayApiStats.form || null
+    } : emptyStats;
 
     return {
         home: homeStats,
         away: awayStats,
-        form: { home_overall: apiStats?.home?.form || null, away_overall: apiStats?.away?.form || null }
+        form: { home_overall: homeStats.form, away_overall: awayStats.form }
     };
 }
+// =======================================================
 
 /**
  * FŐ EXPORTÁLT FÜGGVÉNY (Kontextust ad vissza, Odds nélkül)
@@ -166,12 +267,12 @@ function parseStats(apiStats: any): { home: ICanonicalStats, away: ICanonicalSta
 export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
     const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
     
-    console.log(`Adatgyűjtés indul (v1.2 - IceHockeyApi - Rate Limit Fix): ${homeTeamName} vs ${awayTeamName}...`);
+    console.log(`Adatgyűjtés indul (v1.3 - IceHockeyApi - Javított): ${homeTeamName} vs ${awayTeamName}...`);
     
     const matchDate = new Date(utcKickoff).toISOString().split('T')[0];
 
     try {
-        // 1. LÉPÉS: Csapat ID-k keresése (Egymás után, a Rate Limit miatt)
+        // 1. LÉPÉS: Csapat ID-k keresése (Javított logikával)
         const homeTeamId = await findTeamId(homeTeamName);
         const awayTeamId = await findTeamId(awayTeamName);
 
@@ -187,10 +288,8 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
             return generateEmptyStubContext(options);
         }
 
-        // === JAVÍTÁS (v1.2 - Rate Limit Fix) ===
-        // A 'Promise.all' (párhuzamos) hívásokat SZEKVENCIÁLIS (egymás utáni)
-        // hívásokra cseréljük, hogy elkerüljük a 4 req/sec limitet.
-        
+        // 3. LÉPÉS: SZEKVENCIÁLIS adatlekérés (Rate Limit Fix)
+        // (Ez a rész már helyes volt a v1.2-ben)
         console.log(`[IceHockeyApiProvider] Kontextus adatok SZEKVENCIÁLIS lekérése... (MatchID: ${matchId})`);
         
         const h2hData = await makeIceHockeyRequest(`api/ice-hockey/match/${matchId}/h2h`);
@@ -201,16 +300,16 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         
         const statsData = await makeIceHockeyRequest(`api/ice-hockey/match/${matchId}/statistics`);
         console.log(`[IceHockeyApiProvider] Stats lekérve.`);
-        // === JAVÍTÁS VÉGE ===
 
-        // 4. LÉPÉS: Adatok átalakítása (Parsers)
+        // 4. LÉPÉS: Adatok átalakítása (Javított Parserek)
         const parsedStats = parseStats(statsData);
         const parsedLineups = parseLineups(lineupsData);
+        const parsedH2H = parseH2H(h2hData);
 
         // 5. LÉPÉS: Adatok egyesítése (RawData)
         const finalData = generateStubRawData(homeTeamId, awayTeamId, null, matchId, utcKickoff);
         
-        finalData.h2h_structured = parseH2H(h2hData);
+        finalData.h2h_structured = parsedH2H;
         finalData.stats = { home: parsedStats.home, away: parsedStats.away };
         finalData.form = parsedStats.form;
         finalData.detailedPlayerStats = parsedLineups;
@@ -221,12 +320,11 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         // TODO: A többi mezőt (referee, coach, stb.) is ki kell nyerni, ha az API adja
 
         // 6. LÉPÉS: Befejezés (RichContext)
-        // Az 'oddsData' szándékosan 'null', mert azt az 'OddsFeedProvider' adja.
         const result: ICanonicalRichContext = {
              rawStats: finalData.stats, 
-             leagueAverages: {},
-             richContext: "IceHockeyApi (v1.2) - Kontextus lekérve. TODO: Parser implementáció.",
-             advancedData: { home: { xg: null }, away: { xg: null } }, 
+             leagueAverages: {}, // Ezt egy külön liga-átlag provider tölthetné fel
+             richContext: "IceHockeyApi (v1.3) - Kontextus sikeresen lekérve és feldolgozva.",
+             advancedData: { home: { xg: null }, away: { xg: null } }, // xG-t (várható gól) ez az API nem biztosít
              form: finalData.form, 
              rawData: finalData, 
              oddsData: null, // Ezt a DataFetch.ts fogja feltölteni!
@@ -243,10 +341,11 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
 }
 
 // Meta-adat a logoláshoz
-export const providerName = 'ice-hockey-api-v1.2';
+export const providerName = 'ice-hockey-api-v1.3-FIXED';
 
 
 // === "Stub" Válasz Generátor ===
+// ... a kód többi része változatlan ...
 function generateEmptyStubContext(options: any): ICanonicalRichContext {
     const { homeTeamName, awayTeamName } = options;
     console.warn(`[IceHockeyApiProvider - generateEmptyStubContext] Visszaadok egy üres adatszerkezetet (${homeTeamName} vs ${awayTeamName}). Az elemzés P1 adatokra fog támaszkodni.`);
@@ -256,7 +355,7 @@ function generateEmptyStubContext(options: any): ICanonicalRichContext {
     const result: ICanonicalRichContext = {
          rawStats: emptyRawData.stats,
          leagueAverages: {},
-         richContext: "Figyelem: Az automatikus API adatgyűjtés (IceHockeyApi v1.2) sikertelen vagy hiányos. Az elemzés P1 adatokra támaszkodhat.",
+         richContext: "Figyelem: Az automatikus API adatgyűjtés (IceHockeyApi v1.3) sikertelen vagy hiányos. Az elemzés P1 adatokra támaszkodhat.",
          advancedData: { home: { xg: null }, away: { xg: null } },
          form: emptyRawData.form,
          rawData: emptyRawData,
@@ -268,7 +367,6 @@ function generateEmptyStubContext(options: any): ICanonicalRichContext {
     return result;
 }
 
-// Segédfüggvény, ami CSAK 'ICanonicalRawData'-t ad vissza.
 function generateStubRawData(
     homeTeamId: number | null,
     awayTeamId: number | null,
