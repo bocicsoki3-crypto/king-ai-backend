@@ -154,16 +154,16 @@ async function findEventIdByNames(
     const matchDate = new Date(utcKickoff).toISOString().split('T')[0];
 
     console.log(`[OddsFeedProvider v1.7] Események lekérése (Endpoint: /api/v1/events): ${sportKey}, Dátum: ${matchDate}`);
+    console.log(`[OddsFeedProvider v1.8] Események lekérése (Endpoint: /api/v1/events): ${sportKey}, Dátum: ${matchDate}`);
 
     const params = new URLSearchParams({
         sport: sportKey,
         date: matchDate,
-        // === JAVÍTÁS (v1.7): A 'status' paraméter hozzáadása ===
-        // Az API valószínűleg alapértelmezetten a 'FINISHED' meccseket
-        // keresi, ezért a jövőbeli dátumra üres listát adott.
-        // Ezzel kényszerítjük a még el nem kezdődött meccsek listázását.
-        status: 'NOT_STARTED'
-        // =======================================================
+        // === JAVÍTÁS (v1.8): Az API által elfogadott 'SCHEDULED' státusz használata ===
+        // A 'NOT_STARTED' (v1.7.1) 422-es hibát okozott. Az API hibaüzenete
+        // alapján a 'SCHEDULED' a helyes érték a jövőbeli meccsekhez.
+        status: 'SCHEDULED'
+        // ======================================================================
     });
 
     try {
