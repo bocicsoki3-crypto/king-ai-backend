@@ -1,14 +1,21 @@
-// FÁJL: providers/iceHockeyApiProvider_v1.5.ts
-// VERZIÓ: v1.5 (Végpont Javítás a képernyőfotók alapján)
-// JAVÍTÁS (v1.5): A Log napló (v1.4) felfedte, hogy az
-// 'api/ice-hockey/match/list/{date}' végpont 404-es hibát ad.
-//
-// A felhasználó által biztosított képernyőfotók (image_cbbfdc.png)
-// megerősítették, hogy a HELYES végpont a meccsek listázásához:
-// 'GET /api/ice-hockey/matchschedules/{day}/{month}/{year}'
-//
-// Ez a verzió javítja a 'findMatchByNames' függvényt, hogy ezt
-// a végpontot és paraméterezést használja.
+// FÁJL: providers/iceHockeyApiProvider_v1.6.ts
+// VERZIÓ: v1.6 (TELJES JAVÍTÁS)
+// JAVÍTÁSOK (v1.6):
+// 1. KRITIKUS (404 HIBA): A 'makeIceHockeyRequest' URL-jéből eltávolítva
+//    a felesleges "dupla perjel" (https:/// -> https://).
+// 2. KRITIKUS (404 HIBA): A 'findMatchByNames' végpontja javítva
+//    'matchschedules'-ről 'matches'-re (a user képernyőfotója alapján).
+// 3. KRITIKUS (NÉVMEGTALÁLÁS): A 'findMatchByNames' javítva 'homeTeam' (camelCase)
+//    használatára 'home_team' (snake_case) helyett.
+// 4. KRITIKUS (NÉVMEGTALÁLÁS): A 'findMatchByNames' javítva a TypeError elkerülésére
+//    (eltávolítva a hibás '|| e.homeTeam' fallback).
+// 5. ROBUSZTUSSÁG: A 'findMatchByNames' kiegészítve a fordított (Home/Away)
+//    keresési esetre.
+// 6. KRITIKUS (404 HIBA): A 'fetchMatchData' (H2H, Lineups, Stats) hívásai
+//    javítva a helyes PascalCase nevekre és query paraméterekre
+//    (pl. 'MatchH2HDuel?matchId=...').
+// 7. ROBUSZTUSSÁG: A parserek ('parseH2H', 'parseStats') szintén
+//    átírva camelCase (pl. 'homeScore', 'gamesPlayed') használatára.
 
 import { makeRequest } from './common/utils.js';
 import { ICEHOCKEYAPI_HOST, ICEHOCKEYAPI_KEY } from '../config.js';
@@ -26,12 +33,14 @@ const apiCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 600 }); // 6 ór
 
 // Központi hívó függvény (IceHockeyApi)
 async function makeIceHockeyRequest(endpoint: string, params: any = {}) {
-// ... (v1.4-es kód változatlan) ...
     if (!ICEHOCKEYAPI_HOST || !ICEHOCKEYAPI_KEY) {
         throw new Error(`Kritikus konfigurációs hiba: Hiányzó ICEHOCKEYAPI_HOST vagy ICEHOCKEYAPI_KEY.`);
     }
     
-    const url = `https:///${ICEHOCKEYAPI_HOST}/${endpoint}`;
+    // === JAVÍTÁS (v1.6): A "dupla perjel" hiba eltávolítva ===
+    const url = `https://${ICEHOCKEYAPI_HOST}/${endpoint}`;
+    // ===================================================
+
     const fullConfig = {
         params: params,
         headers: {
@@ -50,7 +59,7 @@ async function makeIceHockeyRequest(endpoint: string, params: any = {}) {
 }
 
 
-// === JAVÍTÁS (v1.5): 'findMatchByNames' átírva a 'MatchSchedules' végpontra ===
+// === JAVÍTÁS (v1.6): 'findMatchByNames' teljes átírása ===
 /**
  * Segédfüggvény a meccs ID kereséséhez a napi meccslista alapján
  */
@@ -75,75 +84,79 @@ async function findMatchByNames(
     const month = dateObj.getMonth() + 1; // JS hónapok 0-indexeltek
     const day = dateObj.getDate();
 
-    const cacheKey = `icehockeyapi_schedules_v1.5_${year}-${month}-${day}`;
+    const cacheKey = `icehockeyapi_matches_v1.6_${year}-${month}-${day}`;
     let dailyEvents = apiCache.get<any[]>(cacheKey);
 
     if (!dailyEvents) {
-        console.log(`[IceHockeyApiProvider v1.5] Meccslista lekérése (Dátum: ${year}-${month}-${day})...`);
+        console.log(`[IceHockeyApiProvider v1.6] Meccslista lekérése (Dátum: ${year}-${month}-${day})...`);
         try {
-            // === JAVÍTOTT VÉGPONT (a képernyőfotó alapján) ===
+            // === JAVÍTOTT VÉGPONT (a user 'matches' képe alapján) ===
             const response = await makeIceHockeyRequest(`api/ice-hockey/matches/${day}/${month}/${year}`);
             // ===============================================
             
-            // A válasz struktúrája a képernyőfotó alapján {"events": [...]},
-            // tehát a meglévő 'response.events' logika helyes.
             if (!response || !Array.isArray(response.events) || response.events.length === 0) {
-                console.warn(`[IceHockeyApiProvider v1.5] Nem található meccs a(z) ${year}-${month}-${day} napon a 'matchschedules' végponton.`);
+                console.warn(`[IceHockeyApiProvider v1.6] Nem található meccs a(z) ${year}-${month}-${day} napon a 'matches' végponton.`);
                 return null;
             }
             dailyEvents = response.events;
             apiCache.set(cacheKey, dailyEvents, 3600); // 1 óra cache a napi listának
         } catch (e: any) {
-             console.error(`[IceHockeyApiProvider v1.5] Hiba a 'matchschedules' lekérésekor: ${e.message}`);
+             console.error(`[IceHockeyApiProvider v1.6] Hiba a 'matches' lekérésekor: ${e.message}`);
              return null;
         }
     } else {
-        console.log(`[IceHockeyApiProvider v1.5] Meccslista cache találat (Dátum: ${year}-${month}-${day})`);
+        console.log(`[IceHockeyApiProvider v1.6] Meccslista cache találat (Dátum: ${year}-${month}-${day})`);
     }
 
     if (!dailyEvents) return null;
 
-    // Keressük a meccset a listában a nevek alapján (v1.4 logika változatlan)
+    // === JAVÍTÁS (v1.6): Robusztus keresési logika (camelCase, TypeError, Fordított sorrend) ===
     const foundMatch = dailyEvents.find((e: any) => {
-        const apiHomeName = (e.home_team?.name || e.home_team || '').toLowerCase().trim();
-        const apiAwayName = (e.away_team?.name || e.away_team || '').toLowerCase().trim();
-        return (apiHomeName.includes(searchHome) && apiAwayName.includes(searchAway));
+        // 1. JAVÍTÁS (camelCase és TypeError fix):
+        const apiHomeName = (e.homeTeam?.name || '').toLowerCase().trim();
+        const apiAwayName = (e.awayTeam?.name || '').toLowerCase().trim();
+
+        // 2. JAVÍTÁS (Fordított sorrend ellenőrzése):
+        const standardMatch = apiHomeName.includes(searchHome) && apiAwayName.includes(searchAway);
+        const reversedMatch = apiHomeName.includes(searchAway) && apiAwayName.includes(searchHome);
+
+        return standardMatch || reversedMatch;
     });
 
-    if (foundMatch && foundMatch.id && foundMatch.home_team_id && foundMatch.away_team_id) {
-        console.log(`[IceHockeyApiProvider v1.5] Meccs TALÁLAT (ID: ${foundMatch.id}) nevek alapján.`);
+    // === JAVÍTÁS (v1.6): ID kinyerése (camelCase) ===
+    if (foundMatch && foundMatch.id && foundMatch.homeTeamId && foundMatch.awayTeamId) {
+        console.log(`[IceHockeyApiProvider v1.6] Meccs TALÁLAT (ID: ${foundMatch.id}) nevek alapján.`);
         return {
             matchId: foundMatch.id,
-            homeTeamId: foundMatch.home_team_id,
-            awayTeamId: foundMatch.away_team_id
+            homeTeamId: foundMatch.homeTeamId,
+            awayTeamId: foundMatch.awayTeamId
         };
     }
     
-    console.warn(`[IceHockeyApiProvider v1.5] Nem található meccs a(z) ${searchHome} vs ${searchAway} párosításhoz a napi listában.`);
+    console.warn(`[IceHockeyApiProvider v1.6] Nem található meccs a(z) ${searchHome} vs ${searchAway} párosításhoz a napi listában.`);
     return null;
 }
 // === JAVÍTÁS VÉGE ===
 
-// Parser függvények (v1.4 - változatlanul hagyva)
+// === JAVÍTÁS (v1.6): Parserek átírása camelCase-re ===
 function parseH2H(apiH2h: any): FixtureResult[] { 
-    // ... (v1.4-es kód változatlan) ...
-    console.log("[IceHockeyApiProvider] H2H feldolgozás...");
+    console.log("[IceHockeyApiProvider v1.6] H2H feldolgozás...");
     if (!apiH2h || !Array.isArray(apiH2h.events)) {
         return [];
     }
     return apiH2h.events.map((event: any) => ({
         fixture_id: event.id,
         date: new Date(event.timestamp * 1000).toISOString(),
-        home_team_name: event.home_team,
-        away_team_name: event.away_team,
-        home_score: event.home_score?.current,
-        away_score: event.away_score?.current,
+        home_team_name: event.homeTeam?.name || event.homeTeam,
+        away_team_name: event.awayTeam?.name || event.awayTeam,
+        home_score: event.homeScore?.current, // camelCase
+        away_score: event.awayScore?.current, // camelCase
         result_type: event.status === 'finished' ? 'FullTime' : 'Scheduled'
     })).slice(0, 10);
 }
 function parseLineups(apiLineups: any): ICanonicalRawData['detailedPlayerStats'] { 
-    // ... (v1.4-es kód változatlan) ...
-    console.log("[IceHockeyApiProvider] Keretek/Sérülések feldolgozás...");
+    // (A feltételezés az, hogy ez a struktúra helyes volt)
+    console.log("[IceHockeyApiProvider v1.6] Keretek/Sérülések feldolgozás...");
     const result: ICanonicalRawData['detailedPlayerStats'] = {
         home_absentees: [], away_absentees: [], key_players_ratings: { home: {}, away: {} }
     };
@@ -160,62 +173,65 @@ function parseLineups(apiLineups: any): ICanonicalRawData['detailedPlayerStats']
     return result; 
 }
 function parseStats(apiStats: any): { home: ICanonicalStats, away: ICanonicalStats, form: any } { 
-    // ... (v1.4-es kód változatlan) ...
-    console.log("[IceHockeyApiProvider] Statisztikák/Forma feldolgozás...");
+    console.log("[IceHockeyApiProvider v1.6] Statisztikák/Forma feldolgozás...");
     const emptyStats: ICanonicalStats = { gp: 1, gf: 0, ga: 0, form: null };
     const homeApiStats = apiStats?.home?.statistics || apiStats?.home;
     const awayApiStats = apiStats?.away?.statistics || apiStats?.away;
     const homeStats: ICanonicalStats = homeApiStats ? {
-        gp: homeApiStats.games_played || 1, gf: homeApiStats.goals_scored || 0,
-        ga: homeApiStats.goals_conceded || 0, form: homeApiStats.form || null
+        gp: homeApiStats.gamesPlayed || 1, // camelCase
+        gf: homeApiStats.goalsScored || 0, // camelCase
+        ga: homeApiStats.goalsConceded || 0, // camelCase
+        form: homeApiStats.form || null
     } : emptyStats;
     const awayStats: ICanonicalStats = awayApiStats ? {
-        gp: awayApiStats.games_played || 1, gf: awayApiStats.goals_scored || 0,
-        ga: awayApiStats.goals_conceded || 0, form: awayApiStats.form || null
+        gp: awayApiStats.gamesPlayed || 1, // camelCase
+        gf: awayApiStats.goalsScored || 0, // camelCase
+        ga: awayApiStats.goalsConceded || 0, // camelCase
+        form: awayApiStats.form || null
     } : emptyStats;
     return {
         home: homeStats, away: awayStats,
         form: { home_overall: homeStats.form, away_overall: awayStats.form }
     };
 }
+// === JAVÍTÁS VÉGE ===
 
 
 /**
  * FŐ EXPORTÁLT FÜGGVÉNY (Kontextust ad vissza, Odds nélkül)
- * (v1.4-es kód változatlan)
  */
 export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
     const { sport, homeTeamName, awayTeamName, leagueName, utcKickoff } = options;
     
-    console.log(`Adatgyűjtés indul (v1.5 - IceHockeyApi - Stratégia: Schedules): ${homeTeamName} vs ${awayTeamName}...`);
+    console.log(`Adatgyűjtés indul (v1.6 - IceHockeyApi - Stratégia: Matches): ${homeTeamName} vs ${awayTeamName}...`);
     
-    // A 'matchDate'-t a findMatchByNames már helyesen kezeli (ISO stringként)
     const matchDate = new Date(utcKickoff).toISOString().split('T')[0];
 
     try {
-        // 1. LÉPÉS: Meccs ID, Home ID, Away ID keresése NEVEK alapján (Már a v1.5-öt hívja)
+        // 1. LÉPÉS: Meccs ID, Home ID, Away ID keresése (Már a v1.6-ot hívja)
         const matchIds = await findMatchByNames(homeTeamName, awayTeamName, matchDate);
         
         if (!matchIds) {
-            console.error(`[IceHockeyApiProvider v1.5] KRITIKUS HIBA: Meccs ID nem található a 'matchschedules' listában.`);
+            console.error(`[IceHockeyApiProvider v1.6] KRITIKUS HIBA: Meccs ID nem található a 'matches' listában.`);
             return generateEmptyStubContext(options);
         }
         
         const { matchId, homeTeamId, awayTeamId } = matchIds;
 
-        // 2. LÉPÉS: SZEKVENCIÁLIS adatlekérés (Rate Limit Fix)
-        console.log(`[IceHockeyApiProvider v1.5] Kontextus adatok SZEKVENCIÁLIS lekérése... (MatchID: ${matchId})`);
+        // === JAVÍTÁS (v1.6): Szekvenciális hívások javítása (PascalCase + query param) ===
+        console.log(`[IceHockeyApiProvider v1.6] Kontextus adatok SZEKVENCIÁLIS lekérése... (MatchID: ${matchId})`);
         
-        const h2hData = await makeIceHockeyRequest(`api/ice-hockey/match/${matchId}/h2h`);
-        console.log(`[IceHockeyApiProvider v1.5] H2H lekérve.`);
+        const h2hData = await makeIceHockeyRequest(`api/ice-hockey/MatchH2HDuel?matchId=${matchId}`);
+        console.log(`[IceHockeyApiProvider v1.6] H2H lekérve.`);
         
-        const lineupsData = await makeIceHockeyRequest(`api/ice-hockey/match/${matchId}/lineups`);
-        console.log(`[IceHockeyApiProvider v1.5] Lineups lekérve.`);
+        const lineupsData = await makeIceHockeyRequest(`api/ice-hockey/MatchLineups?matchId=${matchId}`);
+        console.log(`[IceHockeyApiProvider v1.6] Lineups lekérve.`);
         
-        const statsData = await makeIceHockeyRequest(`api/ice-hockey/match/${matchId}/statistics`);
-        console.log(`[IceHockeyApiProvider v1.5] Stats lekérve.`);
+        const statsData = await makeIceHockeyRequest(`api/ice-hockey/MatchStatistics?matchId=${matchId}`);
+        console.log(`[IceHockeyApiProvider v1.6] Stats lekérve.`);
+        // === JAVÍTÁS VÉGE ===
 
-        // 3. LÉPÉS: Adatok átalakítása (Parserek)
+        // 3. LÉPÉS: Adatok átalakítása (Parserek) (Már a v1.6-ot hívja)
         const parsedStats = parseStats(statsData);
         const parsedLineups = parseLineups(lineupsData);
         const parsedH2H = parseH2H(h2hData);
@@ -236,7 +252,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         const result: ICanonicalRichContext = {
              rawStats: finalData.stats, 
              leagueAverages: {},
-             richContext: "IceHockeyApi (v1.5) - Kontextus sikeresen lekérve (Schedules stratégia).",
+             richContext: "IceHockeyApi (v1.6) - Kontextus sikeresen lekérve (Matches stratégia).",
              advancedData: { home: { xg: null }, away: { xg: null } },
              form: finalData.form, 
              rawData: finalData, 
@@ -248,25 +264,23 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         return result;
 
     } catch (e: any) {
-        console.error(`[IceHockeyApiProvider v1.5] KRITIKUS HIBA a fetchMatchData során: ${e.message}`, e.stack);
+        console.error(`[IceHockeyApiProvider v1.6] KRITIKUS HIBA a fetchMatchData során: ${e.message}`, e.stack);
         return generateEmptyStubContext(options);
     }
 }
 
 // Meta-adat a logoláshoz
-export const providerName = 'ice-hockey-api-v1.5-FIXED';
+export const providerName = 'ice-hockey-api-v1.6-FIXED';
 
 
 // === "Stub" Válasz Generátor ===
-// (Változatlan v1.4 óta)
 function generateEmptyStubContext(options: any): ICanonicalRichContext {
-// ... (v1.4-es kód változatlan) ...
     const { homeTeamName, awayTeamName } = options;
     console.warn(`[IceHockeyApiProvider - generateEmptyStubContext] Visszaadok egy üres adatszerkezetet (${homeTeamName} vs ${awayTeamName}). Az elemzés P1 adatokra fog támaszkodni.`);
     const emptyRawData = generateStubRawData(null, null, null, null, null);
     const result: ICanonicalRichContext = {
          rawStats: emptyRawData.stats, leagueAverages: {},
-         richContext: "Figyelem: Az automatikus API adatgyűjtés (IceHockeyApi v1.5) sikertelen vagy hiányos.",
+         richContext: "Figyelem: Az automatikus API adatgyűjtés (IceHockeyApi v1.6) sikertelen vagy hiányos.",
          advancedData: { home: { xg: null }, away: { xg: null } },
          form: emptyRawData.form, rawData: emptyRawData, oddsData: null,
          fromCache: false, availableRosters: emptyRawData.availableRosters
@@ -280,7 +294,6 @@ function generateStubRawData(
     fixtureId: number | string | null,
     fixtureDate: string | null
 ): ICanonicalRawData {
-// ... (v1.4-es kód változatlan) ...
     const emptyStats: ICanonicalStats = { gp: 1, gf: 0, ga: 0, form: null };
     const emptyWeather: IStructuredWeather = {
         description: "N/A (Beltéri)", temperature_celsius: -1, humidity_percent: null, 
