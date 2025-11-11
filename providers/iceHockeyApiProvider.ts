@@ -82,7 +82,7 @@ async function findMatchByNames(
         console.log(`[IceHockeyApiProvider v1.5] Meccslista lekérése (Dátum: ${year}-${month}-${day})...`);
         try {
             // === JAVÍTOTT VÉGPONT (a képernyőfotó alapján) ===
-            const response = await makeIceHockeyRequest(`api/ice-hockey/matchschedules/${day}/${month}/${year}`);
+            const response = await makeIceHockeyRequest(`api/ice-hockey/matches/${day}/${month}/${year}`);
             // ===============================================
             
             // A válasz struktúrája a képernyőfotó alapján {"events": [...]},
