@@ -206,13 +206,13 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         // 2. LÉPÉS: SZEKVENCIÁLIS adatlekérés (Rate Limit Fix)
         console.log(`[IceHockeyApiProvider v1.5] Kontextus adatok SZEKVENCIÁLIS lekérése... (MatchID: ${matchId})`);
         
-        const h2hData = await makeIceHockeyRequest(`api/ice-hockey/match/${matchId}/h2h`);
+        const h2hData = await makeIceHockeyRequest(`api/ice-hockey/MatchH2HDuel?matchId=${matchId}`);
         console.log(`[IceHockeyApiProvider v1.5] H2H lekérve.`);
         
-        const lineupsData = await makeIceHockeyRequest(`api/ice-hockey/match/${matchId}/lineups`);
+        const lineupsData = await makeIceHockeyRequest(`api/ice-hockey/MatchLineups?matchId=${matchId}`);
         console.log(`[IceHockeyApiProvider v1.5] Lineups lekérve.`);
         
-        const statsData = await makeIceHockeyRequest(`api/ice-hockey/match/${matchId}/statistics`);
+        const statsData = await makeIceHockeyRequest(`api/ice-hockey/MatchStatistics?matchId=${matchId}`);
         console.log(`[IceHockeyApiProvider v1.5] Stats lekérve.`);
 
         // 3. LÉPÉS: Adatok átalakítása (Parserek)
