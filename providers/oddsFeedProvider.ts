@@ -63,22 +63,22 @@ async function makeOddsRequest(path: string, params: URLSearchParams): Promise<a
             }
         });
 
-        if (!response.ok) {
-            const errorBody = await response.text();
-            console.error(`[OddsFeedProvider] API Hiba: ${response.status}`, errorBody);
-            throw new Error(`API hiba: Státusz kód ${response.status} (${url}). Válasz: ${errorBody}`);
-        }
+ * Lefordítja a sportág nevét az Odds Feed API által várt SPORT ID-ra
+ */
+function getSportId(sport: string): string {
+    switch (sport.toLowerCase()) {
+        // case 'soccer': return '1'; // A 'soccer_epl' helyett a 'sport_id'-t kell használni
         
-        // === JAVÍTÁS (v1.6.1): TS18046 ('unknown' típus) hiba javítása ===
-        // Kifejezett típus-kényszerítést (type assertion) adunk hozzá 'any'-ra,
-        // mivel a .json() alapértelmezetten 'unknown' típust ad vissza
-        // a szigorú beállítások mellett.
-        const data = (await response.json()) as any;
-        return data.data || data; // Az API válasza 'data' wrapperben lehet
-
-    } catch (error: any) {
-        console.error(`[OddsFeedProvider] Hiba a hívás során: ${error.message}`, { url });
-        throw error;
+        // === JAVÍTÁS (v1.9): A 'sport_id' (szám) használata ===
+        // Az API (image_dc27df.png) 'sport_id'-t vár, nem 'sport' (string) kulcsot.
+        // A minimum érték 16 volt, ami valószínűleg a Jégkorong.
+        case 'hockey': return '16'; 
+        // ===================================================
+        
+        // case 'basketball': return '18';
+        default: 
+            console.warn(`[OddsFeedProvider] Ismeretlen sportág a getSportId-hoz: ${sport}. Alapértelmezett (16) használata.`);
+            return '16'; // Alapértelmezett a Jégkorong
     }
 }
 
@@ -153,17 +153,17 @@ async function findEventIdByNames(
     const sportKey = getSportKey(sport);
     const matchDate = new Date(utcKickoff).toISOString().split('T')[0];
 
-    console.log(`[OddsFeedProvider v1.7] Események lekérése (Endpoint: /api/v1/events): ${sportKey}, Dátum: ${matchDate}`);
-    console.log(`[OddsFeedProvider v1.8] Események lekérése (Endpoint: /api/v1/events): ${sportKey}, Dátum: ${matchDate}`);
+    const sportKey = getSportId(sport); // <-- Átnevezve getSportId-ra
+    const matchDate = new Date(utcKickoff).toISOString().split('T')[0];
+
+    console.log(`[OddsFeedProvider v1.9] Események lekérése (Endpoint: /api/v1/events): SportID: ${sportKey}, Dátum: ${matchDate}`);
 
     const params = new URLSearchParams({
-        sport: sportKey,
+        // === JAVÍTÁS (v1.9): 'sport' cserélve 'sport_id'-ra ===
+        sport_id: sportKey,
+        // ===============================================
         date: matchDate,
-        // === JAVÍTÁS (v1.8): Az API által elfogadott 'SCHEDULED' státusz használata ===
-        // A 'NOT_STARTED' (v1.7.1) 422-es hibát okozott. Az API hibaüzenete
-        // alapján a 'SCHEDULED' a helyes érték a jövőbeli meccsekhez.
         status: 'SCHEDULED'
-        // ======================================================================
     });
 
     try {
