@@ -146,6 +146,13 @@ async function findEventIdByNames(
     homeTeamName: string,
     awayTeamName: string,
     utcKickoff: string,
+    sport: string // <-- HIÁNYZÓ PARAMÉTER HOZZÁADVA
+): Promise<string | null> { // <-- HIÁNYZÓ VISSZATÉRÉSI TÍPUS HOZZÁADVA
+    
+    // --- INNEN KEZDŐDIK A FÜGGVÉNY TÖRZS ---
+    const sportKey = getSportKey(sport);
+    const matchDate = new Date(utcKickoff).toISOString().split('T')[0];
+
     console.log(`[OddsFeedProvider v1.7] Események lekérése (Endpoint: /api/v1/events): ${sportKey}, Dátum: ${matchDate}`);
 
     const params = new URLSearchParams({
