@@ -146,17 +146,17 @@ async function findEventIdByNames(
     homeTeamName: string,
     awayTeamName: string,
     utcKickoff: string,
-    sport: string
-): Promise<string | null> {
-    
-    const sportKey = getSportKey(sport);
-    const matchDate = new Date(utcKickoff).toISOString().split('T')[0];
-
-    console.log(`[OddsFeedProvider v1.6] Események lekérése (Endpoint: /api/v1/events): ${sportKey}, Dátum: ${matchDate}`);
+    console.log(`[OddsFeedProvider v1.7] Események lekérése (Endpoint: /api/v1/events): ${sportKey}, Dátum: ${matchDate}`);
 
     const params = new URLSearchParams({
         sport: sportKey,
-        date: matchDate
+        date: matchDate,
+        // === JAVÍTÁS (v1.7): A 'status' paraméter hozzáadása ===
+        // Az API valószínűleg alapértelmezetten a 'FINISHED' meccseket
+        // keresi, ezért a jövőbeli dátumra üres listát adott.
+        // Ezzel kényszerítjük a még el nem kezdődött meccsek listázását.
+        status: 'NOT_STARTED'
+        // =======================================================
     });
 
     try {
