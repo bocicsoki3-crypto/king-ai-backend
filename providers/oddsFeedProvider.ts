@@ -69,7 +69,11 @@ async function makeOddsRequest(path: string, params: URLSearchParams): Promise<a
             throw new Error(`API hiba: Státusz kód ${response.status} (${url}). Válasz: ${errorBody}`);
         }
         
-        const data = await response.json();
+        // === JAVÍTÁS (v1.6.1): TS18046 ('unknown' típus) hiba javítása ===
+        // Kifejezett típus-kényszerítést (type assertion) adunk hozzá 'any'-ra,
+        // mivel a .json() alapértelmezetten 'unknown' típust ad vissza
+        // a szigorú beállítások mellett.
+        const data = (await response.json()) as any;
         return data.data || data; // Az API válasza 'data' wrapperben lehet
 
     } catch (error: any) {
