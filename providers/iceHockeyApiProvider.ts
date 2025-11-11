@@ -105,8 +105,8 @@ async function findMatchByNames(
 
     // Keressük a meccset a listában a nevek alapján (v1.4 logika változatlan)
     const foundMatch = dailyEvents.find((e: any) => {
-        const apiHomeName = (e.home_team?.name || e.home_team || '').toLowerCase().trim();
-        const apiAwayName = (e.away_team?.name || e.away_team || '').toLowerCase().trim();
+        const apiHomeName = (e.homeTeam?.name || e.homeTeam || '').toLowerCase().trim();
+        const apiAwayName = (e.awayTeam?.name || e.awayTeam || '').toLowerCase().trim();
         return (apiHomeName.includes(searchHome) && apiAwayName.includes(searchAway));
     });
 
