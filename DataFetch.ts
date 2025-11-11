@@ -40,7 +40,13 @@ import {
 
 import * as basketballProvider from './providers/newBasketballProvider.js';
 import { fetchSofascoreData, type ISofascoreResponse } from './providers/sofascoreProvider.js';
-import { fetchOddsData as oddsFeedFetchData } from './providers/oddsProvider.js';
+
+// === JAVÍTÁS (v94.1): A 'v1.5'-ös (4-argumentumú) odds provider importálása ===
+// A hívás (L449) már a 4 argumentumot használja, de az import a régi fájlra mutatott.
+import { fetchOddsData as oddsFeedFetchData } from './providers/oddsFeedProvider.js';
+// Régi, hibás import: import { fetchOddsData as oddsFeedFetchData } from './providers/oddsProvider.js';
+// =======================================================================
+
 import { runStep_TeamNameResolver } from './AI_Service.js';
 import { SPORT_CONFIG } from './config.js';
 // Importálás a központi utils fájlból
