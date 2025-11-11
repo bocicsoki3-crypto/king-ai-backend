@@ -15,7 +15,9 @@ import fetch from 'node-fetch';
 // Feltételezzük, hogy a config.js egy szinttel feljebb van
 import { 
     ICEHOCKEYAPI_HOST, 
-    ICEHOCKEYAPI_KEY 
+    ICEHOCKEYAPI_KEY,
+    // === JAVÍTÁS (v2.1): A névfeloldó térkép importálása ===
+    NHL_TEAM_NAME_MAP 
 } from '../config.js'; 
 // =======================================================
 
@@ -141,7 +143,7 @@ export async function fetchMatchData(options: {
 }): Promise<ICanonicalRichContext> {
 
     const { homeTeamName, awayTeamName, utcKickoff } = options;
-    console.log(`Adatgyűjtés indul (v2.0 - IceHockeyApi - Stratégia: Config Import): ${homeTeamName} vs ${awayTeamName}...`);
+    console.log(`Adatgyűjtés indul (v2.1 - IceHockeyApi - Stratégia: Config Import + Map): ${homeTeamName} vs ${awayTeamName}...`);
 
     // === JAVÍTÁS (v2.0): Az importált változók ellenőrzése ===
     if (!ICEHOCKEYAPI_KEY) {
@@ -163,7 +165,7 @@ export async function fetchMatchData(options: {
         const path = `/api/ice-hockey/matches/${day}/${month}/${year}`;
         const url = `https://${ICEHOCKEYAPI_HOST}${path}`;
 
-        console.log(`[IceHockeyApiProvider v2.0] Meccslista lekérése (Dátum: ${day}/${month}/${year})...`);
+        console.log(`[IceHockeyApiProvider v2.1] Meccslista lekérése (Dátum: ${day}/${month}/${year})...`);
 
         const response = await fetch(url, {
             method: 'GET',
@@ -177,7 +179,7 @@ export async function fetchMatchData(options: {
             throw new Error(`API hiba: ${response.status} ${response.statusText} (${url})`);
         }
 
-        const data = await response.json() as any;
+        const data = (await response.json()) as any; // v1.6.1 javítás
         const events = data?.events;
 
         if (!events || !Array.isArray(events) || events.length === 0) {
@@ -185,9 +187,17 @@ export async function fetchMatchData(options: {
             return generateEmptyStubContext(homeTeamName, awayTeamName);
         }
 
-        // --- AZ INTELLIGENS NÉVFELOLDÓ LOGIKA (v1.9-ből) ---
-        const inputHomeNorm = normalizeTeamName(homeTeamName);
-        const inputAwayNorm = normalizeTeamName(awayTeamName);
+        // --- AZ INTELLIGENS NÉVFELOLDÓ LOGIKA (JAVÍTVA v2.1) ---
+        
+        // === JAVÍTÁS (v2.1): Névfeloldás az NHL Térkép alapján ===
+        // Először a config.ts térképét használjuk a teljes név megszerzéséhez.
+        const resolvedHomeName = NHL_TEAM_NAME_MAP[homeTeamName.toLowerCase()] || homeTeamName;
+        const resolvedAwayName = NHL_TEAM_NAME_MAP[awayTeamName.toLowerCase()] || awayTeamName;
+        // =====================================================
+
+        // A fuzzy match már a teljes neveket fogja használni
+        const inputHomeNorm = normalizeTeamName(resolvedHomeName);
+        const inputAwayNorm = normalizeTeamName(resolvedAwayName);
 
         let bestMatch = { event: null as any, bestScore: 0, isReversed: false };
         const similarityThreshold = 0.55; 
@@ -219,7 +229,7 @@ export async function fetchMatchData(options: {
             const matchedEvent = bestMatch.event;
             const matchId = matchedEvent.id;
             
-            console.log(`[IceHockeyApiProvider v2.0] SIKERES NÉVFELOLDÁS (Score: ${bestMatch.bestScore.toFixed(2)})`);
+            console.log(`[IceHockeyApiProvider v2.1] SIKERES NÉVFELOLDÁS (Score: ${bestMatch.bestScore.toFixed(2)})`);
             
             if (bestMatch.isReversed) {
                  console.warn(`  -> Figyelem: A bemeneti csapatok valószínűleg felcserélve! (A rendszer kezeli)`);
@@ -252,7 +262,7 @@ export async function fetchMatchData(options: {
             return {
                 rawStats: successfulRawData.stats,
                 leagueAverages: {},
-                richContext: `Sikeres adatgyűjtés (v2.0) ${matchId} ID-val.`,
+                richContext: `Sikeres adatgyűjtés (v2.1) ${matchId} ID-val.`,
                 advancedData: { home: { xg: null }, away: { xg: null } },
                 form: successfulRawData.form,
                 rawData: successfulRawData,
@@ -263,8 +273,8 @@ export async function fetchMatchData(options: {
             };
 
         } else {
-            console.error(`[IceHockeyApiProvider v2.0] KRITIKUS HIBA: A névfeloldás sikertelen. Egyik meccs sem érte el a ${similarityThreshold} küszöböt.`);
-            console.error(`  -> Keresett nevek: '${inputHomeNorm}' vs '${inputAwayNorm}'`);
+            console.error(`[IceHockeyApiProvider v2.1] KRITIKUS HIBA: A névfeloldás sikertelen. Egyik meccs sem érte el a ${similarityThreshold} küszöböt.`);
+            console.error(`  -> Keresett nevek (feloldás után): '${inputHomeNorm}' vs '${inputAwayNorm}'`);
             return generateEmptyStubContext(homeTeamName, awayTeamName);
         }
 
