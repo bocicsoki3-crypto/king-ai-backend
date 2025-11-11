@@ -31,7 +31,7 @@ async function makeIceHockeyRequest(endpoint: string, params: any = {}) {
         throw new Error(`Kritikus konfigurációs hiba: Hiányzó ICEHOCKEYAPI_HOST vagy ICEHOCKEYAPI_KEY.`);
     }
     
-    const url = `https:///${ICEHOCKEYAPI_HOST}/${endpoint}`;
+    const url = `https://${ICEHOCKEYAPI_HOST}/${endpoint}`;
     const fullConfig = {
         params: params,
         headers: {
