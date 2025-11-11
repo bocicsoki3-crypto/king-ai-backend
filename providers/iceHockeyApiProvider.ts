@@ -31,7 +31,7 @@ async function makeIceHockeyRequest(endpoint: string, params: any = {}) {
         throw new Error(`Kritikus konfigurációs hiba: Hiányzó ICEHOCKEYAPI_HOST vagy ICEHOCKEYAPI_KEY.`);
     }
     
-    const url = `https://${ICEHOCKEYAPI_HOST}/${endpoint}`;
+    const url = `https:///${ICEHOCKEYAPI_HOST}/${endpoint}`;
     const fullConfig = {
         params: params,
         headers: {
@@ -82,7 +82,7 @@ async function findMatchByNames(
         console.log(`[IceHockeyApiProvider v1.5] Meccslista lekérése (Dátum: ${year}-${month}-${day})...`);
         try {
             // === JAVÍTOTT VÉGPONT (a képernyőfotó alapján) ===
-            const response = await makeIceHockeyRequest(`api/ice-hockey/matches/${day}/${month}/${year}`);
+            const response = await makeIceHockeyRequest(`api/ice-hockey/matchschedules/${day}/${month}/${year}`);
             // ===============================================
             
             // A válasz struktúrája a képernyőfotó alapján {"events": [...]},
@@ -105,8 +105,8 @@ async function findMatchByNames(
 
     // Keressük a meccset a listában a nevek alapján (v1.4 logika változatlan)
     const foundMatch = dailyEvents.find((e: any) => {
-        const apiHomeName = (e.homeTeam?.name || '').toLowerCase().trim();
-        const apiAwayName = (e.awayTeam?.name || '').toLowerCase().trim();
+        const apiHomeName = (e.home_team?.name || e.home_team || '').toLowerCase().trim();
+        const apiAwayName = (e.away_team?.name || e.away_team || '').toLowerCase().trim();
         return (apiHomeName.includes(searchHome) && apiAwayName.includes(searchAway));
     });
 
@@ -206,13 +206,13 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         // 2. LÉPÉS: SZEKVENCIÁLIS adatlekérés (Rate Limit Fix)
         console.log(`[IceHockeyApiProvider v1.5] Kontextus adatok SZEKVENCIÁLIS lekérése... (MatchID: ${matchId})`);
         
-        const h2hData = await makeIceHockeyRequest(`api/ice-hockey/MatchH2HDuel?matchId=${matchId}`);
+        const h2hData = await makeIceHockeyRequest(`api/ice-hockey/match/${matchId}/h2h`);
         console.log(`[IceHockeyApiProvider v1.5] H2H lekérve.`);
         
-        const lineupsData = await makeIceHockeyRequest(`api/ice-hockey/MatchLineups?matchId=${matchId}`);
+        const lineupsData = await makeIceHockeyRequest(`api/ice-hockey/match/${matchId}/lineups`);
         console.log(`[IceHockeyApiProvider v1.5] Lineups lekérve.`);
         
-        const statsData = await makeIceHockeyRequest(`api/ice-hockey/MatchStatistics?matchId=${matchId}`);
+        const statsData = await makeIceHockeyRequest(`api/ice-hockey/match/${matchId}/statistics`);
         console.log(`[IceHockeyApiProvider v1.5] Stats lekérve.`);
 
         // 3. LÉPÉS: Adatok átalakítása (Parserek)
