@@ -1,8 +1,10 @@
 // FÁJL: providers/apiBasketballProvider.ts
-// VERZIÓ: v1.0 (Élesítés)
-// CÉL: Ez a VALÓDI adatgyűjtő a kosárlabdához.
-// Az 'api-sports' ('api-basketball.p.rapidapi.com') API-t használja.
-// A 'newHockeyProvider.ts' mintájára készült, mivel az is 'api-sports' alapú.
+// VERZIÓ: v1.1 (TS Hiba Javítva)
+// MÓDOSÍTÁS:
+// 1. JAVÍTVA (TS2304): Hozzáadva a hiányzó 'getWeatherForFixture' segédfüggvény.
+// 2. JAVÍTVA (TS2353): A 'fetchMatchData' és 'generateEmptyStubContext'
+//    visszatérési típusa a helyes 'IDataFetchResponse'-ra javítva.
+// 3. JAVÍTÁS: .js kiterjesztések hozzáadva az importokhoz (Node.js/TypeScript-hez).
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -17,6 +19,10 @@ import type {
     IStructuredWeather,
     IPlayerStub
 } from '../src/types/canonical.d.ts';
+// Az IDataFetchResponse-t a DataFetch.ts-ből kellene importálni, de a körkörös hivatkozás
+// elkerülése végett itt helyben definiáljuk, mit várunk.
+import type { IDataFetchResponse } from '../DataFetch.js'; 
+
 import {
     SPORT_CONFIG,
     // Kosaras név-mappa (ha szükség lenne rá a jövőben)
@@ -25,8 +31,28 @@ import {
 // Importáljuk a megosztott segédfüggvényeket
 import {
     makeRequest,
-    getStructuredWeatherData
+    getStructuredWeatherData // Ezt valójában nem használjuk, de a getWeatherForFixture lecserélte
 } from './common/utils.js';
+
+// === JAVÍTÁS 1 (TS2304): Hiányzó getWeatherForFixture függvény hozzáadása ===
+/**
+ * Időjárás-lekérő segédfüggvény (beltéri sportágra szabva)
+ */
+async function getWeatherForFixture(
+    venue: { name: string, city: string } | null, 
+    utcKickoff: string
+): Promise<IStructuredWeather> {
+    // Kosárlabda beltéri, így nincs szükség valós időjárás API hívásra.
+    return { 
+        description: "N/A (Beltéri)", 
+        temperature_celsius: null,
+        humidity_percent: null, 
+        wind_speed_kmh: null,
+        precipitation_mm: null,
+        source: 'N/A'
+    };
+}
+// === JAVÍTÁS 1 VÉGE ===
 
 // --- API-SPORTS (KOSÁR) SPECIFIKUS CACHE-EK ---
 const apiSportsOddsCache = new NodeCache({ stdTTL: 60 * 10, checkperiod: 60 * 2, useClones: false });
@@ -42,16 +68,12 @@ const apiSportsNameMappingCache = new NodeCache({ stdTTL: 3600 * 24 * 30, checkp
 
 
 // --- API-SPORTS KÖZPONTI HÍVÓ FÜGGVÉNY ---
-// Ez a függvény a 'common/utils.js'-ből importált 'makeRequest'-re támaszkodik,
-// de a kosár-specifikus API kulcsot és hostot használja (amit a config.ts-ből kap)
 async function makeBasketballRequest(endpoint: string, config: AxiosRequestConfig = {}, sportConfig: any) {
     const sport = 'basketball';
     if (!sportConfig || !sportConfig.host || !sportConfig.keys || sportConfig.keys.length === 0) {
         throw new Error(`Kritikus konfigurációs hiba: Hiányzó API HOST vagy KEYS a 'basketball' sporthoz a config.js API_HOSTS térképében.`);
     }
-
-    // Kulcsrotáció (feltételezve, hogy a 'common/utils.js' makeRequest nem kezeli)
-    // Egyszerűsített hívás az első kulccsal:
+    
     const currentKey = sportConfig.keys[0]; 
 
     try {
@@ -64,7 +86,6 @@ async function makeBasketballRequest(endpoint: string, config: AxiosRequestConfi
                 ...config.headers
             }
         };
-        // A központi 'makeRequest' hívása a 'common/utils.ts'-ből
         const response = await makeRequest(url, fullConfig, 0); 
         return response;
     } catch (error: any) {
@@ -77,7 +98,7 @@ async function makeBasketballRequest(endpoint: string, config: AxiosRequestConfi
     }
 }
 
-// --- Liga, Csapat, Fixture Keresők (A Hoki provider mintájára) ---
+// --- Liga, Csapat, Fixture Keresők ---
 
 export async function _getLeagueRoster(leagueId: number | string, season: number, sport: string, apiConfig: any): Promise<{ roster: any[], foundSeason: number }> {
     const tryGetRosterForSeason = async (currentSeason: number) => {
@@ -174,11 +195,6 @@ export async function getApiSportsLeagueId(
     apiConfig: any
 ): Promise<{ leagueId: number | null, foundSeason: number }> {
     
-    // A kosár API-ban a 'league' végpont másképp működik,
-    // gyakran a 'country' helyett a 'search' a megbízhatóbb.
-    // NBA (USA) = 12, Euroleague (World) = 1
-    
-    // Gyorsítótár
     const leagueCacheKey = `apisports_league_id_v2_${sport}_${leagueName.toLowerCase().replace(/\s/g, '')}_${countryName}_${season}`;
     const cachedLeagueData = apiSportsLeagueIdCache.get<{ leagueId: number, foundSeason: number }>(leagueCacheKey);
     if (cachedLeagueData) {
@@ -283,7 +299,6 @@ async function getApiSportsTeamSeasonStats(teamId: number, leagueId: number, sea
                 // A 'gf' és 'ga' itt a pontátlagot jelenti
                 gf: stats.points?.for, // Átlag lőtt pont
                 ga: stats.points?.against, // Átlag kapott pont
-                // TODO: Esetleg 'advancedData'-ba áthelyezni
                 offensive_rating: null,
                 defensive_rating: null,
                 pace: null
@@ -362,7 +377,9 @@ async function getApiSportsOdds(fixtureId: number | string, sport: string, apiCo
 }
 
 // --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData ---
-export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
+// === JAVÍTÁS 2 (TS2353): Visszatérési típus javítása IDataFetchResponse-ra ===
+export async function fetchMatchData(options: any): Promise<IDataFetchResponse> {
+// === JAVÍTÁS 2 VÉGE ===
     
     const { 
         sport, 
@@ -377,7 +394,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
     const seasonDate = new Date(utcKickoff);
     const originSeason = (seasonDate.getMonth() < 7) ? seasonDate.getFullYear() - 1 : seasonDate.getFullYear();
     
-    console.log(`Adatgyűjtés indul (v1.0 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
+    console.log(`Adatgyűjtés indul (v1.1 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
     
     // 1. LÉPÉS: Liga ID
     const { leagueId, foundSeason } = await getApiSportsLeagueId(leagueName, countryContext, originSeason, sport, apiConfig);
@@ -424,7 +441,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         // TODO: H2H implementálása kosárhoz (/games/h2h)
         getApiSportsTeamSeasonStats(homeTeamId, leagueId, foundSeason, sport, apiConfig),
         getApiSportsTeamSeasonStats(awayTeamId, leagueId, foundSeason, sport, apiConfig),
-        getWeatherForFixture(venueData, utcKickoff) // Beltéri, de a város infó hasznos lehet
+        getWeatherForFixture(venueData, utcKickoff) // Ez a hívás most már működik
     ]);
     
     // --- VÉGLEGES ADAT EGYESÍTÉS ---
@@ -469,7 +486,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         form: apiSportsAwaySeasonStats?.form || null
     };
     
-    const richContext = `Kosárlabda elemzés (v1.0). Statisztikák ${foundSeason} szezonból.`;
+    const richContext = `Kosárlabda elemzés (v1.1). Statisztikák ${foundSeason} szezonból.`;
     
     // Itt adjuk át a valós, számított statisztikákat
     const advancedData = { 
@@ -487,6 +504,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         } 
     };
         
+    // === JAVÍTÁS 2 (TS2353): Az 'xgSource'-t a külső objektumhoz adjuk ===
     const result: ICanonicalRichContext = {
          rawStats: finalData.stats,
          leagueAverages: {}, // A Model.ts kezeli a defaultokat
@@ -497,20 +515,30 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
          oddsData: fetchedOddsData,
          fromCache: false,
          availableRosters: finalData.availableRosters
+         // Az 'xgSource' mező eltávolítva innen
     };
     
-    return result;
+    // Az IDataFetchResponse interfésznek megfelelően
+    // az 'xgSource'-t a legkülső objektumhoz adjuk hozzá.
+    return {
+        ...result,
+        xgSource: "API (Real)" // (vagy a P1 logika által meghatározott)
+    };
+    // === JAVÍTÁS 2 VÉGE ===
 }
 
 // Meta-adat a logoláshoz
 export const providerName = 'api-basketball-v1';
 
 // "Stub" Válasz Generátor (Hibakezeléshez)
-function generateEmptyStubContext(options: any): ICanonicalRichContext {
-    const { homeTeamName, awayTeamName } = options;
+// === JAVÍTÁS 2 (TS2353): Visszatérési típus javítása IDataFetchResponse-ra ===
+function generateEmptyStubContext(options: any): IDataFetchResponse {
+// === JAVÍTÁS 2 VÉGE ===
+    const { homeTeamName, awayTeamName, sport } = options;
     console.warn(`[apiBasketballProvider/generateEmptyStubContext] Visszaadok egy üres adatszerkezetet (${homeTeamName} vs ${awayTeamName}). Az elemzés P1 adatokra fog támaszkodni.`);
 
-    const emptyStats: ICanonicalStats = { gp: 1, gf: 110, ga: 110, form: null };
+    const defaultPoints = SPORT_CONFIG[sport]?.avg_goals || 110;
+    const emptyStats: ICanonicalStats = { gp: 1, gf: defaultPoints, ga: defaultPoints, form: null };
     const emptyWeather: IStructuredWeather = { description: "N/A (API Hiba)", temperature_celsius: null, wind_speed_kmh: null, precipitation_mm: null, source: 'N/A' };
     
     const emptyRawData: ICanonicalRawData = {
@@ -525,18 +553,37 @@ function generateEmptyStubContext(options: any): ICanonicalRichContext {
         availableRosters: { home: [], away: [] }
     };
     
+    // === JAVÍTÁS 2 (TS2353): Az 'xgSource'-t a külső objektumhoz adjuk ===
     const result: ICanonicalRichContext = {
          rawStats: emptyRawData.stats,
          leagueAverages: {},
          richContext: "Figyelem: Az automatikus P4 API adatgyűjtés (kosárlabda) sikertelen. Az elemzés kizárólag a manuálisan megadott P1 adatokra támaszkodik.",
-         advancedData: { home: { xg: null }, away: { xg: null } },
+         advancedData: { 
+            home: { xg: null, offensive_rating: defaultPoints, defensive_rating: defaultPoints }, 
+            away: { xg: null, offensive_rating: defaultPoints, defensive_rating: defaultPoints },
+            // Átadjuk a P1 adatokat, ha léteznek (bár kosárnál nem valószínű)
+             manual_H_xG: options.manual_H_xG,
+             manual_H_xGA: options.manual_H_xGA,
+             manual_A_xG: options.manual_A_xG,
+             manual_A_xGA: options.manual_A_xGA
+         },
          form: emptyRawData.form,
          rawData: emptyRawData,
          oddsData: null,
          fromCache: false,
-         availableRosters: { home: [], away: [] },
-         xgSource: "N/A (API Hiba)"
+         availableRosters: { home: [], away: [] }
+         // Az 'xgSource' mező eltávolítva innen
     };
     
-    return result;
+    let xgSource = "N/A (API Hiba)";
+    if (options.manual_H_xG != null) { // Csak P1 ellenőrzés
+        xgSource = "Manual (Components)";
+    }
+    
+    // Az 'IDataFetchResponse' viszont igen
+    return {
+        ...result,
+        xgSource: xgSource
+    };
+    // === JAVÍTÁS 2 VÉGE ===
 }
