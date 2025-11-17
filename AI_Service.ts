@@ -1,15 +1,9 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v105.0 ("Intelligens Bizalom Refaktor")
-// MÓDOSÍTÁS (v105.0):
-// 1. REFaktor: A 'runStep_FinalAnalysis' és az összes AI-hívás (pl. 'getMasterRecommendation')
-//    átalakítva, hogy a 'modelConfidence: number' helyett a
-//    'confidenceScores: { winner: number, totals: number, overall: number }'
-//    objektumot fogadja és dolgozza fel.
-// 2. MÓDOSÍTVA: Az összes AI Prompt (EXPERT_CONFIDENCE_PROMPT, MASTER_AI_PROMPT_TEMPLATE_V103, stb.)
-//    frissítve, hogy a 'modelConfidence' helyett a szétválasztott
-//    '{confidenceWinner}' és '{confidenceTotals}' változókat használja.
-// 3. JAVÍTÁS: Az AI-ágensek most már piac-specifikus (Győztes vs. Pontok)
-//    statisztikai bizalmat látnak, ami pontosabb narratív elemzést tesz lehetővé.
+// VERZIÓ: v105.1 ("Intelligens Bizalom Refaktor" - TS2339 Javítás)
+// MÓDOSÍTÁS (v105.1):
+// 1. JAVÍTÁS: A 'CARD_ANALYSIS_PROMPT'-ból eltávolítva a ', Derby: {is_derby}'
+//    szövegrész, hogy megfeleljen a 'SoccerStrategy.ts' (v105.1)
+//    által küldött 'cardsData' objektumnak. Ez javítja a TS2339 hibát.
 
 import { 
     _callGemini, 
@@ -40,10 +34,10 @@ export async function getAndParse(
             const value = result[keyToExtract];
             return value || "N/A (AI nem adott értéket)";
         }
-        console.error(`[AI_Service v105.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
+        console.error(`[AI_Service v105.1] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
         return `AI Hiba: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot.`;
     } catch (e: any) {
-        console.error(`[AI_Service v105.0] Végleges AI Hiba (${stepName}): ${e.message}`);
+        console.error(`[AI_Service v105.1] Végleges AI Hiba (${stepName}): ${e.message}`);
         return `AI Hiba (${keyToExtract}): ${e.message}`;
     }
 }
@@ -242,8 +236,9 @@ DATA: Calculated mu_corners: {mu_corners}. Consider team styles (wing play?): H:
 Conclude with confidence level towards Over or Under a likely line (e.g., 9.5 or 10.5).
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"corner_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
+// === JAVÍTVA (v105.1) ===
 export const CARD_ANALYSIS_PROMPT = `You are a Soccer Cards specialist. Analyze total cards vs an estimated line around {likelyLine} based on mu={mu_cards}.
-DATA: Calculated mu_cards: {mu_cards}. Consider context: Referee style: "{referee_style}", Match tension: "{tension}", Derby: {is_derby}.
+DATA: Calculated mu_cards: {mu_cards}. Consider context: Referee style: "{referee_style}", Match tension: "{tension}".
 Conclude with confidence level towards Over or Under a likely line (e.g., 4.5 or 5.5).
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"card_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
@@ -337,14 +332,14 @@ export async function runStep_TeamNameResolver(data: TeamNameResolverInput): Pro
         if (result && result.matched_id) {
             const foundId = Number(result.matched_id);
             const matchedTeam = data.rosterJson.find(t => t.id === foundId);
-            console.log(`[AI_Service v105.0 - Térképész] SIKER: Az AI a "${data.searchTerm}" nevet ehhez a csapathoz rendelte: "${matchedTeam?.name || 'N/A'}" (ID: ${foundId})`);
+            console.log(`[AI_Service v105.1 - Térképész] SIKER: Az AI a "${data.searchTerm}" nevet ehhez a csapathoz rendelte: "${matchedTeam?.name || 'N/A'}" (ID: ${foundId})`);
             return foundId;
         } else {
-            console.error(`[AI_Service v105.0 - Térképész] HIBA: Az AI nem talált egyezést (matched_id: null) a "${data.searchTerm}" névre.`);
+            console.error(`[AI_Service v105.1 - Térképész] HIBA: Az AI nem talált egyezést (matched_id: null) a "${data.searchTerm}" névre.`);
             return null;
         }
     } catch (e: any) {
-        console.error(`[AI_Service v105.0 - Térképész] KRITIKUS HIBA a Gemini hívás vagy JSON parse során: ${e.message}`);
+        console.error(`[AI_Service v105.1 - Térképész] KRITIKUS HIBA a Gemini hívás vagy JSON parse során: ${e.message}`);
         return null;
     }
 }
@@ -360,7 +355,7 @@ export async function runStep_Psychologist(data: PsychologistInput): Promise<any
         const filledPrompt = fillPromptTemplate(PROMPT_PSYCHOLOGIST_V93, data);
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Psychologist (v93)");
     } catch (e: any) {
-        console.error(`[AI_Service v105.0] AI Hiba (Psychologist): ${e.message}`);
+        console.error(`[AI_Service v105.1] AI Hiba (Psychologist): ${e.message}`);
         return {
             "psy_profile_home": "AI Hiba: A 2.5-ös Ügynök (Pszichológus) nem tudott lefutni.",
             "psy_profile_away": "AI Hiba: A 2.5-ös Ügynök (Pszichológus) nem tudott lefutni."
@@ -385,7 +380,7 @@ export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
         const filledPrompt = fillPromptTemplate(PROMPT_SPECIALIST_V94, data);
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Specialist (v94)");
     } catch (e: any) {
-        console.error(`[AI_Service v105.0] AI Hiba (Specialist): ${e.message}`);
+        console.error(`[AI_Service v105.1] AI Hiba (Specialist): ${e.message}`);
         return {
             "modified_mu_h": data.pure_mu_h,
             "modified_mu_a": data.pure_mu_a,
@@ -566,13 +561,13 @@ async function getMasterRecommendation(
             if (match && match[1]) {
                 expertConfScore = parseFloat(match[1]);
                 expertConfScore = Math.max(1.0, Math.min(10.0, expertConfScore));
-                console.log(`[AI_Service v105.0 - Főnök] Expert bizalom sikeresen kinyerve: ${expertConfScore}`);
+                console.log(`[AI_Service v105.1 - Főnök] Expert bizalom sikeresen kinyerve: ${expertConfScore}`);
             } else {
-                console.warn(`[AI_Service v105.0 - Főnök] Nem sikerült kinyerni az expert bizalmat: "${expertConfidence}". Alapértelmezett: 1.0`);
+                console.warn(`[AI_Service v105.1 - Főnök] Nem sikerült kinyerni az expert bizalmat: "${expertConfidence}". Alapértelmezett: 1.0`);
                 expertConfScore = 1.0;
             }
         } catch(e: any) { 
-            console.warn("[AI_Service v105.0 - Főnök] Hiba az expert bizalom kinyerésekor:", e);
+            console.warn("[AI_Service v105.1 - Főnök] Hiba az expert bizalom kinyerésekor:", e);
             expertConfScore = 1.0;
         }
 
@@ -605,12 +600,12 @@ async function getMasterRecommendation(
         let rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation");
 
         if (!rec || !rec.recommended_bet || typeof rec.final_confidence !== 'number') {
-            console.error("[AI_Service v105.0 - Főnök] Master AI hiba: Érvénytelen JSON struktúra a válaszban:", rec);
+            console.error("[AI_Service v105.1 - Főnök] Master AI hiba: Érvénytelen JSON struktúra a válaszban:", rec);
             throw new Error("AI hiba: Érvénytelen JSON struktúra a MasterRecommendation-ben.");
         }
         
         // --- 2. LÉPÉS: KÓD (A "Főnök") átveszi az irányítást ---
-        console.log(`[AI_Service v105.0 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
+        console.log(`[AI_Service v105.1 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
 
         // 1. Eltérés-alapú büntetés (Modell vs Expert)
         // v105.0: Most az 'overall' statisztikai bizalmat hasonlítjuk össze az expert bizalommal.
@@ -652,7 +647,7 @@ async function getMasterRecommendation(
                 }
             }
         } catch(calError: any) { 
-            console.warn(`[AI_Service v105.0 - Főnök] Bizalmi kalibráció hiba: ${calError.message}`); 
+            console.warn(`[AI_Service v105.1 - Főnök] Bizalmi kalibráció hiba: ${calError.message}`); 
         }
 
         // Megjegyzések hozzáadása az indokláshoz
@@ -661,12 +656,12 @@ async function getMasterRecommendation(
             rec.brief_reasoning = rec.brief_reasoning.substring(0, 497) + "...";
         }
 
-        console.log(`[AI_Service v105.0 - Főnök] VÉGLEGES KORRIGÁLT Tipp: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
+        console.log(`[AI_Service v105.1 - Főnök] VÉGLEGES KORRIGÁLT Tipp: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
         
         return rec;
 
     } catch (e: any) {
-        console.error(`[AI_Service v105.0 - Főnök] Végleges hiba a Mester Ajánlás generálása során: ${e.message}`, e.stack);
+        console.error(`[AI_Service v105.1 - Főnök] Végleges hiba a Mester Ajánlás generálása során: ${e.message}`, e.stack);
         throw new Error(`AI Hiba (Főnök): ${e.message.substring(0, 100)}`);
     }
 }
@@ -777,7 +772,7 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
             try {
                 propheticTimeline = await getPropheticTimeline(rawDataJson, home, away, sport, tacticalBriefing);
             } catch (e: any) { 
-                console.error(`[AI_Service v105.0] Hiba elkapva a 'getPropheticTimeline' hívásakor: ${e.message}`);
+                console.error(`[AI_Service v105.1] Hiba elkapva a 'getPropheticTimeline' hívásakor: ${e.message}`);
                 propheticTimeline = `AI Hiba (Prophetic): ${e.message}`; 
             }
         } else {
@@ -809,7 +804,7 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
         );
 
     } catch (e: any) {
-        console.error(`[AI_Service v105.0] KRITIKUS HIBA a runStep_FinalAnalysis során: ${e.message}`);
+        console.error(`[AI_Service v105.1] KRITIKUS HIBA a runStep_FinalAnalysis során: ${e.message}`);
         masterRecommendation.brief_reasoning = `KRITIKUS HIBA: ${e.message}. A többi elemzés (ha van) még érvényes lehet.`;
     }
     
@@ -861,12 +856,12 @@ If the answer isn't in the context or history, politely state that the informati
         const rawAnswer = await _callGemini(prompt, false); // forceJson = false
         return rawAnswer ? { answer: rawAnswer } : { error: "Az AI nem tudott válaszolni." };
     } catch (e: any) {
-        console.error(`[AI_Service v105.0] Chat hiba: ${e.message}`, e.stack);
+        console.error(`[AI_Service v105.1] Chat hiba: ${e.message}`, e.stack);
         return { error: `Chat AI Hiba: ${e.message}` };
     }
 }
 
-// --- FŐ EXPORT (v105.0) ---
+// --- FŐ EXPORT (v105.1) ---
 export default {
     runStep_TeamNameResolver,
     runStep_Psychologist,
