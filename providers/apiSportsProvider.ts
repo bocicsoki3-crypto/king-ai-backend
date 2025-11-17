@@ -1,13 +1,12 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v95.2 ("Okos" Alias Javítás)
-// MÓDOSÍTÁS:
-// 1. JAVÍTVA (KRITIKUS): A `_cleanLeagueName` (kb. 300. sor) logikája
-//    MEGFORDÍTVA.
-// 2. LOGIKA: Először a SPECIFIKUS alias-szabályok futnak le (pl. "Segunda División" -> "laliga2").
-// 3. LOGIKA: Az általános "buta" tisztítás (pl. "division" szó törlése)
-//    CSAK AKKOR fut le, ha a specifikus szabályok nem találtak egyezést.
-// 4. CÉL: Ez a javítás véglegesen megoldja a "Segunda División" / "laliga2"
-//    azonosítási hibát, ami a log naplóban látható volt.
+// VERZIÓ: v95.3 (TS2322 Típusjavítás)
+// MÓDOSÍTÁS (v104.3):
+// 1. JAVÍTVA (TS2322): A 'fetchMatchData' visszatérési típusa
+//    'Promise<ICanonicalRichContext>'-ről 'Promise<IDataFetchResponse>'-ra módosítva.
+// 2. JAVÍTVA (TS2322): A 'fetchMatchData' a 'return' utasításnál
+//    hozzáadja a kötelező 'xgSource' mezőt, hogy megfeleljen az
+//    IDataFetchResponse interfésznek.
+// 3. JAVÍTÁS: .js kiterjesztések hozzáadva az importokhoz (Node.js/TypeScript-hez).
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -23,6 +22,10 @@ import type {
     IStructuredWeather,
     IPlayerStub
 } from '../src/types/canonical.d.ts';
+// === JAVÍTÁS (v104.3): A helyes interfész importálása ===
+import type { IDataFetchResponse } from '../DataFetch.js';
+// === JAVÍTÁS VÉGE ===
+
 import {
     SPORT_CONFIG,
     APIFOOTBALL_TEAM_NAME_MAP,
@@ -49,7 +52,6 @@ const apiSportsCountryLeagueCache = new NodeCache({ stdTTL: 3600 * 24, checkperi
 const apiSportsLineupCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 3600 });
 const apiSportsRefereeCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
 
-// (v77.2) Hiányzó típusdefiníció
 type LineupDataPayload = {
     playerStats: ICanonicalPlayerStats;
     coachData: {
@@ -141,11 +143,18 @@ export async function _getLeagueRoster(leagueId: number | string, season: number
 }
 
 // === EXPORTÁLVA (Változatlan v95.1) ===
-export async function getApiSportsTeamId(teamName: string, sport: string, leagueId: number | string, season: number): Promise<number | null> {
+// === JAVÍTVA (v104.3): 5. argumentum ('leagueRosterData') eltávolítva ===
+export async function getApiSportsTeamId(
+    teamName: string, 
+    sport: string, 
+    leagueId: number | string, 
+    season: number
+): Promise<number | null> {
     const lowerName = teamName.toLowerCase().trim();
     const mappedName = APIFOOTBALL_TEAM_NAME_MAP[lowerName] || teamName;
     const searchName = mappedName.toLowerCase();
     const nameCacheKey = `apisports_name_map_v6_strict_${sport}_${leagueId}_${season}_${searchName.replace(/\s/g, '')}`;
+    
     const cachedMappedId = apiSportsNameMappingCache.get<number | 'not_found'>(nameCacheKey);
     if (cachedMappedId !== undefined) {
         if (cachedMappedId === 'not_found') return null;
@@ -158,7 +167,10 @@ export async function getApiSportsTeamId(teamName: string, sport: string, league
          console.log(`API-SPORTS Név Keresés (${sport}): "${teamName}" (Nincs térkép bejegyzés, közvetlen keresés)`);
     }
     
+    // === JAVÍTÁS (v104.3): A keretet itt kérjük le, helyben ===
     const leagueRoster = await _getLeagueRoster(leagueId, season, sport);
+    // === JAVÍTÁS VÉGE ===
+    
     if (leagueRoster.length === 0) {
         console.warn(`API-SPORTS (${sport}): A liga (${leagueId}) csapatai nem érhetők el a(z) ${season} szezonban. Névfeloldás sikertelen.`);
         apiSportsNameMappingCache.set(nameCacheKey, 'not_found');
@@ -822,8 +834,9 @@ null;
 }
 
 
-// --- FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (Változatlan v95.1) ---
-export async function fetchMatchData(options: any): Promise<ICanonicalRichContext> {
+// === FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (JAVÍTVA v104.3) ===
+// A visszatérési típus 'Promise<IDataFetchResponse>'-ra módosítva
+export async function fetchMatchData(options: any): Promise<IDataFetchResponse> {
     
     // (v94.2) A DataFetch.ts (v93.0) által feloldott ID-k kinyerése
     const { 
@@ -839,7 +852,7 @@ export async function fetchMatchData(options: any): Promise<ICanonicalRichContex
         foundSeason 
     } = options;
     
-    console.log(`Adatgyűjtés indul (v95.1 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
+    console.log(`Adatgyűjtés indul (v95.3 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
     
     console.log(`[apiSportsProvider] Feloldott ID-k fogadva: H:${homeTeamId}, A:${awayTeamId}, L:${leagueId}, S:${foundSeason}`);
 
@@ -938,7 +951,7 @@ null
         availableRosters: {
             home: lineupData?.rosters?.home ||
 [],
-            away: lineupData?.rosters?.home ||
+            away: lineupData?.rosters?.away || // JAVÍTVA (v104.3): home-ról away-re
 []
         }
     };
@@ -990,7 +1003,7 @@ null
             home: lineupData?.rosters?.home ||
 [],
             away: lineupData?.rosters?.away ||
-[]
+[] // JAVÍTVA (v104.3): home-ról away-re
         }
     };
     
@@ -1000,7 +1013,14 @@ null
         result.rawStats.away.gp = 1;
     }
     
-    return result;
+    // === JAVÍTÁS (v104.3): xgSource hozzáadása a visszatérési értékhez ===
+    const xgSource = realXgData ? `API (Real - ${providerName})` : `N/A (${providerName})`;
+
+    return {
+        ...result,
+        xgSource: xgSource
+    };
+    // === JAVÍTÁS VÉGE ===
 }
 
 // Meta-adat a logoláshoz
