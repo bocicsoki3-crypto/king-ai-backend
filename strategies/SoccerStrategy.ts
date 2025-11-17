@@ -1,10 +1,9 @@
 // FÁJL: strategies/SoccerStrategy.ts
-// VERZIÓ: v105.0 ("Intelligens Bizalom Refaktor")
-// MÓDOSÍTÁS (v105.0):
-// 1. MÓDOSÍTVA: A 'runMicroModels' most már fogadja a 'confidenceScores'
-//    objektumot az 'options'-ben.
-// 2. MÓDOSÍTVA: A 'confidenceWinner' és 'confidenceTotals' pontszámok
-//    továbbadva az összes foci-specifikus AI mikromodell-hívásnak.
+// VERZIÓ: v105.1 ("Intelligens Bizalom Refaktor" - TS2339 Javítás)
+// MÓDOSÍTÁS (v105.1):
+// 1. JAVÍTÁS: Eltávolítva a 'is_derby' tulajdonság a 'cardsData' objektumból
+//    (a régi 141. soron), mivel az nem létezik a 'canonical.d.ts'
+//    típusdefiníciójában, ami a TS2339 hibát okozta.
 
 import type { 
     ISportStrategy, 
@@ -88,7 +87,7 @@ export class SoccerStrategy implements ISportStrategy {
 
     /**
      * 5-6. Ügynök (Hybrid Boss) feladata: Foci-specifikus AI mikromodellek futtatása.
-     * MÓDOSÍTVA (v105.0): Most már fogadja és továbbadja a 'confidenceScores'-t.
+     * MÓDOSÍTVA (v105.1): 'cardsData' javítva.
      */
     public async runMicroModels(options: MicroModelOptions): Promise<{ [key: string]: string; }> {
         console.log("[SoccerStrategy] runMicroModels: Valódi foci AI modellek futtatása...");
@@ -138,7 +137,7 @@ export class SoccerStrategy implements ISportStrategy {
             mu_cards: safeSim.mu_cards_sim,
             referee_style: safeRawData.referee?.style || "N/A",
             tension: safeRawData.contextual_factors?.match_tension_index || "N/A",
-            is_derby: safeRawData.contextual_factors?.is_derby || false
+            // === JAVÍTVA (v105.1): 'is_derby' sor eltávolítva a TS2339 hiba miatt ===
         };
 
         // Modellek párhuzamos futtatása
