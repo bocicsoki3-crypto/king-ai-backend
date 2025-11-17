@@ -1,7 +1,9 @@
 // FÁJL: strategies/ISportStrategy.ts
-// CÉL: Ez az interfész ("szerződés") definiálja, hogy minden egyes sportág-specifikus
-// logikának milyen funkciókat KELL implementálnia.
-// Ez teszi lehetővé, hogy a Model.ts és az AI_Service.ts sportág-független legyen.
+// VERZIÓ: v105.0 ("Intelligens Bizalom Refaktor")
+// MÓDOSÍTÁS (v105.0):
+// 1. HOZZÁADVA: A 'MicroModelOptions' interfész bővítve a
+//    'confidenceScores' objektummal. Ez javítja a TS2353 hibát,
+//    amit az AI_Service.ts (v105.0) hívása okozott.
 
 import type {
     ICanonicalStats,
@@ -29,6 +31,13 @@ export interface MicroModelOptions {
     sim: any;
     rawDataJson: ICanonicalRawData;
     mainTotalsLine: number;
+    // === HOZZÁADVA (v105.0) ===
+    confidenceScores: { 
+        winner: number; 
+        totals: number; 
+        overall: number 
+    };
+    // ==========================
 }
 
 /**
