@@ -209,6 +209,15 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
     const allMarkets: ICanonicalOdds['allMarkets'] = [];
     const current: ICanonicalOdds['current'] = [];
     
+    // Átalakító segédfüggvény (Amerikai -> Decimális)
+    const americanToDecimal = (americanOdds: number): number => {
+        if (americanOdds > 0) {
+            return (americanOdds / 100) + 1;
+        } else {
+            return (100 / Math.abs(americanOdds)) + 1;
+        }
+    };
+
     if (event.lines) {
         // A 'lines' egy objektum, ahol a kulcs az affiliate_id (pl. "2", "3")
         // Válasszuk a "Pinnacle" (id: 3) vagy a "Bovada" (id: 2) oddsait
@@ -218,14 +227,18 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
             if (bookmakerLine.moneyline) {
                 const homeOdd = bookmakerLine.moneyline.moneyline_home;
                 const awayOdd = bookmakerLine.moneyline.moneyline_away;
-                if (homeOdd && awayOdd) {
-                    current.push({ name: 'Hazai győzelem', price: (homeOdd > 0 ? (homeOdd/100)+1 : (100/Math.abs(homeOdd))+1) });
-                    current.push({ name: 'Vendég győzelem', price: (awayOdd > 0 ? (awayOdd/100)+1 : (100/Math.abs(awayOdd))+1) });
+                // A 0.0001-es értékeket "N/A"-ként kezeljük
+                if (homeOdd && awayOdd && homeOdd !== 0.0001 && awayOdd !== 0.0001) {
+                    const homeDecimal = americanToDecimal(homeOdd);
+                    const awayDecimal = americanToDecimal(awayOdd);
+                    
+                    current.push({ name: 'Hazai győzelem', price: homeDecimal });
+                    current.push({ name: 'Vendég győzelem', price: awayDecimal });
                     allMarkets.push({
                         key: 'h2h',
                         outcomes: [
-                            { name: 'Home', price: current[0].price },
-                            { name: 'Away', price: current[1].price }
+                            { name: 'Home', price: homeDecimal },
+                            { name: 'Away', price: awayDecimal }
                         ]
                     });
                 }
@@ -236,13 +249,18 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
                 const overPrice = bookmakerLine.total.total_over_money;
                 const underPrice = bookmakerLine.total.total_under_money;
                 
-                allMarkets.push({
-                    key: 'totals',
-                    outcomes: [
-                        { name: `Over ${line}`, price: (overPrice > 0 ? (overPrice/100)+1 : (100/Math.abs(overPrice))+1), point: line },
-                        { name: `Under ${line}`, price: (underPrice > 0 ? (underPrice/100)+1 : (100/Math.abs(underPrice))+1), point: line }
-                    ]
-                });
+                if (line && line !== 0.0001) {
+                    const overDecimal = americanToDecimal(overPrice);
+                    const underDecimal = americanToDecimal(underPrice);
+                    
+                    allMarkets.push({
+                        key: 'totals',
+                        outcomes: [
+                            { name: `Over ${line}`, price: overDecimal, point: line },
+                            { name: `Under ${line}`, price: underDecimal, point: line }
+                        ]
+                    });
+                }
             }
             // TODO: Spread (Handicap) kinyerése (bookmakerLine.spread)
         }
