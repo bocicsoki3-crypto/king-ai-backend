@@ -1,12 +1,10 @@
 // FÁJL: strategies/BasketballStrategy.ts
-// VERZIÓ: v104.2 (Javítva)
-// MÓDOSÍTÁS (v104.2):
-// 1. JAVÍTÁS (P1 Hiba): Az 'estimatePureXG' most már helyesen prioritizálja
-//    a manuális (P1) adatokat az 'options.advancedData'-ból,
-//    és csak akkor futtat P4-es becslést, ha azok hiányoznak.
-// 2. JAVÍTÁS (AI Hiba): A 'runMicroModels' (korábbi "csonk") lecserélve
-//    egy valódi implementációra, ami párhuzamosan hívja meg
-//    az 'AI_Service.ts'-ből importált kosárlabda-specifikus promptokat.
+// VERZIÓ: v105.0 ("Intelligens Bizalom Refaktor")
+// MÓDOSÍTÁS (v105.0):
+// 1. MÓDOSÍTVA: A 'runMicroModels' most már fogadja a 'confidenceScores'
+//    objektumot az 'options'-ben.
+// 2. MÓDOSÍTVA: A 'confidenceWinner' és 'confidenceTotals' pontszámok
+//    továbbadva az összes kosár-specifikus AI mikromodell-hívásnak.
 
 import type { 
     ISportStrategy, 
@@ -32,7 +30,7 @@ export class BasketballStrategy implements ISportStrategy {
 
     /**
      * 1. Ügynök (Quant) feladata: Pontok becslése kosárlabdához.
-     * JAVÍTVA (v104.2): Először a P1 (manuális) adatokat ellenőrzi.
+     * (Változatlan v104.2)
      */
     public estimatePureXG(options: XGOptions): { pure_mu_h: number; pure_mu_a: number; source: string; } {
         const { rawStats, leagueAverages, advancedData } = options;
@@ -51,7 +49,7 @@ export class BasketballStrategy implements ISportStrategy {
             return {
                 pure_mu_h: p1_mu_h,
                 pure_mu_a: p1_mu_a,
-                source: "Manual (Components)" // Ahogy a logban is 
+                source: "Manual (Components)"
             };
         }
         
@@ -59,8 +57,7 @@ export class BasketballStrategy implements ISportStrategy {
         // Ha nincsenek P1 adatok, megpróbálunk P4 (Pace/Ratings) alapú becslést adni.
         
         // TODO: Valódi P4-es számítás implementálása
-        // Jelenlegi (v104.2) "csonk" logika, ami a logban látott 107.80-at eredményezi .
-        // Ez egy alapértelmezett értéket ad vissza, ha nincs jobb adat.
+        // Jelenlegi (v104.2) "csonk" logika.
         const defaultLeaguePoints = 107.8; 
 
         return {
@@ -83,17 +80,25 @@ export class BasketballStrategy implements ISportStrategy {
 
     /**
      * 5-6. Ügynök (Hybrid Boss) feladata: Kosár-specifikus AI mikromodellek futtatása.
-     * JAVÍTVA (v104.2): Ez már a valódi, élesített implementáció.
+     * MÓDOSÍTVA (v105.0): Most már fogadja és továbbadja a 'confidenceScores'-t.
      */
     public async runMicroModels(options: MicroModelOptions): Promise<{ [key: string]: string; }> {
         console.log("[BasketballStrategy] runMicroModels: Valódi kosárlabda AI modellek futtatása...");
 
-        const { sim, rawDataJson, mainTotalsLine } = options;
+        const { sim, rawDataJson, mainTotalsLine, confidenceScores } = options; // v105.0
         const safeSim = sim || {};
         const safeRawData = rawDataJson || {};
         
+        // === v105.0: Bizalmi adatok előkészítése ===
+        const confidenceData = {
+            confidenceWinner: confidenceScores.winner.toFixed(1),
+            confidenceTotals: confidenceScores.totals.toFixed(1)
+        };
+        // ==========================================
+
         // Adatok előkészítése a promptokhoz
         const winnerData = {
+            ...confidenceData, // v105.0
             sim_pHome: safeSim.pHome, 
             sim_pAway: safeSim.pAway,
             form_home: safeRawData.form?.home_overall || "N/A",
@@ -103,10 +108,11 @@ export class BasketballStrategy implements ISportStrategy {
         };
 
         const totalsData = {
+            ...confidenceData, // v105.0
             line: mainTotalsLine,
             sim_pOver: safeSim.pOver,
             sim_mu_sum: (safeSim.mu_h_sim || 0) + (safeSim.mu_a_sim || 0),
-            home_pace: safeRawData.tactics?.home?.style || "N/A", // Feltételezzük, hogy a "style" a "pace"
+            home_pace: safeRawData.tactics?.home?.style || "N/A",
             away_pace: safeRawData.tactics?.away?.style || "N/A",
             absentees_home_count: safeRawData.absentees?.home?.length || 0,
             absentees_away_count: safeRawData.absentees?.away?.length || 0,
