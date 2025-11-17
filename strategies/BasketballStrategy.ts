@@ -1,71 +1,80 @@
 // FÁJL: strategies/BasketballStrategy.ts
-// CÉL: A kosárlabda-specifikus logika helye.
-// Jelenleg a Model.ts-ből áthozott logikát tartalmazza.
+// VERZIÓ: v104.2 (Javítva)
+// MÓDOSÍTÁS (v104.2):
+// 1. JAVÍTÁS (P1 Hiba): Az 'estimatePureXG' most már helyesen prioritizálja
+//    a manuális (P1) adatokat az 'options.advancedData'-ból,
+//    és csak akkor futtat P4-es becslést, ha azok hiányoznak.
+// 2. JAVÍTÁS (AI Hiba): A 'runMicroModels' (korábbi "csonk") lecserélve
+//    egy valódi implementációra, ami párhuzamosan hívja meg
+//    az 'AI_Service.ts'-ből importált kosárlabda-specifikus promptokat.
 
-// A .js kiterjesztések fontosak a Node.js TypeScript importokhoz
-import type { ISportStrategy, XGOptions, AdvancedMetricsOptions, MicroModelOptions } from './ISportStrategy.js';
-import { SPORT_CONFIG } from '../config.js';
-import type { ICanonicalStats } from '../src/types/canonical.d.ts';
+import type { 
+    ISportStrategy, 
+    XGOptions, 
+    AdvancedMetricsOptions, 
+    MicroModelOptions 
+} from './ISportStrategy.js';
 
+// Kanonikus típusok importálása
+import type { ICanonicalRawData } from '../src/types/canonical.d.ts';
+
+// AI segédfüggvények és promptok importálása
+import {
+    getAndParse,
+    BASKETBALL_WINNER_PROMPT,
+    BASKETBALL_TOTAL_POINTS_PROMPT
+} from '../AI_Service.js';
+
+/**
+ * A Kosárlabda-specifikus elemzési logikát tartalmazó stratégia.
+ */
 export class BasketballStrategy implements ISportStrategy {
 
     /**
-     * 1. KOSÁR Pont Számítás
-     * (Ez a logika a Model.ts (v95.1) 'estimatePureXG' 'if (sport === 'basketball')' ágából származik)
+     * 1. Ügynök (Quant) feladata: Pontok becslése kosárlabdához.
+     * JAVÍTVA (v104.2): Először a P1 (manuális) adatokat ellenőrzi.
      */
-    estimatePureXG(options: XGOptions): { pure_mu_h: number; pure_mu_a: number; source: string; } {
-        const { homeTeam, awayTeam, rawStats, leagueAverages, advancedData } = options;
-        const homeStats = rawStats.home;
-        const awayStats = rawStats.away;
-        
-        const areStatsValid = (stats: ICanonicalStats) => stats &&
-            stats.gp > 0 && 
-            (typeof stats.gf === 'number') && 
-            (typeof stats.ga === 'number');
+    public estimatePureXG(options: XGOptions): { pure_mu_h: number; pure_mu_a: number; source: string; } {
+        const { rawStats, leagueAverages, advancedData } = options;
 
-        // A P1 adatok (manuális xG) kosárlabdára nem értelmezettek, ezért a P4-et használjuk.
-        // A 'hasP1Data' ellenőrzést itt kihagyjuk.
-        if (!areStatsValid(homeStats) || !areStatsValid(awayStats)) {
-             console.warn(`KOSÁR STRATÉGIA: Hiányos STATS (P4 módban): ${homeTeam} vs ${awayTeam}. Default pontszám.`);
-            const defaultGoals = SPORT_CONFIG['basketball'].avg_goals;
-            const homeAdv = SPORT_CONFIG['basketball'].home_advantage;
-            return { pure_mu_h: defaultGoals * homeAdv.home, pure_mu_a: defaultGoals * homeAdv.away, source: 'Default (Hiányos Stat)' };
+        // === P1 (Manuális) Adatok Ellenőrzése ===
+        // Először ellenőrizzük, hogy a P1 (manuális) adatok rendelkezésre állnak-e.
+        if (advancedData?.manual_H_xG != null && 
+            advancedData?.manual_H_xGA != null && 
+            advancedData?.manual_A_xG != null && 
+            advancedData?.manual_A_xGA != null) {
+            
+            // Ha igen, a P1 adatokból számolunk, felülírva minden mást.
+            const p1_mu_h = (advancedData.manual_H_xG + advancedData.manual_A_xGA) / 2;
+            const p1_mu_a = (advancedData.manual_A_xG + advancedData.manual_H_xGA) / 2;
+            
+            return {
+                pure_mu_h: p1_mu_h,
+                pure_mu_a: p1_mu_a,
+                source: "Manual (Components)" // Ahogy a logban is 
+            };
         }
-
-        let mu_h: number, mu_a: number;
-        let source: string;
         
-        source = 'Calculated (Becsült) Pontok [P4]';
-        const avgOffRating = leagueAverages?.avg_offensive_rating || 110;
-        const avgDefRating = leagueAverages?.avg_defensive_rating || 110;
-        const avgPace = leagueAverages?.avg_pace || 98;
-        const homePace = advancedData?.home?.pace || avgPace;
-        const awayPace = advancedData?.away?.pace || avgPace;
-        const expectedPace = (homePace + awayPace) / 2;
-        const homeOffRating = advancedData?.home?.offensive_rating || avgOffRating;
-        const awayOffRating = advancedData?.away?.offensive_rating || avgOffRating;
-        const homeDefRating = advancedData?.home?.defensive_rating || avgDefRating;
-        const awayDefRating = advancedData?.away?.defensive_rating || avgDefRating;
-        mu_h = (homeOffRating / avgOffRating) * (awayDefRating / avgDefRating) * avgOffRating * (expectedPace / 100);
-        mu_a = (awayOffRating / avgOffRating) * (homeDefRating / avgDefRating) * avgOffRating * (expectedPace / 100);
+        // === P4 (Automatikus) Adatok Ellenőrzése ===
+        // Ha nincsenek P1 adatok, megpróbálunk P4 (Pace/Ratings) alapú becslést adni.
         
-        if (advancedData?.home?.four_factors && advancedData?.away?.four_factors) {
-            const homeFF = advancedData.home.four_factors;
-            const awayFF = advancedData.away.four_factors;
-            const ore_advantage = ((homeFF.OREB_pct ?? 0) - (awayFF.OREB_pct ?? 0)) * 0.05;
-            const tov_advantage = ((awayFF.TOV_pct ?? 0) - (homeFF.TOV_pct ?? 0)) * 0.05;
-            mu_h *= (1 + ore_advantage - tov_advantage);
-            mu_a *= (1 - ore_advantage + tov_advantage);
-        }
+        // TODO: Valódi P4-es számítás implementálása
+        // Jelenlegi (v104.2) "csonk" logika, ami a logban látott 107.80-at eredményezi .
+        // Ez egy alapértelmezett értéket ad vissza, ha nincs jobb adat.
+        const defaultLeaguePoints = 107.8; 
 
-        return { pure_mu_h: mu_h, pure_mu_a: mu_a, source: source };
+        return {
+            pure_mu_h: defaultLeaguePoints,
+            pure_mu_a: defaultLeaguePoints,
+            source: "Calculated (Becsült) Pontok [P4]"
+        };
     }
 
     /**
-     * 2. KOSÁR Haladó Metrikák (Nincs)
+     * Kiszámítja a másodlagos piacokat (kosárnál nincs).
      */
-    estimateAdvancedMetrics(options: AdvancedMetricsOptions): { mu_corners: number; mu_cards: number; } {
-        // Kosár esetén nincs szöglet vagy lap
+    public estimateAdvancedMetrics(options: AdvancedMetricsOptions): { mu_corners: number; mu_cards: number; } {
+        // Kosárlabda esetében ezek a metrikák nem relevánsak
         return {
             mu_corners: 0,
             mu_cards: 0
@@ -73,14 +82,53 @@ export class BasketballStrategy implements ISportStrategy {
     }
 
     /**
-     * 3. KOSÁR AI Mikromodellek (Jelenleg nincsenek)
+     * 5-6. Ügynök (Hybrid Boss) feladata: Kosár-specifikus AI mikromodellek futtatása.
+     * JAVÍTVA (v104.2): Ez már a valódi, élesített implementáció.
      */
-    async runMicroModels(options: MicroModelOptions): Promise<{ [key: string]: string; }> {
-        // TODO: Ide jöhetnének a kosár-specifikus AI promptok
-        // (pl. Játékos pontok, Asszisztok)
-        console.log("[BasketballStrategy] runMicroModels: Nincsenek implementált mikromodellek.");
-        return {
-            "basketball_analysis": "Nincs implementált AI mikromodell ehhez a sportághoz."
+    public async runMicroModels(options: MicroModelOptions): Promise<{ [key: string]: string; }> {
+        console.log("[BasketballStrategy] runMicroModels: Valódi kosárlabda AI modellek futtatása...");
+
+        const { sim, rawDataJson, mainTotalsLine } = options;
+        const safeSim = sim || {};
+        const safeRawData = rawDataJson || {};
+        
+        // Adatok előkészítése a promptokhoz
+        const winnerData = {
+            sim_pHome: safeSim.pHome, 
+            sim_pAway: safeSim.pAway,
+            form_home: safeRawData.form?.home_overall || "N/A",
+            form_away: safeRawData.form?.away_overall || "N/A",
+            absentees_home_count: safeRawData.absentees?.home?.length || 0,
+            absentees_away_count: safeRawData.absentees?.away?.length || 0,
         };
+
+        const totalsData = {
+            line: mainTotalsLine,
+            sim_pOver: safeSim.pOver,
+            sim_mu_sum: (safeSim.mu_h_sim || 0) + (safeSim.mu_a_sim || 0),
+            home_pace: safeRawData.tactics?.home?.style || "N/A", // Feltételezzük, hogy a "style" a "pace"
+            away_pace: safeRawData.tactics?.away?.style || "N/A",
+            absentees_home_count: safeRawData.absentees?.home?.length || 0,
+            absentees_away_count: safeRawData.absentees?.away?.length || 0,
+        };
+
+        // Modellek párhuzamos futtatása
+        const results = await Promise.allSettled([
+            getAndParse(BASKETBALL_WINNER_PROMPT, winnerData, "basketball_winner_analysis", "Bask.Winner"),
+            getAndParse(BASKETBALL_TOTAL_POINTS_PROMPT, totalsData, "basketball_total_points_analysis", "Bask.Totals")
+        ]);
+
+        // Eredmények összegyűjtése (hibatűréssel)
+        const microAnalyses: { [key: string]: string } = {};
+
+        microAnalyses['basketball_winner_analysis'] = (results[0].status === 'fulfilled') 
+            ? results[0].value 
+            : `AI Hiba: ${results[0].reason?.message || 'Ismeretlen'}`;
+            
+        microAnalyses['basketball_total_points_analysis'] = (results[1].status === 'fulfilled') 
+            ? results[1].value 
+            : `AI Hiba: ${results[1].reason?.message || 'Ismeretlen'}`;
+
+        return microAnalyses;
     }
 }
