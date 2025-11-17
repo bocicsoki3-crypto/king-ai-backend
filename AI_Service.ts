@@ -1,30 +1,33 @@
-// --- AI_Service.ts (v103.6 "Sportág-specifikus Javítás") ---
-//
-// HIBAJAVÍTÁS (v103.6):
-// A rendszer (v103.5) hibásan "BTTS Igen"-t ajánlott jégkorong meccsre.
-//
-// 1. OK: A `runStep_FinalAnalysis` eddig minden sporthoz a
-//    foci-specifikus mikromodelleket (getBTTSAnalysis, getCornerAnalysis) hívta.
-// 2. HOZZÁADVA: Visszaállítva a "régi, nyerő" kódból a hoki-specifikus
-//    promptok (HOCKEY_GOALS_OU_PROMPT, HOCKEY_WINNER_PROMPT) és
-//    a futtató függvényeik (getHockeyGoalsOUAnalysis, getHockeyWinnerAnalysis).
-// 3. JAVÍTVA: A `runStep_FinalAnalysis` (kb. 710. sor) most már
-//    `if (sport === 'soccer')` ... `else if (sport === 'hockey')`
-//    elágazást használ a helyes mikromodellek futtatásához.
-//
+// FÁJL: AI_Service.ts
+// VERZIÓ: v104.0 ("Stratégia Refaktor")
+// MÓDOSÍTÁS (v104.0):
+// 1. REFaktor: A sportág-specifikus logikát (getBTTSAnalysis, getHockeyGoalsOUAnalysis)
+//    kiszerveztük a Strategy objektumokba.
+// 2. MÓDOSÍTVA: A 'runStep_FinalAnalysis' (kb. 710. sor) már nem tartalmaz
+//    'if (sport === ...)' blokkot. Helyette a kapott 'sportStrategy'
+//    objektum 'runMicroModels' metódusát hívja meg.
+// 3. HOZZÁADVA: 'export' kulcsszavak a 'getAndParse'-hoz és az összes
+//    sport-specifikus PROMPT-hoz, hogy a Strategy fájlok importálhassák őket.
+// 4. JAVÍTÁS: Importokhoz .js kiterjesztés hozzáadva (Node.js/TypeScript-hez).
 
-import { 
-    _callGemini, 
-    _callGeminiWithJsonRetry, 
-    fillPromptTemplate 
-} from './providers/common/utils.js'; 
+import {
+    _callGemini,
+    _callGeminiWithJsonRetry,
+    fillPromptTemplate
+} from './providers/common/utils.js';
 import { getConfidenceCalibrationMap } from './LearningService.js';
 import type { ICanonicalPlayerStats, ICanonicalRawData, ICanonicalOdds } from './src/types/canonical.d.ts';
 
+// === ÚJ IMPORT A STRATÉGIÁHOZ ===
+import type { ISportStrategy } from './strategies/ISportStrategy.js';
+// === IMPORT VÉGE ===
+
+
 // --- v103.0: Modernizált Helper a Régi Promptok futtatásához ---
-async function getAndParse(
-    promptTemplate: string, 
-    data: any, 
+// === MÓDOSÍTÁS (v104.0): Exportálva a Stratégiák számára ===
+export async function getAndParse(
+    promptTemplate: string,
+    data: any,
     keyToExtract: string,
     stepName: string // Logoláshoz
 ): Promise<string> {
@@ -36,10 +39,10 @@ async function getAndParse(
             const value = result[keyToExtract];
             return value || "N/A (AI nem adott értéket)";
         }
-        console.error(`[AI_Service v103.6] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
+        console.error(`[AI_Service v104.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
         return `AI Hiba: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot.`;
     } catch (e: any) {
-        console.error(`[AI_Service v103.6] Végleges AI Hiba (${stepName}): ${e.message}`);
+        console.error(`[AI_Service v104.0] Végleges AI Hiba (${stepName}): ${e.message}`);
         return `AI Hiba (${keyToExtract}): ${e.message}`;
     }
 }
@@ -131,9 +134,9 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 }
 `;
 
-// === FOCI MIKROMODELL PROMPTOK (Változatlan) ===
+// === FOCI MIKROMODELL PROMPTOK (MÓDOSÍTÁS v104.0: Exportálva) ===
 
-const EXPERT_CONFIDENCE_PROMPT = `You are a master betting risk analyst.
+export const EXPERT_CONFIDENCE_PROMPT = `You are a master betting risk analyst.
 Provide a confidence score and justification in Hungarian.
 **CRITICAL CONTEXT: The match is {home} vs {away}.
 DO NOT mention any other teams (e.g., Ferencváros, Debrecen).**
@@ -149,20 +152,20 @@ Replace SCORE with a number between 1.0 and 10.0.
 The asterisks around the score/10 part are MANDATORY. The hyphen (-) and space after it before the justification are also MANDATORY.
 --- END CRITICAL OUTPUT FORMAT ---`;
 
-const TACTICAL_BRIEFING_PROMPT = `You are a world-class sports tactician. Provide a concise tactical briefing (2-4 sentences max, Hungarian) for {home} vs {away}.
+export const TACTICAL_BRIEFING_PROMPT = `You are a world-class sports tactician. Provide a concise tactical briefing (2-4 sentences max, Hungarian) for {home} vs {away}.
 CONTEXT: First, read the Risk Assessment report: "{riskAssessment}". Reflect this context (e.g., if risk is high, explain the tactical risk).
 DATA: Styles: {home} ("{home_style}") vs {away} ("{away_style}"), Formation: H:{home_formation} vs A:{away_formation}, Key Players: Home: {key_players_home}, Away: {key_players_away}.
 Highlight key elements with **asterisks**.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"analysis": "<Your Hungarian tactical briefing here>"}.`;
 
-const RISK_ASSESSMENT_PROMPT = `You are a risk assessment analyst. Write a "Kockázatkezelői Jelentés" (2-4 sentences, Hungarian).
+export const RISK_ASSESSMENT_PROMPT = `You are a risk assessment analyst. Write a "Kockázatkezelői Jelentés" (2-4 sentences, Hungarian).
 Focus ONLY on significant risks, potential upsets, or contradictions identified in the data.
 Highlight significant risks with **asterisks**.
 DATA: Sim: H:{sim_pHome}%, D:{sim_pDraw}%, A:{sim_pAway}%. Context: News: H:{news_home}, A:{news_away}. Absentees: H:{absentees_home_count} key, A:{absentees_away_count} key. Form: H:{form_home}, A:{form_away}.
 Tension: {tension}.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"risk_analysis": "<Your Hungarian risk report here>"}.`;
 
-const FINAL_GENERAL_ANALYSIS_PROMPT = `You are an Editor-in-Chief.
+export const FINAL_GENERAL_ANALYSIS_PROMPT = `You are an Editor-in-Chief.
 Write "Általános Elemzés" (exactly TWO paragraphs, Hungarian).
 **CRITICAL CONTEXT: The match is {home} vs {away}.
 DO NOT mention any other teams or leagues.**
@@ -172,13 +175,13 @@ Mention the model's confidence: {modelConfidence}/10.
 Highlight key conclusions or turning points with **asterisks**.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"general_analysis": "<Your two-paragraph Hungarian summary here>"}.`;
 
-const PROPHETIC_SCENARIO_PROMPT = `You are an elite sports journalist. Write a compelling, descriptive, prophetic scenario in Hungarian for {home} vs {away}.
+export const PROPHETIC_SCENARIO_PROMPT = `You are an elite sports journalist. Write a compelling, descriptive, prophetic scenario in Hungarian for {home} vs {away}.
 CONTEXT: First, read the Tactical Briefing: "{tacticalBriefing}". Your narrative MUST match this tactical assessment.
 DATA: {home} ({home_style}) vs {away} ({away_style}), Tension: {tension}.
 Weave a narrative. Highlight key moments and the outcome with **asterisks**.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"scenario": "<Your Hungarian prophetic narrative here>"}.`;
 
-const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst. Craft "Stratégiai Zárógondolatok" (2-3 Hungarian paragraphs).
+export const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst. Craft "Stratégiai Zárógondolatok" (2-3 Hungarian paragraphs).
 Synthesize ALL available reports: Risk Assessment, Tactical Briefing, Specialist Report, Psychologist Report, Statistical Simulation results, Micromodel conclusions, and overall Context.
 Discuss the most promising betting angles considering both potential value and risk. Focus recommendations on MAIN MARKETS (1X2, Totals, BTTS, Moneyline).
 Explicitly mention significant risks or contradictions if they heavily influence the strategy. Conclude with a summary of the strategic approach.
@@ -193,7 +196,7 @@ DATA:
 - Context Summary: {richContext}
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"strategic_analysis": "<Your comprehensive Hungarian strategic thoughts here>"}.`;
 
-const PLAYER_MARKETS_PROMPT = `You are a player performance markets specialist.
+export const PLAYER_MARKETS_PROMPT = `You are a player performance markets specialist.
 Suggest 1-2 potentially interesting player-specific betting markets in Hungarian (e.g., player shots on target, assists, cards, points).
 Provide a very brief (1 sentence) justification. Max 3 sentences total.
 Highlight player names & markets with **asterisks**.
@@ -201,35 +204,34 @@ DATA: Key Players: {keyPlayersJson}, Context: {richContext}.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"player_market_analysis": "<Your Hungarian player market analysis here>"}.
 If no interesting market is found, state "Nincs kiemelkedő játékospiaci lehetőség."`;
 
-const BTTS_ANALYSIS_PROMPT = `You are a BTTS specialist.
+export const BTTS_ANALYSIS_PROMPT = `You are a BTTS specialist.
 Analyze if both teams will score (Igen/Nem).
 DATA: Sim BTTS: {sim_pBTTS}%, xG: H {sim_mu_h} - A {sim_mu_a}.
 Consider team styles if available: H:{home_style}, A:{away_style}. Conclude with confidence level.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"btts_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
-const SOCCER_GOALS_OU_PROMPT = `You are a Soccer O/U specialist. Analyze total goals vs line ({line}).
+export const SOCCER_GOALS_OU_PROMPT = `You are a Soccer O/U specialist. Analyze total goals vs line ({line}).
 DATA: Sim Over {line}: {sim_pOver}%, xG Sum: {sim_mu_sum}. Consider team styles/absentees: H:{home_style}, A:{away_style}, Absentees: H:{absentees_home_count} key, A:{absentees_away_count} key.
 Conclude with confidence level.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"goals_ou_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
-const CORNER_ANALYSIS_PROMPT = `You are a Soccer Corners specialist. Analyze total corners vs an estimated line around {likelyLine} based on mu={mu_corners}.
+export const CORNER_ANALYSIS_PROMPT = `You are a Soccer Corners specialist. Analyze total corners vs an estimated line around {likelyLine} based on mu={mu_corners}.
 DATA: Calculated mu_corners: {mu_corners}. Consider team styles (wing play?): H:{home_style}, A:{away_style}.
 Conclude with confidence level towards Over or Under a likely line (e.g., 9.5 or 10.5).
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"corner_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
-const CARD_ANALYSIS_PROMPT = `You are a Soccer Cards specialist. Analyze total cards vs an estimated line around {likelyLine} based on mu={mu_cards}.
+export const CARD_ANALYSIS_PROMPT = `You are a Soccer Cards specialist. Analyze total cards vs an estimated line around {likelyLine} based on mu={mu_cards}.
 DATA: Calculated mu_cards: {mu_cards}. Consider context: Referee style: "{referee_style}", Match tension: "{tension}", Derby: {is_derby}.
 Conclude with confidence level towards Over or Under a likely line (e.g., 4.5 or 5.5).
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"card_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
-// === HOZZÁADVA (v103.6): JÉGKORONG MIKROMODELL PROMPTOK ===
-// (A "régi, nyerő" AI_Service.ts fájlból visszaállítva)
+// === JÉGKORONG MIKROMODELL PROMPTOK (MÓDOSÍTÁS v104.0: Exportálva) ===
 
-const HOCKEY_GOALS_OU_PROMPT = `You are an Ice Hockey O/U specialist. Analyze total goals vs line ({line}).
+export const HOCKEY_GOALS_OU_PROMPT = `You are an Ice Hockey O/U specialist. Analyze total goals vs line ({line}).
 DATA: Sim Over {line}: {sim_pOver}%, xG Sum: {sim_mu_sum}. Consider goalie GSAx: H:{home_gsax}, A:{away_gsax}. Conclude with confidence level.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"hockey_goals_ou_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
-const HOCKEY_WINNER_PROMPT = `You are an Ice Hockey Winner specialist. Analyze the winner (incl. OT).
+export const HOCKEY_WINNER_PROMPT = `You are an Ice Hockey Winner specialist. Analyze the winner (incl. OT).
 DATA: Sim Probs: H:{sim_pHome}%, A:{sim_pAway}%.
 Consider goalie GSAx: H:{home_gsax}, A:{away_gsax}, Form: H:{form_home}, A:{form_away}. Conclude with confidence level.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"hockey_winner_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
@@ -271,9 +273,9 @@ OUTPUT FORMAT: Your response MUST be ONLY a single, valid JSON object with this 
 `;
 
 
-// --- ÜGYNÖK FUTTATÓ FÜGGVÉNYEK (v103.6) ---
+// --- ÜGYNÖK FUTTATÓ FÜGGVÉNYEK (v104.0) ---
 
-// === 8. ÜGYNÖK (TÉRKÉPÉSZ) HÍVÁSA ===
+// === 8. ÜGYNÖK (TÉRKÉPÉSZ) HÍVÁSA (Változatlan) ===
 interface TeamNameResolverInput {
     inputName: string;
     searchTerm: string;
@@ -287,19 +289,19 @@ export async function runStep_TeamNameResolver(data: TeamNameResolverInput): Pro
         if (result && result.matched_id) {
             const foundId = Number(result.matched_id);
             const matchedTeam = data.rosterJson.find(t => t.id === foundId);
-            console.log(`[AI_Service v103.6 - Térképész] SIKER: Az AI a "${data.searchTerm}" nevet ehhez a csapathoz rendelte: "${matchedTeam?.name || 'N/A'}" (ID: ${foundId})`);
+            console.log(`[AI_Service v104.0 - Térképész] SIKER: Az AI a "${data.searchTerm}" nevet ehhez a csapathoz rendelte: "${matchedTeam?.name || 'N/A'}" (ID: ${foundId})`);
             return foundId;
         } else {
-            console.error(`[AI_Service v103.6 - Térképész] HIBA: Az AI nem talált egyezést (matched_id: null) a "${data.searchTerm}" névre.`);
+            console.error(`[AI_Service v104.0 - Térképész] HIBA: Az AI nem talált egyezést (matched_id: null) a "${data.searchTerm}" névre.`);
             return null;
         }
     } catch (e: any) {
-        console.error(`[AI_Service v103.6 - Térképész] KRITIKUS HIBA a Gemini hívás vagy JSON parse során: ${e.message}`);
+        console.error(`[AI_Service v104.0 - Térképész] KRITIKUS HIBA a Gemini hívás vagy JSON parse során: ${e.message}`);
         return null;
     }
 }
 
-// === 2.5 ÜGYNÖK (PSZICHOLÓGUS) HÍVÁSA ===
+// === 2.5 ÜGYNÖK (PSZICHOLÓGUS) HÍVÁSA (Változatlan) ===
 interface PsychologistInput {
     rawDataJson: ICanonicalRawData;
     homeTeamName: string;
@@ -310,7 +312,7 @@ export async function runStep_Psychologist(data: PsychologistInput): Promise<any
         const filledPrompt = fillPromptTemplate(PROMPT_PSYCHOLOGIST_V93, data);
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Psychologist (v93)");
     } catch (e: any) {
-        console.error(`[AI_Service v103.6] AI Hiba (Psychologist): ${e.message}`);
+        console.error(`[AI_Service v104.0] AI Hiba (Psychologist): ${e.message}`);
         return {
             "psy_profile_home": "AI Hiba: A 2.5-ös Ügynök (Pszichológus) nem tudott lefutni.",
             "psy_profile_away": "AI Hiba: A 2.5-ös Ügynök (Pszichológus) nem tudott lefutni."
@@ -318,7 +320,7 @@ export async function runStep_Psychologist(data: PsychologistInput): Promise<any
     }
 }
 
-// === 3. ÜGYNÖK (SPECIALISTA) HÍVÁSA ===
+// === 3. ÜGYNÖK (SPECIALISTA) HÍVÁSA (Változatlan) ===
 interface SpecialistInput {
     pure_mu_h: number;
     pure_mu_a: number;
@@ -335,7 +337,7 @@ export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
         const filledPrompt = fillPromptTemplate(PROMPT_SPECIALIST_V94, data);
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Specialist (v94)");
     } catch (e: any) {
-        console.error(`[AI_Service v103.6] AI Hiba (Specialist): ${e.message}`);
+        console.error(`[AI_Service v104.0] AI Hiba (Specialist): ${e.message}`);
         return {
             "modified_mu_h": data.pure_mu_h,
             "modified_mu_a": data.pure_mu_a,
@@ -345,7 +347,8 @@ export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
     }
 }
 
-// === MIKROMODELL FUTTATÓK (Változatlan) ===
+// === MIKROMODELL FUTTATÓK (Sportág-független) ===
+// (A sportág-specifikus futtatók (pl. getBTTSAnalysis) mostantól a Strategy fájlokban vannak)
 
 async function getExpertConfidence(modelConfidence: number, richContext: string, rawData: ICanonicalRawData, psyReport: any, specialistReport: any) {
      const safeModelConfidence = typeof modelConfidence === 'number' ? modelConfidence : 5.0;
@@ -427,91 +430,22 @@ async function getPlayerMarkets(keyPlayers: any, richContext: string) {
         }, "player_market_analysis", "PlayerMarkets");
 }
 
-// === FOCI MIKROMODELL FUTTATÓK ===
-async function getBTTSAnalysis(sim: any, rawData: ICanonicalRawData) {
-     const safeSim = sim || {};
-     const data = {
-        sim_pBTTS: safeSim.pBTTS,
-        sim_mu_h: safeSim.mu_h_sim,
-        sim_mu_a: safeSim.mu_a_sim,
-        home_style: rawData?.tactics?.home?.style || "N/A",
-        away_style: rawData?.tactics?.away?.style || "N/A"
-     };
-     return await getAndParse(BTTS_ANALYSIS_PROMPT, data, "btts_analysis", "BTTSAnalysis");
-}
+// === FOCI MIKROMODELL FUTTATÓK (ELAVULT v104.0) ===
+// A logikát áthelyeztük a strategies/SoccerStrategy.ts-be
+// (A függvények itt maradnak, de már csak a Stratégia hívja őket,
+//  mivel exportáltuk a promptokat és a getAndParse-t)
+// async function getBTTSAnalysis(...) {}
+// async function getSoccerGoalsOUAnalysis(...) {}
+// async function getCornerAnalysis(...) {}
+// async function getCardAnalysis(...) {}
 
-async function getSoccerGoalsOUAnalysis(sim: any, rawData: ICanonicalRawData, mainTotalsLine: number) {
-     const safeSim = sim || {};
-     const countKeyAbsentees = (absentees: any) => Array.isArray(absentees) ? absentees.filter(p => p.importance === 'key').length : 0;
-     const data = {
-        line: mainTotalsLine,
-        sim_pOver: safeSim.pOver,
-        sim_mu_sum: (safeSim.mu_h_sim ?? 0) + (safeSim.mu_a_sim ?? 0),
-        home_style: rawData?.tactics?.home?.style || "N/A",
-        away_style: rawData?.tactics?.away?.style || "N/A",
-        absentees_home_count: countKeyAbsentees(rawData?.absentees?.home),
-        absentees_away_count: countKeyAbsentees(rawData?.absentees?.away)
-     };
-    return await getAndParse(SOCCER_GOALS_OU_PROMPT, data, "goals_ou_analysis", "GoalsOUAnalysis");
-}
-
-async function getCornerAnalysis(sim: any, rawData: ICanonicalRawData) {
-    const safeSim = sim || {};
-    const muCorners = safeSim.mu_corners_sim;
-    const likelyLine = muCorners ? (Math.round(muCorners - 0.1)) + 0.5 : 9.5;
-    const data = {
-        mu_corners: muCorners,
-        home_style: rawData?.tactics?.home?.style || "N/A",
-        away_style: rawData?.tactics?.away?.style || "N/A",
-        likelyLine: likelyLine 
-    };
-    return await getAndParse(CORNER_ANALYSIS_PROMPT, data, "corner_analysis", "CornerAnalysis");
-}
-
-async function getCardAnalysis(sim: any, rawData: ICanonicalRawData) {
-    const safeSim = sim || {};
-    const muCards = safeSim.mu_cards_sim;
-    const likelyLine = muCards ? (Math.round(muCards - 0.1)) + 0.5 : 4.5;
-    const data = {
-        mu_cards: muCards,
-        referee_style: rawData?.referee?.style || "N/A",
-        tension: rawData?.contextual_factors?.match_tension_index || "N/A",
-        is_derby: rawData?.contextual_factors?.match_tension_index?.toLowerCase().includes('derby') ||
-                  rawData?.h2h_summary?.toLowerCase().includes('rivalry'),
-        likelyLine: likelyLine 
-    };
-    return await getAndParse(CARD_ANALYSIS_PROMPT, data, "card_analysis", "CardAnalysis");
-}
-
-// === HOZZÁADVA (v103.6): JÉGKORONG MIKROMODELL FUTTATÓK ===
-
-async function getHockeyGoalsOUAnalysis(sim: any, rawData: ICanonicalRawData, mainTotalsLine: number) {
-     const safeSim = sim || {};
-     const data = {
-        line: mainTotalsLine,
-        sim_pOver: safeSim.pOver,
-        sim_mu_sum: (safeSim.mu_h_sim ?? 0) + (safeSim.mu_a_sim ?? 0),
-        home_gsax: rawData?.advanced_stats_goalie?.home_goalie?.GSAx,
-        away_gsax: rawData?.advanced_stats_goalie?.away_goalie?.GSAx
-     };
-     return await getAndParse(HOCKEY_GOALS_OU_PROMPT, data, "hockey_goals_ou_analysis", "HockeyGoalsOUAnalysis");
-}
-
-async function getHockeyWinnerAnalysis(sim: any, rawData: ICanonicalRawData) {
-     const safeSim = sim || {};
-     const data = {
-        sim_pHome: safeSim.pHome,
-        sim_pAway: safeSim.pAway,
-        home_gsax: rawData?.advanced_stats_goalie?.home_goalie?.GSAx,
-        away_gsax: rawData?.advanced_stats_goalie?.away_goalie?.GSAx,
-        form_home: rawData?.form?.home_overall || "N/A",
-        form_away: rawData?.form?.away_overall || "N/A"
-     };
-    return await getAndParse(HOCKEY_WINNER_PROMPT, data, "hockey_winner_analysis", "HockeyWinnerAnalysis");
-}
+// === JÉGKORONG MIKROMODELL FUTTATÓK (ELAVULT v104.0) ===
+// A logikát áthelyeztük a strategies/HockeyStrategy.ts-be
+// async function getHockeyGoalsOUAnalysis(...) {}
+// async function getHockeyWinnerAnalysis(...) {}
 
 
-// === STRATÉGIA ÉS FŐNÖK (MÓDOSÍTVA v103.6) ===
+// === STRATÉGIA ÉS FŐNÖK (Változatlan v103.6) ===
 
 async function getStrategicClosingThoughts(
     sim: any, rawData: ICanonicalRawData, richContext: string, microAnalyses: any, 
@@ -540,7 +474,6 @@ async function getStrategicClosingThoughts(
         psy_profile_away: psyReport?.psy_profile_away || "N/A",
      };
      
-    // === MÓDOSÍTÁS (v103.6): Jégkorongnál NEM akarunk BTTS-t említeni ===
     let template = STRATEGIC_CLOSING_PROMPT;
     if (sport === 'hockey') {
         template = template.replace(/BTTS, /g, ""); // Eltávolítja a BTTS-t a fő piacok közül
@@ -561,7 +494,7 @@ async function getMasterRecommendation(
     contradictionAnalysisResult: string,
     psyReport: any,
     specialistReport: any,
-    sport: string // HOZZÁADVA (v103.6)
+    sport: string
 ) {
     try {
         const safeSim = sim || {};
@@ -578,13 +511,13 @@ async function getMasterRecommendation(
             if (match && match[1]) {
                 expertConfScore = parseFloat(match[1]);
                 expertConfScore = Math.max(1.0, Math.min(10.0, expertConfScore));
-                console.log(`[AI_Service v103.6 - Főnök] Expert bizalom sikeresen kinyerve: ${expertConfScore}`);
+                console.log(`[AI_Service v104.0 - Főnök] Expert bizalom sikeresen kinyerve: ${expertConfScore}`);
             } else {
-                console.warn(`[AI_Service v103.6 - Főnök] Nem sikerült kinyerni az expert bizalmat: "${expertConfidence}". Alapértelmezett: 1.0`);
+                console.warn(`[AI_Service v104.0 - Főnök] Nem sikerült kinyerni az expert bizalmat: "${expertConfidence}". Alapértelmezett: 1.0`);
                 expertConfScore = 1.0;
             }
-        } catch(e: any) {
-            console.warn("[AI_Service v103.6 - Főnök] Hiba az expert bizalom kinyerésekor:", e);
+        } catch(e: any) { 
+            console.warn("[AI_Service v104.0 - Főnök] Hiba az expert bizalom kinyerésekor:", e);
             expertConfScore = 1.0;
         }
 
@@ -606,7 +539,6 @@ async function getMasterRecommendation(
         };
 
         // --- 1. LÉPÉS: AI (Tanácsadó) hívása ---
-        // === MÓDOSÍTÁS (v103.6): Jégkorongnál NEM akarunk BTTS-t említeni ===
         let template = MASTER_AI_PROMPT_TEMPLATE_V103;
         if (sport === 'hockey') {
             template = template.replace(/BTTS, /g, ""); // Eltávolítja a BTTS-t a fő piacok közül
@@ -616,12 +548,12 @@ async function getMasterRecommendation(
         let rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation");
 
         if (!rec || !rec.recommended_bet || typeof rec.final_confidence !== 'number') {
-            console.error("[AI_Service v103.6 - Főnök] Master AI hiba: Érvénytelen JSON struktúra a válaszban:", rec);
+            console.error("[AI_Service v104.0 - Főnök] Master AI hiba: Érvénytelen JSON struktúra a válaszban:", rec);
             throw new Error("AI hiba: Érvénytelen JSON struktúra a MasterRecommendation-ben.");
         }
         
         // --- 2. LÉPÉS: KÓD (A "Főnök") átveszi az irányítást ---
-        console.log(`[AI_Service v103.6 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
+        console.log(`[AI_Service v104.0 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
 
         // 1. Eltérés-alapú büntetés (Modell vs Expert)
         const confidenceDiff = Math.abs(safeModelConfidence - expertConfScore);
@@ -662,7 +594,7 @@ async function getMasterRecommendation(
                 }
             }
         } catch(calError: any) { 
-            console.warn(`[AI_Service v103.6 - Főnök] Bizalmi kalibráció hiba: ${calError.message}`); 
+            console.warn(`[AI_Service v104.0 - Főnök] Bizalmi kalibráció hiba: ${calError.message}`); 
         }
 
         // Megjegyzések hozzáadása az indokláshoz
@@ -671,18 +603,18 @@ async function getMasterRecommendation(
             rec.brief_reasoning = rec.brief_reasoning.substring(0, 497) + "...";
         }
 
-        console.log(`[AI_Service v103.6 - Főnök] VÉGLEGES KORRIGÁLT Tipp: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
+        console.log(`[AI_Service v104.0 - Főnök] VÉGLEGES KORRIGÁLT Tipp: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
         
         return rec;
 
     } catch (e: any) {
-        console.error(`[AI_Service v103.6 - Főnök] Végleges hiba a Mester Ajánlás generálása során: ${e.message}`, e.stack);
+        console.error(`[AI_Service v104.0 - Főnök] Végleges hiba a Mester Ajánlás generálása során: ${e.message}`, e.stack);
         throw new Error(`AI Hiba (Főnök): ${e.message.substring(0, 100)}`);
     }
 }
 
 
-// === FŐ ORCHESTRÁCIÓS LÉPÉS (MÓDOSÍTVA v103.6) ===
+// === FŐ ORCHESTRÁCIÓS LÉPÉS (Refaktorálva v104.0) ===
 interface FinalAnalysisInput {
     matchData: { home: string; away: string; sport: string; leagueName: string; };
     rawDataJson: ICanonicalRawData; 
@@ -691,12 +623,25 @@ interface FinalAnalysisInput {
     psyReport: any;        // Agent 2.5
     valueBetsJson: any[];
     richContext: string;
+    sportStrategy: ISportStrategy; // === MÓDOSÍTVA (v104.0): A stratégia objektum ===
 }
 
 export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<any> {
     
     // Alap adatok kinyerése
-    const { rawDataJson, specialistReport, simulatorReport, psyReport, valueBetsJson, richContext, matchData } = data;
+    // === MÓDOSÍTVA (v104.0): A 'sportStrategy' kinyerése ===
+    const { 
+        rawDataJson, 
+        specialistReport, 
+        simulatorReport, 
+        psyReport, 
+        valueBetsJson, 
+        richContext, 
+        matchData, 
+        sportStrategy // Itt az új stratégia objektum
+    } = data;
+    // === MÓDOSÍTÁS VÉGE ===
+
     const sim = simulatorReport || {};
     const home = matchData.home || 'Hazai';
     const away = matchData.away || 'Vendég';
@@ -716,61 +661,49 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
         "brief_reasoning": "AI Hiba: A Master Recommendation lánc megszakadt." 
     };
     
-    // === MÓDOSÍTÁS (v103.6): Üres 'microAnalyses' objektum ===
     let microAnalyses: { [key: string]: string } = {};
     
     try {
         // --- 1. LÉPÉS: Mikromodellek párhuzamos futtatása (Hibatűréssel) ---
         
+        // Ezek a hívások sportág-függetlenek
         const expertConfidencePromise = getExpertConfidence(modelConfidence, richContext, rawDataJson, psyReport, specialistReport);
         const riskAssessmentPromise = getRiskAssessment(sim, rawDataJson, sport);
         const playerMarketsPromise = getPlayerMarkets(rawDataJson.key_players, richContext); // Ez sport-független
 
-        // === MÓDOSÍTÁS (v103.6): Sportág-specifikus elágazás ===
+        // === MÓDOSÍTÁS (v104.0): Sportág-specifikus mikromodellek hívása ===
+        // A teljes 'if (sport === 'soccer') ... else if (sport === 'hockey')'
+        // blokk törölve innen.
         
-        if (sport === 'soccer') {
-            // --- FOCI MIKROMODELLEK ---
-            const bttsPromise = getBTTSAnalysis(sim, rawDataJson);
-            const goalsOUPromise = getSoccerGoalsOUAnalysis(sim, rawDataJson, sim.mainTotalsLine || 2.5);
-            const cornerPromise = getCornerAnalysis(sim, rawDataJson);
-            const cardPromise = getCardAnalysis(sim, rawDataJson);
+        // Helyette: A stratégia objektum meghívása
+        const microModelResultsPromise = sportStrategy.runMicroModels({
+            sim: sim,
+            rawDataJson: rawDataJson,
+            mainTotalsLine: sim.mainTotalsLine
+        });
+        // === MÓDOSÍTÁS VÉGE ===
 
-            const results = await Promise.allSettled([
-                expertConfidencePromise, riskAssessmentPromise, playerMarketsPromise,
-                bttsPromise, goalsOUPromise, cornerPromise, cardPromise
-            ]);
+        // A sportág-független és a sportág-specifikus modellek együttes futtatása
+        const results = await Promise.allSettled([
+            expertConfidencePromise, 
+            riskAssessmentPromise, 
+            playerMarketsPromise,
+            microModelResultsPromise // A stratégia eredménye
+        ]);
 
-            expertConfidence = (results[0].status === 'fulfilled') ? results[0].value : `**1.0/10** - AI Hiba: ${results[0].reason?.message || 'Ismeretlen'}`;
-            riskAssessment = (results[1].status === 'fulfilled') ? results[1].value : `AI Hiba: ${results[1].reason?.message || 'Ismeretlen'}`;
-            
-            microAnalyses = {
-                player_market_analysis: (results[2].status === 'fulfilled') ? results[2].value : `AI Hiba: ${results[2].reason?.message || 'Ismeretlen'}`,
-                btts_analysis: (results[3].status === 'fulfilled') ? results[3].value : `AI Hiba: ${results[3].reason?.message || 'Ismeretlen'}`,
-                goals_ou_analysis: (results[4].status === 'fulfilled') ? results[4].value : `AI Hiba: ${results[4].reason?.message || 'Ismeretlen'}`,
-                corner_analysis: (results[5].status === 'fulfilled') ? results[5].value : `AI Hiba: ${results[5].reason?.message || 'Ismeretlen'}`,
-                card_analysis: (results[6].status === 'fulfilled') ? results[6].value : `AI Hiba: ${results[6].reason?.message || 'Ismeretlen'}`,
-            };
-            
-        } else if (sport === 'hockey') {
-            // --- HOKI MIKROMODELLEK ---
-            const hockeyGoalsOUPromise = getHockeyGoalsOUAnalysis(sim, rawDataJson, sim.mainTotalsLine || 6.5);
-            const hockeyWinnerPromise = getHockeyWinnerAnalysis(sim, rawDataJson);
-            
-            const results = await Promise.allSettled([
-                expertConfidencePromise, riskAssessmentPromise, playerMarketsPromise,
-                hockeyGoalsOUPromise, hockeyWinnerPromise
-            ]);
-            
-            expertConfidence = (results[0].status === 'fulfilled') ? results[0].value : `**1.0/10** - AI Hiba: ${results[0].reason?.message || 'Ismeretlen'}`;
-            riskAssessment = (results[1].status === 'fulfilled') ? results[1].value : `AI Hiba: ${results[1].reason?.message || 'Ismeretlen'}`;
-            
-            microAnalyses = {
-                player_market_analysis: (results[2].status === 'fulfilled') ? results[2].value : `AI Hiba: ${results[2].reason?.message || 'Ismeretlen'}`,
-                hockey_goals_ou_analysis: (results[3].status === 'fulfilled') ? results[3].value : `AI Hiba: ${results[3].reason?.message || 'Ismeretlen'}`,
-                hockey_winner_analysis: (results[4].status === 'fulfilled') ? results[4].value : `AI Hiba: ${results[4].reason?.message || 'Ismeretlen'}`,
-            };
+        expertConfidence = (results[0].status === 'fulfilled') ? (results[0].value as string) : `**1.0/10** - AI Hiba: ${results[0].reason?.message || 'Ismeretlen'}`;
+        riskAssessment = (results[1].status === 'fulfilled') ? (results[1].value as string) : `AI Hiba: ${results[1].reason?.message || 'Ismeretlen'}`;
+        
+        // A sport-specifikus modellek eredményeinek beolvasása
+        if (results[3].status === 'fulfilled') {
+            microAnalyses = results[3].value as { [key: string]: string };
+        } else {
+            console.error(`[AI_Service] KRITIKUS HIBA: A sportág-specifikus mikromodellek (${sport}) futtatása sikertelen: ${results[3].reason?.message}`);
+            microAnalyses = { "error": `Stratégia hiba: ${results[3].reason?.message}` };
         }
-        // === MÓDOSÍTÁS VÉGE (v103.6) ===
+        
+        // A sportág-független 'player_market_analysis' hozzáadása a listához
+        microAnalyses['player_market_analysis'] = (results[2].status === 'fulfilled') ? (results[2].value as string) : `AI Hiba: ${results[2].reason?.message || 'Ismeretlen'}`;
 
         
         // --- 2. LÉPÉS: Fő elemzések futtatása (ezek függhetnek az előzőektől) ---
@@ -783,23 +716,23 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
             generalAnalysis = await getFinalGeneralAnalysis(sim, tacticalBriefing, rawDataJson, modelConfidence, psyReport);
         } catch (e: any) { generalAnalysis = `AI Hiba (General): ${e.message}`; }
 
-        // Csak focinál van értelme a Prófétának
+        // Csak focinál van értelme a Prófétának (Ez a sport-specifikus logika maradhat)
         if (sport === 'soccer') {
             try {
                 propheticTimeline = await getPropheticTimeline(rawDataJson, home, away, sport, tacticalBriefing);
             } catch (e: any) { 
-                console.error(`[AI_Service v103.6] Hiba elkapva a 'getPropheticTimeline' hívásakor: ${e.message}`);
+                console.error(`[AI_Service v104.0] Hiba elkapva a 'getPropheticTimeline' hívásakor: ${e.message}`);
                 propheticTimeline = `AI Hiba (Prophetic): ${e.message}`; 
             }
         } else {
-            propheticTimeline = "N/A (Jégkoronghoz nem releváns)";
+            propheticTimeline = "N/A (Nem focihoz nem releváns)";
         }
 
         try {
             strategic_synthesis = await getStrategicClosingThoughts(
                 sim, rawDataJson, richContext, microAnalyses, riskAssessment,
                 tacticalBriefing, valueBetsJson, modelConfidence, expertConfidence,
-                psyReport, specialistReport, sport // Átadjuk a sportot (v103.6)
+                psyReport, specialistReport, sport
             );
         } catch (e: any) { strategic_synthesis = `AI Hiba (Strategic): ${e.message}`; }
 
@@ -816,11 +749,11 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
             "N/A", 
             psyReport,
             specialistReport,
-            sport // Átadjuk a sportot (v103.6)
+            sport
         );
 
     } catch (e: any) {
-        console.error(`[AI_Service v103.6] KRITIKUS HIBA a runStep_FinalAnalysis során: ${e.message}`);
+        console.error(`[AI_Service v104.0] KRITIKUS HIBA a runStep_FinalAnalysis során: ${e.message}`);
         masterRecommendation.brief_reasoning = `KRITIKUS HIBA: ${e.message}. A többi elemzés (ha van) még érvényes lehet.`;
     }
     
@@ -872,12 +805,12 @@ If the answer isn't in the context or history, politely state that the informati
         const rawAnswer = await _callGemini(prompt, false); // forceJson = false
         return rawAnswer ? { answer: rawAnswer } : { error: "Az AI nem tudott válaszolni." };
     } catch (e: any) {
-        console.error(`[AI_Service v103.6] Chat hiba: ${e.message}`, e.stack);
+        console.error(`[AI_Service v104.0] Chat hiba: ${e.message}`, e.stack);
         return { error: `Chat AI Hiba: ${e.message}` };
     }
 }
 
-// --- FŐ EXPORT (v103.6) ---
+// --- FŐ EXPORT (v104.0) ---
 export default {
     runStep_TeamNameResolver,
     runStep_Psychologist,
