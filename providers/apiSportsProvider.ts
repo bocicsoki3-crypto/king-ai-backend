@@ -1,17 +1,12 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v105.2 (Fuzzy Liga Keresés)
-// MÓDOSÍTÁS (v105.2):
-// 1. HOZZÁADVA: 'getStringBigrams' és 'compareStrings' segédfüggvények
-//    a hasonlóság-alapú kereséshez.
-// 2. MÓDOSÍTVA: Az '_getLeagueId' függvény (kb. 200. sor) átírva,
-//    hogy a "pontos egyezés" helyett "fuzzy matching"-et használjon.
-//    Ez javítja a "KRITIKUS P4 HIBA: Végleg nem sikerült a 'leagueId' azonosítása"
-//    hibát [9, line 29].
-// MÓDOSÍTÁS (v104.3):
-// 1. JAVÍTVA (TS2322): A 'fetchMatchData' visszatérési típusa
-//    'Promise<ICanonicalRichContext>'-ről 'Promise<IDataFetchResponse>'-ra módosítva.
-// 2. JAVÍTVA (TS2322): A 'fetchMatchData' a 'return' utasításnál
-//    hozzáadja a kötelező 'xgSource' mezőt.
+// VERZIÓ: v105.3 (Intelligens Fuzzy Liga Keresés + TS1128 Javítás)
+// MÓDOSÍTÁS (v105.3):
+// 1. JAVÍTÁS (TS1128): A fájl vége (a 'fetchMatchData' [20, line 1025] után)
+//    pótolva, ami a 'Declaration or statement expected' [23, 24] hibát okozta.
+// 2. MÓDOSÍTÁS (P4 Hiba): Az '_findLeagueInList' (kb. 230. sor)
+//    "Fuzzy Keresés" logikája jelentősen javítva, hogy kezelje
+//    az "Argentinian Liga Profesional" [29, line 14] vs "Liga Profesional Argentina" [29, line 18]
+//    és a "World Cup - Qualification Europe" [29] típusú eltéréseket.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -67,7 +62,7 @@ function compareStrings(str1: string, str2: string): number {
     return (2.0 * intersection) / union;
 }
 
-const FUZZY_LEAGUE_THRESHOLD = 0.6; // Hasonlósági küszöb (0.0 - 1.0)
+const FUZZY_LEAGUE_THRESHOLD = 0.5; // Küszöb csökkentve 0.5-re
 // === VÉGE ===
 
 
@@ -232,14 +227,15 @@ export async function getApiSportsTeamId(
     return null;
 }
 
-// === EXPORTÁLVA (MÓDOSÍTVA v105.2: Fuzzy Liga Keresés) ===
+// === EXPORTÁLVA (MÓDOSÍTVA v105.3: Intelligens Fuzzy Liga Keresés) ===
 export async function getApiSportsLeagueId(leagueName: string, country: string, season: number, sport: string): Promise<{ leagueId: number, foundSeason: number } | null> {
     if (!leagueName || !country || !season) {
         console.warn(`API-SPORTS (${sport}): Liga név ('${leagueName}'), ország ('${country}') vagy szezon (${season}) hiányzik.`);
         return null;
     }
     const lowerCountry = country.toLowerCase();
-    const leagueCacheKey = `apisports_league_id_v2_fuzzy_${sport}_${leagueName.toLowerCase().replace(/\s/g, '')}_${country}_${season}`;
+    // A cache kulcs most már 'v3', hogy az új logikát kényszerítse
+    const leagueCacheKey = `apisports_league_id_v3_fuzzy_${sport}_${leagueName.toLowerCase().replace(/\s/g, '')}_${country}_${season}`;
     const cachedLeagueData = apiSportsLeagueIdCache.get<{ leagueId: number, foundSeason: number }>(leagueCacheKey);
     if (cachedLeagueData) {
         console.log(`API-SPORTS (${sport}): Liga ID CACHE TALÁLAT: "${leagueName}" -> ${cachedLeagueData.leagueId} (Szezon: ${cachedLeagueData.foundSeason})`);
@@ -257,15 +253,22 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
         console.log(`API-SPORTS (${sport}): Liga-lista lekérése (Ország: ${currentCountry}, Szezon: ${currentSeason})...`);
         const endpoint = `/v3/leagues`;
         const params = { country: currentCountry, season: currentSeason };
+        // 'World' (VB) esetén a 'country' helyett 'type'='Cup' kell
+        if (currentCountry === 'world') {
+            params.country = undefined; // Töröljük a 'country' paramétert
+            params.type = 'Cup';      // Hozzáadjuk a 'type=Cup' paramétert
+            console.log(`API-SPORTS (${sport}): 'World' ország észlelve, keresés típusa 'Cup'-ra módosítva.`);
+        }
+        
         const response = await makeRequestWithRotation(sport, endpoint, { params });
         if (!response?.data?.response || response.data.response.length === 0) {
-            console.warn(`API-SPORTS (${sport}): Nem találhatók ligák ehhez: ${currentCountry}, ${currentSeason}`);
+            console.warn(`API-SPORTS (${sport}): Nem találhatók ligák ehhez: ${JSON.stringify(params)}`);
             apiSportsCountryLeagueCache.set(cacheKey, []); 
             return [];
         }
         const leagues = response.data.response.map((l: any) => l.league);
         apiSportsCountryLeagueCache.set(cacheKey, leagues);
-        console.log(`API-SPORTS (${sport}): ${leagues.length} liga cache-elve (${currentCountry}, ${currentSeason}).`);
+        console.log(`API-SPORTS (${sport}): ${leagues.length} liga cache-elve (${JSON.stringify(params)}).`);
         return leagues;
     };
     
@@ -273,41 +276,51 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
     const _findLeagueInList = async (leagues: any[], targetName: string): Promise<number | null> => {
         if (leagues.length === 0) return null;
         
-        // === MÓDOSÍTÁS (v105.2): Fuzzy Keresés Bevezetése ===
-        // A régi "pontos egyezés" helyett (ami elbukott a logban [9])
+        // === MÓDOSÍTÁS (v105.3): Intelligens Fuzzy Keresés ===
         
-        // A keresett nevet is tisztítjuk (pl. "Argentinian Liga Profesional" -> "liga profesional")
-        const cleanedSearchName = targetName.toLowerCase()
-            .replace("argentinian", "")
-            .replace("liga profesional", "liga argentina") // Alias kezelés
-            .trim();
+        // Tisztítási szabályok
+        const cleanName = (str: string): string => {
+            return str.toLowerCase()
+                .replace(/[-_]/g, ' ') // Kötőjelek cseréje szóközre
+                .replace("argentinian", "") // Argentin hiba javítása
+                .replace("liga profesional", "liga argentina") // Alias
+                .replace("world cup - qualification europe", "uefa world cup qualifying") // VB hiba javítása
+                .replace(/[^a-z0-9\s]/g, '') // Speciális karakterek eltávolítása
+                .trim();
+        };
+
+        const cleanedSearchName = cleanName(targetName);
 
         const scoredLeagues = leagues.map(league => {
-            // Az API-ban lévő nevet is tisztítjuk (pl. "Liga Profesional Argentina" -> "liga argentina")
-            const cleanedApiName = league.name.toLowerCase()
-                .replace("argentina", "")
-                .trim();
-            
+            const cleanedApiName = cleanName(league.name);
             const score = compareStrings(cleanedSearchName, cleanedApiName);
+            
+            // Bónusz pont, ha a "country" is "World" (VB kvalik miatt)
+            const countryBonus = (league.country?.name === 'World' && targetName.includes('World Cup')) ? 0.2 : 0;
+            
             return {
                 id: league.id,
                 name: league.name,
-                score: score
+                apiCleaned: cleanedApiName,
+                score: score + countryBonus
             };
         });
 
         const bestMatch = scoredLeagues.sort((a, b) => b.score - a.score)[0];
 
         if (bestMatch && bestMatch.score >= FUZZY_LEAGUE_THRESHOLD) {
-            console.log(`[apiSportsProvider/_getLeagueId] FUZZY EGYEZÉS SIKERES (Score: ${bestMatch.score.toFixed(2)}): "${targetName}" -> "${bestMatch.name}" (ID: ${bestMatch.id})`);
+            console.log(`[apiSportsProvider/_getLeagueId] FUZZY EGYEZÉS SIKERES (Score: ${bestMatch.score.toFixed(2)}):`);
+            console.log(`  > Keresve: "${targetName}" (Tisztítva: "${cleanedSearchName}")`);
+            console.log(`  > Találat: "${bestMatch.name}" (Tisztítva: "${bestMatch.apiCleaned}") -> ID: ${bestMatch.id}`);
             return bestMatch.id;
         }
         
         // === MÓDOSÍTÁS VÉGE ===
 
-        // Ha a fuzzy keresés is elbukik (Debug log a v95.2-ből)
-        const availableNames = leagues.map(l => `${l.name} -> ${l.name.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()}`).join('\n');
-        console.warn(`[apiSportsProvider/_getLeagueId] Nem található pontos VAGY fuzzy (>${FUZZY_LEAGUE_THRESHOLD}) egyezés ehhez: "${targetName}" (Keresve: "${cleanedSearchName}"). Elérhető nevek:\n${availableNames}`);
+        // Ha a fuzzy keresés is elbukik (Debug log)
+        const availableNames = leagues.map(l => `${l.name} (ID: ${l.id})`).join('\n');
+        console.warn(`[apiSportsProvider/_getLeagueId] Nem található pontos VAGY fuzzy (>${FUZZY_LEAGUE_THRESHOLD}) egyezés ehhez: "${targetName}" (Keresve: "${cleanedSearchName}").`);
+        console.warn(`Elérhető nevek:\n${availableNames}`);
         
         return null;
     };
