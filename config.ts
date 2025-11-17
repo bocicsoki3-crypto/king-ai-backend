@@ -1,11 +1,14 @@
-// config.ts (v104.1 - Kosárlabda Élesítés)
-// MÓDOSÍTÁS (v104.0): Kosárlabda API kulcs hozzáadása a térképhez.
-// (A v81.3-as Hoki Build Fix megmarad)
+// config.ts (v104.2 - "The Rundown" API Javítás)
+// MÓDOSÍTÁS (v104.2):
+// 1. A BASKETBALL_API_HOST cserélve a log naplóban szereplő,
+//    valós 'therundown-therundown-v1.p.rapidapi.com'-ra.
+// 2. A BASKETBALL_API_KEY most már a 'X-RapidAPI-Key'-t használja
+//    (a .env fájlban ugyanazt a kulcsot kell használni, mint a többihez).
 
 import dotenv from 'dotenv';
 dotenv.config();
 
-// --- TÍPUSDEFINÍCIÓK A KONFIGURÁCIÓHOZ ---
+// --- TÍPUSDEFINÍCIJÓK A KONFIGURÁCIÓHOZ ---
 interface IEspnLeagueConfig {
   slug: string;
   country: string;
@@ -43,7 +46,7 @@ export const PORT: number = parseInt(process.env.PORT || "3001", 10);
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY: string | undefined = process.env.GEMINI_API_KEY;
-export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-2.5-pro'; // Ajánlott 'gemini-1.5-pro-latest'
+export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-2.5-pro';
 export const SHEET_URL: string | undefined = process.env.SHEET_URL;
 
 // === FOCI (RapidAPI) ===
@@ -61,9 +64,11 @@ export const ICEHOCKEYAPI_KEY: string | undefined = process.env.ICEHOCKEYAPI_KEY
 export const SPORTRADAR_HOCKEY_HOST: string = process.env.SPORTRADAR_HOCKEY_HOST || 'sportrader-realtime-fast-stable-data.p.rapidapi.com';
 export const SPORTRADAR_HOCKEY_KEY: string | undefined = process.env.SPORTRADAR_HOCKEY_KEY;
 
-// === KOSÁRLABDA (RapidAPI) ===
-export const BASKETBALL_API_KEY: string | undefined = process.env.BASKETBALL_API_KEY;
-export const BASKETBALL_API_HOST: string = process.env.BASKETBALL_API_HOST || 'api-basketball.p.rapidapi.com';
+// === KOSÁRLABDA (RapidAPI - "The Rundown") ===
+// === MÓDOSÍTÁS (v104.2): A host cserélve a log alapján ===
+export const BASKETBALL_API_KEY: string | undefined = process.env.BASKETBALL_API_KEY; // Ennek kell tartalmaznia a RapidAPI kulcsot
+export const BASKETBALL_API_HOST: string = process.env.BASKETBALL_API_HOST || 'therundown-therundown-v1.p.rapidapi.com';
+// === MÓDOSÍTÁS VÉGE ===
 
 // === SOFASCORE (RapidAPI) ===
 export const SOFASCORE_API_KEY: string | undefined = process.env.SOFASCORE_API_KEY; 
@@ -91,9 +96,9 @@ export const API_HOSTS: { [key: string]: any } = {
         host: APISPORTS_HOCKEY_HOST,
         keys: APISPORTS_HOCKEY_KEY ? [APISPORTS_HOCKEY_KEY] : ['hockey-placeholder-key'], 
     },
-    // === MÓDOSÍTÁS (v104.1): Kosárlabda API kulcs hozzáadása a térképhez ===
+    // === MÓDOSÍTÁS (v104.2): A host és kulcs itt is frissítve ===
     basketball: {
-        host: BASKETBALL_API_HOST, // Az 'api-basketball.p.rapidapi.com'
+        host: BASKETBALL_API_HOST, // 'therundown-therundown-v1.p.rapidapi.com'
         keys: [BASKETBALL_API_KEY].filter(Boolean) as string[]
     }
     // === MÓDOSÍTÁS VÉGE ===
