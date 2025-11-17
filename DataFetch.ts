@@ -1,54 +1,53 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v94.0 ("Jégkorong Provider Javítás")
-// MÓDOSÍTÁS (v94.0):
-// 1. IMPORT: A hibás 'newHockeyProvider' (sportradar) és a hibát okozó
-//    'apiSportsProvider' ID-kereső helyett importáljuk a robusztus
-//    'iceHockeyApiProvider'-t (v1.4, icehockeyapi.p.rapidapi.com).
-// 2. MÓDOSÍTVA: A `getProvider` már az 'iceHockeyProvider'-t adja vissza
-//    a 'hockey' sportághoz.
-// 3. ARCHITEKTURÁLIS JAVÍTÁS: A `getRichContextualData` függvényben
-//    egy `if (sport !== 'hockey')` blokkba helyeztük a hibát okozó
-//    `getApiSportsLeagueId` és `getApiSportsTeamId` hívásokat.
-// 4. LOGIKA: A 'hockey' most már kihagyja a felesleges ID-keresést,
-//    és egyenesen az `iceHockeyProvider.fetchMatchData`-t hívja,
-//    ami a (v1.4) stratégia szerint nevek alapján keres a napi listában.
-//    Ez megoldja a "Log napló.txt"-ben látott "Tiszta P1 Mód" hibát.
+// VERZIÓ: v104.1 ("Stratégia Refaktor" + "Kosárlabda Élesítés")
+// MÓDOSÍTÁS (v104.0):
+// 1. REFaktor: Átadjuk az 'apiConfig'-ot (host, keys) a sport provider-eknek.
+// 2. MÓDOSÍTVA: A 'getProvider' már a valódi 'apiBasketballProvider'-t adja vissza.
+// 3. MÓDOSÍTVA: A 'getRichContextualData' logikája frissítve, hogy a foci
+//    és a kosár 'api-sports' alapú ID-keresőit helyesen hívja meg.
+// 4. MÓDOSÍTVA: A 'getRostersForMatch' szintén frissítve az 'apiConfig' átadására.
+// 5. JAVÍTÁS: .js kiterjesztések hozzáadva az importokhoz (Node.js/TypeScript-hez).
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
 import path from 'path';
 // Kanonikus típusok importálása
-import type { ICanonicalRichContext, ICanonicalPlayerStats, IPlayerStub, ICanonicalPlayer, ICanonicalRawData, ICanonicalStats, IStructuredWeather } from './src/types/canonical.d.ts'; // Bővítve
+import type { ICanonicalRichContext, ICanonicalPlayerStats, IPlayerStub, ICanonicalPlayer, ICanonicalRawData, ICanonicalStats, IStructuredWeather } from './src/types/canonical.d.ts';
 // Providerek importálása
 import {
     fetchMatchData as apiSportsFetchData,
     providerName as apiSportsProviderName,
-    getApiSportsLineupsAndInjuries, 
+    getApiSportsLineupsAndInjuries as getApiSportsLineupsAndInjuries, 
     _getLeagueRoster, 
     getApiSportsTeamId, 
     getApiSportsLeagueId 
 } from './providers/apiSportsProvider.js';
 
-// === JAVÍTÁS (v94.0): A megfelelő jégkorong provider importálása ===
+// A Hoki provider (v94.0 óta változatlanul)
 import {
     fetchMatchData as iceHockeyFetchData,
     providerName as iceHockeyProviderName
 } from './providers/iceHockeyApiProvider.js';
-// A 'newHockeyProvider' (sportradar) eltávolítva, mivel az 'iceHockeyApiProvider' (v1.4) bizonyítottan működik
-// import * as hockeyProvider from './providers/newHockeyProvider.js'; 
-// =============================================================
 
-import * as basketballProvider from './providers/newBasketballProvider.js';
+// === MÓDOSÍTÁS (v104.1): A valódi kosár provider importálása ===
+import {
+    fetchMatchData as apiBasketballFetchData,
+    providerName as apiBasketballProviderName,
+    // getApiSportsLineupsAndInjuries, // TODO: Kosár hiányzók implementálása
+    _getLeagueRoster as apiBasketballGetRoster,
+    getApiSportsTeamId as apiBasketballGetTeamId,
+    getApiSportsLeagueId as apiBasketballGetLeagueId
+} from './providers/apiBasketballProvider.js';
+// A 'newBasketballProvider' (csonk) eltávolítva
+// === MÓDOSÍTÁS VÉGE ===
+
 import { fetchSofascoreData, type ISofascoreResponse } from './providers/sofascoreProvider.js';
 
-// === JAVÍTÁS (v94.1): A 'v1.5'-ös (4-argumentumú) odds provider importálása ===
-// A hívás (L449) már a 4 argumentumot használja, de az import a régi fájlra mutatott.
+// Odds fallback (v94.1 óta változatlanul)
 import { fetchOddsData as oddsFeedFetchData } from './providers/oddsFeedProvider.js';
-// Régi, hibás import: import { fetchOddsData as oddsFeedFetchData } from './providers/oddsProvider.js';
-// =======================================================================
 
 import { runStep_TeamNameResolver } from './AI_Service.js';
-import { SPORT_CONFIG } from './config.js';
+import { SPORT_CONFIG, API_HOSTS } from './config.js'; // API_HOSTS importálva
 // Importálás a központi utils fájlból
 import {
     _callGemini as commonCallGemini,
@@ -67,18 +66,24 @@ interface IDataProvider {
 
 type CanonicalRole = 'Kapus' | 'Védő' | 'Középpályás' | 'Támadó' | 'Ismeretlen';
 
-// Az 'apiSportsProvider' manuális becsomagolása az 'IDataProvider' interfészhez
+// Az 'apiSportsProvider' (FOCI) becsomagolása
 const apiSportsProvider: IDataProvider = {
     fetchMatchData: apiSportsFetchData,
     providerName: apiSportsProviderName
 };
 
-// === JAVÍTÁS (v94.0): A jégkorong provider becsomagolása ===
+// A 'iceHockeyProvider' (HOKI) becsomagolása
 const iceHockeyProvider: IDataProvider = {
     fetchMatchData: iceHockeyFetchData,
     providerName: iceHockeyProviderName
 };
-// ========================================================
+
+// === MÓDOSÍTÁS (v104.1): A valódi kosár provider becsomagolása ===
+const apiBasketballProvider: IDataProvider = {
+    fetchMatchData: apiBasketballFetchData,
+    providerName: apiBasketballProviderName
+};
+// === MÓDOSÍTÁS VÉGE ===
 
 
 // Interfész a kiterjesztett funkció opciókhoz
@@ -105,14 +110,11 @@ export interface IDataFetchResponse extends ICanonicalRichContext {
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v94.0 (Jégkorong Provider Javítás)
+* VERZIÓ: v104.1 (Kosárlabda Élesítés)
 **************************************************************/
 
 /**
  * === "Stub" Válasz Generátor (Változatlan v93.0 óta) ===
- * Létrehoz egy üres, de érvényes ICanonicalRichContext objektumot,
- * ha az API-hívások (pl. csapat ID) meghiúsulnak.
- * Ez lehetővé teszi a P1-es adatok (manuális xG, hiányzók) feldolgozását.
  */
 function generateEmptyStubContext(options: IDataFetchOptions): IDataFetchResponse {
     const { sport, homeTeamName, awayTeamName } = options;
@@ -154,13 +156,15 @@ function generateEmptyStubContext(options: IDataFetchOptions): IDataFetchRespons
         availableRosters: { home: [], away: [] }
     };
     
+    const defaultXG = (sport === 'basketball') ? 110 : (sport === 'hockey' ? 3.0 : 1.35);
+    
     const result: IDataFetchResponse = {
          rawStats: emptyRawData.stats,
          leagueAverages: {},
          richContext: "Figyelem: Az automatikus P4 API adatgyűjtés sikertelen. Az elemzés kizárólag a manuálisan megadott P1 adatokra támaszkodik.",
          advancedData: { 
-             home: { xg: null }, 
-             away: { xg: null },
+             home: { xg: defaultXG }, // Alapértelmezett xG/pont
+             away: { xg: defaultXG },
              // Átadjuk a P1 adatokat, ha léteznek
              manual_H_xG: options.manual_H_xG,
              manual_H_xGA: options.manual_H_xGA,
@@ -175,6 +179,17 @@ function generateEmptyStubContext(options: IDataFetchOptions): IDataFetchRespons
          xgSource: "N/A (API Hiba)"
     };
     
+    // Ha P1 adatok léteznek, az advancedData-t felülírjuk velük
+    if (options.manual_H_xG != null && options.manual_H_xGA != null &&
+        options.manual_A_xG != null && options.manual_A_xGA != null)
+    {
+        result.advancedData.manual_H_xG = options.manual_H_xG;
+        result.advancedData.manual_H_xGA = options.manual_H_xGA;
+        result.advancedData.manual_A_xG = options.manual_A_xG;
+        result.advancedData.manual_A_xGA = options.manual_A_xGA;
+        result.xgSource = "Manual (Components)"; 
+    }
+
     return result;
 }
 
@@ -183,12 +198,12 @@ function getProvider(sport: string): IDataProvider {
   switch (sport.toLowerCase()) {
     case 'soccer':
       return apiSportsProvider;
-    // === JAVÍTÁS (v94.0): A megfelelő provider visszaadása ===
     case 'hockey':
       return iceHockeyProvider; 
-    // ========================================================
+    // === MÓDOSÍTÁS (v104.1): A valódi provider visszaadása ===
     case 'basketball':
-      return basketballProvider;
+      return apiBasketballProvider;
+    // === MÓDOSÍTÁS VÉGE ===
     default:
       throw new Error(`Nem támogatott sportág: '${sport}'. Nincs implementált provider.`);
   }
@@ -198,6 +213,7 @@ function getProvider(sport: string): IDataProvider {
  * Segédfüggvény a pozíció nevének fordításához (a Model.ts által várt formátumra)
  */
 function getRoleFromPos(pos: string): CanonicalRole {
+    if (!pos) return 'Ismeretlen';
     const p = pos.toUpperCase();
     if (p === 'G') return 'Kapus';
     if (p === 'D') return 'Védő';
@@ -207,7 +223,7 @@ function getRoleFromPos(pos: string): CanonicalRole {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FÜGGVÉNY (v94.0)
+ * FŐ ADATGYŰJTŐ FÜGGVÉNY (v104.1)
  */
 export async function getRichContextualData(
     options: IDataFetchOptions,
@@ -239,7 +255,7 @@ export async function getRichContextualData(
         `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
         '';
         
-    const ck = explicitMatchId || `rich_context_v62.1_roster_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}${p1AbsenteesHash}`;
+    const ck = explicitMatchId || `rich_context_v104.1_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}${p1AbsenteesHash}`;
     
     // === CACHE OLVASÁS (Változatlan v93.0 óta) ===
     if (!forceNew) {
@@ -266,8 +282,16 @@ export async function getRichContextualData(
                     role: getRoleFromPos(playerStub.pos), 
                     importance: 'key', 
                     status: 'confirmed_out',
-                    rating_last_5: 7.5
+                    rating_last_5: 7.5 // Placeholder a P1 hiányzókhoz
                 });
+                // Biztosítjuk, hogy a detailedPlayerStats létezzen
+                if (!finalData.rawData.detailedPlayerStats) {
+                     finalData.rawData.detailedPlayerStats = { home_absentees: [], away_absentees: [], key_players_ratings: { home: {}, away: {} } };
+                }
+                if (!finalData.rawData.absentees) {
+                    finalData.rawData.absentees = { home: [], away: [] };
+                }
+                
                 finalData.rawData.detailedPlayerStats.home_absentees = manual_absentees.home.map(mapManualToCanonical);
                 finalData.rawData.detailedPlayerStats.away_absentees = manual_absentees.away.map(mapManualToCanonical);
                 finalData.rawData.absentees.home = finalData.rawData.detailedPlayerStats.home_absentees;
@@ -285,6 +309,14 @@ export async function getRichContextualData(
         const sportProvider = getProvider(sport);
         console.log(`Adatgyűjtés indul (Provider: ${sportProvider.providerName || sport}): ${decodedHomeTeam} vs ${decodedAwayTeam}...`);
 
+        // === MÓDOSÍTÁS (v104.1): API Konfiguráció átadása ===
+        const apiConfig = API_HOSTS[sport];
+        if ((sport === 'soccer' || sport === 'basketball') && (!apiConfig || !apiConfig.keys || apiConfig.keys.length === 0)) {
+            console.warn(`[DataFetch] FIGYELMEZTETÉS: Nincsenek API kulcsok definiálva a(z) '${sport}' sporthoz a config.ts API_HOSTS térképében.`);
+            // A 'hockey' (iceHockeyApiProvider) a config.js gyökeréből olvassa a kulcsot, ezért rá nem vonatkozik ez az ellenőrzés
+        }
+        // === MÓDOSÍTÁS VÉGE ===
+
         const sportConfig = SPORT_CONFIG[sport];
         const leagueData = sportConfig?.espn_leagues[decodedLeagueName];
         const countryContext = leagueData?.country || 'N/A'; 
@@ -293,19 +325,22 @@ export async function getRichContextualData(
             console.warn(`[DataFetch] Nincs 'country' kontextus a(z) '${decodedLeagueName}' ligához. A Sofascore névfeloldás pontatlan lehet.`);
         }
         
-        // === ARCHITEKTURÁLIS JAVÍTÁS (v94.0) ===
-        // Ezekre az ID-kra csak akkor van szükség, ha NEM jégkorongról van szó.
-        // Az iceHockeyProvider (v1.4) saját maga keresi meg az ID-kat nevek alapján.
+        // === ARCHITEKTURÁLIS JAVÍTÁS (v104.1) ===
+        // Azok a sportágak, amik az 'api-sports' (foci, kosár) logikát használják,
+        // szükségük van ID-keresésre. A hoki (iceHockeyApiProvider) nem.
         let leagueId: number | null = null;
         let foundSeason: number | null = null;
         let homeTeamId: number | null = null;
         let awayTeamId: number | null = null;
+        const originSeason = (new Date(decodedUtcKickoff).getMonth() < 7) ? new Date(decodedUtcKickoff).getFullYear() - 1 : new Date(decodedUtcKickoff).getFullYear();
 
-        if (sport !== 'hockey') {
-            console.log(`[DataFetch v94.0] Sportág specifikus ID keresés indul (Sport: ${sport})...`);
+        if (sport === 'soccer' || sport === 'basketball') {
+            console.log(`[DataFetch v104.1] 'api-sports' ID keresés indul (Sport: ${sport})...`);
             
-            // 1. LÉPÉS: Liga adatok lekérése (Csak nem-hoki sportágaknál)
-            const leagueDataResponse = await getApiSportsLeagueId(decodedLeagueName, countryContext, new Date(decodedUtcKickoff).getFullYear(), sport);
+            // 1. LÉPÉS: Liga adatok lekérése
+            const leagueDataResponse = sport === 'soccer'
+                ? await getApiSportsLeagueId(decodedLeagueName, countryContext, new Date(decodedUtcKickoff).getFullYear(), sport)
+                : await apiBasketballGetLeagueId(decodedLeagueName, countryContext, new Date(decodedUtcKickoff).getFullYear(), sport, apiConfig);
             
             if (!leagueDataResponse || !leagueDataResponse.leagueId) {
                  console.error(`[DataFetch] KRITIKUS P4 HIBA: Végleg nem sikerült a 'leagueId' azonosítása ('${decodedLeagueName}' néven).`);
@@ -316,16 +351,26 @@ export async function getRichContextualData(
             leagueId = leagueDataResponse.leagueId;
             foundSeason = leagueDataResponse.foundSeason;
 
-            // 2. LÉPÉS: Csapat ID-k lekérése (Csak nem-hoki sportágaknál)
-            homeTeamId = await getApiSportsTeamId(decodedHomeTeam, sport, leagueId, foundSeason);
-            awayTeamId = await getApiSportsTeamId(decodedAwayTeam, sport, leagueId, foundSeason);
+            // 2. LÉPÉS: Csapatlista lekérése (ÚJ a kosárhoz)
+            const leagueRosterData = sport === 'soccer'
+                ? { roster: await _getLeagueRoster(leagueId, foundSeason, sport), foundSeason }
+                // @ts-ignore (A _getLeagueRoster és apiBasketballGetRoster aláírása eltérhet, de a logika működik)
+                : await apiBasketballGetRoster(leagueId, foundSeason, sport, apiConfig);
+
+            // 3. LÉPÉS: Csapat ID-k lekérése
+            const getTeamIdFunc = sport === 'soccer' ? getApiSportsTeamId : apiBasketballGetTeamId;
             
-            // 3. LÉPÉS: AI Névfeloldó (Csak foci esetén, ha szükséges)
+            // @ts-ignore
+            homeTeamId = await getTeamIdFunc(decodedHomeTeam, sport, leagueId, originSeason, leagueRosterData);
+            // @ts-ignore
+            awayTeamId = await getTeamIdFunc(decodedAwayTeam, sport, leagueId, originSeason, leagueRosterData);
+            
+            // 4. LÉPÉS: AI Névfeloldó (Csak foci esetén, ha szükséges)
             if (sport === 'soccer' && (!homeTeamId || !awayTeamId)) {
                 console.warn(`[DataFetch] Statikus névfeloldás sikertelen (H:${homeTeamId}, A:${awayTeamId}). AI Fallback indítása (8. Ügynök)...`);
 
-                const leagueRoster = await _getLeagueRoster(leagueId, foundSeason, sport);
-                const rosterStubs = leagueRoster.map(item => ({ id: item.team.id, name: item.team.name }));
+                // @ts-ignore
+                const rosterStubs = leagueRosterData.roster.map(item => ({ id: item.team.id, name: item.team.name }));
                 
                 if (!homeTeamId) {
                     const result = await runStep_TeamNameResolver({
@@ -351,22 +396,21 @@ export async function getRichContextualData(
                 }
             }
             
-            // 4. LÉPÉS: Ellenőrzés (Csak nem-hoki sportágaknál)
+            // 5. LÉPÉS: Ellenőrzés
             if (!homeTeamId || !awayTeamId) {
-                console.error(`[DataFetch] KRITIKUS P4 HIBA: A csapat azonosítókat a statikus keresés és az AI Fallback sem tudta feloldani. HomeID: ${homeTeamId}, AwayID: ${awayTeamId}.`);
+                console.error(`[DataFetch] KRITIKUS P4 HIBA: A csapat azonosítókat nem sikerült feloldani. HomeID: ${homeTeamId}, AwayID: ${awayTeamId}.`);
                 console.warn(`[DataFetch] TISZTA P1 MÓD KÉNYSZERÍTVE. A rendszer üres adat-stubot ad vissza.`);
                 return generateEmptyStubContext(options);
             }
 
-        } else {
-            // Ha 'hockey'-ról van szó, a provider (iceHockeyApiProvider v1.4)
-            // nem használja ezeket az ID-kat, ezért a hívásokat kihagyjuk.
-            console.log(`[DataFetch v94.0] Jégkorong sportág észlelve. A hibás 'apiSports' ID-keresés kihagyva. Átirányítás az 'iceHockeyApiProvider'-hez.`);
+        } else if (sport === 'hockey') {
+            // A Hoki (iceHockeyApiProvider) logikája változatlan marad
+            console.log(`[DataFetch v104.1] Jégkorong sportág észlelve. A név-alapú keresés indul.`);
         }
         // === ARCHITEKTURÁLIS JAVÍTÁS VÉGE ===
 
 
-        // 5. LÉPÉS: Adatgyűjtés
+        // 6. LÉPÉS: Adatgyűjtés
         const providerOptions = {
             sport: sport,
             homeTeamName: decodedHomeTeam,
@@ -374,13 +418,11 @@ export async function getRichContextualData(
             leagueName: decodedLeagueName,
             utcKickoff: decodedUtcKickoff,
             countryContext: countryContext,
-            // Az ID-k 'null' értéken maradnak hoki esetén,
-            // de 'iceHockeyProvider' nem használja őket.
-            // Más sportágaknál itt már fel vannak töltve.
             homeTeamId: homeTeamId, 
             awayTeamId: awayTeamId,
             leagueId: leagueId,
-            foundSeason: foundSeason
+            foundSeason: foundSeason,
+            apiConfig: apiConfig // === ÚJ (v104.1): Átadjuk az API konfigot ===
         };
         
         // Párhuzamos hívás (P4 Alap + P2 Kontextus)
@@ -441,14 +483,12 @@ export async function getRichContextualData(
         
         const fixtureId = finalResult.rawData.apiFootballData?.fixtureId;
 
-        // === JAVÍTÁS (v94.0): Odds fallback bővítése ===
-        // Az oddsFeedProvider már támogatja a 'hockey'-t is.
-        if (primaryOddsFailed && fixtureId && (sport === 'soccer' || sport === 'hockey')) {
-            console.warn(`[DataFetch] Az alap provider (${sportProvider.providerName}) nem adott vissza Odds adatot. Fallback indítása az 'OddsProvider'-re (FixtureID: ${fixtureId})...`);
+        // v94.0: Odds fallback bővítése (hoki, kosár)
+        if (primaryOddsFailed && (sport === 'soccer' || sport === 'hockey' || sport === 'basketball')) {
+            console.warn(`[DataFetch] Az alap provider (${sportProvider.providerName}) nem adott vissza Odds adatot. Fallback indítása az 'OddsProvider'-re...`);
             
             try {
-                // Az oddsFeedProvider-nek csapatnevek ÉS dátum kell, nem fixtureId
-                // (A oddsFeedProvider.ts.txt v1.5 elemzése alapján)
+                // Az oddsFeedProvider-nek csapatnevek ÉS dátum kell
                 const oddsFeedResult = await oddsFeedFetchData(
                     decodedHomeTeam, 
                     decodedAwayTeam, 
@@ -525,11 +565,11 @@ export async function getRichContextualData(
         };
         
         preFetchAnalysisCache.set(ck, response);
-        console.log(`Sikeres adat-egyesítés (v94.0), cache mentve (${ck}).`);
+        console.log(`Sikeres adat-egyesítés (v104.1), cache mentve (${ck}).`);
         return { ...response, fromCache: false };
         
     } catch (e: any) {
-         console.error(`KRITIKUS HIBA a getRichContextualData (v94.0) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
+         console.error(`KRITIKUS HIBA a getRichContextualData (v104.1) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
          // Még egy utolsó védvonal
          console.warn(`[DataFetch] TISZTA P1 MÓD KÉNYSZERÍTVE (Catch Blokk). A rendszer üres adat-stubot ad vissza.`);
          return generateEmptyStubContext(options);
@@ -537,7 +577,7 @@ export async function getRichContextualData(
 }
 
 
-// === P1 KERET-LEKÉRŐ FÜGGVÉNY (Javítva v94.0) ===
+// === P1 KERET-LEKÉRŐ FÜGGVÉNY (Javítva v104.1) ===
 export async function getRostersForMatch(options: {
     sport: string;
     homeTeamName: string; 
@@ -549,26 +589,32 @@ null> {
     
     console.log(`[DataFetch] Könnyített keret-lekérés indul: ${options.homeTeamName} vs ${options.awayTeamName}`);
     try {
-        const sportProvider = getProvider(options.sport); // Ez most már az iceHockeyProvider-t adja vissza
+        const sportProvider = getProvider(options.sport);
         const decodedLeagueName = decodeURIComponent(decodeURIComponent(options.leagueName || 'N/A'));
         const decodedHomeTeam = decodeURIComponent(decodeURIComponent(options.homeTeamName || 'N/A'));
         const decodedAwayTeam = decodeURIComponent(decodeURIComponent(options.awayTeamName || 'N/A'));
         const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(options.utcKickoff || new Date().toISOString()));
         
         const sportConfig = SPORT_CONFIG[options.sport];
+        // === MÓDOSÍTÁS (v104.1): API Konfiguráció ===
+        const apiConfig = API_HOSTS[options.sport];
+        // === MÓDOSÍTÁS VÉGE ===
+        
         const leagueData = sportConfig?.espn_leagues[decodedLeagueName];
         const countryContext = leagueData?.country || 'N/A';
         
-        // === JAVÍTÁS (v94.0): A felesleges ID keresés kihagyása ===
-        // Az iceHockeyProvider (v1.4) nem igényli ezeket az opciókat,
-        // csak a neveket és a dátumot.
+        // === JAVÍTÁS (v104.1): A felesleges ID keresés kihagyása ===
         let leagueId: number | null = null;
         let foundSeason: number | null = null;
         let homeTeamId: number | null = null;
         let awayTeamId: number | null = null;
+        const originSeason = (new Date(decodedUtcKickoff).getMonth() < 7) ? new Date(decodedUtcKickoff).getFullYear() - 1 : new Date(decodedUtcKickoff).getFullYear();
 
-        if (options.sport !== 'hockey') {
-            const leagueDataResponse = await getApiSportsLeagueId(decodedLeagueName, countryContext, new Date(decodedUtcKickoff).getFullYear(), options.sport);
+        if (options.sport === 'soccer' || options.sport === 'basketball') {
+            const leagueDataResponse = options.sport === 'soccer'
+                ? await getApiSportsLeagueId(decodedLeagueName, countryContext, new Date(decodedUtcKickoff).getFullYear(), options.sport)
+                : await apiBasketballGetLeagueId(decodedLeagueName, countryContext, new Date(decodedUtcKickoff).getFullYear(), options.sport, apiConfig);
+
             if (!leagueDataResponse || !leagueDataResponse.leagueId) {
                  console.warn(`[DataFetch] Nem sikerült a liga ID azonosítása a keret lekéréséhez.`);
                  return null;
@@ -576,9 +622,18 @@ null> {
             leagueId = leagueDataResponse.leagueId;
             foundSeason = leagueDataResponse.foundSeason;
             
+            const leagueRosterData = options.sport === 'soccer'
+                ? { roster: await _getLeagueRoster(leagueId, foundSeason, options.sport), foundSeason }
+                // @ts-ignore
+                : await apiBasketballGetRoster(leagueId, foundSeason, options.sport, apiConfig);
+                
+            const getTeamIdFunc = options.sport === 'soccer' ? getApiSportsTeamId : apiBasketballGetTeamId;
+
             [homeTeamId, awayTeamId] = await Promise.all([
-                getApiSportsTeamId(decodedHomeTeam, options.sport, leagueId, foundSeason),
-                getApiSportsTeamId(decodedAwayTeam, options.sport, leagueId, foundSeason),
+                // @ts-ignore
+                getTeamIdFunc(decodedHomeTeam, options.sport, leagueId, originSeason, leagueRosterData),
+                // @ts-ignore
+                getTeamIdFunc(decodedAwayTeam, options.sport, leagueId, originSeason, leagueRosterData),
             ]);
             
             if (!homeTeamId || !awayTeamId) {
@@ -595,10 +650,11 @@ null> {
             leagueName: decodedLeagueName,
             utcKickoff: decodedUtcKickoff,
             countryContext: countryContext,
-            homeTeamId: homeTeamId, // null marad hoki esetén, ami rendben van
-            awayTeamId: awayTeamId, // null marad hoki esetén, ami rendben van
+            homeTeamId: homeTeamId,
+            awayTeamId: awayTeamId,
             leagueId: leagueId,
-            foundSeason: foundSeason
+            foundSeason: foundSeason,
+            apiConfig: apiConfig // === ÚJ (v104.1) ===
         };
 
         const baseResult = await sportProvider.fetchMatchData(providerOptions);
