@@ -1,13 +1,14 @@
 // FÁJL: providers/nameBasedOddsProvider.ts
-// VERZIÓ: v1.0 (Fejlesztés 2)
-// CÉL: Ez egy "végső mentsvár" tartalék provider.
-// Akkor hívódik meg, ha a P4-es adatgyűjtés teljesen elbukik (nincs leagueId/fixtureId),
-// és a rendszer "Tiszta P1 Módba" kényszerül.
-// Ez a "The Odds API"-t használja, és CSAPATNÉV alapján keres.
-// Ez KÜLÖNBÖZIK a meglévő 'oddsProvider.ts'-től, ami fixtureId alapján keres.
+// VERZIÓ: v1.1 (TS2724 Hiba Javítása)
+// MÓDOSÍTÁS (v1.1):
+// 1. JAVÍTVA: Az import javítva 'THE_ODDS_API_HOST'-ról 'ODDS_API_HOST'-ra
+//    és 'THE_ODDS_API_KEY'-ről 'ODDS_API_KEY'-re, hogy megfeleljen
+//    a 'config.ts' [27] exportjainak. Ez javítja a TS2724 hibát [26].
 
 import axios, { type AxiosRequestConfig } from 'axios';
-import { THE_ODDS_API_HOST, THE_ODDS_API_KEY } from '../config.js';
+// === JAVÍTVA (v1.1) ===
+import { ODDS_API_HOST, ODDS_API_KEY } from '../config.js';
+// === JAVÍTÁS VÉGE ===
 import type { ICanonicalOdds } from '../src/types/canonical.d.ts';
 
 // Segédfüggvény a "The Odds API" sportkulcsának meghatározásához
@@ -112,8 +113,8 @@ function parseOddsApiResponse(apiResponse: any[], homeTeam: string, awayTeam: st
  */
 export async function fetchOddsByName(homeTeam: string, awayTeam: string, sport: string): Promise<ICanonicalOdds | null> {
     
-    if (!THE_ODDS_API_HOST || !THE_ODDS_API_KEY) {
-        console.warn("[NameBasedOddsProvider] THE_ODDS_API_HOST vagy KEY hiányzik a config.ts-ből. Kihagyva.");
+    if (!ODDS_API_HOST || !ODDS_API_KEY) {
+        console.warn("[NameBasedOddsProvider] ODDS_API_HOST vagy KEY hiányzik a config.ts-ből. Kihagyva.");
         return null;
     }
 
@@ -124,14 +125,14 @@ export async function fetchOddsByName(homeTeam: string, awayTeam: string, sport:
     try {
         const config: AxiosRequestConfig = {
             params: {
-                apiKey: THE_ODDS_API_KEY,
+                apiKey: ODDS_API_KEY,
                 regions: 'us,eu', // US és EU piacok
                 markets: 'h2h,totals',
                 bookmakers: 'pinnacle,bet365' // Prioritás
             }
         };
 
-        const url = `https://${THE_ODDS_API_HOST}${endpoint}`;
+        const url = `https://${ODDS_API_HOST}${endpoint}`;
         console.log(`[NameBasedOddsProvider] Hívás indul: ${url} (Sport: ${sportKey})`);
         
         const response = await axios.get(url, config);
