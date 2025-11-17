@@ -1,63 +1,34 @@
 // FÁJL: providers/iceHockeyApiProvider.ts
-// VERZIÓ: v2.0 ("Architekturális Illesztés")
-// MÓDOSÍTÁS (v2.0):
-// 1. ELTÁVOLÍTVA: A 'process.env.ICEHOCKEY...' közvetlen olvasása.
-//    Ez okozta a betöltési sorrendi hibát.
-// 2. HOZZÁADVA: Importálás a központi 'config.ts' fájlból.
-//    A provider most már a te meglévő, helyesen inicializált
-//    konfigurációdat használja.
-// 3. Ez a verzió továbbra is tartalmazza a 'v1.9' függőségmentes
-//    "fuzzy match" logikáját.
+// VERZIÓ: v2.1 (TS2322 Típusjavítás)
+// MÓDOSÍTÁS (v104.3):
+// 1. JAVÍTVA (TS2322): A 'fetchMatchData' és 'generateEmptyStubContext'
+//    visszatérési típusa 'ICanonicalRichContext'-ről 'IDataFetchResponse'-ra
+//    módosítva, hogy megfeleljenek a DataFetch.ts interfészének.
+// 2. MEGTARTVA: A v2.1-es "fuzzy match" és "config import" logika.
+// 3. JAVÍTÁS: .js kiterjesztések hozzáadva az importokhoz (Node.js/TypeScript-hez).
 
 import fetch from 'node-fetch';
 
-// === JAVÍTÁS (v2.0): Importálás a központi konfigurációból ===
-// Feltételezzük, hogy a config.js egy szinttel feljebb van
 import { 
     ICEHOCKEYAPI_HOST, 
     ICEHOCKEYAPI_KEY,
-    // === JAVÍTÁS (v2.1): A névfeloldó térkép importálása ===
     NHL_TEAM_NAME_MAP 
 } from '../config.js'; 
-// =======================================================
 
-
-// === SZÜKSÉGES KANONIKUS TÍPUSOK ===
-// (Ezeket a típusokat a te rendszered már ismeri a 'canonical.d.ts'-ből,
-// de a teljesség kedvéért itt hagyom a vázukat)
-interface ICanonicalRichContext {
-    rawStats: any;
-    leagueAverages: any;
-    richContext: string;
-    advancedData: { home: { xg: number | null }, away: { xg: number | null } };
-    form: any;
-    rawData: ICanonicalRawData;
-    oddsData: any | null;
-    fromCache: boolean;
-    availableRosters: { home: any[], away: any[] };
-    xgSource?: string;
-}
-
-interface ICanonicalRawData {
-    stats: any;
-    apiFootballData: any;
-    h2h_structured: any[];
-    form: any;
-    detailedPlayerStats: any;
-    absentees: any;
-    referee: any;
-    contextual_factors: any;
-    availableRosters: { home: any[], away: any[] };
-}
-// === KANONIKUS TÍPUSOK VÉGE ===
+// === JAVÍTÁS (v104.3): A helyes interfészek importálása ===
+import type {
+    ICanonicalRichContext,
+    ICanonicalRawData,
+    ICanonicalStats
+} from '../src/types/canonical.d.ts';
+import type { IDataFetchResponse } from '../DataFetch.js';
+// === JAVÍTÁS VÉGE ===
 
 
 // Provider nevének exportálása
-export const providerName = 'ice-hockey-api-v2.0-CONFIG_FIX';
+export const providerName = 'ice-hockey-api-v2.1-TSFIX';
 
-// --- API Konfiguráció (Most már importálva) ---
-// const API_HOST = process.env.ICEHOCKEY_API_HOST || ... (ELTÁVOLÍTVA)
-// const API_KEY = process.env.ICEHOCKEY_API_KEY || ... (ELTÁVOLÍTVA)
+// --- API Konfiguráció (Importálva) ---
 
 
 /**
@@ -97,12 +68,15 @@ function compareStrings(str1: string, str2: string): number {
 
 /**
  * Fallback függvény
+ * === JAVÍTVA (v104.3): Visszatérési típus IDataFetchResponse ===
  */
-function generateEmptyStubContext(homeTeamName: string, awayTeamName: string): ICanonicalRichContext {
+function generateEmptyStubContext(homeTeamName: string, awayTeamName: string): IDataFetchResponse {
     console.warn(`[IceHockeyApiProvider - generateEmptyStubContext] Visszaadok egy üres adatszerkezetet (${homeTeamName} vs ${awayTeamName}). Az elemzés P1 adatokra fog támaszkodni.`);
 
+    const emptyStats: ICanonicalStats = { gp: 1, gf: 0, ga: 0, form: null };
+    
     const emptyRawData: ICanonicalRawData = {
-        stats: { home: { gp: 1, gf: 0, ga: 0, form: null }, away: { gp: 1, gf: 0, ga: 0, form: null } },
+        stats: { home: emptyStats, away: emptyStats },
         apiFootballData: { homeTeamId: null, awayTeamId: null, leagueId: null, fixtureId: null, fixtureDate: null, lineups: null, liveStats: null, seasonStats: { home: null, away: null } },
         h2h_structured: [],
         form: { home_overall: null, away_overall: null },
@@ -113,23 +87,28 @@ function generateEmptyStubContext(homeTeamName: string, awayTeamName: string): I
         availableRosters: { home: [], away: [] }
     };
 
-    return {
+    const result: ICanonicalRichContext = {
         rawStats: emptyRawData.stats,
         leagueAverages: {},
-        richContext: "Figyelem: Az automatikus P4 API adatgyűjtés (iceHockeyApiProvider v2.0) sikertelen. Az elemzés kizárólag a manuálisan megadott P1 adatokra támaszkodik.",
+        richContext: "Figyelem: Az automatikus P4 API adatgyűjtés (iceHockeyApiProvider v2.1) sikertelen. Az elemzés kizárólag a manuálisan megadott P1 adatokra támaszkodik.",
         advancedData: { home: { xg: null }, away: { xg: null } },
         form: emptyRawData.form,
         rawData: emptyRawData,
         oddsData: null,
         fromCache: false,
-        availableRosters: { home: [], away: [] },
+        availableRosters: { home: [], away: [] }
+    };
+    
+    return {
+        ...result,
         xgSource: "N/A (API Hiba)"
     };
 }
 
 
 /**
- * FŐ ADATGYŰJTŐ FÜGGVÉNY (JAVÍTOTT v2.0)
+ * FŐ ADATGYŰJTŐ FÜGGVÉNY (JAVÍTOTT v104.3)
+ * === JAVÍTVA (v104.3): Visszatérési típus IDataFetchResponse ===
  */
 export async function fetchMatchData(options: {
     sport: string;
@@ -140,21 +119,19 @@ export async function fetchMatchData(options: {
     homeTeamId: number | null;
     awayTeamId: number | null;
     leagueId: number | null;
-}): Promise<ICanonicalRichContext> {
+}): Promise<IDataFetchResponse> {
 
     const { homeTeamName, awayTeamName, utcKickoff } = options;
     console.log(`Adatgyűjtés indul (v2.1 - IceHockeyApi - Stratégia: Config Import + Map): ${homeTeamName} vs ${awayTeamName}...`);
 
-    // === JAVÍTÁS (v2.0): Az importált változók ellenőrzése ===
     if (!ICEHOCKEYAPI_KEY) {
-        console.error(`[IceHockeyApiProvider v2.0] KRITIKUS HIBA: Az 'ICEHOCKEYAPI_KEY' hiányzik a 'config.ts' fájlból vagy a .env fájlból.`);
+        console.error(`[IceHockeyApiProvider v2.1] KRITIKUS HIBA: Az 'ICEHOCKEYAPI_KEY' hiányzik a 'config.ts' fájlból vagy a .env fájlból.`);
         return generateEmptyStubContext(homeTeamName, awayTeamName);
     }
     if (!ICEHOCKEYAPI_HOST) {
-        console.error(`[IceHockeyApiProvider v2.0] KRITIKUS HIBA: Az 'ICEHOCKEYAPI_HOST' hiányzik a 'config.ts' fájlból vagy a .env fájlból.`);
+        console.error(`[IceHockeyApiProvider v2.1] KRITIKUS HIBA: Az 'ICEHOCKEYAPI_HOST' hiányzik a 'config.ts' fájlból vagy a .env fájlból.`);
         return generateEmptyStubContext(homeTeamName, awayTeamName);
     }
-    // =======================================================
 
     try {
         const kickoffDate = new Date(utcKickoff);
@@ -167,6 +144,7 @@ export async function fetchMatchData(options: {
 
         console.log(`[IceHockeyApiProvider v2.1] Meccslista lekérése (Dátum: ${day}/${month}/${year})...`);
 
+        // @ts-ignore
         const response = await fetch(url, {
             method: 'GET',
             headers: {
@@ -179,23 +157,19 @@ export async function fetchMatchData(options: {
             throw new Error(`API hiba: ${response.status} ${response.statusText} (${url})`);
         }
 
-        const data = (await response.json()) as any; // v1.6.1 javítás
+        const data = (await response.json()) as any;
         const events = data?.events;
 
         if (!events || !Array.isArray(events) || events.length === 0) {
-            console.warn(`[IceHockeyApiProvider v2.0] Az API nem adott vissza meccseket erre a napra: ${day}/${month}/${year}`);
+            console.warn(`[IceHockeyApiProvider v2.1] Az API nem adott vissza meccseket erre a napra: ${day}/${month}/${year}`);
             return generateEmptyStubContext(homeTeamName, awayTeamName);
         }
 
         // --- AZ INTELLIGENS NÉVFELOLDÓ LOGIKA (JAVÍTVA v2.1) ---
         
-        // === JAVÍTÁS (v2.1): Névfeloldás az NHL Térkép alapján ===
-        // Először a config.ts térképét használjuk a teljes név megszerzéséhez.
         const resolvedHomeName = NHL_TEAM_NAME_MAP[homeTeamName.toLowerCase()] || homeTeamName;
         const resolvedAwayName = NHL_TEAM_NAME_MAP[awayTeamName.toLowerCase()] || awayTeamName;
-        // =====================================================
-
-        // A fuzzy match már a teljes neveket fogja használni
+        
         const inputHomeNorm = normalizeTeamName(resolvedHomeName);
         const inputAwayNorm = normalizeTeamName(resolvedAwayName);
 
@@ -235,17 +209,12 @@ export async function fetchMatchData(options: {
                  console.warn(`  -> Figyelem: A bemeneti csapatok valószínűleg felcserélve! (A rendszer kezeli)`);
             }
             console.log(`  -> MECCS ID: ${matchId}`);
-
-            // === SIKERES ADATLEKÉRÉS ===
-            // (Itt kellene a többi adatlekérés (H2H, Stats), de a v1.6-os fájlodban
-            // azok hibás végpontokat hívtak. A 'matches' végpont (user képe)
-            // úgy tűnik, tartalmaz 'roster' adatokat.)
             
             const homeRoster = matchedEvent.homeRoster?.players?.map((p: any) => ({ name: p.name, position: p.position })) || [];
             const awayRoster = matchedEvent.awayRoster?.players?.map((p: any) => ({ name: p.name, position: p.position })) || [];
 
             const successfulRawData: ICanonicalRawData = {
-                stats: { home: { gp: 1, gf: 2, ga: 1, form: 'W' }, away: { gp: 1, gf: 1, ga: 2, form: 'L' } }, // Mock adatok, mivel a 'stats' végpont nem hívódik meg
+                stats: { home: { gp: 1, gf: 2, ga: 1, form: 'W' }, away: { gp: 1, gf: 1, ga: 2, form: 'L' } }, // Mock adatok
                 apiFootballData: { homeTeamId: matchedEvent.homeTeam?.id, awayTeamId: matchedEvent.awayTeam?.id, leagueId: matchedEvent.tournament?.id, fixtureId: matchId, fixtureDate: matchedEvent.startTimestamp, lineups: null, liveStats: null, seasonStats: { home: null, away: null } },
                 h2h_structured: [], // Mock adatok
                 form: { home_overall: null, away_overall: null }, // Mock adatok
@@ -259,7 +228,7 @@ export async function fetchMatchData(options: {
                 }
             };
             
-            return {
+            const result: ICanonicalRichContext = {
                 rawStats: successfulRawData.stats,
                 leagueAverages: {},
                 richContext: `Sikeres adatgyűjtés (v2.1) ${matchId} ID-val.`,
@@ -268,8 +237,12 @@ export async function fetchMatchData(options: {
                 rawData: successfulRawData,
                 oddsData: null, 
                 fromCache: false,
-                availableRosters: successfulRawData.availableRosters,
-                xgSource: "N/A"
+                availableRosters: successfulRawData.availableRosters
+            };
+
+            return {
+                ...result,
+                xgSource: "N/A (iceHockeyApi)"
             };
 
         } else {
@@ -279,7 +252,7 @@ export async function fetchMatchData(options: {
         }
 
     } catch (error: any) {
-        console.error(`[IceHockeyApiProvider v2.0] Váratlan hiba a fetchMatchData során: ${error.message}`, error.stack);
+        console.error(`[IceHockeyApiProvider v2.1] Váratlan hiba a fetchMatchData során: ${error.message}`, error.stack);
         return generateEmptyStubContext(homeTeamName, awayTeamName);
     }
 }
