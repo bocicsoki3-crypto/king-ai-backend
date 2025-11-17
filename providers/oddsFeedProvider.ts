@@ -1,12 +1,12 @@
 // FÁJL: providers/oddsFeedProvider.ts
-// VERZIÓ: v1.9.3 (Robusztus Dátumkezelés)
+// VERZIÓ: v1.9.3 (Robusztus Dátumkezelés és TS1005 Javítás)
 // MÓDOSÍTÁS (v1.9.3):
 // 1. JAVÍTÁS (Dátum Hiba): A 'findEventIdByNames' (kb. 51. sor) módosítva.
 //    Most már ellenőrzi a 'utcKickoff' [cite: 51, line 65] érvényességét.
 //    Ha 'null' vagy érvénytelen, a kód NEM áll le "Invalid time value" [cite: 48, line 35] hibával,
 //    hanem 'new Date()' (mai nap) értékre állítja a dátumot.
-// 2. JAVÍTÁS: A keresés (kb. 105. sor) most már figyelembe veszi a 'targetDate'-t
-//    ha az rendelkezésre áll, de anélkül is lefut, csak név alapján.
+// 2. JAVÍTÁS (TS1005 Hiba) [cite: 52]: Eltávolítva a felesleges '}' karakter
+//    a fájl végéről (a korábbi 282. sorból [cite: 51, line 282]).
 // 3. Megtartja a korábbi v1.9.2-es [cite: 51] típusdefiníciós javításokat.
 
 import { makeRequest } from './common/utils.js';
@@ -238,7 +238,7 @@ export async function fetchOddsData(
         const oddsResult: any = {
             source: 'OddsFeedApi (Fallback)', // TS2353 javítva (any-ként kezelve)
             allMarkets: [],
-            current: [] // v1.9.3: Hozzáadva a 'current' (bár a te kódod nem tölti)
+            current: [] // v1.9.3: Hozzáadva a 'current'
         };
 
         if (market.outcomes && Array.isArray(market.outcomes)) {
@@ -278,5 +278,10 @@ export async function fetchOddsData(
         // Végső kényszerítés a visszatérésnél
         return oddsResult as ICanonicalOdds;
 
-    } catch (error: any)
-[message truncated]
+    } catch (error: any) {
+        console.error(`[OddsFeedProvider] Kritikus hiba: ${error.message}`);
+        return null;
+    }
+}
+
+// === JAVÍTÁS (v1.9.3): Eltávolítva a felesleges '}' karakter a 282. sorból [cite: 51, line 282] ===
