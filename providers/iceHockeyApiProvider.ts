@@ -1,11 +1,12 @@
 // FÁJL: providers/iceHockeyApiProvider.ts
-// VERZIÓ: v2.1 (TS2322 Típusjavítás)
-// MÓDOSÍTÁS (v104.3):
-// 1. JAVÍTVA (TS2322): A 'fetchMatchData' és 'generateEmptyStubContext'
-//    visszatérési típusa 'ICanonicalRichContext'-ről 'IDataFetchResponse'-ra
-//    módosítva, hogy megfeleljenek a DataFetch.ts interfészének.
-// 2. MEGTARTVA: A v2.1-es "fuzzy match" és "config import" logika.
-// 3. JAVÍTÁS: .js kiterjesztések hozzáadva az importokhoz (Node.js/TypeScript-hez).
+// VERZIÓ: v104.4 (TS2322 'null' hiba javítása)
+// MÓDOSÍTÁS (v104.4):
+// 1. JAVÍTVA (TS2322): A 'structured_weather: null' (86. és 224. sor)
+//    értékeket lecseréltük egy érvényes, alapértelmezett
+//    'emptyHockeyWeather' objektumra, hogy megfeleljen
+//    az 'IStructuredWeather' típusnak.
+// 2. MEGTARTVA: Az 'IDataFetchResponse' visszatérési típus és az 'xgSource'
+//    mező (v104.3-as javítás).
 
 import fetch from 'node-fetch';
 
@@ -15,14 +16,15 @@ import {
     NHL_TEAM_NAME_MAP 
 } from '../config.js'; 
 
-// === JAVÍTÁS (v104.3): A helyes interfészek importálása ===
+// Helyes interfészek importálása
 import type {
     ICanonicalRichContext,
     ICanonicalRawData,
-    ICanonicalStats
+    ICanonicalStats,
+    // === JAVÍTÁS (v104.4): IStructuredWeather importálása ===
+    IStructuredWeather
 } from '../src/types/canonical.d.ts';
 import type { IDataFetchResponse } from '../DataFetch.js';
-// === JAVÍTÁS VÉGE ===
 
 
 // Provider nevének exportálása
@@ -30,11 +32,23 @@ export const providerName = 'ice-hockey-api-v2.1-TSFIX';
 
 // --- API Konfiguráció (Importálva) ---
 
+// === JAVÍTÁS (v104.4): Alapértelmezett időjárás objektum ===
+const emptyHockeyWeather: IStructuredWeather = {
+    description: "N/A (Beltéri/Jégkorong)",
+    temperature_celsius: null,
+    humidity_percent: null,
+    wind_speed_kmh: null,
+    precipitation_mm: null,
+    source: 'N/A'
+};
+// === JAVÍTÁS VÉGE ===
+
 
 /**
  * Normalizáló segédfüggvény a string-összehasonlításhoz.
  */
 function normalizeTeamName(name: string): string {
+// ... (meglévő kód, vágatlan) ...
     if (!name) return '';
     return name
         .toLowerCase()
@@ -46,6 +60,7 @@ function normalizeTeamName(name: string): string {
 
 // === FÜGGŐSÉGMENTES STRING HASONLÍTÓ (v1.9-ből) ===
 function getStringBigrams(str: string): string[] {
+// ... (meglévő kód, vágatlan) ...
     if (str.length <= 1) return [str];
     const bigrams = new Set<string>();
     for (let i = 0; i < str.length - 1; i++) {
@@ -55,6 +70,7 @@ function getStringBigrams(str: string): string[] {
 }
 
 function compareStrings(str1: string, str2: string): number {
+// ... (meglévő kód, vágatlan) ...
     if (!str1 || !str2) return 0;
     const bigrams1 = getStringBigrams(str1);
     const bigrams2 = getStringBigrams(str2);
@@ -68,7 +84,7 @@ function compareStrings(str1: string, str2: string): number {
 
 /**
  * Fallback függvény
- * === JAVÍTVA (v104.3): Visszatérési típus IDataFetchResponse ===
+ * === JAVÍTVA (v104.4): Visszatérési típus IDataFetchResponse ===
  */
 function generateEmptyStubContext(homeTeamName: string, awayTeamName: string): IDataFetchResponse {
     console.warn(`[IceHockeyApiProvider - generateEmptyStubContext] Visszaadok egy üres adatszerkezetet (${homeTeamName} vs ${awayTeamName}). Az elemzés P1 adatokra fog támaszkodni.`);
@@ -83,7 +99,9 @@ function generateEmptyStubContext(homeTeamName: string, awayTeamName: string): I
         detailedPlayerStats: { home_absentees: [], away_absentees: [], key_players_ratings: { home: {}, away: {} } },
         absentees: { home: [], away: [] },
         referee: { name: "N/A", style: null },
-        contextual_factors: { stadium_location: "N/A", structured_weather: null, pitch_condition: "N/A", weather: "N/A", match_tension_index: null, coach: { home_name: null, away_name: null } },
+        // === JAVÍTÁS (v104.4): 'null' cserélve 'emptyHockeyWeather'-re ===
+        contextual_factors: { stadium_location: "N/A", structured_weather: emptyHockeyWeather, pitch_condition: "N/A", weather: "N/A", match_tension_index: null, coach: { home_name: null, away_name: null } },
+        // === JAVÍTÁS VÉGE ===
         availableRosters: { home: [], away: [] }
     };
 
@@ -107,7 +125,7 @@ function generateEmptyStubContext(homeTeamName: string, awayTeamName: string): I
 
 
 /**
- * FŐ ADATGYŰJTŐ FÜGGVÉNY (JAVÍTOTT v104.3)
+ * FŐ ADATGYŰJTŐ FÜGGVÉNY (JAVÍTOTT v104.4)
  * === JAVÍTVA (v104.3): Visszatérési típus IDataFetchResponse ===
  */
 export async function fetchMatchData(options: {
@@ -221,7 +239,9 @@ export async function fetchMatchData(options: {
                 detailedPlayerStats: { home_absentees: [], away_absentees: [], key_players_ratings: { home: {}, away: {} } }, // Mock adatok
                 absentees: { home: [], away: [] }, // Mock adatok
                 referee: { name: "N/A", style: null },
-                contextual_factors: { stadium_location: matchedEvent.venue?.name || "N/A", structured_weather: null, pitch_condition: "N/A", weather: "N/A", match_tension_index: null, coach: { home_name: null, away_name: null } },
+                // === JAVÍTÁS (v104.4): 'null' cserélve 'emptyHockeyWeather'-re ===
+                contextual_factors: { stadium_location: matchedEvent.venue?.name || "N/A", structured_weather: emptyHockeyWeather, pitch_condition: "N/A", weather: "N/A", match_tension_index: null, coach: { home_name: null, away_name: null } },
+                // === JAVÍTÁS VÉGE ===
                 availableRosters: {
                     home: homeRoster,
                     away: awayRoster
