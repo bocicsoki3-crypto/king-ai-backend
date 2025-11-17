@@ -1,11 +1,6 @@
-// config.ts (v81.3 - Kritikus Build Hiba Javítása)
-// JAVÍTÁS (TS2305): A 'régi' v77.9-es config fájlból hiányoztak
-// azok az exportok, amiket az újabb Hoki providerek (iceHockeyApiProvider,
-// newHockeyProvider) igényelnek.
-//
-// HOZZÁADVA: A hiányzó 4 export (ICEHOCKEYAPI_... és SPORTRADAR_HOCKEY_...)
-// hozzáadva az "API KULCSOK" szekcióhoz, hogy a TypeScript
-// build ('tsc') sikeresen lefusson.
+// config.ts (v104.1 - Kosárlabda Élesítés)
+// MÓDOSÍTÁS (v104.0): Kosárlabda API kulcs hozzáadása a térképhez.
+// (A v81.3-as Hoki Build Fix megmarad)
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -48,7 +43,7 @@ export const PORT: number = parseInt(process.env.PORT || "3001", 10);
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY: string | undefined = process.env.GEMINI_API_KEY;
-export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-2.5-pro';
+export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-2.5-pro'; // Ajánlott 'gemini-1.5-pro-latest'
 export const SHEET_URL: string | undefined = process.env.SHEET_URL;
 
 // === FOCI (RapidAPI) ===
@@ -58,19 +53,17 @@ export const APIFOOTBALL_KEY_1: string | undefined = process.env.APIFOOTBALL_KEY
 export const APISPORTS_HOCKEY_HOST: string = process.env.APISPORTS_HOCKEY_HOST || 'v1.hockey.api-sports.io';
 export const APISPORTS_HOCKEY_KEY: string | undefined = process.env.APISPORTS_HOCKEY_KEY;
 
-// === JAVÍTÁS (v81.3): HIÁNYZÓ EXPORT HOZZÁADVA (TS2305) ===
-// A 'providers/iceHockeyApiProvider.ts' ezt keresi
+// === JÉGKORONG (Új - icehockeyapi) ===
 export const ICEHOCKEYAPI_HOST: string = process.env.ICEHOCKEYAPI_HOST || 'icehockeyapi.p.rapidapi.com';
 export const ICEHOCKEYAPI_KEY: string | undefined = process.env.ICEHOCKEYAPI_KEY;
 
-// A 'providers/newHockeyProvider.ts' ezt keresi
+// === JÉGKORONG (Elavult - Sportradar) ===
 export const SPORTRADAR_HOCKEY_HOST: string = process.env.SPORTRADAR_HOCKEY_HOST || 'sportrader-realtime-fast-stable-data.p.rapidapi.com';
 export const SPORTRADAR_HOCKEY_KEY: string | undefined = process.env.SPORTRADAR_HOCKEY_KEY;
-// === JAVÍTÁS VÉGE ===
 
-// === KOSÁRLABDA (Hagyományos RapidAPI - Még nincs használatban) ===
+// === KOSÁRLABDA (RapidAPI) ===
 export const BASKETBALL_API_KEY: string | undefined = process.env.BASKETBALL_API_KEY;
-export const BASKETBALL_API_HOST: string = process.env.BASKETBALL_API_HOST || 'basketball-api.p.rapidapi.com';
+export const BASKETBALL_API_HOST: string = process.env.BASKETBALL_API_HOST || 'api-basketball.p.rapidapi.com';
 
 // === SOFASCORE (RapidAPI) ===
 export const SOFASCORE_API_KEY: string | undefined = process.env.SOFASCORE_API_KEY; 
@@ -82,6 +75,7 @@ export const ODDS_API_HOST: string = process.env.ODDS_API_HOST || 'odds-feed.p.r
 
 
 // --- API HOST TÉRKÉP (KULCSROTÁCIÓVAL) ---
+// Ez a térkép mondja meg a DataFetch.ts-nek, hogy melyik kulcsot és hostot használja
 export const API_HOSTS: { [key: string]: any } = {
     soccer: {
         host: process.env.APIFOOTBALL_HOST || 'api-football-v1.p.rapidapi.com',
@@ -92,16 +86,17 @@ export const API_HOSTS: { [key: string]: any } = {
         ].filter(Boolean) as string[]
     },
     // A 'hockey' kulcs itt most az 'APISPORTS_HOCKEY_HOST'-ot használja
-    // A többi provider (IceHockeyApi, Sportradar) a saját,
-    // fent exportált kulcsát használja.
+    // (Bár a DataFetch.ts v94.0 felülbírálja és az iceHockeyApiProvider-t használja)
     hockey: {
         host: APISPORTS_HOCKEY_HOST,
         keys: APISPORTS_HOCKEY_KEY ? [APISPORTS_HOCKEY_KEY] : ['hockey-placeholder-key'], 
     },
+    // === MÓDOSÍTÁS (v104.1): Kosárlabda API kulcs hozzáadása a térképhez ===
     basketball: {
-        host: process.env.APIBASKETBALL_HOST || 'api-basketball.p.rapidapi.com',
-        keys: [process.env.APIBASKETBALL_KEY_1].filter(Boolean) as string[]
+        host: BASKETBALL_API_HOST, // Az 'api-basketball.p.rapidapi.com'
+        keys: [BASKETBALL_API_KEY].filter(Boolean) as string[]
     }
+    // === MÓDOSÍTÁS VÉGE ===
 };
 
 // --- CSAPATNÉV HOZZÁRENDELÉSEK ---
@@ -168,12 +163,11 @@ export const NHL_TEAM_NAME_MAP: { [key: string]: string } = {
 export const SPORT_CONFIG: ISportConfigMap = {
     soccer: {
         name: 'labdarúgás',
-        espn_sport_path: 'soccer', // OK: Ez a helyes (a v77.9 alapján)
+        espn_sport_path: 'soccer',
         totals_line: 2.5,
         total_minutes: 90,
         avg_goals: 1.35,
         home_advantage: { home: 1.05, away: 0.95 },
-        // OK: Ez a teljes, helyes liga lista (a v77.9 alapján)
         espn_leagues: {
             "Premier League": { slug: "eng.1", country: "England" },
             "Championship": { slug: "eng.2", country: "England" },
