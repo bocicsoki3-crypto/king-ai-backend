@@ -1,12 +1,10 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v105.3 (Intelligens Fuzzy Liga Keresés + TS1128 Javítás)
-// MÓDOSÍTÁS (v105.3):
-// 1. JAVÍTÁS (TS1128): A fájl vége (a 'fetchMatchData' [20, line 1025] után)
-//    pótolva, ami a 'Declaration or statement expected' [23, 24] hibát okozta.
-// 2. MÓDOSÍTÁS (P4 Hiba): Az '_findLeagueInList' (kb. 230. sor)
-//    "Fuzzy Keresés" logikája jelentősen javítva, hogy kezelje
-//    az "Argentinian Liga Profesional" [29, line 14] vs "Liga Profesional Argentina" [29, line 18]
-//    és a "World Cup - Qualification Europe" [29] típusú eltéréseket.
+// VERZIÓ: v105.4 (TS2322 / TS2339 Javítás)
+// MÓDOSÍTÁS (v105.4):
+// 1. JAVÍTÁS: Az '_getLeaguesByCountry' függvényben (kb. 256. sor) a 'params'
+//    objektum típusának explicit definiálása '{ country?: string; season: number; type?: string }'-re.
+// 2. JAVÍTÁS: 'params.country = undefined' cserélve 'delete params.country'-ra.
+// 3. EREDMÉNY: Mindkét TS2322 [30, line 1] és TS2339 [30, line 2] hiba javítva.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -227,7 +225,7 @@ export async function getApiSportsTeamId(
     return null;
 }
 
-// === EXPORTÁLVA (MÓDOSÍTVA v105.3: Intelligens Fuzzy Liga Keresés) ===
+// === EXPORTÁLVA (MÓDOSÍTVA v105.4: TS2322/TS2339 Javítás) ===
 export async function getApiSportsLeagueId(leagueName: string, country: string, season: number, sport: string): Promise<{ leagueId: number, foundSeason: number } | null> {
     if (!leagueName || !country || !season) {
         console.warn(`API-SPORTS (${sport}): Liga név ('${leagueName}'), ország ('${country}') vagy szezon (${season}) hiányzik.`);
@@ -252,13 +250,22 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
         }
         console.log(`API-SPORTS (${sport}): Liga-lista lekérése (Ország: ${currentCountry}, Szezon: ${currentSeason})...`);
         const endpoint = `/v3/leagues`;
-        const params = { country: currentCountry, season: currentSeason };
+        
+        // === JAVÍTÁS (v105.4): TS2322/TS2339 hibák javítása ===
+        // A 'params' objektum típusát explicit definiáljuk, hogy támogassa
+        // a 'country' (opcionális) és 'type' (opcionális) mezőket.
+        const params: { country?: string; season: number; type?: string } = {
+             country: currentCountry,
+             season: currentSeason
+        };
+        
         // 'World' (VB) esetén a 'country' helyett 'type'='Cup' kell
         if (currentCountry === 'world') {
-            params.country = undefined; // Töröljük a 'country' paramétert
+            delete params.country; // JAVÍTVA: 'undefined' helyett 'delete'
             params.type = 'Cup';      // Hozzáadjuk a 'type=Cup' paramétert
             console.log(`API-SPORTS (${sport}): 'World' ország észlelve, keresés típusa 'Cup'-ra módosítva.`);
         }
+        // === JAVÍTÁS VÉGE ===
         
         const response = await makeRequestWithRotation(sport, endpoint, { params });
         if (!response?.data?.response || response.data.response.length === 0) {
@@ -998,7 +1005,7 @@ null
     
     const advancedData = realXgData ?
     { home: { xg: realXgData.home }, away: { xg: realXgData.away } } :
-        { home: { xg: null }, away: { xg: null } };
+        { home: { xG: null }, away: { xG: null } };
         
     const result: ICanonicalRichContext = {
          rawStats: finalData.stats,
