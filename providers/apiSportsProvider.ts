@@ -1,12 +1,17 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v95.3 (TS2322 Típusjavítás)
+// VERZIÓ: v105.2 (Fuzzy Liga Keresés)
+// MÓDOSÍTÁS (v105.2):
+// 1. HOZZÁADVA: 'getStringBigrams' és 'compareStrings' segédfüggvények
+//    a hasonlóság-alapú kereséshez.
+// 2. MÓDOSÍTVA: Az '_getLeagueId' függvény (kb. 200. sor) átírva,
+//    hogy a "pontos egyezés" helyett "fuzzy matching"-et használjon.
+//    Ez javítja a "KRITIKUS P4 HIBA: Végleg nem sikerült a 'leagueId' azonosítása"
+//    hibát [9, line 29].
 // MÓDOSÍTÁS (v104.3):
 // 1. JAVÍTVA (TS2322): A 'fetchMatchData' visszatérési típusa
 //    'Promise<ICanonicalRichContext>'-ről 'Promise<IDataFetchResponse>'-ra módosítva.
 // 2. JAVÍTVA (TS2322): A 'fetchMatchData' a 'return' utasításnál
-//    hozzáadja a kötelező 'xgSource' mezőt, hogy megfeleljen az
-//    IDataFetchResponse interfésznek.
-// 3. JAVÍTÁS: .js kiterjesztések hozzáadva az importokhoz (Node.js/TypeScript-hez).
+//    hozzáadja a kötelező 'xgSource' mezőt.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -36,6 +41,35 @@ import {
     makeRequest,
     getStructuredWeatherData
 } from './common/utils.js';
+
+// === ÚJ FUZZY MATCHING SEGÉDFÜGGVÉNYEK (v105.2) ===
+// (Áthozva az apiBasketballProvider-ből a liga-kereséshez)
+
+function getStringBigrams(str: string): Set<string> {
+    if (!str || str.length < 2) return new Set();
+    const s = str.toLowerCase();
+    const v = new Set<string>();
+    for (let i = 0; i < s.length - 1; i++) {
+        v.add(s.substring(i, i + 2));
+    }
+    return v;
+}
+
+function compareStrings(str1: string, str2: string): number {
+    if (!str1 || !str2) return 0;
+    const pairs1 = getStringBigrams(str1);
+    const pairs2 = getStringBigrams(str2);
+    if (pairs1.size === 0 && pairs2.size === 0) return 1;
+    if (pairs1.size === 0 || pairs2.size === 0) return 0;
+    
+    const union = pairs1.size + pairs2.size;
+    const intersection = new Set([...pairs1].filter(x => pairs2.has(x))).size;
+    return (2.0 * intersection) / union;
+}
+
+const FUZZY_LEAGUE_THRESHOLD = 0.6; // Hasonlósági küszöb (0.0 - 1.0)
+// === VÉGE ===
+
 
 // --- API-SPORTS SPECIFIKUS CACHE-EK ---
 const apiSportsOddsCache = new NodeCache({ stdTTL: 60 * 10, checkperiod: 60 * 2, useClones: false });
@@ -142,8 +176,7 @@ export async function _getLeagueRoster(leagueId: number | string, season: number
     return roster;
 }
 
-// === EXPORTÁLVA (Változatlan v95.1) ===
-// === JAVÍTVA (v104.3): 5. argumentum ('leagueRosterData') eltávolítva ===
+// === EXPORTÁLVA (Változatlan v104.3) ===
 export async function getApiSportsTeamId(
     teamName: string, 
     sport: string, 
@@ -199,19 +232,21 @@ export async function getApiSportsTeamId(
     return null;
 }
 
-// === EXPORTÁLVA (JAVÍTVA v95.2) ===
+// === EXPORTÁLVA (MÓDOSÍTVA v105.2: Fuzzy Liga Keresés) ===
 export async function getApiSportsLeagueId(leagueName: string, country: string, season: number, sport: string): Promise<{ leagueId: number, foundSeason: number } | null> {
     if (!leagueName || !country || !season) {
         console.warn(`API-SPORTS (${sport}): Liga név ('${leagueName}'), ország ('${country}') vagy szezon (${season}) hiányzik.`);
         return null;
     }
     const lowerCountry = country.toLowerCase();
-    const leagueCacheKey = `apisports_league_id_v1_${sport}_${leagueName.toLowerCase().replace(/\s/g, '')}_${country}_${season}`;
+    const leagueCacheKey = `apisports_league_id_v2_fuzzy_${sport}_${leagueName.toLowerCase().replace(/\s/g, '')}_${country}_${season}`;
     const cachedLeagueData = apiSportsLeagueIdCache.get<{ leagueId: number, foundSeason: number }>(leagueCacheKey);
     if (cachedLeagueData) {
         console.log(`API-SPORTS (${sport}): Liga ID CACHE TALÁLAT: "${leagueName}" -> ${cachedLeagueData.leagueId} (Szezon: ${cachedLeagueData.foundSeason})`);
         return cachedLeagueData;
     }
+    
+    // Belső segédfüggvény a liga-lista lekéréséhez
     const _getLeaguesByCountry = async (currentCountry: string, currentSeason: number): Promise<any[]> => {
         const cacheKey = `apisports_countryleagues_v1_${sport}_${currentCountry.toLowerCase()}_${currentSeason}`;
         const cachedLeagues = apiSportsCountryLeagueCache.get<any[]>(cacheKey);
@@ -228,93 +263,55 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
             apiSportsCountryLeagueCache.set(cacheKey, []); 
             return [];
         }
-        // JAVÍTÁS (v95.1): A 'leagues' tömb most már a teljes 'league' objektumot tartalmazza
         const leagues = response.data.response.map((l: any) => l.league);
         apiSportsCountryLeagueCache.set(cacheKey, leagues);
         console.log(`API-SPORTS (${sport}): ${leagues.length} liga cache-elve (${currentCountry}, ${currentSeason}).`);
         return leagues;
     };
     
-    // === JAVÍTÁS (v95.2): "Okos" Alias Logika ===
-    
-    /**
-     * Eltávolítja az ékezeteket és a felesleges szavakat a liga nevéből
-     * a megbízhatóbb egyeztetés érdekében.
-     * KRITIKUS VÁLTOZÁS (v95.2): A specifikus szabályok futnak ELŐSZÖR.
-     */
-    const _cleanLeagueName = (name: string): string => {
-        if (!name) return 'n/a';
-        let lower = name.toLowerCase().trim()
-            .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Ékezetek eltávolítása (pl. Süper -> Super)
-
-        // 1. LÉPÉS: Specifikus, "okos" szabályok (EZ FUT LE ELŐSZÖR)
-        
-        // Spanyolország (LaLiga 1 & 2)
-        // "laliga" (ESPN 1), "la liga" (API)
-        // "laliga2" (ESPN 2), "laliga hypermotion" (API), "segunda division" (API)
-        if (lower.includes('laliga') || lower.includes('segunda division')) {
-            // Megkülönböztetjük az 1-es és 2-es osztályt
-            if (lower.includes('2') || lower.includes('hypermotion') || lower.includes('segunda')) {
-                return 'laliga2'; // Ez a "Segunda División"-t is elkapja
-            }
-            return 'laliga1'; // Ez a "La Liga"-t is elkapja
-        }
-
-        // Törökország (Super Lig)
-        // "super lig" (ESPN), "süper lig" (API)
-        if (lower.includes('super lig')) { // Az ékezetet már eltávolítottuk
-            return 'superlig';
-        }
-        
-        // ... Ide jöhetnek más specifikus szabályok ...
-
-        // 2. LÉPÉS: Általános, "buta" tisztítás (CSAK HA AZ ELŐZŐ NEM SIKERÜLT)
-        // Ez az a szabály, ami a v95.1-ben hibát okozott, mert túl korán futott le.
-        lower = lower.replace(/\(.*?\)/g, '') // Zárójelek eltávolítása
-                     .replace(/^(argentinian|brazilian|uefa|fifa)\s/i, '') // Előtagok
-                     .replace(/\s(league|liga|cup|copa|championship|division|super|lig|ligue|serie|profesional)/i, '') // Utótagok
-                     .trim();
-
-        return lower;
-    };
-
+    // Belső segédfüggvény a fuzzy kereséshez
     const _findLeagueInList = async (leagues: any[], targetName: string): Promise<number | null> => {
         if (leagues.length === 0) return null;
         
-        const targetLower = targetName.toLowerCase().trim();
+        // === MÓDOSÍTÁS (v105.2): Fuzzy Keresés Bevezetése ===
+        // A régi "pontos egyezés" helyett (ami elbukott a logban [9])
         
-        // 1. Keresés Tökéletes Egyezésre (pl. "Premier League")
-        let perfectMatch = leagues.find(l => l.name.toLowerCase() === targetLower);
-        if (perfectMatch) {
-            console.log(`API-SPORTS (${sport}): HELYI LIGA TALÁLAT (1/2 - Tökéletes): "${targetName}" -> "${perfectMatch.name}" (ID: ${perfectMatch.id})`);
-            return perfectMatch.id;
+        // A keresett nevet is tisztítjuk (pl. "Argentinian Liga Profesional" -> "liga profesional")
+        const cleanedSearchName = targetName.toLowerCase()
+            .replace("argentinian", "")
+            .replace("liga profesional", "liga argentina") // Alias kezelés
+            .trim();
+
+        const scoredLeagues = leagues.map(league => {
+            // Az API-ban lévő nevet is tisztítjuk (pl. "Liga Profesional Argentina" -> "liga argentina")
+            const cleanedApiName = league.name.toLowerCase()
+                .replace("argentina", "")
+                .trim();
+            
+            const score = compareStrings(cleanedSearchName, cleanedApiName);
+            return {
+                id: league.id,
+                name: league.name,
+                score: score
+            };
+        });
+
+        const bestMatch = scoredLeagues.sort((a, b) => b.score - a.score)[0];
+
+        if (bestMatch && bestMatch.score >= FUZZY_LEAGUE_THRESHOLD) {
+            console.log(`[apiSportsProvider/_getLeagueId] FUZZY EGYEZÉS SIKERES (Score: ${bestMatch.score.toFixed(2)}): "${targetName}" -> "${bestMatch.name}" (ID: ${bestMatch.id})`);
+            return bestMatch.id;
         }
-
-        // 2. Keresés Normalizált Név Alapján (v95.2 - Javított logika)
-        const cleanTargetName = _cleanLeagueName(targetName); // pl. "LaLiga2" -> "laliga2"
-
-        const leagueNameMap = leagues.map(l => ({
-            original: l.name,
-            cleaned: _cleanLeagueName(l.name), // pl. "Segunda División" -> "laliga2"
-            id: l.id
-        }));
-
-        const normalizedMatch = leagueNameMap.find(l => l.cleaned === cleanTargetName);
-        if (normalizedMatch) {
-            // Ez az az üzenet, amit a logban látni akarunk:
-            console.log(`API-SPORTS (${sport}): HELYI LIGA TALÁLAT (2/2 - Normalizált v95.2): "${targetName}" (Keresve: "${cleanTargetName}") -> "${normalizedMatch.original}" (ID: ${normalizedMatch.id})`);
-            return normalizedMatch.id;
-        }
-
-        console.warn(`API-SPORTS (${sport}): Nem található pontos liga egyezés ehhez: "${targetName}" (Keresve: "${cleanTargetName}"). AI Fallback KIHAGYVA (v70.0).`);
         
-        // DEBUG: Ha nem találja, kiírjuk, mit keresett
-        console.warn(`[DEBUG v95.2] A(z) "${cleanTargetName}" keresés sikertelen. Elérhető tisztított nevek a(z) "${country}" országban:`);
-        console.warn(leagueNameMap.map(l => `${l.original} -> ${l.cleaned}`).join('\n'));
+        // === MÓDOSÍTÁS VÉGE ===
+
+        // Ha a fuzzy keresés is elbukik (Debug log a v95.2-ből)
+        const availableNames = leagues.map(l => `${l.name} -> ${l.name.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()}`).join('\n');
+        console.warn(`[apiSportsProvider/_getLeagueId] Nem található pontos VAGY fuzzy (>${FUZZY_LEAGUE_THRESHOLD}) egyezés ehhez: "${targetName}" (Keresve: "${cleanedSearchName}"). Elérhető nevek:\n${availableNames}`);
         
         return null;
     };
-    // === JAVÍTÁS VÉGE ===
+    // === Fuzzy Keresés Vége ===
 
     let leagueData: { leagueId: number, foundSeason: number } | null = null;
     const seasonsToTry = [season, season - 1, season - 2];
@@ -951,8 +948,8 @@ null
         availableRosters: {
             home: lineupData?.rosters?.home ||
 [],
-            away: lineupData?.rosters?.away || // JAVÍTVA (v104.3): home-ról away-re
-[]
+            away: lineupData?.rosters?.away ||
+[] // JAVÍTVA (v104.3): home-ról away-re
         }
     };
     
@@ -1025,3 +1022,4 @@ null
 
 // Meta-adat a logoláshoz
 export const providerName = 'api-sports-soccer';
+}
