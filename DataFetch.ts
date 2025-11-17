@@ -1,12 +1,11 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v104.4 (Név Alapú Odds Fallback)
-// MÓDOSÍTÁS (v104.4):
-// 1. HOZZÁADVA: Új import 'nameBasedOddsProvider.ts'.
-// 2. MÓDOSÍTVA: A 'generateEmptyStubContext' most már hívja az új
-//    'nameBasedOddsProvider'-t, hogy megpróbáljon oddsokat szerezni még akkor is,
-//    ha a P4-es adatgyűjtés (leagueId/fixtureId) teljesen elbukott.
-// 3. MÓDOSÍTVA: A régi "REDUNDÁNS ODDS FALLBACK" (ami a meglévő 'oddsProvider.ts'-t hívta)
-//    szintén átirányítva az új, név-alapú providerre, mert az robusztusabb.
+// VERZIÓ: v104.5 (Helyes Odds Fallback)
+// MÓDOSÍTÁS (v104.5):
+// 1. JAVÍTÁS: Eltávolítva az import a nem létező 'nameBasedOddsProvider.ts'-re [28].
+// 2. MÓDOSÍTÁS: Visszaállítva az import a meglévő 'oddsProvider.ts'-re [21].
+// 3. JAVÍTÁS: A 'generateEmptyStubContext' és a 'REDUNDÁNS ODDS FALLBACK' blokk
+//    most már a 'oddsProvider.ts'-ből [21] importált *új* 'fetchOddsByName'
+//    függvényt hívja. Ez javítja a 401-es API kulcs hibát [29, line 31].
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -36,11 +35,8 @@ import {
 } from './providers/apiBasketballProvider.js';
 
 import { fetchSofascoreData, type ISofascoreResponse } from './providers/sofascoreProvider.js';
-// A 'fixtureId' alapú odds providert KIVESSZÜK, mert a név-alapú robusztusabb
-// import { fetchOddsData as oddsFeedFetchData } from './providers/oddsProvider.js';
-
-// === ÚJ IMPORT (v104.4) ===
-import { fetchOddsByName as nameBasedOddsFetchData } from './providers/nameBasedOddsProvider.js';
+// === JAVÍTÁS (v104.5): A meglévő provider importálása ===
+import { fetchOddsData as oddsFeedFetchData, fetchOddsByName } from './providers/oddsProvider.js';
 // === VÉGE ===
 
 import { runStep_TeamNameResolver } from './AI_Service.js';
@@ -101,32 +97,33 @@ export interface IDataFetchResponse extends ICanonicalRichContext {
 
 /**************************************************************
 * DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v104.4 (Név Alapú Odds Fallback)
+* VERZIÓ: v104.5 (Helyes Odds Fallback)
 **************************************************************/
 
 /**
- * === "Stub" Válasz Generátor (MÓDOSÍTVA v104.4) ===
+ * === "Stub" Válasz Generátor (MÓDOSÍTVA v104.5) ===
  * Most már 'IDataFetchResponse'-t ad vissza, ÉS megpróbálja
- * hívni a név-alapú tartalék odds providert.
+ * hívni a MEGLÉVŐ 'oddsProvider.ts' [21] ÚJ 'fetchOddsByName' funkcióját.
  */
 async function generateEmptyStubContext(options: IDataFetchOptions): Promise<IDataFetchResponse> {
     const { sport, homeTeamName, awayTeamName, utcKickoff } = options;
     
     console.warn(`[DataFetch/generateEmptyStubContext] Visszaadok egy üres adatszerkezetet (${homeTeamName} vs ${awayTeamName}). Az elemzés P1 adatokra fog támaszkodni.`);
     
-    // === MÓDOSÍTÁS (v104.4) ===
+    // === MÓDOSÍTÁS (v104.5) ===
     // Mielőtt feladnánk, megpróbálunk oddsokat szerezni a név alapján
     let fallbackOdds: ICanonicalOdds | null = null;
     try {
-        console.log(`[DataFetch/generateEmptyStubContext] P4 hiba. Név-alapú tartalék odds provider (v104.4) indítása...`);
-        fallbackOdds = await nameBasedOddsFetchData(homeTeamName, awayTeamName, sport);
+        console.log(`[DataFetch/generateEmptyStubContext] P4 hiba. Név-alapú tartalék odds provider (v104.5) indítása...`);
+        // A 'oddsProvider.ts' [21] új 'fetchOddsByName' funkcióját hívjuk
+        fallbackOdds = await fetchOddsByName(homeTeamName, awayTeamName, sport);
         if (fallbackOdds) {
-            console.log(`[DataFetch/generateEmptyStubContext] SIKER: A név-alapú provider talált oddsokat.`);
+            console.log(`[DataFetch/generateEmptyStubContext] SIKER: A név-alapú provider (oddsProvider.ts) talált oddsokat.`);
         } else {
-            console.warn(`[DataFetch/generateEmptyStubContext] A név-alapú provider sem talált oddsokat.`);
+            console.warn(`[DataFetch/generateEmptyStubContext] A név-alapú provider (oddsProvider.ts) sem talált oddsokat.`);
         }
     } catch (e: any) {
-        console.error(`[DataFetch/generateEmptyStubContext] Név-alapú provider hiba: ${e.message}`);
+        console.error(`[DataFetch/generateEmptyStubContext] Név-alapú provider (oddsProvider.ts) hiba: ${e.message}`);
     }
     // === MÓDOSÍTÁS VÉGE ===
 
@@ -181,7 +178,7 @@ async function generateEmptyStubContext(options: IDataFetchOptions): Promise<IDa
          },
          form: emptyRawData.form,
          rawData: emptyRawData,
-         oddsData: fallbackOdds, // === MÓDOSÍTVA (v104.4) ===
+         oddsData: fallbackOdds, // === MÓDOSÍTVA (v104.5) ===
          fromCache: false,
          availableRosters: { home: [], away: [] }
     };
@@ -226,7 +223,7 @@ function getRoleFromPos(pos: string): CanonicalRole {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FÜGGVÉNY (v104.4)
+ * FŐ ADATGYŰJTŐ FÜGGVÉNY (v104.5)
  */
 export async function getRichContextualData(
     options: IDataFetchOptions,
@@ -344,7 +341,7 @@ export async function getRichContextualData(
             if (!leagueDataResponse || !leagueDataResponse.leagueId) {
                  console.error(`[DataFetch] KRITIKUS P4 HIBA: Végleg nem sikerült a 'leagueId' azonosítása ('${decodedLeagueName}' néven).`);
                  console.warn(`[DataFetch] TISZTA P1 MÓD KÉNYSZERÍTVE. A rendszer üres adat-stubot ad vissza.`);
-                 // === MÓDOSÍTÁS (v104.4): Hívás a generateEmptyStubContext-re, ami most már tartalmaz odds fallback-et ===
+                 // === MÓDOSÍTÁS (v104.5): Hívás a generateEmptyStubContext-re, ami most már tartalmaz odds fallback-et ===
                  return await generateEmptyStubContext(options);
             }
             
@@ -460,36 +457,38 @@ export async function getRichContextualData(
         
         console.log(`[DataFetch] xG Forrás meghatározva: ${xgSource}. (H:${finalHomeXg ?? 'N/A'}, A:${finalAwayXg ?? 'N/A'})`);
 
-        // === MÓDOSÍTÁS (v104.4): REDUNDÁNS ODDS FALLBACK ===
-        // Lecseréljük a régi 'oddsFeedFetchData' (fixtureId alapú) hívást
-        // az új 'nameBasedOddsFetchData' (név alapú) hívásra.
+        // === MÓDOSÍTÁS (v104.5): REDUNDÁNS ODDS FALLBACK ===
+        // A régi 'oddsFeedFetchData' (fixtureId alapú) [21] hívás helyett
+        // az ÚJ 'fetchOddsByName' (név alapú) hívást használjuk,
+        // amit a 'oddsProvider.ts'-be [21] adtunk hozzá.
         
         const primaryOddsFailed = !finalResult.oddsData || 
                                   !finalResult.oddsData.allMarkets || 
                                   finalResult.oddsData.allMarkets.length === 0;
         
-        if (primaryOddsFailed) {
-            console.warn(`[DataFetch v104.4] Az alap provider (${sportProvider.providerName}) nem adott vissza Odds adatot. Fallback indítása a 'NameBasedOddsProvider'-re...`);
+        // v94.0: Odds fallback bővítése (hoki, kosár)
+        if (primaryOddsFailed && (sport === 'soccer' || sport === 'hockey' || sport === 'basketball')) {
+            console.warn(`[DataFetch v104.5] Az alap provider (${sportProvider.providerName}) nem adott vissza Odds adatot. Fallback indítása az 'oddsProvider.ts -> fetchOddsByName' funkcióra...`);
             
             try {
-                // Az új, név-alapú providert hívjuk
-                const oddsFeedResult = await nameBasedOddsFetchData(
+                // Az 'oddsProvider.ts' [21] ÚJ, név-alapú funkcióját hívjuk
+                const oddsFeedResult = await fetchOddsByName(
                     decodedHomeTeam, 
                     decodedAwayTeam, 
                     sport
                 );
                 
                 if (oddsFeedResult) {
-                    console.log(`[DataFetch v104.4] SIKER. A 'NameBasedOddsProvider' megbízható odds adatokat adott vissza.`);
+                    console.log(`[DataFetch v104.5] SIKER. Az 'oddsProvider.ts -> fetchOddsByName' megbízható odds adatokat adott vissza.`);
                     finalResult.oddsData = oddsFeedResult; 
                 } else {
-                    console.warn(`[DataFetch v104.4] A 'NameBasedOddsProvider' (fallback) sem adott vissza adatot ehhez: ${decodedHomeTeam} vs ${decodedAwayTeam}.`);
+                    console.warn(`[DataFetch v104.5] A 'fetchOddsByName' (fallback) sem adott vissza adatot ehhez: ${decodedHomeTeam} vs ${decodedAwayTeam}.`);
                 }
             } catch (e: any) {
-                console.error(`[DataFetch v104.4] Kritikus hiba a 'NameBasedOddsProvider' fallback hívása során: ${e.message}`);
+                console.error(`[DataFetch v104.5] Kritikus hiba az 'oddsProvider.ts -> fetchOddsByName' fallback hívása során: ${e.message}`);
             }
-        } else {
-            console.log(`[DataFetch v104.4] Az alap provider (${sportProvider.providerName}) sikeresen adott vissza Odds adatot. Fallback kihagyva.`);
+        } else if (!primaryOddsFailed) {
+            console.log(`[DataFetch v104.5] Az alap provider (${sportProvider.providerName}) sikeresen adott vissza Odds adatot. Fallback kihagyva.`);
         }
         // === MÓDOSÍTÁS VÉGE ===
 
