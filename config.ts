@@ -8,7 +8,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-// --- TÍPUSDEFINÍCIJÓK A KONFIGURÁCIÓHOZ ---
+// --- TÍPUSDEFINÍCIÓK A KONFIGURÁCIÓHOZ ---
 interface IEspnLeagueConfig {
   slug: string;
   country: string;
