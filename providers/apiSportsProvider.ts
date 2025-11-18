@@ -1,11 +1,12 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v106.4 (World Cup Keresés Finomhangolás)
-// MÓDOSÍTÁS (v106.4):
-// 1. JAVÍTÁS: A 'World Cup' keresés logikája tovább finomítva.
-//    Mostantól, ha a keresett névben szerepel a "World Cup", akkor a rendszer
-//    kifejezetten a "World Cup" szóra keres rá az API-ban (széles háló),
-//    majd a találatok közül a '_findLeagueInList' okosabban választja ki
-//    a legmegfelelőbbet (pl. preferálja a "Qualification Europe"-ot, ha az kell).
+// VERZIÓ: v106.5 (Intelligens Névtisztítás a Kereséshez)
+// MÓDOSÍTÁS (v106.5):
+// 1. JAVÍTÁS: A 'getApiSportsLeagueId' funkcióban eltávolítottuk a buta
+//    '.substring(0, 10)' korlátozást, ami levágta a neveket (pl. "Serie A (B").
+// 2. ÚJ LOGIKA: Helyette egy reguláris kifejezéssel (Regex) eltávolítjuk
+//    a zárójeles részeket a névből.
+//    Pl.: "Serie A (Brazil)" -> "Serie A".
+//    Így a keresés: Country="Brazil", Search="Serie A". Ez sokkal pontosabb.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -64,7 +65,9 @@ function compareStrings(str1: string, str2: string): number {
     
     let similarity = (2.0 * intersection) / union;
 
-    // Büntetés szám-eltérés esetén (pl. LaLiga vs LaLiga2)
+    // === JAVÍTÁS (v105.5) ===
+    // Büntetés, ha az egyik számot tartalmaz, a másik nem
+    // (A bigramok a tiszta stringből készültek, ami tartalmaz számokat)
     const str1Cleaned = str1.toLowerCase().replace(/[^a-z0-9\s]/g, '');
     const str2Cleaned = str2.toLowerCase().replace(/[^a-z0-9\s]/g, '');
     const str1HasNumber = /\d/.test(str1Cleaned);
@@ -243,21 +246,22 @@ export async function getApiSportsTeamId(
     return null;
 }
 
-// === EXPORTÁLVA (MÓDOSÍTVA v106.4: World Cup Keresés Finomhangolás) ===
+// === EXPORTÁLVA (MÓDOSÍTVA v106.5: Névtisztítás + World Cup Fix) ===
 export async function getApiSportsLeagueId(leagueName: string, country: string, season: number, sport: string): Promise<{ leagueId: number, foundSeason: number } | null> {
     if (!leagueName || !country || !season) {
         console.warn(`API-SPORTS (${sport}): Liga név ('${leagueName}'), ország ('${country}') vagy szezon (${season}) hiányzik.`);
         return null;
     }
     
-    // Cache kulcs 'v6'
-    const leagueCacheKey = `apisports_league_id_v6_smartsearch_${sport}_${leagueName.toLowerCase().replace(/\s/g, '')}_${country}_${season}`;
+    // Cache kulcs 'v7'
+    const leagueCacheKey = `apisports_league_id_v7_smartsearch_${sport}_${leagueName.toLowerCase().replace(/\s/g, '')}_${country}_${season}`;
     const cachedLeagueData = apiSportsLeagueIdCache.get<{ leagueId: number, foundSeason: number }>(leagueCacheKey);
     if (cachedLeagueData) {
         console.log(`API-SPORTS (${sport}): Liga ID CACHE TALÁLAT: "${leagueName}" -> ${cachedLeagueData.leagueId} (Szezon: ${cachedLeagueData.foundSeason})`);
         return cachedLeagueData;
     }
     
+    // Belső segédfüggvény a liga-lista lekéréséhez
     const _getLeaguesByCountry = async (currentCountry: string, currentSeason: number): Promise<any[]> => {
         const cacheKey = `apisports_countryleagues_v1_${sport}_${currentCountry.toLowerCase()}_${currentSeason}`;
         const cachedLeagues = apiSportsCountryLeagueCache.get<any[]>(cacheKey);
@@ -272,15 +276,13 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
              season: currentSeason
         };
         
-        // === MÓDOSÍTÁS (v106.4): Keresés Logika Finomhangolása ===
+        // === MÓDOSÍTÁS (v106.5): Intelligens Névtisztítás és Keresés ===
         const lnLower = leagueName.toLowerCase();
         
         if (lnLower.includes("world cup")) {
              // Mindig "World Cup"-ra keresünk, mert ez a legbiztonságosabb
              params.search = "World Cup"; 
              console.log(`API-SPORTS (${sport}): 'World Cup' felismerve. Széleskörű keresés indítása: 'World Cup'`);
-             // Megjegyzés: Eltávolítjuk a 'country' paramétert, mert a VB "World" alatt van, 
-             // de a keresésnél ez néha bezavarhat.
              if (params.country) delete params.country;
              
         } else if (currentCountry.toLowerCase() === 'world') {
@@ -293,14 +295,26 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
              }
         } else {
              params.country = currentCountry;
-             params.search = leagueName.substring(0, 10);
+             
+             // === JAVÍTÁS LÉNYEGE: Zárójel eltávolítása a keresésből ===
+             // Pl. "Serie A (Brazil)" -> "Serie A"
+             // A buta .substring(0,10) helyett.
+             let cleanSearch = leagueName.replace(/\s*\(.*?\)\s*/g, '').trim();
+             
+             // Ha a tisztítás után túl rövid lenne (pl. "A"), akkor hagyjuk az eredetit
+             if (cleanSearch.length < 2) {
+                 cleanSearch = leagueName;
+             }
+             
+             params.search = cleanSearch;
+             console.log(`API-SPORTS (${sport}): Tisztított keresés: '${leagueName}' -> '${cleanSearch}'`);
         }
         
         const response = await makeRequestWithRotation(sport, endpoint, { params });
         if (!response?.data?.response || response.data.response.length === 0) {
             console.warn(`API-SPORTS (${sport}): Nem találhatók ligák ehhez: ${JSON.stringify(params)}`);
             
-            // Fallback: Ha országgal nem megy, próbáljuk globálisan
+            // Fallback: Ha országgal nem megy, próbáljuk globálisan, az eredeti névvel
             if (params.country) {
                 console.log(`API-SPORTS (${sport}): Fallback kísérlet 'country' nélkül...`);
                 delete params.country;
@@ -344,16 +358,13 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
             const cleanedApiName = cleanName(league.name);
             let score = compareStrings(targetName, league.name); 
             
-            // v106.4: World Cup Specifikus Logika Finomhangolása
+            // World Cup Specifikus Logika
             if (isWorldCupSearch) {
                 if (cleanedApiName.includes("world cup")) {
-                    score += 0.2; // Alap bónusz a VB-re
-                    
-                    // Ha UEFA-t keresünk, akkor a "Europe" szó nagy bónusz
+                    score += 0.2; 
                     if (isUefaSearch && (league.name.toLowerCase().includes("europe"))) {
                          score += 0.5; 
                     }
-                    // Ha a "Qualification" is benne van
                     if (league.name.toLowerCase().includes("qualification")) {
                         score += 0.3;
                     }
@@ -385,7 +396,7 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
         
         const availableNames = leagues.map(l => `${l.name} (ID: ${l.id}, Score: ${scoredLeagues.find(s => s.id === l.id)?.score.toFixed(2)})`).join('\n');
         console.warn(`[apiSportsProvider/_getLeagueId] Nem található pontos VAGY fuzzy (>${FUZZY_LEAGUE_THRESHOLD}) egyezés ehhez: "${targetName}" (Keresve: "${cleanedSearchName}").`);
-        console.warn(`Top 3 jelölt:\n${availableNames.split('\n').slice(0, 3).join('\n')}`); // Debug log
+        console.warn(`Top 3 jelölt:\n${availableNames.split('\n').slice(0, 3).join('\n')}`); 
         
         return null;
     };
