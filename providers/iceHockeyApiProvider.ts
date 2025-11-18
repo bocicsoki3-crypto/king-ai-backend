@@ -1,18 +1,13 @@
 // FÁJL: providers/iceHockeyApiProvider.ts
-// VERZIÓ: v105.1 (Felhasználói Javítás - Hiányzó Odds Lekérés)
-// MÓDOSÍTÁS (v105.1):
-// 1. HOZZÁADVA: A felhasználó által jelzett 'image_de3329.png' alapján
-//    implementálva lett a hiányzó odds lekérési logika.
-// 2. ÚJ FUNKCIÓ: 'getIceHockeyOdds' hozzáadva, ami a '/api/ice-hockey/match/{id}/odds'
-//    végpontot hívja meg, miután a 'fetchMatchData' megtalálta a meccs ID-t.
-// 3. ÚJ FUNKCIÓ: 'parseIceHockeyOdds' hozzáadva, ami a kapott odds JSON-t
-//    kanonikus formátumra (ICanonicalOdds) alakítja.
-// 4. JAVÍTVA: A 'fetchMatchData' végén az 'oddsData: null' lecserélve
-//    a 'fetchedOddsData' eredményre.
-// 5. EREDMÉNY: Ez a javítás biztosítja, hogy az "A-terv" (ez a provider)
-//    már adjon vissza oddsokat, így a rendszer nem lép át a hibás "B-tervre",
-//    és az 'utils.ts'-ben lévő 'findMainTotalsLine' meg tudja találni a valódi
-//    piaci fővonalat (nem a 6.5-öt).
+// VERZIÓ: v105.2 (Javított Debug Log + Syntax Fix)
+// MÓDOSÍTÁS (v105.2):
+// 1. JAVÍTVA: A véletlen 'img' szöveg (Syntax Error) eltávolítva a 360. sor környékéről.
+// 2. HOZZÁADVA: Részletesebb 'console.log' az odds lekéréshez. Ha az API nem ad
+//    vissza oddsokat, most már kiírja a teljes nyers választ (JSON), hogy lássuk,
+//    miért üres (pl. üres tömböt kaptunk-e vagy hibaüzenetet).
+// 3. LOGIKA: A 'getIceHockeyOdds' és 'parseIceHockeyOdds' funkciók megtartva a v105.1-ből.
+// 4. BIZTOSÍTÉK: A kód pontosan azt a '/api/ice-hockey/match/{id}/odds' végpontot
+//    használja, amit a felhasználó kért.
 
 import fetch from 'node-fetch';
 
@@ -28,7 +23,6 @@ import type {
     ICanonicalRawData,
     ICanonicalStats,
     IStructuredWeather,
-    // === HOZZÁADVA (v105.1) ===
     ICanonicalOdds
 } from '../src/types/canonical.d.ts';
 import type { IDataFetchResponse } from '../DataFetch.js';
@@ -37,7 +31,7 @@ import type { IDataFetchResponse } from '../DataFetch.js';
 // Provider nevének exportálása
 export const providerName = 'ice-hockey-api-v2.1-TSFIX';
 
-// --- API Konfiguráció (Importálva) ---
+// --- API Konfiguráció ---
 
 const emptyHockeyWeather: IStructuredWeather = {
     description: "N/A (Beltéri/Jégkorong)",
@@ -85,13 +79,13 @@ function compareStrings(str1: string, str2: string): number {
 // === ÚJ (v105.1) Funkció: Odds adatok feldolgozása ===
 /**
  * Lefordítja az 'ice-hockey-api' odds válaszát a mi belső ICanonicalOdds formátumunkra.
- * FONTOS: Ez a funkció feltételezi, hogy az API válasza { odds: [ ... ] }
- * formátumú, ahol minden elem egy piac (pl. "Total", "Moneyline").
  */
 function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
     const rawMarkets = apiResponse?.odds;
+    
+    // DEBUG LOG: Mit kaptunk pontosan?
     if (!rawMarkets || !Array.isArray(rawMarkets) || rawMarkets.length === 0) {
-        console.warn(`[IceHockeyApiProvider] Az API válasz nem tartalmazott 'odds' tömböt.`);
+        console.warn(`[IceHockeyApiProvider] Érvénytelen odds válasz. Nyers adat: ${JSON.stringify(apiResponse).substring(0, 200)}...`);
         return null;
     }
 
@@ -173,7 +167,7 @@ async function getIceHockeyOdds(matchId: string | number): Promise<ICanonicalOdd
     const path = `/api/ice-hockey/match/${matchId}/odds`;
     const url = `https://${ICEHOCKEYAPI_HOST}${path}`;
     
-    console.log(`[IceHockeyApiProvider v105.1] Odds adatok lekérése (A-terv)... (ID: ${matchId})`);
+    console.log(`[IceHockeyApiProvider v105.1] Odds adatok lekérése (A-terv)... (ID: ${matchId}) URL: ${url}`);
 
     try {
         // @ts-ignore
@@ -192,7 +186,8 @@ async function getIceHockeyOdds(matchId: string | number): Promise<ICanonicalOdd
         const data = (await response.json()) as any;
 
         if (!data || !data.odds) {
-            console.warn(`[IceHockeyApiProvider] Az odds végpont nem adott vissza 'odds' adatot (ID: ${matchId}).`);
+            // === JAVÍTÁS: Részletesebb hibaüzenet ===
+            console.warn(`[IceHockeyApiProvider] Az odds végpont nem adott vissza 'odds' adatot (ID: ${matchId}). Válasz: ${JSON.stringify(data)}`);
             return null;
         }
 
