@@ -1,11 +1,11 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v107.2 (CRITICAL: Roster/Team ID Season Fallback)
-// MÓDOSÍTÁS (v107.2):
-// 1. KRITIKUS JAVÍTÁS: A 'getApiSportsTeamId' funkció mostantól megpróbálja
-//    a csapatlistát (roster) lekérni a kért szezonban, majd visszalép (season-1, season-2),
-//    ha az első kísérlet sikertelen.
-// 2. CÉL: Megoldja a nem folyamatos ligák (pl. Szezonális Szelezetők) problémáját,
-//    ahol a 2025-ös dátumra nincs még roster, de a 2024-es már érvényes.
+// VERZIÓ: v108.0 (CRITICAL: Robust 500/Cloudflare Error Handling)
+// MÓDOSÍTÁS (v108.0):
+// 1. KRITIKUS JAVÍTÁS: A 'makeRequestWithRotation' függvény mostantól az 500-as
+//    (Internal Server Error / Cloudflare Hiba) státuszkódot IS kvótaként kezeli.
+// 2. CÉL: Kényszeríti a kulcsrotációt (ha van több kulcs), vagy megadja a
+//    szezon fallback-nek a lehetőséget a futásra, ha az 500-as hiba csak egy
+//    adott szezonra/paraméterre (pl. league=32&season=2025) vonatkozik.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -35,8 +35,6 @@ import {
 
 // === ÚJ (v107.1): STATIKUS LIGA TÉRKÉP (A "Golyóálló" Megoldás) ===
 // Ide gyűjtjük azokat a ligákat, amikkel gond szokott lenni.
-// Kulcs: "ország_liganév" (kisbetűvel, szóközök nélkül, vagy speciális kulcsok)
-// Érték: API-Sports League ID
 const STATIC_LEAGUE_MAP: { [key: string]: number } = {
     // --- BRAZÍLIA (Stabilizálva v107.0) ---
     'brazil_seriea': 71,
@@ -83,16 +81,13 @@ const STATIC_LEAGUE_MAP: { [key: string]: number } = {
 
 // Helper a kulcs generálásához
 function getStaticLeagueKey(country: string, leagueName: string): string {
-    // Tisztítás: csak betűk és számok, kisbetűsítve
     const cleanCountry = country.toLowerCase().replace(/[^a-z0-9]/g, '');
     
-    // A liga nevéből eltávolítjuk a zárójeles részt (pl. "(Brazil)") és tisztítjuk
     let cleanLeague = leagueName.toLowerCase()
         .replace(/\(.*\)/, '')
         .replace(/[^a-z0-9]/g, '')
         .replace(/\s+/g, '');
     
-    // Speciális mapelés a nevekhez, hogy egyezzenek a STATIC_LEAGUE_MAP kulcsaival
     if (cleanLeague === 'seriea') cleanLeague = 'seriea'; 
     if (cleanLeague === 'championsleague') cleanLeague = 'uefachampionsleague';
     if (cleanLeague === 'europaleague') cleanLeague = 'uefaeuropaleague';
@@ -212,17 +207,29 @@ async function makeRequestWithRotation(sport: string, endpoint: string, config: 
             const fullConfig: AxiosRequestConfig = { ...config, headers: { ...apiConfig.headers, ...config.headers } };
             return await makeRequest(url, fullConfig, 0);
         } catch (error: any) {
-            if (error.isQuotaError) {
-                console.warn(`Kvóta hiba a(z) ${keyIndexes[sport] + 1}. kulccsal (${sport}).`);
-                const canRotate = rotateApiKey(sport);
-                if (canRotate) {
-                    attempts++;
-                    continue;
-                } else {
-                    throw new Error(`MINDEN API KULCS Kimerült (${sport}).`);
-                }
+            
+            let status = error.response?.status;
+            
+            // === V108.0: KRITIKUS HIBAKEZELÉS 429/500 ESETÉRE ===
+            // Az 500-as (Internal Server Error) és a 429-es (Quota Exceeded) státuszoknál
+            // is megpróbálunk kulcsot rotálni, mert ez külső hiba, nem a paraméter hibája.
+            if (error.isQuotaError || status === 500) {
+                 if (status === 500) {
+                    console.warn(`[API-SPORTS V108.0] FIGYELMEZTETÉS: 500-as szerverhiba észlelve a(z) ${keyIndexes[sport] + 1}. kulccsal (${sport}).`);
+                 } else {
+                     console.warn(`Kvóta hiba a(z) ${keyIndexes[sport] + 1}. kulccsal (${sport}).`);
+                 }
+                 
+                 const canRotate = rotateApiKey(sport);
+                 if (canRotate) {
+                     attempts++;
+                     continue; // Újrapróbálkozás a következő kulccsal
+                 } else {
+                     // Ha nincs több kulcs, VÉGLEGESEN elbukott (átadjuk a hibát a szezon fallback ciklusnak)
+                     throw new Error(`API hívás végleg sikertelen (Kvóta/500-as hiba minden kulccsal): ${error.message}`);
+                 }
             } else {
-                console.error(`API hiba (nem kvóta, sport: ${sport}): ${error.message}`);
+                console.error(`API hiba (nem kvóta/500, sport: ${sport}): ${error.message}`);
                 throw error;
             }
         }
@@ -241,15 +248,22 @@ export async function _getLeagueRoster(leagueId: number | string, season: number
     }
     console.log(`API-SPORTS (${sport}): Csapatlista lekérése (Liga: ${leagueId}, Szezon: ${season})...`);
     const endpoint = `/v3/teams?league=${leagueId}&season=${season}`;
-    const response = await makeRequestWithRotation(sport, endpoint, {});
-    if (!response?.data?.response || response.data.response.length === 0) {
-        // NEM LOGOLUNK HIBAÜZENETET ITT, mert ez egy várható fallback, ha rossz a szezon
+    
+    // makeRequestWithRotation HÍVÁSA
+    try {
+        const response = await makeRequestWithRotation(sport, endpoint, {});
+        if (!response?.data?.response || response.data.response.length === 0) {
+            return []; // Üres tömböt adunk vissza, ha nincs válasz
+        }
+        const roster = response.data.response;
+        apiSportsRosterCache.set(cacheKey, roster);
+        console.log(`API-SPORTS (${sport}): Csapatlista sikeresen lekérve, ${roster.length} csapat cache-elve.`);
+        return roster;
+    } catch (e: any) {
+        // Ha a makeRequestWithRotation végleg elbukott (minden kulccsal 500 vagy kvóta)
+        console.error(`API-SPORTS (${sport}): KRITIKUS HIBA a csapatlista lekérésekor a ${season} szezonra: ${e.message.substring(0, 80)}...`);
         return [];
     }
-    const roster = response.data.response;
-    apiSportsRosterCache.set(cacheKey, roster);
-    console.log(`API-SPORTS (${sport}): Csapatlista sikeresen lekérve, ${roster.length} csapat cache-elve.`);
-    return roster;
 }
 
 // === EXPORTÁLVA ===
@@ -276,22 +290,24 @@ export async function getApiSportsTeamId(
          console.log(`API-SPORTS Név Keresés (${sport}): "${teamName}" (Nincs térkép bejegyzés, közvetlen keresés)`);
     }
     
-    // === MÓDOSÍTÁS (v107.2): Szezon Fallback a Roster Lekéréshez ===
+    // === V107.2: Szezon Fallback a Roster Lekéréshez ===
     let leagueRoster: any[] = [];
-    const seasonsToTry = [season, season - 1, season - 2];
+    // 3 szezonra próbálkozunk: 2025 (aktuális) -> 2024 -> 2023
+    const seasonsToTry = [season, season - 1, season - 2]; 
     
     for (const s of seasonsToTry) {
         console.log(`API-SPORTS (${sport}): Csapatlista kísérlet a(z) ${s} szezonra (Liga: ${leagueId})...`);
         leagueRoster = await _getLeagueRoster(leagueId, s, sport);
         if (leagueRoster.length > 0) {
             console.log(`API-SPORTS (${sport}): Roster/Csapatlista sikeresen lekérve a(z) ${s} szezonból (Fallback).`);
-            break;
+            // Sikeres szezon megtalálása után a belső cache-elésnél is a talált szezont használjuk!
+            break; 
         }
         if (s === season - 2) {
              console.warn(`API-SPORTS (${sport}): Nem található csapatlista a ${leagueId} ligához 3 szezon alatt sem.`);
         }
     }
-    // === MÓDOSÍTÁS VÉGE ===
+    // === VÉGE ===
     
     if (leagueRoster.length === 0) {
         console.warn(`API-SPORTS (${sport}): A liga (${leagueId}) csapatai nem érhetők el. Névfeloldás sikertelen.`);
@@ -337,13 +353,11 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
     }
 
     // === 1. LÉPÉS: STATIKUS LISTA ELLENŐRZÉSE (A "GOLYÓÁLLÓ" RÉSZ) ===
-    // Generálunk egy kulcsot (pl. "brazil_seriea") és megnézzük a térképet
     const staticKey = getStaticLeagueKey(country, leagueName);
     const staticId = STATIC_LEAGUE_MAP[staticKey];
     
     if (staticId) {
         console.log(`[apiSportsProvider v107.1] STATIKUS LIGA TALÁLAT! A rendszer ismeri ezt a ligát ("${staticKey}" -> ID: ${staticId}). API keresés kikerülve.`);
-        // Mivel statikus, a foundSeason a bejövő season lesz
         const leagueData = { leagueId: staticId, foundSeason: season }; 
         apiSportsLeagueIdCache.set(leagueCacheKey, leagueData);
         return leagueData;
@@ -901,7 +915,7 @@ async function _getApiSportsLineupData(
         console.log(`[API-SPORTS LineupData] Sikeres /lineups válasz (Edzők/Kezdők).`);
         const data = lineupResponse.data.response;
         const homeData = data.find((t: any) => t.team?.id === homeTeamId);
-        const awayData = data.find((t: any) => t.team?.id === awayTeamId); 
+        const awayData = data.find((t: any) => t.team?.id !== stats[0].team?.id); 
         
         if (homeData && awayData) {
             coachData = {
@@ -993,7 +1007,7 @@ async function _getApiSportsRefereeStyle(
         apiSportsRefereeCache.set(cacheKey, style);
         return style;
     } catch (error: any) {
-        console.error(`[API-SPORTS Bíró] Hiba (${refereeName}) lekérése közben: ${error.message}`);
+        console.error(`[API-SPORTS Bíró] Hiba (${refereeName}) lekérése közben: ${e.message}`);
         return null;
     }
 }
