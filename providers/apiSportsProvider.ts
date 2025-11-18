@@ -74,7 +74,8 @@ const STATIC_LEAGUE_MAP: { [key: string]: number } = {
     'world_uefaconferenceleague': 848,
     'world_uefanationsleague': 5,
     'world_copaamerica': 9,
-    'world_eurochampionship': 4
+    'world_eurochampionship': 4,
+    'world_world cup - qualification europe': 32
 };
 
 // Helper a kulcs generálásához
