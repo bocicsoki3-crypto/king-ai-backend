@@ -1,13 +1,13 @@
 // FÁJL: providers/iceHockeyApiProvider.ts
-// VERZIÓ: v105.2 (Javított Debug Log + Syntax Fix)
-// MÓDOSÍTÁS (v105.2):
-// 1. JAVÍTVA: A véletlen 'img' szöveg (Syntax Error) eltávolítva a 360. sor környékéről.
-// 2. HOZZÁADVA: Részletesebb 'console.log' az odds lekéréshez. Ha az API nem ad
-//    vissza oddsokat, most már kiírja a teljes nyers választ (JSON), hogy lássuk,
-//    miért üres (pl. üres tömböt kaptunk-e vagy hibaüzenetet).
-// 3. LOGIKA: A 'getIceHockeyOdds' és 'parseIceHockeyOdds' funkciók megtartva a v105.1-ből.
-// 4. BIZTOSÍTÉK: A kód pontosan azt a '/api/ice-hockey/match/{id}/odds' végpontot
-//    használja, amit a felhasználó kért.
+// VERZIÓ: v105.3 (RapidAPI JSON Struktúra Javítás)
+// MÓDOSÍTÁS (v105.3):
+// 1. JAVÍTVA: A 'parseIceHockeyOdds' funkció most már a 'markets' tömböt keresi
+//    az 'odds' helyett, mivel a log bizonyította, hogy ez a helyes kulcs.
+// 2. JAVÍTVA: A piacok nevei igazítva a logban látottakhoz:
+//    - 'Moneyline' -> 'Full time' (és 'Home/Away' marketGroup)
+//    - 'Total' -> 'Match goals'
+// 3. JAVÍTVA: A választások (choices) feldolgozása igazítva a log szerkezetéhez
+//    (pl. 'fractionalValue' konvertálása decimálissá, ha nincs 'odds' mező).
 
 import fetch from 'node-fetch';
 
@@ -76,16 +76,25 @@ function compareStrings(str1: string, str2: string): number {
 }
 // === FÜGGŐSÉGMENTES STRING HASONLÍTÓ VÉGE ===
 
-// === ÚJ (v105.1) Funkció: Odds adatok feldolgozása ===
+// === Segédfüggvény: Tört odds konvertálása decimálissá ===
+function parseFractionalOdds(fraction: string): number {
+    if (!fraction) return 0;
+    const parts = fraction.split('/');
+    if (parts.length !== 2) return parseFloat(fraction); // Ha már decimális
+    return 1 + (parseFloat(parts[0]) / parseFloat(parts[1]));
+}
+
+// === ÚJ (v105.3) Funkció: Odds adatok feldolgozása ===
 /**
  * Lefordítja az 'ice-hockey-api' odds válaszát a mi belső ICanonicalOdds formátumunkra.
+ * IGASZÍTVA A LOGBAN LÁTOTT ADATSTRUKTÚRÁHOZ.
  */
 function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
-    const rawMarkets = apiResponse?.odds;
+    // A log szerint a kulcs 'markets' és nem 'odds'
+    const rawMarkets = apiResponse?.markets;
     
-    // DEBUG LOG: Mit kaptunk pontosan?
     if (!rawMarkets || !Array.isArray(rawMarkets) || rawMarkets.length === 0) {
-        console.warn(`[IceHockeyApiProvider] Érvénytelen odds válasz. Nyers adat: ${JSON.stringify(apiResponse).substring(0, 200)}...`);
+        console.warn(`[IceHockeyApiProvider] Érvénytelen odds válasz (nincs 'markets'). Nyers adat: ${JSON.stringify(apiResponse).substring(0, 200)}...`);
         return null;
     }
 
@@ -93,17 +102,23 @@ function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
     const current: ICanonicalOdds['current'] = []; // Moneyline
 
     // 1. Piac: Moneyline (H2H)
-    // (Hokinál nincs döntetlen, ezért a 'Moneyline'-t keressük)
+    // A logban: marketName="Full time", marketGroup="Home/Away"
     const h2hMarket = rawMarkets.find((m: any) => 
-        m.name === 'Moneyline' && m.status === 'OPEN'
+        (m.marketName === 'Full time' || m.marketGroup === 'Home/Away') && !m.suspended
     );
 
-    if (h2hMarket && h2hMarket.outcomes) {
+    if (h2hMarket && h2hMarket.choices) {
         const outcomes: ICanonicalOdds['allMarkets'][0]['outcomes'] = [];
-        const homeOdd = parseFloat(h2hMarket.outcomes.find((o: any) => o.name === '1')?.odds);
-        const awayOdd = parseFloat(h2hMarket.outcomes.find((o: any) => o.name === '2')?.odds);
+        
+        // A logban: name="1" (Hazai), name="2" (Vendég)
+        const homeChoice = h2hMarket.choices.find((c: any) => c.name === '1');
+        const awayChoice = h2hMarket.choices.find((c: any) => c.name === '2');
+        
+        // Az odds "fractionalValue" mezőben van (pl. "4/5")
+        const homeOdd = homeChoice ? parseFractionalOdds(homeChoice.fractionalValue) : 0;
+        const awayOdd = awayChoice ? parseFractionalOdds(awayChoice.fractionalValue) : 0;
 
-        if (homeOdd && awayOdd) {
+        if (homeOdd > 0 && awayOdd > 0) {
             outcomes.push({ name: 'Home', price: homeOdd });
             outcomes.push({ name: 'Away', price: awayOdd });
             current.push({ name: 'Hazai győzelem', price: homeOdd });
@@ -113,32 +128,42 @@ function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
     }
 
     // 2. Piac: Totals (Over/Under)
-    const totalsMarket = rawMarkets.find((m: any) => 
-        m.name === 'Total' && m.status === 'OPEN'
+    // A logban: marketName="Match goals", marketGroup="Match goals"
+    // FONTOS: A logban csak EGY vonal (5.5) látszik a 'choiceGroup'-ban.
+    // A kódnak kezelnie kell, ha több ilyen piac van.
+    const totalsMarkets = rawMarkets.filter((m: any) => 
+        (m.marketName === 'Match goals' || m.marketGroup === 'Match goals') && !m.suspended
     );
 
-    if (totalsMarket && totalsMarket.outcomes) {
+    if (totalsMarkets.length > 0) {
         const totalsOutcomes: ICanonicalOdds['allMarkets'][0]['outcomes'] = [];
-        totalsMarket.outcomes.forEach((o: any) => {
-            const name = o.name; // Pl. "Over 6.5", "Under 6.5"
-            const price = parseFloat(o.odds);
-            
-            // Kinyerjük a 'point'-ot a névből
-            const pointMatch = name.match(/(\d+(\.\d+)?)/);
-            const point = pointMatch ? parseFloat(pointMatch[1]) : null;
-            
-            if (name && !isNaN(price)) {
-                totalsOutcomes.push({ name, price, point });
+        
+        totalsMarkets.forEach((market: any) => {
+            // A vonal a 'choiceGroup'-ban van (pl. "5.5")
+            const line = parseFloat(market.choiceGroup);
+            if (isNaN(line)) return;
+
+            const overChoice = market.choices.find((c: any) => c.name === 'Over');
+            const underChoice = market.choices.find((c: any) => c.name === 'Under');
+
+            const overOdd = overChoice ? parseFractionalOdds(overChoice.fractionalValue) : 0;
+            const underOdd = underChoice ? parseFractionalOdds(underChoice.fractionalValue) : 0;
+
+            if (overOdd > 0) {
+                totalsOutcomes.push({ name: `Over ${line}`, price: overOdd, point: line });
+            }
+            if (underOdd > 0) {
+                totalsOutcomes.push({ name: `Under ${line}`, price: underOdd, point: line });
             }
         });
-        
+
         if (totalsOutcomes.length > 0) {
             allMarkets.push({ key: 'totals', outcomes: totalsOutcomes });
         }
     }
 
     if (allMarkets.length === 0) {
-         console.warn(`[IceHockeyApiProvider] Bár kaptunk ${rawMarkets.length} piacot, nem találtunk 'Moneyline' vagy 'Total' piacot.`);
+         console.warn(`[IceHockeyApiProvider] Feldolgoztunk ${rawMarkets.length} piacot, de nem találtunk érvényes 'Full time' vagy 'Match goals' adatot.`);
          return null;
     }
 
@@ -185,9 +210,9 @@ async function getIceHockeyOdds(matchId: string | number): Promise<ICanonicalOdd
 
         const data = (await response.json()) as any;
 
-        if (!data || !data.odds) {
-            // === JAVÍTÁS: Részletesebb hibaüzenet ===
-            console.warn(`[IceHockeyApiProvider] Az odds végpont nem adott vissza 'odds' adatot (ID: ${matchId}). Válasz: ${JSON.stringify(data)}`);
+        // === JAVÍTÁS (v105.3): 'markets' ellenőrzése 'odds' helyett ===
+        if (!data || (!data.odds && !data.markets)) {
+            console.warn(`[IceHockeyApiProvider] Az odds végpont nem adott vissza 'markets' adatot (ID: ${matchId}). Válasz: ${JSON.stringify(data)}`);
             return null;
         }
 
