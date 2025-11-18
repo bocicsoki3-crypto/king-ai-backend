@@ -1,9 +1,13 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v105.1 ("Intelligens Bizalom Refaktor" - TS2339 Javítás)
-// MÓDOSÍTÁS (v105.1):
-// 1. JAVÍTÁS: A 'CARD_ANALYSIS_PROMPT'-ból eltávolítva a ', Derby: {is_derby}'
-//    szövegrész, hogy megfeleljen a 'SoccerStrategy.ts' (v105.1)
-//    által küldött 'cardsData' objektumnak. Ez javítja a TS2339 hibát.
+// VERZIÓ: v106.0 (Team Totals Integration & Master Prompt Upgrade)
+// MÓDOSÍTÁS (v106.0):
+// 1. PROMPT FRISSÍTÉS: A 'MASTER_AI_PROMPT_TEMPLATE' frissítve v106.0-ra.
+//    - Új instrukciók hozzáadva a "Csapat Totals" (Team Totals) kezelésére.
+//    - Az AI most már explicit keresi a csapat-specifikus Over/Under tippeket
+//      a 'Value Bets' listában, és prioritást ad nekik, ha a bizalom és a
+//      narratíva (pl. erős támadójáték) támogatja őket.
+// 2. FINOMHANGOLÁS: A 'STRATEGIC_CLOSING_PROMPT' is frissült, hogy
+//    említést tegyen a csapatok egyéni teljesítményének fontosságáról.
 
 import { 
     _callGemini, 
@@ -18,8 +22,7 @@ import type { ISportStrategy } from './strategies/ISportStrategy.js';
 // === IMPORT VÉGE ===
 
 
-// --- v103.0: Modernizált Helper a Régi Promptok futtatásához ---
-// === MÓDOSÍTÁS (v104.0): Exportálva a Stratégiák számára ===
+// --- Helper a Régi Promptok futtatásához ---
 export async function getAndParse(
     promptTemplate: string, 
     data: any, 
@@ -34,16 +37,16 @@ export async function getAndParse(
             const value = result[keyToExtract];
             return value || "N/A (AI nem adott értéket)";
         }
-        console.error(`[AI_Service v105.1] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
+        console.error(`[AI_Service v106.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
         return `AI Hiba: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot.`;
     } catch (e: any) {
-        console.error(`[AI_Service v105.1] Végleges AI Hiba (${stepName}): ${e.message}`);
+        console.error(`[AI_Service v106.0] Végleges AI Hiba (${stepName}): ${e.message}`);
         return `AI Hiba (${keyToExtract}): ${e.message}`;
     }
 }
 
 
-// === 8. ÜGYNÖK (A TÉRKÉPÉSZ) PROMPT_TEAM_RESOLVER_V1 (Változatlan) ===
+// === 8. ÜGYNÖK (A TÉRKÉPÉSZ) PROMPT (Változatlan) ===
 const PROMPT_TEAM_RESOLVER_V1 = `
 TASK: You are 'The Mapper', an expert sports data mapping assistant.
 Your goal is to find the correct team ID for a misspelled or alternative team name.
@@ -64,7 +67,7 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 }
 `;
 
-// === 2.5 ÜGYNÖK (A PSZICHOLÓGUS) PROMPT_PSYCHOLOGIST_V93 (Változatlan) ===
+// === 2.5 ÜGYNÖK (A PSZICHOLÓGUS) PROMPT (Változatlan) ===
 const PROMPT_PSYCHOLOGIST_V93 = `
 TASK: You are 'The Psychologist', the 2.5th Agent.
 Your job is to analyze the qualitative, narrative, and psychological state of both teams.
@@ -89,7 +92,7 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 }
 `;
 
-// === 3. ÜGYNÖK (A SPECIALISTA) PROMPT_SPECIALIST_V94 (Változatlan) ===
+// === 3. ÜGYNÖK (A SPECIALISTA) PROMPT (Változatlan) ===
 const PROMPT_SPECIALIST_V94 = `
 TASK: You are 'The Specialist', the 3rd Agent.
 Your job is to apply contextual modifiers (from Agents 2, 2.5, 7) to a baseline statistical model (from Agent 1).
@@ -129,12 +132,12 @@ Your response MUST be ONLY a single, valid JSON object with this EXACT structure
 }
 `;
 
-// === FOCI MIKROMODELL PROMPTOK (MÓDOSÍTÁS v105.0: Prompt frissítve) ===
+// === MIKROMODELL PROMPTOK (v105.0 alapokon) ===
 
 export const EXPERT_CONFIDENCE_PROMPT = `You are a master betting risk analyst.
 Provide a confidence score and justification in Hungarian.
 **CRITICAL CONTEXT: The match is {home} vs {away}.
-DO NOT mention any other teams (e.g., Ferencváros, Debrecen).**
+DO NOT mention any other teams.**
 
 Start with the Statistical Model Confidence.
 **NEW (v105.0) Statistical Scores:**
@@ -147,16 +150,15 @@ PSYCHOLOGIST: H: {psy_profile_home} / A: {psy_profile_away}
 SPECIALIST: {specialist_reasoning}
 
 Consider factors like injuries, form discrepancies, H2H, market moves etc. mentioned in the context.
-If Winner Conf is low (e.g., 3.8) but Totals Conf is high (e.g., 9.5), you MUST explain this discrepancy.
+If Winner Conf is low but Totals Conf is high, you MUST explain this discrepancy.
 --- CRITICAL OUTPUT FORMAT ---
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure:
 {"confidence_report": "**SCORE/10** - Indoklás."}
 Replace SCORE with a number between 1.0 and 10.0. This is your FINAL expert confidence.
-The asterisks around the score/10 part are MANDATORY. The hyphen (-) and space after it before the justification are also MANDATORY.
 --- END CRITICAL OUTPUT FORMAT ---`;
 
 export const TACTICAL_BRIEFING_PROMPT = `You are a world-class sports tactician. Provide a concise tactical briefing (2-4 sentences max, Hungarian) for {home} vs {away}.
-CONTEXT: First, read the Risk Assessment report: "{riskAssessment}". Reflect this context (e.g., if risk is high, explain the tactical risk).
+CONTEXT: First, read the Risk Assessment report: "{riskAssessment}". Reflect this context.
 DATA: Styles: {home} ("{home_style}") vs {away} ("{away_style}"), Formation: H:{home_formation} vs A:{away_formation}, Key Players: Home: {key_players_home}, Away: {key_players_away}.
 Highlight key elements with **asterisks**.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"analysis": "<Your Hungarian tactical briefing here>"}.`;
@@ -173,8 +175,7 @@ CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON obj
 
 export const FINAL_GENERAL_ANALYSIS_PROMPT = `You are an Editor-in-Chief.
 Write "Általános Elemzés" (exactly TWO paragraphs, Hungarian).
-**CRITICAL CONTEXT: The match is {home} vs {away}.
-DO NOT mention any other teams or leagues.**
+**CRITICAL CONTEXT: The match is {home} vs {away}.**
 1st para: state the most likely outcome based purely on the statistical simulation (Probs: H:{sim_pHome}%, D:{sim_pDraw}%, A:{sim_pAway}%; Expected Score: H {mu_h} - A {mu_a}).
 Mention the model's confidence scores (v105.0): Stat. Winner Conf: {confidenceWinner}/10, Stat. Totals Conf: {confidenceTotals}/10.
 2nd para: explain the 'why' behind the prediction by synthesizing insights from the tactical briefing ("{tacticalBriefing}") and the psychologist report ("{psy_profile_home}" / "{psy_profile_away}").
@@ -187,15 +188,15 @@ DATA: {home} ({home_style}) vs {away} ({away_style}), Tension: {tension}.
 Weave a narrative. Highlight key moments and the outcome with **asterisks**.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"scenario": "<Your Hungarian prophetic narrative here>"}.`;
 
+// === MÓDOSÍTVA (v106.0): Team Totals említése ===
 export const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst. Craft "Stratégiai Zárógondolatok" (2-3 Hungarian paragraphs).
 Synthesize ALL available reports: Risk Assessment, Tactical Briefing, Specialist Report, Psychologist Report, Statistical Simulation results, Micromodel conclusions, and overall Context.
-Discuss the most promising betting angles considering both potential value and risk. Focus recommendations on MAIN MARKETS (1X2, Totals, BTTS, Moneyline).
+Discuss the most promising betting angles considering both potential value and risk. Focus recommendations on MAIN MARKETS (1X2, Totals, BTTS, Moneyline) AND now Team Totals if applicable.
 
-**NEW (v105.0) Instructions:**
-- Pay close attention to the separated confidence scores:
-  - ModelConf (Winner): {confidenceWinner}/10
-  - ModelConf (Totals): {confidenceTotals}/10
-- If 'Totals' confidence is high (e.g., >7.5) and 'Winner' confidence is low (e.g., <5.0), your strategy *must* focus on the Totals market, not the Winner market.
+**NEW (v106.0) Instructions:**
+- Pay close attention to the separated confidence scores.
+- Look for **TEAM TOTALS** opportunities in the 'Value Bets' list.
+- If 'Totals' confidence is high and 'Winner' confidence is low, prioritize Totals (Match or Team).
 
 DATA:
 - Risk Assessment: "{riskAssessment}"
@@ -210,8 +211,8 @@ DATA:
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"strategic_analysis": "<Your comprehensive Hungarian strategic thoughts here>"}.`;
 
 export const PLAYER_MARKETS_PROMPT = `You are a player performance markets specialist.
-Suggest 1-2 potentially interesting player-specific betting markets in Hungarian (e.g., player shots on target, assists, cards, points).
-Provide a very brief (1 sentence) justification. Max 3 sentences total.
+Suggest 1-2 potentially interesting player-specific betting markets in Hungarian.
+Provide a very brief (1 sentence) justification.
 Highlight player names & markets with **asterisks**.
 DATA: Key Players: {keyPlayersJson}, Context: {richContext}.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"player_market_analysis": "<Your Hungarian player market analysis here>"}.
@@ -221,102 +222,90 @@ export const BTTS_ANALYSIS_PROMPT = `You are a BTTS specialist.
 Analyze if both teams will score (Igen/Nem).
 DATA: Sim BTTS: {sim_pBTTS}%, xG: H {sim_mu_h} - A {sim_mu_a}.
 (v105.0) Stat. Confidence: Winner={confidenceWinner}/10, Totals={confidenceTotals}/10.
-Consider team styles if available: H:{home_style}, A:{away_style}. Conclude with confidence level.
+Consider team styles if available. Conclude with confidence level.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"btts_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
 export const SOCCER_GOALS_OU_PROMPT = `You are a Soccer O/U specialist. Analyze total goals vs line ({line}).
 DATA: Sim Over {line}: {sim_pOver}%, xG Sum: {sim_mu_sum}.
 (v105.0) Stat. Confidence (Totals): {confidenceTotals}/10.
-Consider team styles/absentees: H:{home_style}, A:{away_style}, Absentees: H:{absentees_home_count} key, A:{absentees_away_count} key.
-Conclude with confidence level, strongly influenced by the 'Stat. Confidence (Totals)'.
+Consider team styles/absentees. Conclude with confidence level.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"goals_ou_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
 export const CORNER_ANALYSIS_PROMPT = `You are a Soccer Corners specialist. Analyze total corners vs an estimated line around {likelyLine} based on mu={mu_corners}.
-DATA: Calculated mu_corners: {mu_corners}. Consider team styles (wing play?): H:{home_style}, A:{away_style}.
+DATA: Calculated mu_corners: {mu_corners}. Consider team styles.
 Conclude with confidence level towards Over or Under a likely line (e.g., 9.5 or 10.5).
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"corner_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
-// === JAVÍTVA (v105.1) ===
 export const CARD_ANALYSIS_PROMPT = `You are a Soccer Cards specialist. Analyze total cards vs an estimated line around {likelyLine} based on mu={mu_cards}.
 DATA: Calculated mu_cards: {mu_cards}. Consider context: Referee style: "{referee_style}", Match tension: "{tension}".
 Conclude with confidence level towards Over or Under a likely line (e.g., 4.5 or 5.5).
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"card_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
-// === JÉGKORONG MIKROMODELL PROMPTOK (MÓDOSÍTÁS v105.0: Prompt frissítve) ===
-
 export const HOCKEY_GOALS_OU_PROMPT = `You are an Ice Hockey O/U specialist. Analyze total goals vs line ({line}).
 DATA: Sim Over {line}: {sim_pOver}%, xG Sum: {sim_mu_sum}.
 (v105.0) Stat. Confidence (Totals): {confidenceTotals}/10.
-Consider goalie GSAx: H:{home_gsax}, A:{away_gsax}. Conclude with confidence level, strongly influenced by 'Stat. Confidence (Totals)'.
+Consider goalie GSAx. Conclude with confidence level.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"hockey_goals_ou_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
 export const HOCKEY_WINNER_PROMPT = `You are an Ice Hockey Winner specialist. Analyze the winner (incl. OT).
 DATA: Sim Probs: H:{sim_pHome}%, A:{sim_pAway}%.
 (v105.0) Stat. Confidence (Winner): {confidenceWinner}/10.
-Consider goalie GSAx: H:{home_gsax}, A:{away_gsax}, Form: H:{form_home}, A:{form_away}. Conclude with confidence level, strongly influenced by 'Stat. Confidence (Winner)'.
+Consider goalie GSAx, Form. Conclude with confidence level.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"hockey_winner_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
-
-// === KOSÁRLABDA MIKROMODELL PROMPTOK (MÓDOSÍTÁS v105.0: Prompt frissítve) ===
 
 export const BASKETBALL_WINNER_PROMPT = `You are an NBA/Basketball Winner specialist. Analyze the winner (incl. OT).
 DATA: Sim Probs: H:{sim_pHome}%, A:{sim_pAway}%.
 (v105.0) Stat. Confidence (Winner): {confidenceWinner}/10.
-Consider context: Form: H:{form_home}, A:{form_away}. Absentees: H:{absentees_home_count} key, A:{absentees_away_count} key.
-Conclude with confidence level, strongly influenced by 'Stat. Confidence (Winner)'.
+Consider context: Form, Absentees. Conclude with confidence level.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"basketball_winner_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
 export const BASKETBALL_TOTAL_POINTS_PROMPT = `You are an NBA/Basketball O/U specialist. Analyze total points vs line ({line}).
 DATA: Sim Over {line}: {sim_pOver}%, Expected Points Sum: {sim_mu_sum}.
 (v105.0) Stat. Confidence (Totals): {confidenceTotals}/10.
-Consider context: Pace: H:{home_pace}, A:{away_pace}. Absentees: H:{absentees_home_count} key, A:{absentees_away_count} key.
-Conclude with confidence level, strongly influenced by 'Stat. Confidence (Totals)'.
+Consider context: Pace, Absentees. Conclude with confidence level.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"basketball_total_points_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
-// === VÉGE ===
 
-
-// === A "FŐNÖK" PROMPTJA (v105.0) (MÓDOSÍTVA) ===
-const MASTER_AI_PROMPT_TEMPLATE_V105 = `
+// === A "FŐNÖK" PROMPTJA (v106.0 - TEAM TOTALS ENABLED) ===
+const MASTER_AI_PROMPT_TEMPLATE_V106 = `
 CRITICAL TASK: You are the Head Analyst (AI Advisor).
 Your task is to analyze ALL provided reports and determine the SINGLE most compelling betting recommendation.
-**CRITICAL RULE: You MUST provide a concrete betting recommendation. Avoid "Nincs fogadás".
-Select the 'least bad' or most logical option even with uncertainty, and reflect this in the final_confidence score.**
+**CRITICAL RULE: You MUST provide a concrete betting recommendation. Avoid "Nincs fogadás".**
 
 CRITICAL INPUTS:
-1. Value Bets: {valueBetsJson} (Includes main & side markets)
+1. Value Bets: {valueBetsJson} (Now includes **Team Totals**, Main & Side markets)
 2. Sim Probs: H:{sim_pHome}%, D:{sim_pDraw}%, A:{sim_pAway}%, O/U {sim_mainTotalsLine}: O:{sim_pOver}%
 3. Model Confidence (Statistical) (v105.0):
    - Winner Confidence: {confidenceWinner}/10
    - Totals Confidence: {confidenceTotals}/10
    - Overall (Avg): {confidenceOverall}/10
-4. Expert Confidence (Narrative): "{expertConfidence}" (This is the full report string from your colleague)
+4. Expert Confidence (Narrative): "{expertConfidence}"
 5. Risk Assessment: "{riskAssessment}"
-6. Specialist Conclusions (Micromodels): "{microSummary}" (Includes Corners/Cards analysis)
+6. Specialist Conclusions: "{microSummary}"
 7. General Analysis: "{generalAnalysis}"
 8. Strategic Thoughts: "{strategicClosingThoughts}"
-9. Contradiction Analysis: "{contradictionAnalysis}"
-10. Psychologist (Agent 2.5) Report: {psychologistReportJson}
-11. Specialist (Agent 3) Report: {specialistReportJson}
+9. Psychologist (Agent 2.5) Report: {psychologistReportJson}
+10. Specialist (Agent 3) Report: {specialistReportJson}
 
-YOUR DECISION PROCESS (v105.0):
+YOUR DECISION PROCESS (v106.0):
 1. Synthesize ALL reports.
 2. **PRIORITY 1: Check for Confidence Divergence.**
-   - If 'Totals Confidence' (3) is HIGH (>7.5) and 'Winner Confidence' (3) is LOW (<5.0), your recommendation MUST BE from the Totals market (e.g., "Over 220.5").
-   - If 'Winner Confidence' (3) is HIGH (>7.5) and 'Totals Confidence' (3) is LOW (<5.0), your recommendation MUST BE from the Winner market (e.g., "Hazai győzelem").
-3. **PRIORITY 2: Find Value.**
-   - If confidence is aligned (or Priority 1 didn't trigger), check 'Value Bets' (1).
-   - If a reasonable Value Bet exists (>10% value) on a MAIN market (1X2, Totals, BTTS) AND it is supported by the relevant confidence score (3) and reports (10, 11), it's a strong candidate.
+   - If 'Totals Confidence' is HIGH (>7.5) and 'Winner Confidence' is LOW (<5.0), prioritize Totals.
+3. **PRIORITY 2: Check TEAM TOTALS (New Feature!).**
+   - Look at 'Value Bets' for markets like "Home Over 112.5" or "Away Under 2.5".
+   - If a Team Total bet has solid value (>5%) AND is supported by the narrative (e.g., "Home offense is on fire", "Away defense is weak"), **RECOMMEND THIS**.
+   - Team Totals are often safer than Match Totals because they isolate one team's performance.
 4. **PRIORITY 3: Default to Main Market.**
-   - If no value, choose the main market outcome most supported by combined evidence (Sim Probs + Confidence levels + Narrative + Agent Reports).
-5. **RULE: Side Markets (Corners, Cards) are for context ONLY.** Your recommended_bet MUST be from the main markets (1X2, Totals, BTTS, or Moneyline).
-6. **Reflect Uncertainty:** Use the final_confidence score (1.0-10.0) accurately. Base it on the confidence of the *market you selected* (e.g., if you recommend 'Over 2.5', use the 'Totals Confidence' as your baseline).
+   - If no strong Team Total, choose the best Main Market (1X2, Match Totals) supported by evidence.
+5. **RULE:** Your recommended_bet MUST be from the main markets or Team Totals.
+6. **Reflect Uncertainty:** Use the final_confidence score (1.0-10.0) accurately.
 
 OUTPUT FORMAT: Your response MUST be ONLY a single, valid JSON object with this EXACT structure:
-{"recommended_bet": "<The SINGLE most compelling market (e.g., Hazai győzelem, Over 2.5, BTTS Igen)>", "final_confidence": <Number between 1.0-10.0>, "brief_reasoning": "<SINGLE concise Hungarian sentence explaining the choice>"}
+{"recommended_bet": "<The SINGLE most compelling market (e.g., Hazai győzelem, Over 224, Warriors Over 115.5)>", "final_confidence": <Number between 1.0-10.0>, "brief_reasoning": "<SINGLE concise Hungarian sentence explaining the choice>"}
 `;
 
 
-// --- ÜGYNÖK FUTTATÓ FÜGGVÉNYEK (v105.0) ---
+// --- ÜGYNÖK FUTTATÓ FÜGGVÉNYEK ---
 
 // === 8. ÜGYNÖK (TÉRKÉPÉSZ) HÍVÁSA (Változatlan) ===
 interface TeamNameResolverInput {
@@ -332,14 +321,14 @@ export async function runStep_TeamNameResolver(data: TeamNameResolverInput): Pro
         if (result && result.matched_id) {
             const foundId = Number(result.matched_id);
             const matchedTeam = data.rosterJson.find(t => t.id === foundId);
-            console.log(`[AI_Service v105.1 - Térképész] SIKER: Az AI a "${data.searchTerm}" nevet ehhez a csapathoz rendelte: "${matchedTeam?.name || 'N/A'}" (ID: ${foundId})`);
+            console.log(`[AI_Service v106.0 - Térképész] SIKER: Az AI a "${data.searchTerm}" nevet ehhez a csapathoz rendelte: "${matchedTeam?.name || 'N/A'}" (ID: ${foundId})`);
             return foundId;
         } else {
-            console.error(`[AI_Service v105.1 - Térképész] HIBA: Az AI nem talált egyezést (matched_id: null) a "${data.searchTerm}" névre.`);
+            console.error(`[AI_Service v106.0 - Térképész] HIBA: Az AI nem talált egyezést (matched_id: null) a "${data.searchTerm}" névre.`);
             return null;
         }
     } catch (e: any) {
-        console.error(`[AI_Service v105.1 - Térképész] KRITIKUS HIBA a Gemini hívás vagy JSON parse során: ${e.message}`);
+        console.error(`[AI_Service v106.0 - Térképész] KRITIKUS HIBA a Gemini hívás vagy JSON parse során: ${e.message}`);
         return null;
     }
 }
@@ -355,7 +344,7 @@ export async function runStep_Psychologist(data: PsychologistInput): Promise<any
         const filledPrompt = fillPromptTemplate(PROMPT_PSYCHOLOGIST_V93, data);
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Psychologist (v93)");
     } catch (e: any) {
-        console.error(`[AI_Service v105.1] AI Hiba (Psychologist): ${e.message}`);
+        console.error(`[AI_Service v106.0] AI Hiba (Psychologist): ${e.message}`);
         return {
             "psy_profile_home": "AI Hiba: A 2.5-ös Ügynök (Pszichológus) nem tudott lefutni.",
             "psy_profile_away": "AI Hiba: A 2.5-ös Ügynök (Pszichológus) nem tudott lefutni."
@@ -380,7 +369,7 @@ export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
         const filledPrompt = fillPromptTemplate(PROMPT_SPECIALIST_V94, data);
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_Specialist (v94)");
     } catch (e: any) {
-        console.error(`[AI_Service v105.1] AI Hiba (Specialist): ${e.message}`);
+        console.error(`[AI_Service v106.0] AI Hiba (Specialist): ${e.message}`);
         return {
             "modified_mu_h": data.pure_mu_h,
             "modified_mu_a": data.pure_mu_a,
@@ -390,18 +379,18 @@ export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
     }
 }
 
-// === MIKROMODELL FUTTATÓK (Sportág-független) (MÓDOSÍTVA v105.0) ===
+// === MIKROMODELL FUTTATÓK (Sportág-független) ===
 
 async function getExpertConfidence(
-    confidenceScores: { winner: number, totals: number, overall: number }, // v105.0
+    confidenceScores: { winner: number, totals: number, overall: number }, 
     richContext: string, 
     rawData: ICanonicalRawData, 
     psyReport: any, 
     specialistReport: any
 ) {
      const data = {
-         confidenceWinner: confidenceScores.winner.toFixed(1), // v105.0
-         confidenceTotals: confidenceScores.totals.toFixed(1), // v105.0
+         confidenceWinner: confidenceScores.winner.toFixed(1), 
+         confidenceTotals: confidenceScores.totals.toFixed(1), 
          richContext: richContext || "Nincs kontextus.",
          home: rawData?.home || 'Hazai',
          away: rawData?.away || 'Vendég',
@@ -416,15 +405,15 @@ async function getRiskAssessment(
     sim: any, 
     rawData: ICanonicalRawData, 
     sport: string,
-    confidenceScores: { winner: number, totals: number, overall: number } // v105.0
+    confidenceScores: { winner: number, totals: number, overall: number }
 ) {
     const safeSim = sim || {};
     const countKeyAbsentees = (absentees: any) => Array.isArray(absentees) ? absentees.filter(p => p.importance === 'key').length : 0;
 
     const data = {
         sport,
-        confidenceWinner: confidenceScores.winner.toFixed(1), // v105.0
-        confidenceTotals: confidenceScores.totals.toFixed(1), // v105.0
+        confidenceWinner: confidenceScores.winner.toFixed(1),
+        confidenceTotals: confidenceScores.totals.toFixed(1),
         sim_pHome: safeSim.pHome, sim_pDraw: safeSim.pDraw, sim_pAway: safeSim.pAway,
         news_home: rawData?.team_news?.home || "N/A",
         news_away: rawData?.team_news?.away || "N/A",
@@ -455,13 +444,13 @@ async function getFinalGeneralAnalysis(
     sim: any, 
     tacticalBriefing: string, 
     rawData: ICanonicalRawData, 
-    confidenceScores: { winner: number, totals: number, overall: number }, // v105.0
+    confidenceScores: { winner: number, totals: number, overall: number }, 
     psyReport: any
 ) {
     const safeSim = sim || {};
     const data = {
-        confidenceWinner: confidenceScores.winner.toFixed(1), // v105.0
-        confidenceTotals: confidenceScores.totals.toFixed(1), // v105.0
+        confidenceWinner: confidenceScores.winner.toFixed(1), 
+        confidenceTotals: confidenceScores.totals.toFixed(1), 
         sim_pHome: safeSim.pHome, sim_pDraw: safeSim.pDraw, sim_pAway: safeSim.pAway,
         mu_h: sim.mu_h_sim,
         mu_a: sim.mu_a_sim,
@@ -493,24 +482,23 @@ async function getPlayerMarkets(keyPlayers: any, richContext: string) {
 }
 
 
-// === STRATÉGIA ÉS FŐNÖK (MÓDOSÍTVA v105.0) ===
+// === STRATÉGIA ÉS FŐNÖK (MÓDOSÍTVA v106.0) ===
 
 async function getStrategicClosingThoughts(
     sim: any, rawData: ICanonicalRawData, richContext: string, microAnalyses: any, 
     riskAssessment: string, tacticalBriefing: string, valueBets: any[], 
-    confidenceScores: { winner: number, totals: number, overall: number }, // v105.0
+    confidenceScores: { winner: number, totals: number, overall: number }, 
     expertConfidence: string, psyReport: any, specialistReport: any, sport: string
 ) {
     const safeSim = sim || {};
-    // A microSummary építése dinamikus (a 'microAnalyses' objektum már sport-specifikus)
     const microSummary = Object.entries(microAnalyses || {}).map(([key, val]) => {
         const analysisPart = typeof val === 'string' ? val.split('\nBizalom:')[0].trim() : 'N/A';
         return `${key}: ${analysisPart}`;
     }).join('; ');
 
     const data = {
-        confidenceWinner: confidenceScores.winner.toFixed(1), // v105.0
-        confidenceTotals: confidenceScores.totals.toFixed(1), // v105.0
+        confidenceWinner: confidenceScores.winner.toFixed(1), 
+        confidenceTotals: confidenceScores.totals.toFixed(1), 
         sim_pHome: safeSim.pHome, sim_pDraw: safeSim.pDraw, sim_pAway: safeSim.pAway,
         sim_mainTotalsLine: safeSim.mainTotalsLine, sim_pOver: safeSim.pOver,
         tacticalBriefing: tacticalBriefing || "N/A",
@@ -526,7 +514,7 @@ async function getStrategicClosingThoughts(
      
     let template = STRATEGIC_CLOSING_PROMPT;
     if (sport === 'hockey' || sport === 'basketball') {
-        template = template.replace(/BTTS, /g, ""); // Eltávolítja a BTTS-t a fő piacok közül
+        template = template.replace(/BTTS, /g, ""); 
     }
      
     return await getAndParse(template, data, "strategic_analysis", "StrategicClosing");
@@ -535,7 +523,7 @@ async function getStrategicClosingThoughts(
 async function getMasterRecommendation(
     valueBets: any[], 
     sim: any, 
-    confidenceScores: { winner: number, totals: number, overall: number }, // v105.0
+    confidenceScores: { winner: number, totals: number, overall: number }, 
     expertConfidence: string,
     riskAssessment: string, 
     microAnalyses: any, 
@@ -550,7 +538,6 @@ async function getMasterRecommendation(
         const safeSim = sim || {};
         const microSummary = Object.entries(microAnalyses || {}).map(([key, val]) => `${key}: ${val || 'N/A'}`).join('; ');
 
-        // Expert confidence pontszám kinyerése
         let expertConfScore = 1.0;
         try {
             let match;
@@ -561,13 +548,13 @@ async function getMasterRecommendation(
             if (match && match[1]) {
                 expertConfScore = parseFloat(match[1]);
                 expertConfScore = Math.max(1.0, Math.min(10.0, expertConfScore));
-                console.log(`[AI_Service v105.1 - Főnök] Expert bizalom sikeresen kinyerve: ${expertConfScore}`);
+                console.log(`[AI_Service v106.0 - Főnök] Expert bizalom sikeresen kinyerve: ${expertConfScore}`);
             } else {
-                console.warn(`[AI_Service v105.1 - Főnök] Nem sikerült kinyerni az expert bizalmat: "${expertConfidence}". Alapértelmezett: 1.0`);
+                console.warn(`[AI_Service v106.0 - Főnök] Nem sikerült kinyerni az expert bizalmat: "${expertConfidence}". Alapértelmezett: 1.0`);
                 expertConfScore = 1.0;
             }
         } catch(e: any) { 
-            console.warn("[AI_Service v105.1 - Főnök] Hiba az expert bizalom kinyerésekor:", e);
+            console.warn("[AI_Service v106.0 - Főnök] Hiba az expert bizalom kinyerésekor:", e);
             expertConfScore = 1.0;
         }
 
@@ -577,9 +564,9 @@ async function getMasterRecommendation(
             valueBetsJson: valueBets,
             sim_pHome: safeSim.pHome, sim_pDraw: safeSim.pDraw, sim_pAway: safeSim.pAway,
             sim_mainTotalsLine: safeSim.mainTotalsLine, sim_pOver: safeSim.pOver,
-            confidenceWinner: confidenceScores.winner.toFixed(1), // v105.0
-            confidenceTotals: confidenceScores.totals.toFixed(1), // v105.0
-            confidenceOverall: confidenceScores.overall.toFixed(1), // v105.0
+            confidenceWinner: confidenceScores.winner.toFixed(1), 
+            confidenceTotals: confidenceScores.totals.toFixed(1), 
+            confidenceOverall: confidenceScores.overall.toFixed(1), 
             expertConfidence: expertConfidence || "N/A",
             riskAssessment: riskAssessment || "N/A",
             microSummary: microSummary,
@@ -590,25 +577,24 @@ async function getMasterRecommendation(
             specialistReportJson: specialistReport 
         };
 
-        // --- 1. LÉPÉS: AI (Tanácsadó) hívása ---
-        let template = MASTER_AI_PROMPT_TEMPLATE_V105; // v105-ös "okos" prompt
+        // === 1. LÉPÉS: AI (Tanácsadó) hívása az ÚJ (v106.0) Prompttal ===
+        let template = MASTER_AI_PROMPT_TEMPLATE_V106; // v106-os "Team Totals" prompt
         if (sport === 'hockey' || sport === 'basketball') {
-            template = template.replace(/BTTS, /g, ""); // Eltávolítja a BTTS-t a fő piacok közül
+            template = template.replace(/BTTS, /g, ""); 
         }
         
         const filledPrompt = fillPromptTemplate(template, data);
         let rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation");
 
         if (!rec || !rec.recommended_bet || typeof rec.final_confidence !== 'number') {
-            console.error("[AI_Service v105.1 - Főnök] Master AI hiba: Érvénytelen JSON struktúra a válaszban:", rec);
+            console.error("[AI_Service v106.0 - Főnök] Master AI hiba: Érvénytelen JSON struktúra a válaszban:", rec);
             throw new Error("AI hiba: Érvénytelen JSON struktúra a MasterRecommendation-ben.");
         }
         
         // --- 2. LÉPÉS: KÓD (A "Főnök") átveszi az irányítást ---
-        console.log(`[AI_Service v105.1 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
+        console.log(`[AI_Service v106.0 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
 
-        // 1. Eltérés-alapú büntetés (Modell vs Expert)
-        // v105.0: Most az 'overall' statisztikai bizalmat hasonlítjuk össze az expert bizalommal.
+        // 1. Eltérés-alapú büntetés
         const confidenceDiff = Math.abs(safeConfidenceOverall - expertConfScore);
         const disagreementThreshold = 3.0;
         let confidencePenalty = 0;
@@ -626,7 +612,7 @@ async function getMasterRecommendation(
         rec.final_confidence -= confidencePenalty;
         rec.final_confidence = Math.max(1.0, Math.min(10.0, rec.final_confidence));
 
-        // 2. Bizalmi Kalibráció (Meta-tanulás)
+        // 2. Bizalmi Kalibráció
         let calibrationNote = "";
         try {
             const calibrationMap = getConfidenceCalibrationMap();
@@ -647,43 +633,40 @@ async function getMasterRecommendation(
                 }
             }
         } catch(calError: any) { 
-            console.warn(`[AI_Service v105.1 - Főnök] Bizalmi kalibráció hiba: ${calError.message}`); 
+            console.warn(`[AI_Service v106.0 - Főnök] Bizalmi kalibráció hiba: ${calError.message}`); 
         }
 
-        // Megjegyzések hozzáadása az indokláshoz
         rec.brief_reasoning = (rec.brief_reasoning || "N/A") + disagreementNote + calibrationNote;
         if (rec.brief_reasoning.length > 500) {
             rec.brief_reasoning = rec.brief_reasoning.substring(0, 497) + "...";
         }
 
-        console.log(`[AI_Service v105.1 - Főnök] VÉGLEGES KORRIGÁLT Tipp: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
+        console.log(`[AI_Service v106.0 - Főnök] VÉGLEGES KORRIGÁLT Tipp: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
         
         return rec;
 
     } catch (e: any) {
-        console.error(`[AI_Service v105.1 - Főnök] Végleges hiba a Mester Ajánlás generálása során: ${e.message}`, e.stack);
+        console.error(`[AI_Service v106.0 - Főnök] Végleges hiba a Mester Ajánlás generálása során: ${e.message}`, e.stack);
         throw new Error(`AI Hiba (Főnök): ${e.message.substring(0, 100)}`);
     }
 }
 
 
-// === FŐ ORCHESTRÁCIÓS LÉPÉS (Refaktorálva v105.0) ===
+// === FŐ ORCHESTRÁCIÓS LÉPÉS (Változatlan v105.0) ===
 interface FinalAnalysisInput {
     matchData: { home: string; away: string; sport: string; leagueName: string; };
     rawDataJson: ICanonicalRawData; 
-    specialistReport: any; // Agent 3
-    simulatorReport: any;  // Agent 4 (Sim)
-    psyReport: any;        // Agent 2.5
+    specialistReport: any;
+    simulatorReport: any;
+    psyReport: any;
     valueBetsJson: any[];
     richContext: string;
     sportStrategy: ISportStrategy;
-    confidenceScores: { winner: number, totals: number, overall: number }; // v105.0
+    confidenceScores: { winner: number, totals: number, overall: number };
 }
 
 export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<any> {
     
-    // Alap adatok kinyerése
-    // === MÓDOSÍTVA (v105.0): A 'confidenceScores' kinyerése ===
     const { 
         rawDataJson, 
         specialistReport, 
@@ -693,9 +676,8 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
         richContext, 
         matchData, 
         sportStrategy,
-        confidenceScores // Itt az új "okos" bizalmi objektum
+        confidenceScores 
     } = data;
-    // === MÓDOSÍTÁS VÉGE ===
 
     const sim = simulatorReport || {};
     const home = matchData.home || 'Hazai';
@@ -717,35 +699,28 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
     let microAnalyses: { [key: string]: string } = {};
     
     try {
-        // --- 1. LÉPÉS: Mikromodellek párhuzamos futtatása (Hibatűréssel) ---
-        
-        // Ezek a hívások sportág-függetlenek, de most már az "okos" bizalmat kapják meg
+        // Mikromodellek
         const expertConfidencePromise = getExpertConfidence(confidenceScores, richContext, rawDataJson, psyReport, specialistReport);
         const riskAssessmentPromise = getRiskAssessment(sim, rawDataJson, sport, confidenceScores);
-        const playerMarketsPromise = getPlayerMarkets(rawDataJson.key_players, richContext); // Ez sport-független
+        const playerMarketsPromise = getPlayerMarkets(rawDataJson.key_players, richContext);
 
-        // === MÓDOSÍTÁS (v104.0): Sportág-specifikus mikromodellek hívása ===
-        // A stratégia objektum meghívása
         const microModelResultsPromise = sportStrategy.runMicroModels({
             sim: sim,
             rawDataJson: rawDataJson,
             mainTotalsLine: sim.mainTotalsLine,
-            confidenceScores: confidenceScores // v105.0: Átadja az "okos" bizalmat a stratégiáknak is
+            confidenceScores: confidenceScores 
         });
-        // === MÓDOSÍTÁS VÉGE ===
 
-        // A sportág-független és a sportág-specifikus modellek együttes futtatása
         const results = await Promise.allSettled([
             expertConfidencePromise, 
             riskAssessmentPromise, 
             playerMarketsPromise,
-            microModelResultsPromise // A stratégia eredménye
+            microModelResultsPromise 
         ]);
 
         expertConfidence = (results[0].status === 'fulfilled') ? (results[0].value as string) : `**1.0/10** - AI Hiba: ${results[0].reason?.message || 'Ismeretlen'}`;
         riskAssessment = (results[1].status === 'fulfilled') ? (results[1].value as string) : `AI Hiba: ${results[1].reason?.message || 'Ismeretlen'}`;
         
-        // A sport-specifikus modellek eredményeinek beolvasása
         if (results[3].status === 'fulfilled') {
             microAnalyses = results[3].value as { [key: string]: string };
         } else {
@@ -753,12 +728,10 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
             microAnalyses = { "error": `Stratégia hiba: ${results[3].reason?.message}` };
         }
         
-        // A sportág-független 'player_market_analysis' hozzáadása a listához
         microAnalyses['player_market_analysis'] = (results[2].status === 'fulfilled') ? (results[2].value as string) : `AI Hiba: ${results[2].reason?.message || 'Ismeretlen'}`;
 
         
-        // --- 2. LÉPÉS: Fő elemzések futtatása (ezek függhetnek az előzőektől) ---
-        
+        // Fő elemzések
         try {
             tacticalBriefing = await getTacticalBriefing(rawDataJson, sport, home, away, riskAssessment);
         } catch (e: any) { tacticalBriefing = `AI Hiba (Tactical): ${e.message}`; }
@@ -767,12 +740,10 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
             generalAnalysis = await getFinalGeneralAnalysis(sim, tacticalBriefing, rawDataJson, confidenceScores, psyReport);
         } catch (e: any) { generalAnalysis = `AI Hiba (General): ${e.message}`; }
 
-        // Csak focinál van értelme a Prófétának (Ez a sport-specifikus logika maradhat)
         if (sport === 'soccer') {
             try {
                 propheticTimeline = await getPropheticTimeline(rawDataJson, home, away, sport, tacticalBriefing);
             } catch (e: any) { 
-                console.error(`[AI_Service v105.1] Hiba elkapva a 'getPropheticTimeline' hívásakor: ${e.message}`);
                 propheticTimeline = `AI Hiba (Prophetic): ${e.message}`; 
             }
         } else {
@@ -787,7 +758,7 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
             );
         } catch (e: any) { strategic_synthesis = `AI Hiba (Strategic): ${e.message}`; }
 
-        // --- 3. LÉPÉS: A "FŐNÖK" (JS KÓD + AI TANÁCSADÓ) HÍVÁSA ---
+        // Főnök hívása (v106.0)
         masterRecommendation = await getMasterRecommendation(
             valueBetsJson,
             sim,
@@ -804,11 +775,10 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
         );
 
     } catch (e: any) {
-        console.error(`[AI_Service v105.1] KRITIKUS HIBA a runStep_FinalAnalysis során: ${e.message}`);
+        console.error(`[AI_Service v106.0] KRITIKUS HIBA a runStep_FinalAnalysis során: ${e.message}`);
         masterRecommendation.brief_reasoning = `KRITIKUS HIBA: ${e.message}. A többi elemzés (ha van) még érvényes lehet.`;
     }
     
-    // --- 4. LÉPÉS: Végső LAPOS riport összeállítása (v103.6) ---
     return {
         risk_assessment: riskAssessment,
         tactical_briefing: tacticalBriefing,
@@ -816,7 +786,7 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
         strategic_synthesis: strategic_synthesis,
         prophetic_timeline: propheticTimeline,
         final_confidence_report: expertConfidence,
-        micromodels: microAnalyses, // Ez már sport-specifikus
+        micromodels: microAnalyses,
         master_recommendation: masterRecommendation,
         agent_reports: {
             psychologist: psyReport,
@@ -853,15 +823,15 @@ Answer concisely and accurately in Hungarian based ONLY on the provided Analysis
 Do not provide betting advice. Do not make up information not present in the context.
 If the answer isn't in the context or history, politely state that the information is not available in the analysis.`;
         
-        const rawAnswer = await _callGemini(prompt, false); // forceJson = false
+        const rawAnswer = await _callGemini(prompt, false); 
         return rawAnswer ? { answer: rawAnswer } : { error: "Az AI nem tudott válaszolni." };
     } catch (e: any) {
-        console.error(`[AI_Service v105.1] Chat hiba: ${e.message}`, e.stack);
+        console.error(`[AI_Service v106.0] Chat hiba: ${e.message}`, e.stack);
         return { error: `Chat AI Hiba: ${e.message}` };
     }
 }
 
-// --- FŐ EXPORT (v105.1) ---
+// --- FŐ EXPORT (v106.0) ---
 export default {
     runStep_TeamNameResolver,
     runStep_Psychologist,
