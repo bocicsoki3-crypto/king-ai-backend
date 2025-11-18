@@ -1,16 +1,12 @@
 // FÁJL: Model.ts
-// VERZIÓ: v105.0 ("Intelligens Bizalom Refaktor")
-// MÓDOSÍTÁS (v105.0):
-// 1. REFaktor: A 'calculateModelConfidence' (ami egy 'number'-t adott vissza)
-//    átnevezve 'calculateConfidenceScores'-ra.
-// 2. MÓDOSÍTVA: A 'calculateConfidenceScores' most már egy 'object'-et ad vissza:
-//    { winner: number, totals: number, overall: number }
-//    Ez lehetővé teszi, hogy az AI ágensek külön értékeljék a
-//    Győztes (bizonytalan) és a Pontok (magabiztos) piacokat.
-// 3. HOZZÁADVA: Külön logikák a 'winner' és 'totals' bizalom kiszámítására.
-// 4. MÓDOSÍTVA: A 'calculateConfidenceScores' most már a 'mu_h'/'mu_a'
-//    értékeket (Specialista kimenete) használja a 'sim' (Szimulátor) helyett,
-//    hogy a bizalom a súlyozott adatokon alapuljon.
+// VERZIÓ: v105.1 ("Bátrabb Bizalom" Finomhangolás)
+// MÓDOSÍTÁS (v105.1):
+// 1. FINOMHANGOLÁS: A 'calculateConfidenceScores' funkcióban a 'totalsThresholdHigh'
+//    értékek csökkentve lettek kosárlabdánál (8 -> 5) és jégkorongnál (0.8 -> 0.6).
+// 2. CÉL: A rendszer így már kisebb (de statisztikailag szignifikáns) eltérésekre
+//    is magasabb bizalmi pontszámot (bónuszt) ad, elkerülve a "túl óvatos"
+//    (pl. 4.8-as) értékeléseket egyértelműnek tűnő helyzetekben.
+// 3. Megtartja a v105.0 összes strukturális változtatását (szétválasztott bizalom).
 
 import { SPORT_CONFIG } from './config.js';
 import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
@@ -28,7 +24,7 @@ import type { ISportStrategy, XGOptions, AdvancedMetricsOptions } from './strate
 
 /**************************************************************
 * Model.ts - Statisztikai Modellező Modul (Node.js Verzió)
-* VÁLTOZÁS (v105.0): Intelligens Bizalom Refaktor.
+* VÁLTOZÁS (v105.1): Bátrabb Bizalom Finomhangolás.
 **************************************************************/
 
 // --- Segédfüggvények (Poisson és Normális eloszlás mintavétel) ---
@@ -386,12 +382,12 @@ export function calculateConfidenceScores(
         const marketTotal = mainTotalsLine;
         const totalsDiff = Math.abs(modelTotal - marketTotal);
         
-        // Ez a kulcs: a 12.25 pontos eltérés (232.75 vs 220.5) itt magas pontszámot fog kapni.
-        const totalsThresholdHigh = sport === 'basketball' ? 8 : sport === 'hockey' ? 0.8 : 0.4;
+        // === MÓDOSÍTÁS (v105.1): BÁTRABB KÜSZÖBÖK (Kosár: 8->5, Hoki: 0.8->0.6) ===
+        const totalsThresholdHigh = sport === 'basketball' ? 5 : sport === 'hockey' ? 0.6 : 0.4;
         const totalsThresholdLow = sport === 'basketball' ? 2 : sport === 'hockey' ? 0.2 : 0.1;
         
-        if (totalsDiff > totalsThresholdHigh) totalsScore += 4.0; // Extrém eltérés a piactól
-        else if (totalsDiff > totalsThresholdHigh * 0.6) totalsScore += 2.5;
+        if (totalsDiff > totalsThresholdHigh) totalsScore += 4.0; // Extrém eltérés a piactól (Most már a 4.45 pont is közel lesz ehhez)
+        else if (totalsDiff > totalsThresholdHigh * 0.6) totalsScore += 2.5; // Közepes bónusz (Most már a 3.0 pont is megkapja)
         if (totalsDiff < totalsThresholdLow) totalsScore -= 2.0; // A modell egyetért a piaccal (nincs "value")
         
         // TODO: Forma alapú O/U bizalom (pl. mindkét csapat "Overes")
