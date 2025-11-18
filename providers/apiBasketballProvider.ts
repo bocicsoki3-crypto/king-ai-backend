@@ -1,16 +1,13 @@
 // FÁJL: providers/apiBasketballProvider.ts
-// VERZIÓ: v2.0 (Teljes "The Rundown" API Refaktor)
-// MÓDOSÍTÁS:
-// 1. TELJES ÚJRAÍRÁS: A provider most már a "The Rundown" API-t használja,
-//    a felhasználó által biztosított logok és API tesztpont alapján.
-// 2. ELTÁVOLÍTVA: Az 'api-sports' specifikus funkciók (getLeagueId, getTeamId, stb.) törölve,
-//    mivel a "The Rundown" API nem így működik.
-// 3. HOZZÁADVA: Új 'fetchMatchData' logika, ami a '/sports/4/events/{date}'
-//    végpontot hívja, és "fuzzy matching"-et használ a csapatnevek azonosítására.
-// 4. HOZZÁADVA: Helyi "fuzzy matching" segédfüggvények.
-// 5. HOZZÁADVA: 'parseTheRundownEvent' függvény, ami a komplex JSON-t
-//    ICanonicalRichContext-re alakítja.
-// 6. JAVÍTÁS: .js kiterjesztések hozzáadva az importokhoz (Node.js/TypeScript-hez).
+// VERZIÓ: v106.0 (Smart Team Totals & Spread Support)
+// MÓDOSÍTÁS (v106.0):
+// 1. BŐVÍTÉS: Hozzáadva a 'spread' (Hendikep) piac feldolgozása.
+// 2. ÚJ FUNKCIÓ: "Származtatott Csapat Totals" (Derived Team Totals).
+//    Ha van Fővonal (Total) és Hendikep (Spread), a kód matematikailag
+//    kiszámolja a csapatok várható egyéni pontszámát (Implied Team Total),
+//    és létrehozza a 'home_total' és 'away_total' piacokat.
+// 3. EREDMÉNY: A rendszer így akkor is tud "Warriors Over 115.5" tippet adni,
+//    ha az API nem küldött explicit csapat-specifikus piacot.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -36,7 +33,6 @@ import {
 } from './common/utils.js';
 
 // --- FUZZY MATCHING SEGÉDFÜGGVÉNYEK ---
-// (Szükséges a csapatnevek azonosításához)
 function getStringBigrams(str: string): Set<string> {
     if (!str || str.length < 2) return new Set();
     const s = str.toLowerCase();
@@ -61,7 +57,7 @@ function compareStrings(str1: string, str2: string): number {
 // --- FUZZY MATCHING VÉGE ---
 
 
-// --- API-SPORTS KÖZPONTI HÍVÓ FÜGGVÉNY ---
+// --- API HÍVÓ FÜGGVÉNY ---
 async function makeBasketballRequest(endpoint: string, config: AxiosRequestConfig = {}, sportConfig: any) {
     const sport = 'basketball';
     if (!sportConfig || !sportConfig.host || !sportConfig.keys || sportConfig.keys.length === 0) {
@@ -112,7 +108,7 @@ async function getWeatherForFixture(
 
 
 /**
- * "Stub" Válasz Generátor (Hibakezeléshez)
+ * "Stub" Válasz Generátor
  */
 function generateEmptyStubContext(options: any): IDataFetchResponse {
     const { sport, homeTeamName, awayTeamName } = options;
@@ -174,7 +170,6 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
     const awayTeamData = event.teams_normalized.find((t: any) => t.is_away);
 
     // --- 1. Statisztikák kinyerése ---
-    // A 'record' mező (pl. "11-2") alapján számolunk GP-t
     const parseRecord = (record: string): { gp: number, form: string | null } => {
         if (!record || !record.includes('-')) return { gp: 1, form: null };
         try {
@@ -182,7 +177,6 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
             const wins = parseInt(parts[0], 10);
             const losses = parseInt(parts[1], 10);
             const gp = wins + losses;
-            // TODO: Forma kinyerése (az API testpoint nem mutatja)
             return { gp: gp > 0 ? gp : 1, form: null };
         } catch (e) {
             return { gp: 1, form: null };
@@ -194,8 +188,8 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
     
     const homeStats: ICanonicalStats = {
         gp: homeRecord.gp,
-        gf: 0, // A "The Rundown" nem adja meg az átlagpontokat ebben a végpontban
-        ga: 0, // Ezeket a Model.ts-nek kell megbecsülnie, vagy P1-ből kapnia
+        gf: 0,
+        ga: 0,
         form: homeRecord.form
     };
     const awayStats: ICanonicalStats = {
@@ -209,8 +203,8 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
     const allMarkets: ICanonicalOdds['allMarkets'] = [];
     const current: ICanonicalOdds['current'] = [];
     
-    // Átalakító segédfüggvény (Amerikai -> Decimális)
     const americanToDecimal = (americanOdds: number): number => {
+        if (!americanOdds) return 1.91; // Fallback
         if (americanOdds > 0) {
             return (americanOdds / 100) + 1;
         } else {
@@ -219,15 +213,14 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
     };
 
     if (event.lines) {
-        // A 'lines' egy objektum, ahol a kulcs az affiliate_id (pl. "2", "3")
-        // Válasszuk a "Pinnacle" (id: 3) vagy a "Bovada" (id: 2) oddsait
+        // Válasszuk a "Pinnacle" (id: 3) vagy "Bovada" (id: 2) oddsait
         const bookmakerLine = event.lines["3"] || event.lines["2"];
+        
         if (bookmakerLine) {
-            // Moneyline (h2h)
+            // A) Moneyline (h2h)
             if (bookmakerLine.moneyline) {
                 const homeOdd = bookmakerLine.moneyline.moneyline_home;
                 const awayOdd = bookmakerLine.moneyline.moneyline_away;
-                // A 0.0001-es értékeket "N/A"-ként kezeljük
                 if (homeOdd && awayOdd && homeOdd !== 0.0001 && awayOdd !== 0.0001) {
                     const homeDecimal = americanToDecimal(homeOdd);
                     const awayDecimal = americanToDecimal(awayOdd);
@@ -243,13 +236,20 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
                     });
                 }
             }
-            // Total (Totals)
+
+            // B) Total és Spread (Hendikep)
+            // Ezekre szükségünk lesz a Csapat Totals kiszámításához
+            let mainTotalLine: number | null = null;
+            let mainSpreadLine: number | null = null;
+
+            // Total
             if (bookmakerLine.total) {
-                const line = bookmakerLine.total.total_over; // (ami megegyezik a total_under-rel)
+                const line = bookmakerLine.total.total_over;
                 const overPrice = bookmakerLine.total.total_over_money;
                 const underPrice = bookmakerLine.total.total_under_money;
                 
                 if (line && line !== 0.0001) {
+                    mainTotalLine = line;
                     const overDecimal = americanToDecimal(overPrice);
                     const underDecimal = americanToDecimal(underPrice);
                     
@@ -262,7 +262,66 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
                     });
                 }
             }
-            // TODO: Spread (Handicap) kinyerése (bookmakerLine.spread)
+            
+            // Spread (Hendikep)
+            if (bookmakerLine.spread) {
+                const line = bookmakerLine.spread.point_spread_home; // Pl. -5.0 (Home favored)
+                const homePrice = bookmakerLine.spread.point_spread_home_money;
+                const awayPrice = bookmakerLine.spread.point_spread_away_money;
+
+                if (line && line !== 0.0001) {
+                    mainSpreadLine = line;
+                    const homeDecimal = americanToDecimal(homePrice);
+                    const awayDecimal = americanToDecimal(awayPrice);
+
+                    allMarkets.push({
+                        key: 'spread',
+                        outcomes: [
+                            { name: `Home ${line}`, price: homeDecimal, point: line },
+                            { name: `Away ${-line}`, price: awayDecimal, point: -line }
+                        ]
+                    });
+                }
+            }
+
+            // === C) SZÁRMAZTATOTT CSAPAT TOTALS (SMART FEATURE v106.0) ===
+            // Ha megvan a Total és a Spread, kiszámoljuk a csapatok várható pontszámát.
+            // Ez akkor is ad "Team Total" piacot, ha az API nem küldte el közvetlenül!
+            if (mainTotalLine !== null && mainSpreadLine !== null) {
+                // Matematika: 
+                // Implied Home = (Total - Spread_Home) / 2
+                // Implied Away = (Total + Spread_Home) / 2
+                // (Mert a Spread_Home negatív, ha ők a favoritok. Pl. Total 200, Spread -10. Home = (200 - (-10))/2 = 105. Helyes.)
+                
+                const impliedHomeTotal = (mainTotalLine - mainSpreadLine) / 2;
+                const impliedAwayTotal = (mainTotalLine + mainSpreadLine) / 2;
+                
+                // Kerekítés 0.5-re vagy egészre
+                const roundToHalf = (num: number) => Math.round(num * 2) / 2;
+                
+                const homeLine = roundToHalf(impliedHomeTotal);
+                const awayLine = roundToHalf(impliedAwayTotal);
+
+                // Hazai Csapat Totals
+                allMarkets.push({
+                    key: 'home_total',
+                    outcomes: [
+                        { name: `Over ${homeLine}`, price: 1.91, point: homeLine }, // Standard 1.91 odds placeholder
+                        { name: `Under ${homeLine}`, price: 1.91, point: homeLine }
+                    ]
+                });
+
+                // Vendég Csapat Totals
+                allMarkets.push({
+                    key: 'away_total',
+                    outcomes: [
+                        { name: `Over ${awayLine}`, price: 1.91, point: awayLine },
+                        { name: `Under ${awayLine}`, price: 1.91, point: awayLine }
+                    ]
+                });
+                
+                console.log(`[apiBasketballProvider] Származtatott Csapat Totals Generálva: Home ~${homeLine}, Away ~${awayLine}`);
+            }
         }
     }
     
@@ -279,18 +338,18 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
         apiFootballData: {
              homeTeamId: homeTeamData?.team_id || null,
              awayTeamId: awayTeamData?.team_id || null,
-             leagueId: event.schedule?.league_name || 'NBA', // Az API nem ad ID-t
+             leagueId: event.schedule?.league_name || 'NBA',
              fixtureId: event.event_id,
              fixtureDate: event.event_date,
              lineups: null, liveStats: null, seasonStats: { home: null, away: null }
         },
-        h2h_structured: [], // Az API nem ad H2H-t ebben a végpontban
+        h2h_structured: [],
         form: {
             home_overall: homeRecord.form,
             away_overall: awayRecord.form,
         },
         detailedPlayerStats: { home_absentees: [], away_absentees: [], key_players_ratings: { home: {}, away: {} } },
-        absentees: { home: [], away: [] }, // Az API nem ad hiányzókat ebben a végpontban
+        absentees: { home: [], away: [] },
         referee: { name: "N/A", style: null },
         contextual_factors: {
             stadium_location: event.score?.venue_name || "N/A",
@@ -300,15 +359,15 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
             match_tension_index: null,
             coach: { home_name: null, away_name: null }
         },
-        availableRosters: { home: [], away: [] } // Az API nem ad kereteket ebben a végpontban
+        availableRosters: { home: [], away: [] }
     };
     
     const result: ICanonicalRichContext = {
          rawStats: finalData.stats,
-         leagueAverages: {}, // A Model.ts kezeli a defaultokat
+         leagueAverages: {},
          richContext: `Kosárlabda elemzés (v2.0 - TheRundown). Szezon: ${event.schedule?.season_year || 'N/A'}`,
          advancedData: { 
-            home: { xg: null }, // Nincs xG/pont adat
+            home: { xg: null },
             away: { xg: null }
          },
          form: finalData.form,
@@ -333,7 +392,7 @@ export async function fetchMatchData(options: any): Promise<IDataFetchResponse> 
         awayTeamName, 
         leagueName, 
         utcKickoff, 
-        apiConfig // Ezt a DataFetch.ts-től kapjuk meg
+        apiConfig 
     } = options;
     
     console.log(`Adatgyűjtés indul (v2.0 - TheRundown - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
@@ -373,7 +432,6 @@ export async function fetchMatchData(options: any): Promise<IDataFetchResponse> 
             
             if (!homeTeamData || !awayTeamData) continue;
             
-            // A "The Rundown" API a 'name' (pl. "Indiana") és 'mascot' (pl. "Pacers") mezőket adja
             const apiHomeName = `${homeTeamData.name} ${homeTeamData.mascot}`.toLowerCase();
             const apiAwayName = `${awayTeamData.name} ${awayTeamData.mascot}`.toLowerCase();
             
@@ -381,7 +439,6 @@ export async function fetchMatchData(options: any): Promise<IDataFetchResponse> 
             const scoreAway = compareStrings(searchAway, apiAwayName);
             const avgScore = (scoreHome + scoreAway) / 2;
 
-            // Fordított ellenőrzés (ha pl. a mi adatbázisunkban "Pacers", az API-ban "IND Pacers")
             const scoreHomeAlt = compareStrings(searchHome, `${homeTeamData.abbreviation} ${homeTeamData.mascot}`.toLowerCase());
             const scoreAwayAlt = compareStrings(searchAway, `${awayTeamData.abbreviation} ${awayTeamData.mascot}`.toLowerCase());
             const avgScoreAlt = (scoreHomeAlt + scoreAwayAlt) / 2;
@@ -399,7 +456,6 @@ export async function fetchMatchData(options: any): Promise<IDataFetchResponse> 
             const awayFound = bestMatch.event.teams_normalized.find((t:any) => t.is_away).name;
             console.log(`[apiBasketballProvider] SIKERES NÉVEGYEZTETÉS (Score: ${bestMatch.score.toFixed(2)}): ${homeTeamName} vs ${awayTeamName} -> ${homeFound} vs ${awayFound}`);
             
-            // Átalakítjuk az eseményt a mi kanonikus formátumunkra
             return parseTheRundownEvent(bestMatch.event, homeTeamName, awayTeamName);
             
         } else {
