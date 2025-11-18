@@ -381,7 +381,6 @@ export async function fetchMatchData(options: {
                 h2h_structured: [],
                 form: { home_overall: null, away_overall: null },
                 detailedPlayerStats: { home_absentees: [], away_absentees: [], key_players_ratings: { home: {}, away: {} } },
-img
                 absentees: { home: [], away: [] },
                 referee: { name: "N/A", style: null },
                 contextual_factors: { stadium_location: matchedEvent.venue?.name || "N/A", structured_weather: emptyHockeyWeather, pitch_condition: "N/A", weather: "N/A", match_tension_index: null, coach: { home_name: null, away_name: null } },
