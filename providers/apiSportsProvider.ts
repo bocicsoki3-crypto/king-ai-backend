@@ -1,13 +1,11 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v107.0 (Hardcoded League Fallback)
-// MÓDOSÍTÁS (v107.0):
-// 1. ÚJ FUNKCIÓ: 'STATIC_LEAGUE_MAP' hozzáadása. Ez egy kézzel karbantartott lista
-//    a legfontosabb ligák ID-jairól (különösen a brazil és dél-amerikai ligákhoz,
-//    ahol az API keresője gyakran 500-as hibát dob vagy nem találja őket).
-// 2. LOGIKA FRISSÍTÉS: A 'getApiSportsLeagueId' mostantól ELŐSZÖR a statikus
-//    térképet ellenőrzi. Ha ott van találat, AZONNAL visszaadja az ID-t,
-//    kikerülve a bizonytalan API hívást.
-// 3. BŐVÍTÉS: A 'Serie A (Brazil)' és 'Serie B (Brazil)' explicit kezelése.
+// VERZIÓ: v107.1 (Critical World Cup Qualifier Fix)
+// MÓDOSÍTÁS (v107.1):
+// 1. JAVÍTVA: Hozzáadva a 'UEFA World Cup Qualifying' és a többi zóna (CAF, AFC)
+//    a STATIC_LEAGUE_MAP-hoz, a kódbázisban (config.ts-ben) található
+//    pontos nevük alapján generált kulccsal.
+// 2. CÉL: Megoldja azt a problémát, hogy az API keresés (World Cup-ra) nulla
+//    eredményt ad vissza, kényszerítve ezzel a P1 stub-ot.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -35,12 +33,12 @@ import {
     getStructuredWeatherData
 } from './common/utils.js';
 
-// === ÚJ (v107.0): STATIKUS LIGA TÉRKÉP (A "Golyóálló" Megoldás) ===
+// === ÚJ (v107.1): STATIKUS LIGA TÉRKÉP (A "Golyóálló" Megoldás) ===
 // Ide gyűjtjük azokat a ligákat, amikkel gond szokott lenni.
 // Kulcs: "ország_liganév" (kisbetűvel, szóközök nélkül, vagy speciális kulcsok)
 // Érték: API-Sports League ID
 const STATIC_LEAGUE_MAP: { [key: string]: number } = {
-    // --- BRAZÍLIA (A leggyakoribb hibaforrás) ---
+    // --- BRAZÍLIA (Stabilizálva v107.0) ---
     'brazil_seriea': 71,
     'brazil_serieb': 72,
     'brazil_seriec': 73,
@@ -67,7 +65,7 @@ const STATIC_LEAGUE_MAP: { [key: string]: number } = {
     'netherlands_eredivisie': 88,
     'portugal_ligaportugal': 94,
     
-    // --- NEMZETKÖZI ---
+    // --- NEMZETKÖZI / SZELEJTEZŐK (FIX V107.1) ---
     'world_worldcup': 1,
     'world_uefachampionsleague': 2,
     'world_uefaeuropaleague': 3,
@@ -75,7 +73,12 @@ const STATIC_LEAGUE_MAP: { [key: string]: number } = {
     'world_uefanationsleague': 5,
     'world_copaamerica': 9,
     'world_eurochampionship': 4,
-    'world_world cup - qualification europe': 32
+    // === ÚJ KRITIKUS BEJEGYZÉSEK (ID 32 az UEFA WCQ) ===
+    'world_uefaworldcupqualifying': 32,
+    'world_cafworldcupqualifying': 32,
+    'world_afcworldcupqualifying': 32,
+    'world_worldcupqualifyinguefa': 32, // Törés-teszt
+    // ===================================================
 };
 
 // Helper a kulcs generálásához
@@ -84,12 +87,25 @@ function getStaticLeagueKey(country: string, leagueName: string): string {
     const cleanCountry = country.toLowerCase().replace(/[^a-z0-9]/g, '');
     
     // A liga nevéből eltávolítjuk a zárójeles részt (pl. "(Brazil)") és tisztítjuk
-    let cleanLeague = leagueName.toLowerCase().replace(/\(.*\)/, '').replace(/[^a-z0-9]/g, '');
+    // === VÁLTOZTATÁS A KULCS GENERÁLÁSÁBAN (v107.1) ===
+    // Eltávolítjuk a szóközöket, hogy jobban illeszkedjenek a kulcsokhoz
+    let cleanLeague = leagueName.toLowerCase()
+        .replace(/\(.*\)/, '')
+        .replace(/[^a-z0-9]/g, '')
+        .replace(/\s+/g, '');
+    // =================================================
     
     // Speciális mapelés a nevekhez, hogy egyezzenek a STATIC_LEAGUE_MAP kulcsaival
-    if (cleanLeague === 'seriea') cleanLeague = 'seriea'; // redundant, de olvasható
+    if (cleanLeague === 'seriea') cleanLeague = 'seriea'; 
     if (cleanLeague === 'championsleague') cleanLeague = 'uefachampionsleague';
     if (cleanLeague === 'europaleague') cleanLeague = 'uefaeuropaleague';
+    if (cleanLeague.includes('worldcupqualifying')) {
+        // Ragaszkodunk a 'worldcupqualifying' forma végeződéshez
+        const qualifyingMatch = cleanLeague.match(/(caf|afc|uefa|fifa)?worldcupqualifying/);
+        if (qualifyingMatch) {
+            cleanLeague = qualifyingMatch[0]; // pl. 'uefaworldcupqualifying'
+        }
+    }
     
     return `${cleanCountry}_${cleanLeague}`;
 }
@@ -294,7 +310,7 @@ export async function getApiSportsTeamId(
     return null;
 }
 
-// === EXPORTÁLVA (MÓDOSÍTVA v107.0: Statikus Liga Fallback) ===
+// === EXPORTÁLVA (MÓDOSÍTVA v107.1: Statikus Liga Fallback) ===
 export async function getApiSportsLeagueId(leagueName: string, country: string, season: number, sport: string): Promise<{ leagueId: number, foundSeason: number } | null> {
     if (!leagueName || !country || !season) {
         console.warn(`API-SPORTS (${sport}): Liga név ('${leagueName}'), ország ('${country}') vagy szezon (${season}) hiányzik.`);
@@ -315,12 +331,12 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
     const staticId = STATIC_LEAGUE_MAP[staticKey];
     
     if (staticId) {
-        console.log(`[apiSportsProvider v107.0] STATIKUS LIGA TALÁLAT! A rendszer ismeri ezt a ligát ("${staticKey}" -> ID: ${staticId}). API keresés kikerülve.`);
+        console.log(`[apiSportsProvider v107.1] STATIKUS LIGA TALÁLAT! A rendszer ismeri ezt a ligát ("${staticKey}" -> ID: ${staticId}). API keresés kikerülve.`);
         const leagueData = { leagueId: staticId, foundSeason: season };
         apiSportsLeagueIdCache.set(leagueCacheKey, leagueData);
         return leagueData;
     } else {
-        console.log(`[apiSportsProvider v107.0] A liga ("${staticKey}") nincs a statikus listában. Folytatás API kereséssel...`);
+        console.log(`[apiSportsProvider v107.1] A liga ("${staticKey}") nincs a statikus listában. Folytatás API kereséssel...`);
     }
     // ===============================================================
     
