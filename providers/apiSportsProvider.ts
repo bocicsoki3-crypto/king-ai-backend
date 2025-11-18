@@ -1,11 +1,11 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v107.1 (Critical World Cup Qualifier Fix)
-// MÓDOSÍTÁS (v107.1):
-// 1. JAVÍTVA: Hozzáadva a 'UEFA World Cup Qualifying' és a többi zóna (CAF, AFC)
-//    a STATIC_LEAGUE_MAP-hoz, a kódbázisban (config.ts-ben) található
-//    pontos nevük alapján generált kulccsal.
-// 2. CÉL: Megoldja azt a problémát, hogy az API keresés (World Cup-ra) nulla
-//    eredményt ad vissza, kényszerítve ezzel a P1 stub-ot.
+// VERZIÓ: v107.2 (CRITICAL: Roster/Team ID Season Fallback)
+// MÓDOSÍTÁS (v107.2):
+// 1. KRITIKUS JAVÍTÁS: A 'getApiSportsTeamId' funkció mostantól megpróbálja
+//    a csapatlistát (roster) lekérni a kért szezonban, majd visszalép (season-1, season-2),
+//    ha az első kísérlet sikertelen.
+// 2. CÉL: Megoldja a nem folyamatos ligák (pl. Szezonális Szelezetők) problémáját,
+//    ahol a 2025-ös dátumra nincs még roster, de a 2024-es már érvényes.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -77,7 +77,7 @@ const STATIC_LEAGUE_MAP: { [key: string]: number } = {
     'world_uefaworldcupqualifying': 32,
     'world_cafworldcupqualifying': 32,
     'world_afcworldcupqualifying': 32,
-    'world_worldcupqualifyinguefa': 32, // Törés-teszt
+    'world_worldcupqualifyinguefa': 32, 
     // ===================================================
 };
 
@@ -87,23 +87,19 @@ function getStaticLeagueKey(country: string, leagueName: string): string {
     const cleanCountry = country.toLowerCase().replace(/[^a-z0-9]/g, '');
     
     // A liga nevéből eltávolítjuk a zárójeles részt (pl. "(Brazil)") és tisztítjuk
-    // === VÁLTOZTATÁS A KULCS GENERÁLÁSÁBAN (v107.1) ===
-    // Eltávolítjuk a szóközöket, hogy jobban illeszkedjenek a kulcsokhoz
     let cleanLeague = leagueName.toLowerCase()
         .replace(/\(.*\)/, '')
         .replace(/[^a-z0-9]/g, '')
         .replace(/\s+/g, '');
-    // =================================================
     
     // Speciális mapelés a nevekhez, hogy egyezzenek a STATIC_LEAGUE_MAP kulcsaival
     if (cleanLeague === 'seriea') cleanLeague = 'seriea'; 
     if (cleanLeague === 'championsleague') cleanLeague = 'uefachampionsleague';
     if (cleanLeague === 'europaleague') cleanLeague = 'uefaeuropaleague';
     if (cleanLeague.includes('worldcupqualifying')) {
-        // Ragaszkodunk a 'worldcupqualifying' forma végeződéshez
         const qualifyingMatch = cleanLeague.match(/(caf|afc|uefa|fifa)?worldcupqualifying/);
         if (qualifyingMatch) {
-            cleanLeague = qualifyingMatch[0]; // pl. 'uefaworldcupqualifying'
+            cleanLeague = qualifyingMatch[0]; 
         }
     }
     
@@ -247,7 +243,7 @@ export async function _getLeagueRoster(leagueId: number | string, season: number
     const endpoint = `/v3/teams?league=${leagueId}&season=${season}`;
     const response = await makeRequestWithRotation(sport, endpoint, {});
     if (!response?.data?.response || response.data.response.length === 0) {
-        console.warn(`API-SPORTS (${sport}): Nem sikerült lekérni a csapatlistát a ${leagueId} ligából, ${season} szezon.`);
+        // NEM LOGOLUNK HIBAÜZENETET ITT, mert ez egy várható fallback, ha rossz a szezon
         return [];
     }
     const roster = response.data.response;
@@ -280,10 +276,25 @@ export async function getApiSportsTeamId(
          console.log(`API-SPORTS Név Keresés (${sport}): "${teamName}" (Nincs térkép bejegyzés, közvetlen keresés)`);
     }
     
-    const leagueRoster = await _getLeagueRoster(leagueId, season, sport);
+    // === MÓDOSÍTÁS (v107.2): Szezon Fallback a Roster Lekéréshez ===
+    let leagueRoster: any[] = [];
+    const seasonsToTry = [season, season - 1, season - 2];
+    
+    for (const s of seasonsToTry) {
+        console.log(`API-SPORTS (${sport}): Csapatlista kísérlet a(z) ${s} szezonra (Liga: ${leagueId})...`);
+        leagueRoster = await _getLeagueRoster(leagueId, s, sport);
+        if (leagueRoster.length > 0) {
+            console.log(`API-SPORTS (${sport}): Roster/Csapatlista sikeresen lekérve a(z) ${s} szezonból (Fallback).`);
+            break;
+        }
+        if (s === season - 2) {
+             console.warn(`API-SPORTS (${sport}): Nem található csapatlista a ${leagueId} ligához 3 szezon alatt sem.`);
+        }
+    }
+    // === MÓDOSÍTÁS VÉGE ===
     
     if (leagueRoster.length === 0) {
-        console.warn(`API-SPORTS (${sport}): A liga (${leagueId}) csapatai nem érhetők el a(z) ${season} szezonban. Névfeloldás sikertelen.`);
+        console.warn(`API-SPORTS (${sport}): A liga (${leagueId}) csapatai nem érhetők el. Névfeloldás sikertelen.`);
         apiSportsNameMappingCache.set(nameCacheKey, 'not_found');
         return null;
     }
@@ -332,7 +343,8 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
     
     if (staticId) {
         console.log(`[apiSportsProvider v107.1] STATIKUS LIGA TALÁLAT! A rendszer ismeri ezt a ligát ("${staticKey}" -> ID: ${staticId}). API keresés kikerülve.`);
-        const leagueData = { leagueId: staticId, foundSeason: season };
+        // Mivel statikus, a foundSeason a bejövő season lesz
+        const leagueData = { leagueId: staticId, foundSeason: season }; 
         apiSportsLeagueIdCache.set(leagueCacheKey, leagueData);
         return leagueData;
     } else {
