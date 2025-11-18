@@ -1,12 +1,15 @@
 // FÁJL: providers/common/utils.ts
 // VERZIÓ: v72.1 (Kritikus Meccslista Javítás)
-// MÓDOSÍTÁS:
+// MÓDOSÍTÁS (v105.1 JAVÍTÁS):
 // 1. JAVÍTVA (KRITIKUS): Az '_getFixturesFromEspn' (kb. 345. sor)
 //    státusz szűrője ('pre') túl szigorú volt, ami 0 meccset eredményezett.
 // 2. LOGIKA: A szűrő megfordítva. Most már minden meccset átenged,
 //    ami NEM 'post' (befejezett), így a 'scheduled' és 'upcoming'
 //    státuszú meccsek is bekerülnek a listába.
-
+// 3. JAVÍTVA (v105.1 Felhasználói Kérés): A 'findMainTotalsLine' (kb. 267. sor)
+//    teljesen újraírva. Most már a sportspecifikus 'fullApiData' helyett
+//    a kanonikus 'allMarkets' tömbből olvassa a "totals" piacokat,
+//    így már helyesen működik a Kosárlabda ('apiBasketballProvider') adataival is.
 import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import {
     GEMINI_API_KEY, GEMINI_MODEL_ID,
@@ -16,7 +19,7 @@ import type {
     ICanonicalOdds, 
     ICanonicalStats,
     IStructuredWeather
-} from '../../src/types/canonical.d.ts'; 
+} from '../../src/types/canonical.d.ts';
 
 // --- ÁLTALÁNOS API HÍVÓ ---
 // (Változatlan v72.0)
@@ -49,8 +52,10 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
         } catch (error: any) {
             attempts++;
             let errorMessage = `API (${method}) hívás hiba (${attempts}/${retries + 1}): ${url.substring(0, 150)}... - `;
+            
             if (error.response) {
                 errorMessage += `Státusz: ${error.response.status}, Válasz: ${JSON.stringify(error.response.data)?.substring(0, 150)}`;
+                
                 if (error.response.status === 429) {
                     const quotaError: any = new Error(errorMessage);
                     quotaError.response = error.response;
@@ -81,8 +86,10 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
 // --- GEMINI API HÍVÓK ---
 // (Változatlan v72.0)
 export async function _callGemini(prompt: string, forceJson: boolean = true): Promise<string> {
-    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') { throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY."); }
-    if (!GEMINI_MODEL_ID) { throw new Error("Hiányzó GEMINI_MODEL_ID."); }
+    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') { throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY.");
+    }
+    if (!GEMINI_MODEL_ID) { throw new Error("Hiányzó GEMINI_MODEL_ID.");
+    }
     
     let finalPrompt = prompt;
     if (forceJson) {
@@ -98,13 +105,16 @@ export async function _callGemini(prompt: string, forceJson: boolean = true): Pr
             ...(forceJson && { responseMimeType: "application/json" }),
         }, 
     };
+    
     console.log(`Gemini API hívás indul a '${GEMINI_MODEL_ID}' modellel... (Prompt hossza: ${finalPrompt.length}, JSON kényszerítve: ${forceJson})`);
+    
     try {
         const response: AxiosResponse<any> = await axios.post(url, payload, {
             headers: { 'Content-Type': 'application/json' }, 
             timeout: 120000, 
             validateStatus: () => true 
         });
+        
         if (response.status !== 200) {
             console.error('--- RAW GEMINI ERROR RESPONSE ---');
             console.error(JSON.stringify(response.data, null, 2));
@@ -112,6 +122,7 @@ export async function _callGemini(prompt: string, forceJson: boolean = true): Pr
         }
         
         const responseText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        
         if (!responseText) {
             const finishReason = response.data?.candidates?.[0]?.finishReason || 'Ismeretlen';
             console.warn('--- GEMINI BLOCK RESPONSE ---', JSON.stringify(response.data, null, 2));
@@ -133,6 +144,7 @@ export async function _callGemini(prompt: string, forceJson: boolean = true): Pr
         throw e;
     }
 }
+
 // (Változatlan v72.0)
 export async function _callGeminiWithJsonRetry(
     prompt: string, 
@@ -144,7 +156,7 @@ export async function _callGeminiWithJsonRetry(
     while (attempts <= maxRetries) {
         attempts++;
         try {
-            const jsonString = await _callGemini(prompt, true); 
+            const jsonString = await _callGemini(prompt, true);
             const result = JSON.parse(jsonString);
             
             if (attempts > 1) {
@@ -172,13 +184,16 @@ export async function _callGeminiWithJsonRetry(
 // (Változatlan v72.0)
 export function fillPromptTemplate(template: string, data: any): string {
     if (!template || typeof template !== 'string') return '';
+    
     try {
         return template.replace(/\{([\w_.]+)\}/g, (match, key) => {
             let value: any;
+            
             if (key.includes('.')) {
                 const keys = key.split('.');
                 let currentData = data;
                 let found = true;
+                
                 for (const k of keys) {
                     if (currentData && typeof currentData === 'object' && currentData.hasOwnProperty(k)) {
                         currentData = currentData[k];
@@ -189,7 +204,7 @@ export function fillPromptTemplate(template: string, data: any): string {
                                 currentData = currentData[baseKey];
                             } catch (e: any) { 
                                 console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál (bejövő objektum)`);
-                                currentData = {}; 
+                                currentData = {};
                             }
                          }
                     } else {
@@ -207,33 +222,30 @@ export function fillPromptTemplate(template: string, data: any): string {
             } else if (data && typeof data === 'object' && data.hasOwnProperty(key)) {
                  value = data[key];
             } 
- 
             else if (key.endsWith('Json')) {
                 const baseKey = key.replace('Json', '');
                 if (data && data.hasOwnProperty(baseKey) && data[baseKey] !== undefined) {
-                    try { return JSON.stringify(data[baseKey]);
-                    } 
+                    try { return JSON.stringify(data[baseKey]); } 
                      catch (e: any) { console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál`);
-                        return '{}'; }
-                } else { return '{}';
-                } 
+                     return '{}'; }
+                } else { return '{}'; } 
             }
             else { 
                  console.warn(`Hiányzó kulcs a prompt kitöltéséhez: ${key}`);
-                return "N/A";
+                 return "N/A";
             }
 
-            if (value === null || value === undefined) { return "N/A";
-            }
+            if (value === null || value === undefined) { return "N/A"; }
+            
             if (typeof value === 'object') {
-                 try { return JSON.stringify(value);
-                } catch (e) { return "[object]"; }
+                 try { return JSON.stringify(value); } 
+                 catch (e) { return "[object]"; }
             }
             return String(value);
         });
     } catch(e: any) {
          console.error(`Váratlan hiba a fillPromptTemplate során: ${e.message}`);
-        return template; 
+         return template; 
     }
 }
 
@@ -248,15 +260,19 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
     
     const daysInt = parseInt(days, 10);
     if (isNaN(daysInt) || daysInt <= 0 || daysInt > 7) return [];
+    
     const datesToFetch = Array.from({ length: daysInt }, (_, d) => {
         const date = new Date();
         date.setUTCDate(date.getUTCDate() + d);
         return date.toISOString().split('T')[0].replace(/-/g, '');
     });
+    
     const allFixtures: any[] = [];
     const leagueCount = Object.keys(sportConfig.espn_leagues).length;
     console.log(`ESPN: Kötegelt lekérés indul: ${daysInt} nap, ${leagueCount} liga...`);
+    
     const allUrlsToFetch: { url: string; leagueName: string; slug: string }[] = [];
+    
     for (const dateString of datesToFetch) {
         for (const [leagueName, leagueData] of Object.entries(sportConfig.espn_leagues)) {
             const slug = leagueData.slug;
@@ -273,15 +289,16 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
     const DELAY_BETWEEN_BATCHES = 500;
 
     console.log(`ESPN: Összesen ${allUrlsToFetch.length} kérés indítása ${BATCH_SIZE}-ös kötegekben...`);
+    
     for (let i = 0; i < allUrlsToFetch.length; i += BATCH_SIZE) {
         const batchUrls = allUrlsToFetch.slice(i, i + BATCH_SIZE);
         console.log(`ESPN: Köteg futtatása (${i + 1}-${i + batchUrls.length} / ${allUrlsToFetch.length})...`);
+        
         const promises = batchUrls.map(req => 
             makeRequest(req.url, { timeout: 8000 })
                 .then(response => {
                     if (!response?.data?.events) return [];
                     return response.data.events
-                        
                         // === JAVÍTÁS (v72.1) ===
                         // A régi, túl szigorú szűrő:
                         // .filter((event: any) => event?.status?.type?.state?.toLowerCase() === 'pre')
@@ -289,10 +306,10 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
                         // Az új, robusztusabb szűrő: Minden, ami nem 'post' (befejezett):
                          .filter((event: any) => event?.status?.type?.state?.toLowerCase() !== 'post')
                         // === JAVÍTÁS VÉGE ===
-
                         .map((event: any) => {
                             const competition = event.competitions?.[0];
                             if (!competition) return null;
+                            
                             const homeTeam = competition.competitors?.find((c: any) => c.homeAway === 'home')?.team;
                             const awayTeam = competition.competitors?.find((c: any) => c.homeAway === 'away')?.team;
                            
@@ -312,12 +329,13 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
                 .catch((error: any) => {
                     if (error.response?.status === 400) {
                         console.warn(`ESPN Hiba (400): Valószínűleg rossz slug '${req.slug}' (${req.leagueName})?`);
-                     } else {
+                    } else {
                         console.error(`ESPN Hiba (${req.leagueName}): ${error.message}`);
                     }
                     return []; // Hiba esetén üres tömböt adunk vissza
-                })
+                 })
         );
+        
         const batchResults = await Promise.all(promises);
         allFixtures.push(...batchResults.flat());
         
@@ -337,83 +355,100 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
     }
 }
 
-// --- findMainTotalsLine ---
-// (Változatlan v72.0)
+// === JAVÍTVA (v105.1): findMainTotalsLine ===
+// A funkció most már a kanonikus 'allMarkets' tömböt olvassa
+// a sportspecifikus 'fullApiData' helyett.
 export function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: string): number {
-    const defaultConfigLine = SPORT_CONFIG[sport]?.totals_line || (sport === 'soccer' ? 2.5 : 6.5);
-    if (!oddsData?.fullApiData?.bookmakers || oddsData.fullApiData.bookmakers.length === 0) {
+    const defaultConfigLine = SPORT_CONFIG[sport]?.totals_line || (sport === 'soccer' ? 2.5 : (sport === 'hockey' ? 6.5 : 220.5));
+    
+    if (!oddsData?.allMarkets || oddsData.allMarkets.length === 0) {
+        console.warn(`[utils.ts/findMainTotalsLine] Nincs 'allMarkets' tömb. Alapértelmezett vonal (${defaultConfigLine}) használata.`);
         return defaultConfigLine;
     }
 
-    const bookmaker = oddsData.fullApiData.bookmakers.find((b: any) => b.name === "Bet365") || oddsData.fullApiData.bookmakers[0];
-    if (!bookmaker?.bets) return defaultConfigLine;
-    let marketName: string;
-    let alternativeMarketName: string | null = null;
-    if (sport === 'soccer') {
-        marketName = "over/under";
-        alternativeMarketName = "totals";
-    } else if (sport === 'hockey') {
-        marketName = "total";
-    } else if (sport === 'basketball') {
-        marketName = "total points";
-    } else {
-        marketName = "over/under";
-    }
+    const totalsMarket = oddsData.allMarkets.find(m => m.key === 'totals');
 
-    let totalsMarket = bookmaker.bets.find((b: any) => b.name.toLowerCase() === marketName);
-    if (!totalsMarket && alternativeMarketName) {
-        totalsMarket = bookmaker.bets.find((b: any) => b.name.toLowerCase() === alternativeMarketName);
-    }
-
-    if (!totalsMarket?.values) {
-        console.warn(`Nem található '${marketName}' piac a szorzókban (${sport}).`);
+    if (!totalsMarket || !totalsMarket.outcomes || totalsMarket.outcomes.length === 0) {
+        console.warn(`[utils.ts/findMainTotalsLine] Nem található kanonikus 'totals' piac az 'allMarkets'-ben. Alapértelmezett vonal (${defaultConfigLine}) használata.`);
         return defaultConfigLine;
     }
 
+    // 1. Lépés: Párok gyűjtése (Over/Under)
     const linesAvailable: { [key: string]: { over?: number, under?: number } } = {};
-    for (const val of totalsMarket.values) {
-        const lineMatch = val.value.match(/(\d+\.\d)/);
-        const line = lineMatch ? lineMatch[1] : val.value; 
-
-        if (isNaN(parseFloat(line))) continue; 
-
-        if (!linesAvailable[line]) linesAvailable[line] = {};
-        if (val.value.toLowerCase().startsWith("over")) {
-            linesAvailable[line].over = parseFloat(val.odd);
-        } else if (val.value.toLowerCase().startsWith("under")) {
-            linesAvailable[line].under = parseFloat(val.odd);
-        }
-    }
-
-    if (Object.keys(linesAvailable).length === 0) {
-        return defaultConfigLine;
-    }
-
-    let closestPair = { diff: Infinity, line: defaultConfigLine };
-    for (const line in linesAvailable) {
-        const pair = linesAvailable[line];
-        if (pair.over && pair.under) {
-            const diff = Math.abs(pair.over - pair.under);
-            if (diff < closestPair.diff) {
-                closestPair = { diff, line: parseFloat(line) };
+    
+    for (const outcome of totalsMarket.outcomes) {
+        // A 'point' mezőt használjuk, amit a providereknek (pl. apiBasketballProvider) be kell állítaniuk
+        const line = outcome.point;
+        
+        if (line === null || line === undefined || isNaN(Number(line))) {
+            // Ha a 'point' nincs beállítva (pl. régebbi provider), megpróbáljuk kitalálni a névből
+            const lineMatch = outcome.name.match(/(\d+\.\d+)/);
+            const guessedLine = lineMatch ? lineMatch[1] : null;
+            
+            if (!guessedLine) continue; // Nem tudjuk feldolgozni ezt a kimenetet
+            
+            const lineKey = String(guessedLine);
+            if (!linesAvailable[lineKey]) linesAvailable[lineKey] = {};
+            if (outcome.name.toLowerCase().startsWith("over")) {
+                linesAvailable[lineKey].over = outcome.price;
+            } else if (outcome.name.toLowerCase().startsWith("under")) {
+                linesAvailable[lineKey].under = outcome.price;
+            }
+        } else {
+            // A 'point' mező létezik (ez a preferált út)
+            const lineKey = String(line);
+            if (!linesAvailable[lineKey]) linesAvailable[lineKey] = {};
+            if (outcome.name.toLowerCase().startsWith("over")) {
+                linesAvailable[lineKey].over = outcome.price;
+            } else if (outcome.name.toLowerCase().startsWith("under")) {
+                linesAvailable[lineKey].under = outcome.price;
             }
         }
     }
 
+    if (Object.keys(linesAvailable).length === 0) {
+        console.warn(`[utils.ts/findMainTotalsLine] Találtunk 'totals' piacot, de nem sikerült Over/Under párokat kinyerni. Alapértelmezett vonal (${defaultConfigLine}) használata.`);
+        return defaultConfigLine;
+    }
+
+    // 2. Lépés: A legkiegyensúlyozottabb pár keresése
+    let closestPair = { diff: Infinity, line: defaultConfigLine };
+    
+    for (const lineKey in linesAvailable) {
+        const pair = linesAvailable[lineKey];
+        if (pair.over && pair.under) {
+            // A "legközelebbi" szorzópár (pl. 1.90 vs 1.90) az igazi fővonal
+            const diff = Math.abs(pair.over - pair.under);
+            if (diff < closestPair.diff) {
+                closestPair = { diff, line: parseFloat(lineKey) };
+            }
+        }
+    }
+
+    // Ha találtunk egyértelműen kiegyensúlyozott párt (pl. 0.5-nél kisebb különbség)
     if (closestPair.diff < 0.5) {
+        console.log(`[utils.ts/findMainTotalsLine] Valódi fővonal azonosítva (legkisebb különbség alapján): ${closestPair.line}`);
         return closestPair.line;
     }
 
+    // 3. Lépés: Fallback (ha nincs egyértelmű pár)
+    // Keressük azt a vonalat, ami a legközelebb van a mi alapértelmezettünkhöz
     const numericDefaultLine = defaultConfigLine;
     const numericLines = Object.keys(linesAvailable).map(parseFloat);
+    
     numericLines.sort((a, b) => Math.abs(a - numericDefaultLine) - Math.abs(b - numericDefaultLine));
-    return numericLines[0];
+    
+    const fallbackLine = numericLines[0];
+    console.warn(`[utils.ts/findMainTotalsLine] Nem találtunk kiegyensúlyozott (diff < 0.5) szorzópárt. Visszaesés a konfigurációhoz legközelebbi elérhető vonalra: ${fallbackLine}`);
+    
+    return fallbackLine;
 }
 
 
 // --- IDŐJÁRÁS (v55.9) ---
 // (Változatlan v72.0)
 const geocodingCache = new Map<string, { latitude: number; longitude: number }>();
+
 interface IGeocodingResponse {
     results?: Array<{
         latitude: number;
@@ -442,19 +477,16 @@ async function getCoordinatesForCity(city: string): Promise<{ latitude: number; 
 
     try {
         const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(normalizedCity)}&count=1&language=en&format=json`;
-        
         // @ts-ignore
         const response = await fetch(url, {
             headers: { 'Accept': 'application/json' }
         });
-
         if (!response.ok) {
             console.error(`[utils.ts/Geocoding] API Hiba (${normalizedCity}): ${response.status} ${response.statusText}`);
             return null;
         }
 
         const data = (await response.json()) as IGeocodingResponse;
-
         if (data.results && data.results.length > 0) {
             const { latitude, longitude } = data.results[0];
             const result = { latitude, longitude };
@@ -480,7 +512,7 @@ export async function getStructuredWeatherData(
         precipitation_mm: null,
         source: 'N/A'
     };
-
+    
     if (!stadiumLocation || !utcKickoff || stadiumLocation === "N/A") {
         console.warn(`[utils.ts/Weather] Hiányzó város vagy dátum az időjárás lekéréséhez.`);
         return fallbackWeather;
@@ -494,6 +526,7 @@ export async function getStructuredWeatherData(
 
     let matchDate: Date;
     let matchHour: number;
+    
     try {
         matchDate = new Date(utcKickoff);
         matchHour = matchDate.getUTCHours();
@@ -503,23 +536,23 @@ export async function getStructuredWeatherData(
     }
     
     const simpleDate = matchDate.toISOString().split('T')[0];
-
+    
     try {
         const { latitude, longitude } = coordinates;
         const weatherUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${latitude.toFixed(4)}&longitude=${longitude.toFixed(4)}&start_date=${simpleDate}&end_date=${simpleDate}&hourly=temperature_2m,precipitation,wind_speed_10m&timezone=UTC`;
-
+        
         // @ts-ignore
         const response = await fetch(weatherUrl, {
             headers: { 'Accept': 'application/json' }
         });
-
+        
         if (!response.ok) {
             console.error(`[utils.ts/Weather] API Hiba (${stadiumLocation} @ ${simpleDate}): ${response.status} ${response.statusText}`);
             return fallbackWeather;
         }
 
         const data = (await response.json()) as IWeatherArchiveResponse;
-
+        
         if (!data.hourly || !data.hourly.time || data.hourly.time.length === 0) {
             console.warn(`[utils.ts/Weather] Az API nem adott vissza óránkénti adatot.`);
             return fallbackWeather;
@@ -528,7 +561,7 @@ export async function getStructuredWeatherData(
         const hourIndex = data.hourly.time.findIndex(timeISO => {
             return new Date(timeISO).getUTCHours() === matchHour;
         });
-
+        
         if (hourIndex === -1) {
             console.warn(`[utils.ts/Weather] Nem található a meccs órája (${matchHour}:00 UTC) az API válaszban. Fallback: N/A.`);
             return fallbackWeather;
@@ -539,7 +572,7 @@ export async function getStructuredWeatherData(
         const wind = data.hourly.wind_speed_10m[hourIndex];
 
         console.log(`[utils.ts/Weather] Időjárás adat sikeresen lekérve (${stadiumLocation}): Temp: ${temp}°C, Csapadék: ${precip}mm, Szél: ${wind}km/h`);
-
+        
         return {
             temperature_celsius: temp,
             precipitation_mm: precip,
@@ -547,7 +580,6 @@ export async function getStructuredWeatherData(
             description: `Valós adat: ${temp}°C, ${precip}mm eső, ${wind}km/h szél.`,
             source: 'Open-Meteo'
         };
-
     } catch (error: any) {
         console.error(`[utils.ts/Weather] Kritikus hiba az időjárás feldolgozásakor (${stadiumLocation}): ${error.message}`);
         return fallbackWeather;
