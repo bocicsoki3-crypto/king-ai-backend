@@ -1,12 +1,13 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v106.2 (Fuzzy Liga Keresés Javítás & World Cup Fix)
-// MÓDOSÍTÁS (v106.2):
-// 1. JAVÍTÁS: A '_findLeagueInList' függvény most már jobban kezeli
-//    a "World Cup" típusú kereséseket. Ha a keresett név "World Cup",
-//    akkor expliciten keres "Qualification" ligákat is, ha az alap
-//    egyezés nem hoz eredményt.
-// 2. BŐVÍTÉS: A 'cleanName' függvény bővítve, hogy a zárójeles részeket
-//    és a "qualifying" szavakat is jobban kezelje.
+// VERZIÓ: v106.3 (Intelligens "Broad Search" Javítás)
+// MÓDOSÍTÁS (v106.3):
+// 1. KRITIKUS JAVÍTÁS: A 'getApiSportsLeagueId' funkció most már
+//    "butított" (széleskörű) keresést használ a nemzetközi tornáknál.
+//    - Ha a névben van "World Cup", a keresés csak "World Cup" lesz.
+//    - Ha a névben van "Euro" (és nem Euroleague), a keresés csak "Euro" lesz.
+// 2. OK: A felhasználói log bizonyította, hogy a pontos "UEFA World Cup Qualifying"
+//    keresésre az API 0 találatot ad, míg a rövidebb kulcsszavakra (lásd kép)
+//    megtalálja a ligát. A szűrést a belső fuzzy logika végzi el.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -22,9 +23,7 @@ import type {
     IStructuredWeather,
     IPlayerStub
 } from '../src/types/canonical.d.ts';
-// === JAVÍTÁS (v104.3): A helyes interfész importálása ===
 import type { IDataFetchResponse } from '../DataFetch.js';
-// === JAVÍTÁS VÉGE ===
 
 import {
     SPORT_CONFIG,
@@ -38,13 +37,11 @@ import {
 } from './common/utils.js';
 
 // === ÚJ FUZZY MATCHING SEGÉDFÜGGVÉNYEK (MÓDOSÍTVA v105.5) ===
-// (Áthozva az apiBasketballProvider-ből a liga-kereséshez)
 
 function getStringBigrams(str: string): Set<string> {
     if (!str || str.length < 2) return new Set();
-    // v105.5: A tisztítás most már itt, lokálisan történik, és megtartja a számokat
     const s = str.toLowerCase()
-        .replace(/[^a-z0-9\s]/g, '') // Eltávolít minden írásjelet, kivéve a számokat
+        .replace(/[^a-z0-9\s]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
     const v = new Set<string>();
@@ -56,8 +53,8 @@ function getStringBigrams(str: string): Set<string> {
 
 function compareStrings(str1: string, str2: string): number {
     if (!str1 || !str2) return 0;
-    const pairs1 = getStringBigrams(str1); // Ez már a tiszta bigramokat adja vissza
-    const pairs2 = getStringBigrams(str2); // Ez már a tiszta bigramokat adja vissza
+    const pairs1 = getStringBigrams(str1);
+    const pairs2 = getStringBigrams(str2);
     if (pairs1.size === 0 && pairs2.size === 0) return 1;
     if (pairs1.size === 0 || pairs2.size === 0) return 0;
     
@@ -66,23 +63,20 @@ function compareStrings(str1: string, str2: string): number {
     
     let similarity = (2.0 * intersection) / union;
 
-    // === JAVÍTÁS (v105.5) ===
-    // Büntetés, ha az egyik számot tartalmaz, a másik nem
-    // (A bigramok a tiszta stringből készültek, ami tartalmaz számokat)
+    // Büntetés szám-eltérés esetén (pl. LaLiga vs LaLiga2)
     const str1Cleaned = str1.toLowerCase().replace(/[^a-z0-9\s]/g, '');
     const str2Cleaned = str2.toLowerCase().replace(/[^a-z0-9\s]/g, '');
     const str1HasNumber = /\d/.test(str1Cleaned);
     const str2HasNumber = /\d/.test(str2Cleaned);
     
     if (str1HasNumber !== str2HasNumber) {
-        similarity -= 0.25; // Jelentős büntetés a "LaLiga2" vs "La Liga" esetre
+        similarity -= 0.25;
     }
-    // ======================
     
     return similarity;
 }
 
-const FUZZY_LEAGUE_THRESHOLD = 0.65; // v106.2: Enyhén csökkentve a World Cup miatt (0.7 -> 0.65)
+const FUZZY_LEAGUE_THRESHOLD = 0.65; 
 // === VÉGE ===
 
 
@@ -113,7 +107,7 @@ type LineupDataPayload = {
     };
 };
 
-// --- API-SPORTS KULCSROTÁCIÓS LOGIKA (Változatlan v95.1) ---
+// --- API-SPORTS KULCSROTÁCIÓS LOGIKA ---
 let keyIndexes: { [key: string]: number } = { soccer: 0, hockey: 0, basketball: 0 };
 function getApiConfig(sport: string) {
     const config = API_HOSTS[sport];
@@ -170,7 +164,7 @@ async function makeRequestWithRotation(sport: string, endpoint: string, config: 
 }
 // --- KULCSROTÁCIÓ VÉGE ---
 
-// === EXPORTÁLVA (Változatlan v95.1) ===
+// === EXPORTÁLVA ===
 export async function _getLeagueRoster(leagueId: number | string, season: number, sport: string): Promise<any[]> {
     const cacheKey = `apisports_roster_v1_${sport}_${leagueId}_${season}`;
     const cachedRoster = apiSportsRosterCache.get<any[]>(cacheKey);
@@ -191,7 +185,7 @@ export async function _getLeagueRoster(leagueId: number | string, season: number
     return roster;
 }
 
-// === EXPORTÁLVA (Változatlan v104.3) ===
+// === EXPORTÁLVA ===
 export async function getApiSportsTeamId(
     teamName: string, 
     sport: string, 
@@ -215,9 +209,7 @@ export async function getApiSportsTeamId(
          console.log(`API-SPORTS Név Keresés (${sport}): "${teamName}" (Nincs térkép bejegyzés, közvetlen keresés)`);
     }
     
-    // === JAVÍTÁS (v104.3): A keretet itt kérjük le, helyben ===
     const leagueRoster = await _getLeagueRoster(leagueId, season, sport);
-    // === JAVÍTÁS VÉGE ===
     
     if (leagueRoster.length === 0) {
         console.warn(`API-SPORTS (${sport}): A liga (${leagueId}) csapatai nem érhetők el a(z) ${season} szezonban. Névfeloldás sikertelen.`);
@@ -247,15 +239,15 @@ export async function getApiSportsTeamId(
     return null;
 }
 
-// === EXPORTÁLVA (MÓDOSÍTVA v106.2: World Cup Fix) ===
+// === EXPORTÁLVA (MÓDOSÍTVA v106.3: "Smart Search" World Cup Fix) ===
 export async function getApiSportsLeagueId(leagueName: string, country: string, season: number, sport: string): Promise<{ leagueId: number, foundSeason: number } | null> {
     if (!leagueName || !country || !season) {
         console.warn(`API-SPORTS (${sport}): Liga név ('${leagueName}'), ország ('${country}') vagy szezon (${season}) hiányzik.`);
         return null;
     }
     
-    // A cache kulcs most már 'v4', hogy az új logikát kényszerítse
-    const leagueCacheKey = `apisports_league_id_v4_wcfix_${sport}_${leagueName.toLowerCase().replace(/\s/g, '')}_${country}_${season}`;
+    // A cache kulcs 'v5', az új keresési logika miatt
+    const leagueCacheKey = `apisports_league_id_v5_smartsearch_${sport}_${leagueName.toLowerCase().replace(/\s/g, '')}_${country}_${season}`;
     const cachedLeagueData = apiSportsLeagueIdCache.get<{ leagueId: number, foundSeason: number }>(leagueCacheKey);
     if (cachedLeagueData) {
         console.log(`API-SPORTS (${sport}): Liga ID CACHE TALÁLAT: "${leagueName}" -> ${cachedLeagueData.leagueId} (Szezon: ${cachedLeagueData.foundSeason})`);
@@ -273,48 +265,45 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
         console.log(`API-SPORTS (${sport}): Liga-lista lekérése (Ország: ${currentCountry}, Szezon: ${currentSeason})...`);
         const endpoint = `/v3/leagues`;
         
-        // === JAVÍTÁS (v105.4): TS2322/TS2339 hibák javítása ===
-        // A 'params' objektum típusát explicit definiáljuk, hogy támogassa
-        // a 'country' (opcionális) és 'type' (opcionális) mezőket.
         const params: { country?: string; season: number; type?: string; search?: string; } = {
-             // country: currentCountry, // Nem használjuk a 'search' miatt
              season: currentSeason
         };
         
-        // 'World' (VB) esetén a 'country' helyett 'type'='Cup' kell
-        // VAGY ha az ország 'World', akkor az API-nak 'World' kell
         if (currentCountry.toLowerCase() === 'world') {
-             // A 'World' országkódot az API-SPORTS "World" néven ismeri (nem Cup típus)
-             // De sok nemzetközi torna "World" ország alatt van
-             // params.type = 'Cup';      // Hozzáadjuk a 'type=Cup' paramétert - NEM MINDIG JÓ
-             params.search = leagueName; // Biztonságosabb a névvel keresni globálisan
-             console.log(`API-SPORTS (${sport}): 'World' ország észlelve, globális névkeresés indítása: '${leagueName}'`);
+             // === MÓDOSÍTÁS (v106.3): INTELLIGENS KERESÉS ===
+             // Ha a név "World Cup" vagy "Euro"-t tartalmaz, nem a teljes nevet küldjük,
+             // hanem csak a kulcsszót. Így az API visszaad egy listát, amiből mi választunk.
+             const lnLower = leagueName.toLowerCase();
+             
+             if (lnLower.includes("world cup")) {
+                 params.search = "World Cup"; // Egyszerűsített keresés
+                 console.log(`API-SPORTS (${sport}): 'World Cup' felismerve. Széleskörű keresés indítása: 'World Cup'`);
+             } else if (lnLower.includes("euro") && !lnLower.includes("euroleague")) {
+                 params.search = "Euro"; // Egyszerűsített keresés
+                 console.log(`API-SPORTS (${sport}): 'Euro' felismerve. Széleskörű keresés indítása: 'Euro'`);
+             } else {
+                 params.search = leagueName; // Hagyományos keresés
+                 console.log(`API-SPORTS (${sport}): 'World' ország észlelve, globális névkeresés indítása: '${leagueName}'`);
+             }
         } else {
              params.country = currentCountry;
-        }
-
-        // v105.5: A 'search' paraméter hozzáadása a fuzzy keresés támogatásához
-        // (A 'LaLiga2' Spanyolországon kívül is lehet, ha pl. a 'country' rossz)
-        // De a legjobb, ha a 'country' és a 'search' együtt megy
-        if (currentCountry.toLowerCase() !== 'world') {
+             // Országos ligáknál is érdemes lehet a keresést szűkíteni, de egyelőre hagyjuk a nevet
              params.search = leagueName.substring(0, 10); // Csökkenti a zajt
         }
-        
-        // === JAVÍTÁS VÉGE ===
         
         const response = await makeRequestWithRotation(sport, endpoint, { params });
         if (!response?.data?.response || response.data.response.length === 0) {
             console.warn(`API-SPORTS (${sport}): Nem találhatók ligák ehhez: ${JSON.stringify(params)}`);
             
-            // v105.5 Fallback: Ha 'country' és 'search' együtt nem megy, próbáljuk csak 'search'-csel
+            // Fallback: Ha országgal nem megy, próbáljuk globálisan
             if (params.country) {
                 console.log(`API-SPORTS (${sport}): Fallback kísérlet 'country' nélkül...`);
                 delete params.country;
-                params.search = leagueName; // Teljes névvel
+                params.search = leagueName;
                 const fallbackResponse = await makeRequestWithRotation(sport, endpoint, { params });
                 if (fallbackResponse?.data?.response && fallbackResponse.data.response.length > 0) {
                      const leagues = fallbackResponse.data.response.map((l: any) => l.league);
-                     apiSportsCountryLeagueCache.set(cacheKey, leagues); // Ezt is cache-eljük
+                     apiSportsCountryLeagueCache.set(cacheKey, leagues);
                      return leagues;
                 }
             }
@@ -332,15 +321,15 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
     const _findLeagueInList = async (leagues: any[], targetName: string): Promise<number | null> => {
         if (leagues.length === 0) return null;
         
-        // === MÓDOSÍTÁS (v106.2): World Cup Fix & Intelligens Fuzzy Keresés ===
-        
         const cleanName = (str: string): string => {
             return str.toLowerCase()
                 .replace(/[-_]/g, ' ')
                 .replace("argentinian", "")
                 .replace("liga profesional", "liga argentina")
-                .replace("uefa world cup qualifying", "world cup") // NORMALIZÁLÁS
-                .replace("world cup - qualification europe", "world cup") // NORMALIZÁLÁS
+                // A normalizálás itt segít, hogy a "World Cup" és "World Cup Qualification" 
+                // közel kerüljön egymáshoz a fuzzy match-ben
+                .replace("uefa world cup qualifying", "world cup") 
+                .replace("world cup - qualification europe", "world cup") 
                 .replace(/[^a-z0-9\s]/g, '')
                 .trim();
         };
@@ -352,11 +341,10 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
             const cleanedApiName = cleanName(league.name);
             let score = compareStrings(targetName, league.name); 
             
-            // v106.2: World Cup Specifikus Logika
             if (isWorldCupSearch) {
-                // Ha a keresés VB, és az API név is tartalmazza, de pl. "Qualification Europe" van benne
+                // Ha a cél "World Cup", és az API névben benne van a "Qualification", az jó jel
                 if (cleanedApiName.includes("world cup") && (league.name.includes("Qualification") || league.name.includes("Europe"))) {
-                     score += 0.3; // Nagy bónusz a kvalifikációs zónáknak
+                     score += 0.3;
                 }
             }
             
@@ -379,14 +367,11 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
             return bestMatch.id;
         }
         
-        // === MÓDOSÍTÁS VÉGE ===
-
         const availableNames = leagues.map(l => `${l.name} (ID: ${l.id}, Score: ${scoredLeagues.find(s => s.id === l.id)?.score.toFixed(2)})`).join('\n');
         console.warn(`[apiSportsProvider/_getLeagueId] Nem található pontos VAGY fuzzy (>${FUZZY_LEAGUE_THRESHOLD}) egyezés ehhez: "${targetName}" (Keresve: "${cleanedSearchName}").`);
         
         return null;
     };
-    // === Fuzzy Keresés Vége ===
 
     let leagueData: { leagueId: number, foundSeason: number } | null = null;
     const seasonsToTry = [season, season - 1, season - 2];
@@ -410,7 +395,7 @@ export async function getApiSportsLeagueId(leagueName: string, country: string, 
     return leagueData;
 }
 
-// --- findApiSportsFixture (Változatlan v95.1) ---
+// --- findApiSportsFixture (Változatlan) ---
 async function findApiSportsFixture(homeTeamId: number | null, awayTeamId: number | null, season: number, leagueId: number, utcKickoff: string, sport: string): Promise<any | null> {
     if (!homeTeamId || !awayTeamId || !season || !leagueId) return null;
     const cacheKey = `apisports_findfixture_v54.7_FULL_${sport}_${homeTeamId}_${awayTeamId}_${leagueId}_${season}`;
@@ -420,7 +405,6 @@ async function findApiSportsFixture(homeTeamId: number | null, awayTeamId: numbe
         return cached;
     }
     
-    // v105.5: Dátumkezelés
     let matchDate: string;
     if (utcKickoff) {
         const parsedDate = new Date(utcKickoff);
@@ -452,7 +436,7 @@ async function findApiSportsFixture(homeTeamId: number | null, awayTeamId: numbe
     return null;
 }
 
-// --- getApiSportsFixtureResult (Változatlan v95.1) ---
+// --- getApiSportsFixtureResult (Változatlan) ---
 export async function getApiSportsFixtureResult(fixtureId: number | string, sport: string): Promise<FixtureResult> { 
     if (sport !== 'soccer' || !fixtureId) {
         console.warn(`[getApiSportsFixtureResult] Lekérés kihagyva: Csak 'soccer' támogatott vagy hiányzó fixtureId.`);
@@ -490,7 +474,7 @@ export async function getApiSportsFixtureResult(fixtureId: number | string, spor
     }
 }
 
-// --- getApiSportsH2H (Változatlan v95.1) ---
+// --- getApiSportsH2H (Változatlan) ---
 export async function getApiSportsH2H(homeTeamId: number | null, awayTeamId: number | null, limit: number = 5, sport: string): Promise<any[] | null> {
     if (!homeTeamId || !awayTeamId) {
         console.warn(`[getApiSportsH2H] Lekérés kihagyva: Hiányzó csapat ID (H:${homeTeamId}, A:${awayTeamId}).`);
@@ -512,7 +496,7 @@ export async function getApiSportsH2H(homeTeamId: number | null, awayTeamId: num
     return null;
 }
 
-// --- getApiSportsTeamSeasonStats (Változatlan v95.1) ---
+// --- getApiSportsTeamSeasonStats (Változatlan) ---
 export async function getApiSportsTeamSeasonStats(teamId: number | null, leagueId: number, season: number, sport: string): Promise<any | null> {
     if (!teamId) {
         console.warn(`[getApiSportsTeamSeasonStats] Lekérés kihagyva: Hiányzó csapat ID.`);
@@ -561,7 +545,7 @@ stats.games?.played,
     return stats;
 }
 
-// --- getApiSportsOdds (Változatlan v95.1) ---
+// --- getApiSportsOdds (Változatlan) ---
 async function getApiSportsOdds(fixtureId: number | string | null, sport: string): Promise<ICanonicalOdds | null> {
     if (!fixtureId) {
         console.warn(`API-SPORTS Odds (${sport}): Hiányzó fixtureId, a szorzók lekérése kihagyva.`);
@@ -629,7 +613,7 @@ oddsData.bookmakers?.[0];
     return result; 
 }
 
-// --- getApiSportsFixtureStats (Változatlan v95.1) ---
+// --- getApiSportsFixtureStats (Változatlan) ---
 async function getApiSportsFixtureStats(fixtureId: number | string | null, sport: string): Promise<{ home: number; away: number } | null> {
     if (sport !== 'soccer' || !fixtureId) {
         console.log(`API-SPORTS Fixture Stats (${sport}): Lekérés kihagyva (Sport nem foci, vagy hiányzó FixtureID).`);
@@ -682,7 +666,7 @@ async function getApiSportsFixtureStats(fixtureId: number | string | null, sport
     }
 }
 
-// --- _getSquadForTeam (Változatlan v95.1) ---
+// --- _getSquadForTeam (Változatlan) ---
 async function _getSquadForTeam(teamId: number | null, season: number, sport: string): Promise<IPlayerStub[]> {
     if (!teamId) {
         console.warn(`[API-SPORTS Squad] Lekérés kihagyva: Hiányzó csapat ID.`);
@@ -758,7 +742,7 @@ async function _getSquadForTeam(teamId: number | null, season: number, sport: st
 }
 
 
-// --- _getApiSportsLineupData (Változatlan v95.1) ---
+// --- _getApiSportsLineupData (Változatlan) ---
 async function _getApiSportsLineupData(
     fixtureId: number | string | null,
     sport: string,
@@ -837,7 +821,7 @@ async function _getApiSportsLineupData(
     return result;
 }
 
-// --- getApiSportsLineupsAndInjuries (Változatlan v95.1) ---
+// --- getApiSportsLineupsAndInjuries (Változatlan) ---
 export async function getApiSportsLineupsAndInjuries(
     fixtureId: number | string | null,
     sport: string,
@@ -849,7 +833,7 @@ export async function getApiSportsLineupsAndInjuries(
     return data ? data.playerStats : null;
 }
 
-// --- _getApiSportsRefereeStyle (Változatlan v95.1) ---
+// --- _getApiSportsRefereeStyle (Változatlan) ---
 async function _getApiSportsRefereeStyle(
     refereeName: string | null,
     leagueId: number,
@@ -910,7 +894,7 @@ async function _getApiSportsRefereeStyle(
     }
 }
 
-// --- getWeatherForFixture (Változatlan v95.1) ---
+// --- getWeatherForFixture (Változatlan) ---
 async function getWeatherForFixture(
     venue: { name: string, city: string } | null, 
     utcKickoff: string
