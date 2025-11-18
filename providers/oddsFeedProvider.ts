@@ -1,13 +1,15 @@
 // FÁJL: providers/oddsFeedProvider.ts
-// VERZIÓ: v1.9.3 (Robusztus Dátumkezelés és TS1005 Javítás)
-// MÓDOSÍTÁS (v1.9.3):
-// 1. JAVÍTÁS (Dátum Hiba): A 'findEventIdByNames' (kb. 51. sor) módosítva.
-//    Most már ellenőrzi a 'utcKickoff' [cite: 51, line 65] érvényességét.
-//    Ha 'null' vagy érvénytelen, a kód NEM áll le "Invalid time value" [cite: 48, line 35] hibával,
-//    hanem 'new Date()' (mai nap) értékre állítja a dátumot.
-// 2. JAVÍTÁS (TS1005 Hiba) [cite: 52]: Eltávolítva a felesleges '}' karakter
-//    a fájl végéről (a korábbi 282. sorból [cite: 51, line 282]).
-// 3. Megtartja a korábbi v1.9.2-es [cite: 51] típusdefiníciós javításokat.
+// VERZIÓ: v1.9.4 (Teljes Piac Lekérés Javítás)
+// MÓDOSÍTÁS (v1.9.4):
+// 1. JAVÍTÁS (Felhasználói kérés): A 'fetchOddsData' funkció módosítva.
+// 2. LOGIKA: Eltávolítva a '?market_id=1' szűrő az API hívásból. A rendszer
+//    most már az ÖSSZES piacot lekéri (beleértve a "Totals"-t is).
+// 3. LOGIKA: A 'fetchOddsData' feldolgozó logikája átírva, hogy képes
+//    legyen feldolgozni a teljes piactömböt, és kinyerje a 'h2h'
+//    (Match Winner) és a 'totals' (Over/Under) piacokat is.
+// 4. EREDMÉNY: Ez a javítás (az utils.ts v105.1 javításával együtt)
+//    megoldja, hogy a Jégkorong már ne a 6.5-ös alapvonalat használja.
+// 5. Megtartja a korábbi v1.9.3-as [cite: 51] dátumkezelési javításokat.
 
 import { makeRequest } from './common/utils.js';
 import { ODDS_API_HOST, ODDS_API_KEY } from '../config.js';
@@ -27,6 +29,7 @@ function compareStrings(str1: string, str2: string): number {
     const pairs1 = getStringBigrams(str1);
     const pairs2 = getStringBigrams(str2);
     const union = new Set([...pairs1, ...pairs2]).size;
+    if (union === 0) return 1; // Mindkét string üres vagy 1 karakteres
     const intersection = new Set([...pairs1].filter(x => pairs2.has(x))).size;
     return (2.0 * intersection) / (pairs1.size + pairs2.size);
 }
@@ -47,6 +50,7 @@ function getSportId(sport: string): string {
 
 /**
  * 1. LÉPÉS: Megkeresi az esemény ID-t a csapatnevek és dátum alapján
+ * (Változatlan v1.9.3)
  */
 async function findEventIdByNames(
     homeTeamName: string,
@@ -60,7 +64,7 @@ async function findEventIdByNames(
         return null;
     }
 
-    // === JAVÍTÁS (v1.9.3) - Robusztus Dátumkezelés ===
+    // === v1.9.3 Robusztus Dátumkezelés ===
     let targetDate: Date | null = null;
     let matchDateForApi: string;
 
@@ -69,27 +73,24 @@ async function findEventIdByNames(
         if (!isNaN(parsedDate.getTime())) {
             targetDate = parsedDate; // Ezt használjuk a belső ellenőrzéshez
             matchDateForApi = parsedDate.toISOString().split('T')[0]; // Ezt küldjük az API-nak
-            console.log(`[OddsFeedProvider v1.9.3] Cél dátum beállítva: ${matchDateForApi}`);
+            console.log(`[OddsFeedProvider v1.9.4] Cél dátum beállítva: ${matchDateForApi}`);
         } else {
-            console.warn(`[OddsFeedProvider v1.9.3] Érvénytelen utcKickoff formátum: "${utcKickoff}". Mai dátum használata fallbackként.`);
+            console.warn(`[OddsFeedProvider v1.9.4] Érvénytelen utcKickoff formátum: "${utcKickoff}". Mai dátum használata fallbackként.`);
             matchDateForApi = new Date().toISOString().split('T')[0];
-            // targetDate null marad, így a dátumellenőrzés ki lesz hagyva
         }
     } else {
-        console.warn(`[OddsFeedProvider v1.9.3] Nincs utcKickoff. Mai dátum használata fallbackként.`);
+        console.warn(`[OddsFeedProvider v1.9.4] Nincs utcKickoff. Mai dátum használata fallbackként.`);
         matchDateForApi = new Date().toISOString().split('T')[0];
-        // targetDate null marad
     }
-    // === JAVÍTÁS VÉGE ===
+    // === Dátumkezelés Vége ===
 
     const sportId = getSportId(sport);
-    // const matchDate = new Date(utcKickoff).toISOString().split('T')[0]; // <-- EREDETI HIBA [cite: 51, line 65]
-
-    console.log(`[OddsFeedProvider v1.9.3] Események lekérése (Endpoint: /api/v1/events): SportID: ${sportId}, Dátum: ${matchDateForApi}, Status: SCHEDULED`);
+    
+    console.log(`[OddsFeedProvider v1.9.4] Események lekérése (Endpoint: /api/v1/events): SportID: ${sportId}, Dátum: ${matchDateForApi}, Status: SCHEDULED`);
 
     const params = new URLSearchParams({
         sport_id: sportId,
-        date: matchDateForApi, // Itt már a biztonságos 'matchDateForApi'-t használjuk
+        date: matchDateForApi,
         status: 'SCHEDULED',
         page: '0'
     });
@@ -105,7 +106,7 @@ async function findEventIdByNames(
     };
 
     try {
-        // A te v1.9.2-es [cite: 51] fájlod 'fetch'-et használ, azt tartjuk meg
+        // @ts-ignore
         const response = await fetch(url, options);
 
         if (!response.ok) {
@@ -132,7 +133,6 @@ async function findEventIdByNames(
             const apiHome = (event.home_team || '').toLowerCase();
             const apiAway = (event.away_team || '').toLowerCase();
 
-            // === JAVÍTÁS (v1.9.3): Dátumellenőrzés (ha van 'targetDate') ===
             if (targetDate) {
                 try {
                     const eventDate = new Date(event.start_time);
@@ -140,11 +140,9 @@ async function findEventIdByNames(
                         continue; // Nem ez a nap, ugorj a következőre
                     }
                 } catch (e) {
-                    // Ha az API rossz dátumot ad, azt is ugorjuk
                     continue;
                 }
             }
-            // Ha a dátum egyezik, VAGY ha nem volt dátum (P1 mód), akkor jöhet a név-ellenőrzés
             
             const scoreHome = compareStrings(searchHome, apiHome);
             const scoreAway = compareStrings(searchAway, apiAway);
@@ -171,7 +169,6 @@ async function findEventIdByNames(
         }
 
     } catch (error: any) {
-        // v1.9.3: Jobb hibakezelés az "Invalid time value" elkerülésére
         if (error instanceof TypeError && error.message.includes("Invalid time value")) {
              console.error(`[OddsFeedProvider] KRITIKUS DÁTUM HIBA: A 'utcKickoff' paraméter (${utcKickoff}) érvénytelen.`);
         } else {
@@ -183,6 +180,7 @@ async function findEventIdByNames(
 
 /**
  * 2. LÉPÉS: Oddsok lekérése az Event ID alapján
+ * MÓDOSÍTVA (v1.9.4): Most már az összes piacot (Totals-t is) lekéri és feldolgozza.
  */
 export async function fetchOddsData(
     homeTeamName: string,
@@ -191,7 +189,7 @@ export async function fetchOddsData(
     sport: string
 ): Promise<ICanonicalOdds | null> {
     
-    console.log(`[OddsFeedProvider v1.9.3] Odds keresés indítása...`);
+    console.log(`[OddsFeedProvider v1.9.4] Odds keresés indítása (Minden piac)...`);
 
     try {
         const eventId = await findEventIdByNames(homeTeamName, awayTeamName, utcKickoff, sport);
@@ -201,13 +199,10 @@ export async function fetchOddsData(
             return null;
         }
 
-        // Market ID 1 = 1X2 (Match Winner)
-        // v1.9.3: A te v1.9.2-es fájlod [cite: 51] csak a market_id=1-et kéri le.
-        // Ez gyors, de csak 1X2-t ad. A jövőben érdemes lehet
-        // a '/api/v1/events/${eventId}/markets' végpontot hívni 'market_id' nélkül,
-        // hogy az összes piacot (pl. Totals) is megkapjuk.
-        // Egyelőre maradunk a te kódod logikájánál:
-        const url = `https://${ODDS_API_HOST}/api/v1/events/${eventId}/markets?market_id=1`;
+        // === JAVÍTÁS (v1.9.4): A '?market_id=1' eltávolítva ===
+        // Most már az összes piacot lekérjük, nem csak a Match Winner-t.
+        const url = `https://${ODDS_API_HOST}/api/v1/events/${eventId}/markets`;
+        // === JAVÍTÁS VÉGE ===
         
         const options = {
             method: 'GET',
@@ -216,7 +211,7 @@ export async function fetchOddsData(
                 'x-rapidapi-key': ODDS_API_KEY || ''
             }
         };
-
+        // @ts-ignore
         const response = await fetch(url, options);
         
         if (!response.ok) {
@@ -226,62 +221,93 @@ export async function fetchOddsData(
 
         const data = (await response.json()) as any;
 
-        if (!data || !data.data || !Array.isArray(data.data) || data.data.length === 0) {
-            console.warn(`[OddsFeedProvider] Nincs elérhető odds adat (market_id=1) ehhez az eseményhez (ID: ${eventId}).`);
+        // A 'data.data' most már egy TÖMB, ami az ÖSSZES piacot tartalmazza
+        const rawMarkets = data?.data; 
+
+        if (!rawMarkets || !Array.isArray(rawMarkets) || rawMarkets.length === 0) {
+            console.warn(`[OddsFeedProvider] Nincs elérhető odds adat (markets tömb üres) ehhez az eseményhez (ID: ${eventId}).`);
             return null;
         }
 
-        // === JAVÍTÁS (v1.9.2) [cite: 51]: Típusok illesztése az ICanonicalOdds elvárásaihoz ===
-        const market = data.data[0];
-        
-        // Ideiglenes 'any' objektum a 'source' mező miatt
-        const oddsResult: any = {
-            source: 'OddsFeedApi (Fallback)', // TS2353 javítva (any-ként kezelve)
-            allMarkets: [],
-            current: [] // v1.9.3: Hozzáadva a 'current'
-        };
+        // === JAVÍTÁS (v1.9.4): Új, teljes feldolgozó logika ===
+            
+        const allMarkets: ICanonicalOdds['allMarkets'] = [];
+        const current: ICanonicalOdds['current'] = []; // 1X2 vagy Moneyline
 
-        if (market.outcomes && Array.isArray(market.outcomes)) {
-             const homeOddVal = market.outcomes.find((o: any) => o.name === '1' || o.name === homeTeamName)?.price || 0;
-             const drawOddVal = market.outcomes.find((o: any) => o.name === 'X' || o.name === 'Draw')?.price || 0;
-             const awayOddVal = market.outcomes.find((o: any) => o.name === '2' || o.name === awayTeamName)?.price || 0;
-             
-             const homeOdd = parseFloat(homeOddVal);
-             const drawOdd = parseFloat(drawOddVal);
-             const awayOdd = parseFloat(awayOddVal);
+        // 1. Piac: 1X2 (H2H) vagy Moneyline
+        const h2hMarket = rawMarkets.find(m => 
+            (m.name === '1X2' || m.name === 'Match Winner') && m.status === 'OPEN'
+        );
 
-             if (homeOdd && awayOdd) {
-                 const outcomes = [
-                     { name: 'Home', price: homeOdd },
-                     { name: 'Away', price: awayOdd }
-                 ];
-                 
-                 // A 'current' tömb feltöltése (ezt használja a DataFetch)
-                 oddsResult.current.push({ name: 'Hazai győzelem', price: homeOdd });
-                 oddsResult.current.push({ name: 'Vendég győzelem', price: awayOdd });
+        if (h2hMarket && h2hMarket.outcomes) {
+            const outcomes: ICanonicalOdds['allMarkets'][0]['outcomes'] = [];
+            const homeOdd = parseFloat(h2hMarket.outcomes.find((o: any) => o.name === '1' || o.name === homeTeamName)?.price);
+            const awayOdd = parseFloat(h2hMarket.outcomes.find((o: any) => o.name === '2' || o.name === awayTeamName)?.price);
+            const drawOdd = parseFloat(h2hMarket.outcomes.find((o: any) => o.name === 'X' || o.name === 'Draw')?.price);
 
-                 if (drawOdd) {
-                     outcomes.push({ name: 'Draw', price: drawOdd });
-                     oddsResult.current.push({ name: 'Döntetlen', price: drawOdd });
-                 }
+            if (homeOdd && awayOdd) {
+                outcomes.push({ name: 'Home', price: homeOdd });
+                outcomes.push({ name: 'Away', price: awayOdd });
+                current.push({ name: 'Hazai győzelem', price: homeOdd });
+                current.push({ name: 'Vendég győzelem', price: awayOdd });
 
-                 oddsResult.allMarkets.push({
-                     // TS2353 JAVÍTÁS [cite: 51]: 'marketName' -> 'key', 'bets' -> 'outcomes'
-                     key: 'Match Winner', 
-                     outcomes: outcomes
-                 });
-             }
+                if (drawOdd) {
+                    outcomes.push({ name: 'Draw', price: drawOdd });
+                    current.push({ name: 'Döntetlen', price: drawOdd });
+                }
+                allMarkets.push({ key: 'h2h', outcomes: outcomes });
+            }
         }
+
+        // 2. Piac: Totals (Over/Under)
+        // (Ez hiányzott a hokinál)
+        const totalsMarket = rawMarkets.find(m => 
+            (m.name === 'Totals' || m.name === 'Over/Under') && m.status === 'OPEN'
+        );
+
+        if (totalsMarket && totalsMarket.outcomes) {
+            const totalsOutcomes: ICanonicalOdds['allMarkets'][0]['outcomes'] = [];
+            totalsMarket.outcomes.forEach((o: any) => {
+                const name = o.name; // Pl. "Over 6.5", "Under 6.5"
+                const price = parseFloat(o.price);
+                
+                // Kinyerjük a 'point'-ot a névből
+                const pointMatch = name.match(/(\d+(\.\d+)?)/);
+                const point = pointMatch ? parseFloat(pointMatch[1]) : null;
+                
+                if (name && !isNaN(price)) {
+                    totalsOutcomes.push({ name, price, point });
+                }
+            });
+            
+            if (totalsOutcomes.length > 0) {
+                allMarkets.push({ key: 'totals', outcomes: totalsOutcomes });
+            }
+        }
+        // === FELDOLGOZÓ LOGIKA VÉGE ===
+
+        if (allMarkets.length === 0) {
+             console.warn(`[OddsFeedProvider] Bár kaptunk ${rawMarkets.length} piacot, nem találtunk '1X2' vagy 'Totals' piacot (ID: ${eventId}).`);
+             return null;
+        }
+
+        const oddsResult: ICanonicalOdds = {
+            // @ts-ignore
+            source: 'OddsFeedApi (Fallback - All Markets)', // Forrás frissítve
+            allMarkets: allMarkets,
+            current: current,
+            fullApiData: data.data, // A teljes piactömb mentése
+            fromCache: false
+        };
 
         console.log(`[OddsFeedProvider] Odds sikeresen lekérve. (Markets: ${oddsResult.allMarkets.length})`);
         
-        // Végső kényszerítés a visszatérésnél
-        return oddsResult as ICanonicalOdds;
+        // Nincs cache-elés (a v1.9.3-ban sem volt), ezt tiszteletben tartjuk.
+        
+        return oddsResult;
 
     } catch (error: any) {
         console.error(`[OddsFeedProvider] Kritikus hiba: ${error.message}`);
         return null;
     }
 }
-
-// === JAVÍTÁS (v1.9.3): Eltávolítva a felesleges '}' karakter a 282. sorból [cite: 51, line 282] ===
