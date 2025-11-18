@@ -1,11 +1,12 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v108.0 (CRITICAL: Robust 500/Cloudflare Error Handling)
-// MÓDOSÍTÁS (v108.0):
-// 1. KRITIKUS JAVÍTÁS: A 'makeRequestWithRotation' függvény mostantól az 500-as
-//    (Internal Server Error / Cloudflare Hiba) státuszkódot IS kvótaként kezeli.
-// 2. CÉL: Kényszeríti a kulcsrotációt (ha van több kulcs), vagy megadja a
-//    szezon fallback-nek a lehetőséget a futásra, ha az 500-as hiba csak egy
-//    adott szezonra/paraméterre (pl. league=32&season=2025) vonatkozik.
+// VERZIÓ: v108.1 (CRITICAL: Syntax and Type Fixes)
+// MÓDOSÍTÁS (v108.1):
+// 1. JAVÍTVA: TS2552 hiba (_getApiSportsLineupData). A hibás 'stats' hivatkozás
+//    lecserélve a helyes 'homeTeamId' paraméterre.
+// 2. JAVÍTVA: TS2304 hiba (_getApiSportsRefereeStyle). A catch blokkban
+//    az 'e' változó helyett a helyes 'error' változóra hivatkozunk.
+// 3. LOGIKA: A 'makeRequestWithRotation' most már az 500-as hibánál is rotál/próbálkozik
+//    (a v108.0-ás kritikus fix miatt).
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -915,7 +916,9 @@ async function _getApiSportsLineupData(
         console.log(`[API-SPORTS LineupData] Sikeres /lineups válasz (Edzők/Kezdők).`);
         const data = lineupResponse.data.response;
         const homeData = data.find((t: any) => t.team?.id === homeTeamId);
-        const awayData = data.find((t: any) => t.team?.id !== stats[0].team?.id); 
+        // === JAVÍTVA (v108.1): 'stats' helyett a hivatkozott homeTeamId-t kell használni a feltételhez. ===
+        const awayData = data.find((t: any) => t.team?.id !== homeTeamId); 
+        // ==============================================================================================
         
         if (homeData && awayData) {
             coachData = {
@@ -1007,7 +1010,9 @@ async function _getApiSportsRefereeStyle(
         apiSportsRefereeCache.set(cacheKey, style);
         return style;
     } catch (error: any) {
-        console.error(`[API-SPORTS Bíró] Hiba (${refereeName}) lekérése közben: ${e.message}`);
+        // === JAVÍTVA (v108.1): Az 'e' lecserélve 'error'-ra a TS hiba miatt ===
+        console.error(`[API-SPORTS Bíró] Hiba (${refereeName}) lekérése közben: ${error.message}`);
+        // =====================================================================
         return null;
     }
 }
@@ -1034,7 +1039,7 @@ null;
 }
 
 
-// === FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (JAVÍTVA v104.3) ===
+// === FŐ EXPORTÁLT FÜGGVÉNY: fetchMatchData (JAVÍTVA v104.3) ---
 export async function fetchMatchData(options: any): Promise<IDataFetchResponse> {
     
     const { 
