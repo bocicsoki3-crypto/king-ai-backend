@@ -1,13 +1,10 @@
 // FÁJL: providers/iceHockeyApiProvider.ts
-// VERZIÓ: v105.3 (RapidAPI JSON Struktúra Javítás)
-// MÓDOSÍTÁS (v105.3):
-// 1. JAVÍTVA: A 'parseIceHockeyOdds' funkció most már a 'markets' tömböt keresi
-//    az 'odds' helyett, mivel a log bizonyította, hogy ez a helyes kulcs.
-// 2. JAVÍTVA: A piacok nevei igazítva a logban látottakhoz:
-//    - 'Moneyline' -> 'Full time' (és 'Home/Away' marketGroup)
-//    - 'Total' -> 'Match goals'
-// 3. JAVÍTVA: A választások (choices) feldolgozása igazítva a log szerkezetéhez
-//    (pl. 'fractionalValue' konvertálása decimálissá, ha nincs 'odds' mező).
+// VERZIÓ: v106.0 (Team Totals Támogatás)
+// MÓDOSÍTÁS (v106.0):
+// 1. BŐVÍTÉS: A 'parseIceHockeyOdds' funkció most már keresi és feldolgozza
+//    a hazai ('Home team total goals') és vendég ('Away team total goals')
+//    csapat-specifikus totals piacokat is.
+// 2. CÉL: Lehetővé tenni a csapatonkénti Over/Under elemzést.
 
 import fetch from 'node-fetch';
 
@@ -84,13 +81,12 @@ function parseFractionalOdds(fraction: string): number {
     return 1 + (parseFloat(parts[0]) / parseFloat(parts[1]));
 }
 
-// === ÚJ (v105.3) Funkció: Odds adatok feldolgozása ===
+// === MÓDOSÍTVA (v106.0): Team Totals Támogatás ===
 /**
  * Lefordítja az 'ice-hockey-api' odds válaszát a mi belső ICanonicalOdds formátumunkra.
- * IGASZÍTVA A LOGBAN LÁTOTT ADATSTRUKTÚRÁHOZ.
+ * IGASZÍTVA A LOGBAN LÁTOTT ADATSTRUKTÚRÁHOZ + CSAPAT TOTALS.
  */
 function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
-    // A log szerint a kulcs 'markets' és nem 'odds'
     const rawMarkets = apiResponse?.markets;
     
     if (!rawMarkets || !Array.isArray(rawMarkets) || rawMarkets.length === 0) {
@@ -102,19 +98,15 @@ function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
     const current: ICanonicalOdds['current'] = []; // Moneyline
 
     // 1. Piac: Moneyline (H2H)
-    // A logban: marketName="Full time", marketGroup="Home/Away"
     const h2hMarket = rawMarkets.find((m: any) => 
         (m.marketName === 'Full time' || m.marketGroup === 'Home/Away') && !m.suspended
     );
 
     if (h2hMarket && h2hMarket.choices) {
         const outcomes: ICanonicalOdds['allMarkets'][0]['outcomes'] = [];
-        
-        // A logban: name="1" (Hazai), name="2" (Vendég)
         const homeChoice = h2hMarket.choices.find((c: any) => c.name === '1');
         const awayChoice = h2hMarket.choices.find((c: any) => c.name === '2');
         
-        // Az odds "fractionalValue" mezőben van (pl. "4/5")
         const homeOdd = homeChoice ? parseFractionalOdds(homeChoice.fractionalValue) : 0;
         const awayOdd = awayChoice ? parseFractionalOdds(awayChoice.fractionalValue) : 0;
 
@@ -128,9 +120,6 @@ function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
     }
 
     // 2. Piac: Totals (Over/Under)
-    // A logban: marketName="Match goals", marketGroup="Match goals"
-    // FONTOS: A logban csak EGY vonal (5.5) látszik a 'choiceGroup'-ban.
-    // A kódnak kezelnie kell, ha több ilyen piac van.
     const totalsMarkets = rawMarkets.filter((m: any) => 
         (m.marketName === 'Match goals' || m.marketGroup === 'Match goals') && !m.suspended
     );
@@ -139,7 +128,6 @@ function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
         const totalsOutcomes: ICanonicalOdds['allMarkets'][0]['outcomes'] = [];
         
         totalsMarkets.forEach((market: any) => {
-            // A vonal a 'choiceGroup'-ban van (pl. "5.5")
             const line = parseFloat(market.choiceGroup);
             if (isNaN(line)) return;
 
@@ -162,6 +150,40 @@ function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
         }
     }
 
+    // === ÚJ (v106.0): Csapat Totals (Home/Away Team Goals) ===
+    const processTeamTotal = (marketNameKeywords: string[], key: string) => {
+         const ttMarkets = rawMarkets.filter((m: any) => 
+            marketNameKeywords.some(kw => m.marketName?.toLowerCase().includes(kw.toLowerCase())) && !m.suspended
+        );
+        
+        if (ttMarkets.length > 0) {
+            const ttOutcomes: ICanonicalOdds['allMarkets'][0]['outcomes'] = [];
+            ttMarkets.forEach((market: any) => {
+                const line = parseFloat(market.choiceGroup);
+                 if (isNaN(line)) return;
+                 
+                 const overChoice = market.choices.find((c: any) => c.name === 'Over');
+                 const underChoice = market.choices.find((c: any) => c.name === 'Under');
+                 
+                 const overOdd = overChoice ? parseFractionalOdds(overChoice.fractionalValue) : 0;
+                 const underOdd = underChoice ? parseFractionalOdds(underChoice.fractionalValue) : 0;
+                 
+                 if (overOdd > 0) ttOutcomes.push({ name: `Over ${line}`, price: overOdd, point: line });
+                 if (underOdd > 0) ttOutcomes.push({ name: `Under ${line}`, price: underOdd, point: line });
+            });
+            if (ttOutcomes.length > 0) {
+                allMarkets.push({ key: key, outcomes: ttOutcomes });
+            }
+        }
+    };
+
+    // Hazai csapat gólok (keresőszavak: "Home team total goals", "Home goals")
+    processTeamTotal(['Home team total goals', 'Home goals'], 'home_total');
+    // Vendég csapat gólok
+    processTeamTotal(['Away team total goals', 'Away goals'], 'away_total');
+    
+    // =========================================================
+
     if (allMarkets.length === 0) {
          console.warn(`[IceHockeyApiProvider] Feldolgoztunk ${rawMarkets.length} piacot, de nem találtunk érvényes 'Full time' vagy 'Match goals' adatot.`);
          return null;
@@ -170,7 +192,7 @@ function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
     return {
         current: current,
         allMarkets: allMarkets,
-        fullApiData: rawMarkets, // A nyers piactömb mentése
+        fullApiData: rawMarkets, 
         fromCache: false
     };
 }
