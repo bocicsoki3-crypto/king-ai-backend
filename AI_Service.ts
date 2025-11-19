@@ -1,12 +1,14 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v110.1 (Recommended Direction Awareness)
-// MÓDOSÍTÁS (v110.1):
-// 1. FEJLESZTÉS: A 'MASTER_AI_PROMPT_TEMPLATE' (Főnök Prompt) most már
-//    elfogadja a 'recommendedDirection' (Matematikai Irány) változót is.
-// 2. SZIGORÚ UTASÍTÁS: Az AI utasítást kap, hogy ha a matematikai modell
-//    egyértelmű irányt (pl. 'under') jelöl meg a 'recommended_market'-hez,
-//    akkor TILOS az ellenkezőjét (pl. 'over') választania.
-// 3. CÉL: Megakadályozni a tegnapihoz hasonló "Matematikailag Under, Tippben Over" hibákat.
+// VERZIÓ: v110.2 (Boss Logic Fix - No More Unjust Penalties)
+// MÓDOSÍTÁS (v110.2):
+// 1. JAVÍTÁS: A 'getMasterRecommendation' függvényben (Főnök logika) megváltoztattam
+//    a büntetési mechanizmust.
+// 2. LOGIKA: A rendszer mostantól NEM az 'Overall' (Átlag) bizalmat hasonlítja össze
+//    az Expert véleménnyel, hanem a 'Best Market' (Legjobb Piac) bizalmát.
+//    (Ahol best = max(winner, totals)).
+// 3. EREDMÉNY: Ha a "Pontok" piac 8.8-as, de a "Győztes" csak 2.8-as, a Főnök
+//    a 8.8-at fogja alapul venni. Mivel az Expert is kb. 8-9-et mond,
+//    NEM LESZ BÜNTETÉS, és a tipp 9/10-es bizalommal megy ki.
 
 import { 
     _callGemini, 
@@ -554,7 +556,12 @@ async function getMasterRecommendation(
             expertConfScore = 1.0;
         }
 
-        const safeConfidenceOverall = typeof confidenceScores.overall === 'number' && !isNaN(confidenceScores.overall) ? confidenceScores.overall : 5.0;
+        // === JAVÍTÁS (v110.2): Nem az 'overall', hanem a LEGJOBB bizalmat vesszük alapul ===
+        // Ha a matek talált egy 8.8-as piacot, akkor azt kell összevetni az experttel,
+        // nem a lerontott átlagot (5.2).
+        const bestStatisticalConfidence = Math.max(confidenceScores.winner, confidenceScores.totals);
+        const safeConfidenceMetric = bestStatisticalConfidence; // Ezt használjuk a validáláshoz
+        // =================================================================================
 
         const data = {
             valueBetsJson: valueBets,
@@ -564,7 +571,7 @@ async function getMasterRecommendation(
             confidenceTotals: confidenceScores.totals.toFixed(1), 
             confidenceOverall: confidenceScores.overall.toFixed(1),
             recommendedMarket: confidenceScores.recommended_market || "N/A", 
-            recommendedDirection: confidenceScores.recommended_direction || "N/A", // v110.1: Átadjuk az AI-nak
+            recommendedDirection: confidenceScores.recommended_direction || "N/A", 
             expertConfidence: expertConfidence || "N/A",
             riskAssessment: riskAssessment || "N/A",
             microSummary: microSummary,
@@ -575,8 +582,8 @@ async function getMasterRecommendation(
             specialistReportJson: specialistReport 
         };
 
-        // === 1. LÉPÉS: AI (Tanácsadó) hívása az ÚJ (v110.1) Prompttal ===
-        let template = MASTER_AI_PROMPT_TEMPLATE_V110; // v110-es "Compass" prompt
+        // === 1. LÉPÉS: AI (Tanácsadó) hívása ===
+        let template = MASTER_AI_PROMPT_TEMPLATE_V110; 
         if (sport === 'hockey' || sport === 'basketball') {
             template = template.replace(/BTTS, /g, ""); 
         }
@@ -592,8 +599,9 @@ async function getMasterRecommendation(
         // --- 2. LÉPÉS: KÓD (A "Főnök") átveszi az irányítást ---
         console.log(`[AI_Service v106.0 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
 
-        // 1. Eltérés-alapú büntetés
-        const confidenceDiff = Math.abs(safeConfidenceOverall - expertConfScore);
+        // 1. Eltérés-alapú büntetés (JAVÍTOTT LOGIKA v110.2)
+        // Most már a 'safeConfidenceMetric' (a legjobb piac) az alap, nem az átlag.
+        const confidenceDiff = Math.abs(safeConfidenceMetric - expertConfScore);
         const disagreementThreshold = 3.0;
         let confidencePenalty = 0;
         let disagreementNote = "";
@@ -604,7 +612,8 @@ async function getMasterRecommendation(
         }
         else if (confidenceDiff > disagreementThreshold) {
             confidencePenalty = Math.min(2.0, confidenceDiff / 1.5);
-            disagreementNote = ` (FŐNÖK KORREKCIÓ: Modell (Átlag ${safeConfidenceOverall.toFixed(1)}) vs Expert (${expertConfScore.toFixed(1)}) eltérés miatt.)`;
+            // Itt is a javított metrikát logoljuk ki
+            disagreementNote = ` (FŐNÖK KORREKCIÓ: Modell (Best ${safeConfidenceMetric.toFixed(1)}) vs Expert (${expertConfScore.toFixed(1)}) eltérés miatt.)`;
         }
         
         rec.final_confidence -= confidencePenalty;
