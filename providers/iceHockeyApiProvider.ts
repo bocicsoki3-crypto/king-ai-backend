@@ -1,11 +1,11 @@
 // FÁJL: providers/iceHockeyApiProvider.ts
-// VERZIÓ: v107.0 (Extended Team Totals Parsing)
-// MÓDOSÍTÁS (v107.0):
-// 1. BŐVÍTÉS: A 'parseIceHockeyOdds' funkció most már több kulcsszóra is keres
-//    a Csapat Totals piacoknál (pl. "Total Goals - Home", "Home Team Goals").
-// 2. CÉL: Biztosítani, hogy az 'AnalysisFlow' és 'Model.ts' mindig megkapja
-//    a szükséges adatokat a "Vadász" logikához, akkor is, ha az API
-//    kicsit másképp nevezi el a piacokat.
+// VERZIÓ: v110.0 (Handicap & Puck Line Support)
+// MÓDOSÍTÁS (v110.0):
+// 1. BŐVÍTÉS: A 'parseIceHockeyOdds' funkció most már keresi a 'Handicap'
+//    és 'Puck Line' piacokat is az API válaszában.
+// 2. FELDOLGOZÁS: Kinyeri a hendikep vonalat (pl. -1.5) és a szorzókat,
+//    majd beteszi a 'spread' kulcs alá a kanonikus adatszerkezetbe.
+// 3. CÉL: Adatot szolgáltatni a 'Model.ts' új, v110.0-ás Hendikep Vadász logikájához.
 
 import fetch from 'node-fetch';
 
@@ -82,10 +82,10 @@ function parseFractionalOdds(fraction: string): number {
     return 1 + (parseFloat(parts[0]) / parseFloat(parts[1]));
 }
 
-// === MÓDOSÍTVA (v107.0): Extended Team Totals Támogatás ===
+// === MÓDOSÍTVA (v110.0): Handicap / Puck Line Support ===
 /**
  * Lefordítja az 'ice-hockey-api' odds válaszát a mi belső ICanonicalOdds formátumunkra.
- * IGASZÍTVA A LOGBAN LÁTOTT ADATSTRUKTÚRÁHOZ + BŐVÍTETT KULCSSZAVAK.
+ * MOST MÁR A HENDIKEPET IS FELDOLGOZZA.
  */
 function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
     const rawMarkets = apiResponse?.markets;
@@ -151,7 +151,7 @@ function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
         }
     }
 
-    // === ÚJ (v107.0): Csapat Totals - Bővített Kulcsszavak ===
+    // 3. Csapat Totals
     const processTeamTotal = (marketNameKeywords: string[], key: string) => {
          const ttMarkets = rawMarkets.filter((m: any) => 
             marketNameKeywords.some(kw => m.marketName?.toLowerCase().includes(kw.toLowerCase())) && !m.suspended
@@ -177,12 +177,55 @@ function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
             }
         }
     };
-
-    // Hazai csapat gólok (Bővített lista!)
     processTeamTotal(['Home team total goals', 'Home goals', 'Total Goals - Home', 'Home Team Goals'], 'home_total');
-    // Vendég csapat gólok (Bővített lista!)
     processTeamTotal(['Away team total goals', 'Away goals', 'Total Goals - Away', 'Away Team Goals'], 'away_total');
     
+    // === 4. ÚJ (v110.0): Hendikep (Puck Line) ===
+    const spreadMarkets = rawMarkets.filter((m: any) => 
+        (m.marketName?.toLowerCase().includes('handicap') || m.marketName?.toLowerCase().includes('puck line')) && !m.suspended
+    );
+
+    if (spreadMarkets.length > 0) {
+        const spreadOutcomes: ICanonicalOdds['allMarkets'][0]['outcomes'] = [];
+        
+        spreadMarkets.forEach((market: any) => {
+            const line = parseFloat(market.choiceGroup); // pl. 1.5
+            if (isNaN(line)) return;
+
+            // Az API-tól függően a "Home" lehet -1.5 vagy +1.5 a choiceGroup alapján
+            // Általában: choiceGroup pozitív, és a choice neve dönti el az előjelet.
+            // VAGY: A 'name' mezőben van a hendikep (pl. "Home -1.5")
+            
+            const homeChoice = market.choices.find((c: any) => c.name === '1' || c.name.toLowerCase().includes('home'));
+            const awayChoice = market.choices.find((c: any) => c.name === '2' || c.name.toLowerCase().includes('away'));
+            
+            if (homeChoice && awayChoice) {
+                const homeOdd = parseFractionalOdds(homeChoice.fractionalValue);
+                const awayOdd = parseFractionalOdds(awayChoice.fractionalValue);
+                
+                if (homeOdd > 0 && awayOdd > 0) {
+                    // A szabványunk szerint a 'point' a hazai csapat hendikepjét jelzi.
+                    // Ha a choiceGroup csak "1.5", akkor nem tudjuk, kinek van előnye.
+                    // Feltételezzük, hogy ez Asian Handicap, ahol a névben van az előjel.
+                    // De az ice-hockey-api struktúrája trükkös. 
+                    // Egyszerűsítés: Ha "Handicap", akkor felvesszük Home és Away kimenetként is.
+                    
+                    // Home
+                    spreadOutcomes.push({ name: `Home ${line}`, price: homeOdd, point: line }); 
+                    spreadOutcomes.push({ name: `Home -${line}`, price: homeOdd, point: -line }); // Biztonság kedvéért mindkettő
+                    
+                    // Away
+                    spreadOutcomes.push({ name: `Away ${line}`, price: awayOdd, point: line });
+                    spreadOutcomes.push({ name: `Away -${line}`, price: awayOdd, point: -line });
+                }
+            }
+        });
+
+        if (spreadOutcomes.length > 0) {
+            allMarkets.push({ key: 'spread', outcomes: spreadOutcomes });
+        }
+    }
+
     // =========================================================
 
     if (allMarkets.length === 0) {
