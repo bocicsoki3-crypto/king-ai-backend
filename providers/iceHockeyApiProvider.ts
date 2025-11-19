@@ -1,10 +1,11 @@
 // FÁJL: providers/iceHockeyApiProvider.ts
-// VERZIÓ: v106.0 (Team Totals Támogatás)
-// MÓDOSÍTÁS (v106.0):
-// 1. BŐVÍTÉS: A 'parseIceHockeyOdds' funkció most már keresi és feldolgozza
-//    a hazai ('Home team total goals') és vendég ('Away team total goals')
-//    csapat-specifikus totals piacokat is.
-// 2. CÉL: Lehetővé tenni a csapatonkénti Over/Under elemzést.
+// VERZIÓ: v107.0 (Extended Team Totals Parsing)
+// MÓDOSÍTÁS (v107.0):
+// 1. BŐVÍTÉS: A 'parseIceHockeyOdds' funkció most már több kulcsszóra is keres
+//    a Csapat Totals piacoknál (pl. "Total Goals - Home", "Home Team Goals").
+// 2. CÉL: Biztosítani, hogy az 'AnalysisFlow' és 'Model.ts' mindig megkapja
+//    a szükséges adatokat a "Vadász" logikához, akkor is, ha az API
+//    kicsit másképp nevezi el a piacokat.
 
 import fetch from 'node-fetch';
 
@@ -81,10 +82,10 @@ function parseFractionalOdds(fraction: string): number {
     return 1 + (parseFloat(parts[0]) / parseFloat(parts[1]));
 }
 
-// === MÓDOSÍTVA (v106.0): Team Totals Támogatás ===
+// === MÓDOSÍTVA (v107.0): Extended Team Totals Támogatás ===
 /**
  * Lefordítja az 'ice-hockey-api' odds válaszát a mi belső ICanonicalOdds formátumunkra.
- * IGASZÍTVA A LOGBAN LÁTOTT ADATSTRUKTÚRÁHOZ + CSAPAT TOTALS.
+ * IGASZÍTVA A LOGBAN LÁTOTT ADATSTRUKTÚRÁHOZ + BŐVÍTETT KULCSSZAVAK.
  */
 function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
     const rawMarkets = apiResponse?.markets;
@@ -150,7 +151,7 @@ function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
         }
     }
 
-    // === ÚJ (v106.0): Csapat Totals (Home/Away Team Goals) ===
+    // === ÚJ (v107.0): Csapat Totals - Bővített Kulcsszavak ===
     const processTeamTotal = (marketNameKeywords: string[], key: string) => {
          const ttMarkets = rawMarkets.filter((m: any) => 
             marketNameKeywords.some(kw => m.marketName?.toLowerCase().includes(kw.toLowerCase())) && !m.suspended
@@ -177,10 +178,10 @@ function parseIceHockeyOdds(apiResponse: any): ICanonicalOdds | null {
         }
     };
 
-    // Hazai csapat gólok (keresőszavak: "Home team total goals", "Home goals")
-    processTeamTotal(['Home team total goals', 'Home goals'], 'home_total');
-    // Vendég csapat gólok
-    processTeamTotal(['Away team total goals', 'Away goals'], 'away_total');
+    // Hazai csapat gólok (Bővített lista!)
+    processTeamTotal(['Home team total goals', 'Home goals', 'Total Goals - Home', 'Home Team Goals'], 'home_total');
+    // Vendég csapat gólok (Bővített lista!)
+    processTeamTotal(['Away team total goals', 'Away goals', 'Total Goals - Away', 'Away Team Goals'], 'away_total');
     
     // =========================================================
 
