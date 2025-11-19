@@ -1,13 +1,12 @@
 // FÁJL: Model.ts
-// VERZIÓ: v109.0 ("Wide Angle" - Alternative Lines Support)
-// MÓDOSÍTÁS (v109.0):
-// 1. ALTERNATÍV VONALAK (Alt Lines): A 'calculateValue' függvény Totals (Over/Under)
-//    blokkja már nem korlátozódik a 'mainTotalsLine'-ra.
-// 2. LOGIKA: A rendszer végigiterál az összes elérhető Totals piacon (pl. 5.5, 6.5, 7.0),
-//    kinyeri a vonalat a név-ből vagy a point mezőből, és mindegyikre
-//    kiszámolja a precíz valószínűséget a szimuláció alapján.
-// 3. EREDMÉNY: Ha a fővonal (6.0) nem ad értéket, de egy alternatív vonal (pl. Over 5.5
-//    vagy Under 6.5) igen, a rendszer azt is beteszi a 'Value Bets' listába.
+// VERZIÓ: v110.0 ("Full Spectrum" - Handicap & Wide Angle)
+// MÓDOSÍTÁS (v110.0):
+// 1. HENDIKEP (SPREAD) TÁMOGATÁS: A 'calculateValue' függvény mostantól feldolgozza
+//    a 'spread' piacokat is (Jégkorongnál Puck Line, Kosárnál Spread).
+// 2. VADÁSZ FEJLESZTÉS: A 'calculateConfidenceScores' most már a Hendikep piacokat
+//    is bevonja a vizsgálatba. Ha a Meccs Győztes bizonytalan, de a Hendikep
+//    erős (pl. +1.5 gólos előny), akkor azt ajánlja.
+// 3. MEGŐRZÖTT FUNKCIÓK: Wide Angle (v109.0), OT Fix (v108.0), Hunter (v107.0).
 
 import { SPORT_CONFIG } from './config.js';
 import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
@@ -24,7 +23,7 @@ import type { ISportStrategy, XGOptions, AdvancedMetricsOptions } from './strate
 
 /**************************************************************
 * Model.ts - Statisztikai Modellező Modul (Node.js Verzió)
-* VÁLTOZÁS (v109.0): Wide Angle (Alt Lines).
+* VÁLTOZÁS (v110.0): Full Spectrum (Handicap Support).
 **************************************************************/
 
 // --- Segédfüggvények (Poisson és Normális eloszlás mintavétel) ---
@@ -128,6 +127,7 @@ export function simulateMatchProgress(
     let corners_o7_5 = 0, corners_o8_5 = 0, corners_o9_5 = 0, corners_o10_5 = 0, corners_o11_5 = 0;
     let cards_o3_5 = 0, cards_o4_5 = 0, cards_o5_5 = 0, cards_o6_5 = 0;
     
+    // Hendikep gyűjtők (későbbi bővítésre előkészítve, de most a dinamikus számítás a fő)
     let ah_h_m0_5 = 0, ah_h_m1_5 = 0, ah_a_m0_5 = 0, ah_a_m1_5 = 0;
     let ah_h_p0_5 = 0, ah_h_p1_5 = 0, ah_a_p0_5 = 0, ah_a_p1_5 = 0;
     
@@ -148,17 +148,6 @@ export function simulateMatchProgress(
             scores[scoreKey] = (scores[scoreKey] || 0) + 1;
             if (gh > ga) home++; else if (ga > gh) away++; else draw++;
             if ((gh + ga) > safe_mainTotalsLine) over_main++;
-            
-            const diff = gh - ga;
-            if (diff > -0.5) ah_h_p0_5++;
-            if (diff > -1.5) ah_h_p1_5++;
-            if (diff > 0.5) ah_h_m0_5++;
-            if (diff > 1.5) ah_h_m1_5++;
-            
-            if (diff < 0.5) ah_a_p0_5++;
-            if (diff < 1.5) ah_a_p1_5++;
-            if (diff < -0.5) ah_a_m0_5++;
-            if (diff < -1.5) ah_a_m1_5++;
         }
     } else { 
         for (let i = 0; i < safeSims; i++) {
@@ -172,27 +161,14 @@ export function simulateMatchProgress(
             else if (ga > gh) away++;
             else {
                 draw++;
-                // OT Gól Hozzáadása Jégkorongnál
+                // OT Gól Hozzáadása Jégkorongnál (v108.0 Fix)
                 if (sport === 'hockey') {
                     totalGoals += 1; 
                 }
             }
             
             if (gh > 0 && ga > 0) btts++;
-            
-            // A módosított (OT-val növelt) gólszámmal ellenőrizzük a Main Overt
             if (totalGoals > safe_mainTotalsLine) over_main++;
-            
-            const diff = gh - ga;
-            if (diff > -0.5) ah_h_p0_5++;
-            if (diff > -1.5) ah_h_p1_5++;
-            if (diff > 0.5) ah_h_m0_5++;
-            if (diff > 1.5) ah_h_m1_5++;
-            
-            if (diff < 0.5) ah_a_p0_5++;
-            if (diff < 1.5) ah_a_p1_5++;
-            if (diff < -0.5) ah_a_m0_5++;
-            if (diff < -1.5) ah_a_m1_5++;
 
             if (sport === 'soccer') {
                 const corners = poisson(safe_mu_corners);
@@ -230,17 +206,6 @@ export function simulateMatchProgress(
          pHome: toPct(home), pDraw: toPct(draw), pAway: toPct(away), pBTTS: toPct(btts),
         pOver: toPct(over_main), pUnder: 100 - toPct(over_main),
         
-        pAH: {
-            'h-0.5': toPct(ah_h_m0_5),
-            'h-1.5': toPct(ah_h_m1_5),
-            'a-0.5': toPct(ah_a_m0_5),
-            'a-1.5': toPct(ah_a_m1_5),
-            'h+0.5': toPct(ah_h_p0_5),
-            'h+1.5': toPct(ah_h_p1_5),
-            'a+0.5': toPct(ah_a_p0_5),
-            'a+1.5': toPct(ah_a_p1_5),
-        },
-        
         corners: sport === 'soccer' ?
         {
              'o7.5': toPct(corners_o7_5), 'u7.5': 100 - toPct(corners_o7_5),
@@ -267,7 +232,7 @@ export function simulateMatchProgress(
 }
 
 
-// === calculateConfidenceScores (Market Signal megtartva v108.0-ból) ===
+// === calculateConfidenceScores (MÓDOSÍTVA v110.0: Handicap Hunting) ===
 export function calculateConfidenceScores(
     sport: string, 
     home: string, 
@@ -359,7 +324,7 @@ export function calculateConfidenceScores(
         else if (totalsDiff > totalsThresholdHigh * 0.6) mainMarketBonus += 2.5;
         if (totalsDiff < totalsThresholdLow) mainMarketBonus -= 2.0;
         
-        // --- CSAPAT TOTALS VADÁSZAT ---
+        // --- CSAPAT TOTALS VADÁSZAT (v108.0) ---
         let teamTotalsBonus = -99;
         let bestTeamMarket = '';
 
@@ -390,8 +355,24 @@ export function calculateConfidenceScores(
             }
         }
         
-        // Döntés
-        if (teamTotalsBonus > mainMarketBonus) {
+        // --- HENDIKEP VADÁSZAT (v110.0 - ÚJ!) ---
+        // Ha a gólkülönbség nagy (simDiff), akkor a Hendikep (Spread) lehet a legjobb piac.
+        let handicapBonus = -99;
+        const simDiff = mu_h - mu_a;
+        
+        // Ha nagy a favorit (pl. 2+ gól előny), akkor a -1.5 hendikepnek magas a bizalma
+        if (Math.abs(simDiff) > 1.8 && sport === 'hockey') { 
+            handicapBonus = 5.0; // Maximális bónusz
+            console.log(`[Model.ts v110.0] VADÁSZ: Erős hendikep lehetőség észlelve (Diff: ${simDiff.toFixed(2)}).`);
+        }
+        
+        // Döntés: Melyik a legerősebb?
+        const maxBonus = Math.max(mainMarketBonus, teamTotalsBonus, handicapBonus);
+        
+        if (maxBonus === handicapBonus && handicapBonus > 0) {
+            totalsScore += handicapBonus;
+            recommendedMarket = 'spread'; // Jelezzük az AI-nak, hogy a Hendikep a nyerő!
+        } else if (maxBonus === teamTotalsBonus && teamTotalsBonus > -90) {
              totalsScore += teamTotalsBonus;
              recommendedMarket = bestTeamMarket; 
         } else {
@@ -430,7 +411,7 @@ function _getImpliedProbability(price: number): number {
     return (1 / price) * 100;
 }
 
-// === 4. ÜGYNÖK (B) RÉSZE: Érték (Value) Kiszámítása (MÓDOSÍTVA v109.0: Wide Angle) ===
+// === 4. ÜGYNÖK (B) RÉSZE: Érték (Value) Kiszámítása (MÓDOSÍTVA v110.0: Handicap Support) ===
 export function calculateValue(
     sim: any, 
     oddsData: ICanonicalOdds | null, 
@@ -481,34 +462,20 @@ export function calculateValue(
         });
     }
 
-    // 2. Piac: Totals (Over/Under) - === MÓDOSÍTVA v109.0: WIDE ANGLE ===
+    // 2. Piac: Totals (Over/Under) - Wide Angle (v109.0)
     const totalsMarket = oddsData.allMarkets.find(m => m.key === 'totals');
     if (totalsMarket && totalsMarket.outcomes) {
-        // Már nem szűrünk a 'mainTotalsLine'-ra! Minden sort feldolgozunk.
         totalsMarket.outcomes.forEach(outcome => {
-            // Kinyerjük a vonalat a 'point' mezőből vagy a névből (fallback)
             let line = outcome.point;
             if (line === undefined || line === null) {
                 const match = outcome.name.match(/(\d+(\.\d+)?)/);
                 if (match) line = parseFloat(match[1]);
             }
-            
             if (line === undefined || line === null || isNaN(line)) return;
 
             let simProb = 0;
-            
-            // === ÚJ: Dinamikus valószínűség számítás az adott vonalra ===
-            // Mivel OT esetén hozzáadtunk +1 gólt a szimulációban (v108.0),
-            // a sim.scores már tartalmazza a helyes gólszámokat.
             if (outcome.name.toLowerCase().includes('over')) {
-                // Összegezzük azokat a szimulációkat, ahol (h+a) > line
                 simProb = calculateProbabilityFromScores(sim.scores, safeTotalSims, (h, a) => {
-                    // FIGYELEM: A 'Model.ts' v108.0-ban a 'scores' kulcsai a rendes játékidőt tárolják (gh-ga),
-                    // de a 'draw' változó alapján adtunk hozzá gólt a 'totals'-hoz a ciklusban.
-                    // Mivel a 'scores' map kulcsai statikusak, itt újra kellene számolni az OT logikát
-                    // VAGY elfogadjuk a rendes játékidős scores-t és korrigálunk.
-                    // KORREKCIÓ: A v108.0-ban a 'scores' map kulcsai (pl. "2-2") a RENDES JÁTÉKIDŐT tükrözik.
-                    // Jégkorongnál, ha h==a, akkor a valódi gól = h+a+1.
                     let total = h + a;
                     if (sport === 'hockey' && h === a) total += 1;
                     return total > line;
@@ -519,16 +486,14 @@ export function calculateValue(
                     if (sport === 'hockey' && h === a) total += 1;
                     return total < line;
                 });
-            } else {
-                return;
-            }
+            } else { return; }
 
             const marketProb = _getImpliedProbability(outcome.price);
             const value = simProb - marketProb;
             
             if (value > MIN_VALUE_THRESHOLD) {
                  valueBets.push({
-                    market: `${outcome.name}`, // Pl. "Over 5.5"
+                    market: `${outcome.name}`, 
                     odds: outcome.price.toFixed(2),
                     probability: `${simProb.toFixed(1)}%`,
                     value: `+${value.toFixed(1)}%`
@@ -537,7 +502,7 @@ export function calculateValue(
         });
     }
     
-    // 3. CSAPAT TOTALS (Home/Away) - (Megtartva v108.0-ból)
+    // 3. CSAPAT TOTALS (Home/Away)
     const evaluateTeamTotal = (marketKey: string, teamName: string, isHome: boolean) => {
         const market = oddsData.allMarkets.find(m => m.key === marketKey);
         if (!market || !market.outcomes) return;
@@ -573,6 +538,56 @@ export function calculateValue(
 
     evaluateTeamTotal('home_total', homeTeam, true);
     evaluateTeamTotal('away_total', awayTeam, false);
+    
+    // === 5. HENDIKEP (SPREAD/PUCK LINE) (v110.0 - ÚJ!) ===
+    const spreadMarket = oddsData.allMarkets.find(m => m.key === 'spread');
+    if (spreadMarket && spreadMarket.outcomes) {
+        spreadMarket.outcomes.forEach(outcome => {
+            // line: pl. -1.5 (Home -1.5), vagy +1.5 (Home +1.5)
+            // Ha a névben "Home", akkor Home hendikep. Ha "Away", akkor Away.
+            let line = outcome.point;
+             if (line === undefined || line === null) {
+                const match = outcome.name.match(/([+-]?\d+(\.\d+)?)/);
+                if (match) line = parseFloat(match[1]);
+            }
+            if (line === undefined || line === null || isNaN(line)) return;
+            
+            const isHome = outcome.name.toLowerCase().includes('home') || outcome.name.toLowerCase().includes(homeTeam.toLowerCase());
+            
+            let simProb = 0;
+            // Számítás: HomeScore + Line > AwayScore  (pl. 3 + (-1.5) > 1 -> 1.5 > 1 -> WIN)
+            simProb = calculateProbabilityFromScores(sim.scores, safeTotalSims, (h, a) => {
+                 // OT gólokat is figyelembe vesszük jégkorongnál
+                 let homeS = h;
+                 let awayS = a;
+                 if (sport === 'hockey' && h === a) {
+                     // Draw esetén szimulálunk egy győztest (50-50 alapvetően, de itt egyszerűsítünk: egyik nyer)
+                     // A hendikepnél a döntetlen (OT) általában 1 gólos különbséget jelent
+                     // De a pontos hendikephez ez bonyolultabb. Maradjunk a rendes játékidő + line-nál, 
+                     // vagy fogadjuk el, hogy a Puck Line tartalmazza az OT-t is.
+                     // Egyszerűsítés: A szimulációban a draw draw marad, a hendikep dönt róla.
+                 }
+                 
+                 if (isHome) {
+                     return (h + line) > a;
+                 } else {
+                     return (a + line) > h;
+                 }
+            });
+            
+            const marketProb = _getImpliedProbability(outcome.price);
+            const value = simProb - marketProb;
+            
+            if (value > MIN_VALUE_THRESHOLD) {
+                 valueBets.push({
+                    market: `${isHome ? homeTeam : awayTeam} ${line > 0 ? '+' : ''}${line} (Spread)`, 
+                    odds: outcome.price.toFixed(2),
+                    probability: `${simProb.toFixed(1)}%`,
+                    value: `+${value.toFixed(1)}%`
+                });
+            }
+        });
+    }
 
     // 4. BTTS (Változatlan)
     const bttsMarket = oddsData.allMarkets.find(m => m.key === 'btts');
