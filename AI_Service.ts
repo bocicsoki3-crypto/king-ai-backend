@@ -1,11 +1,12 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v107.0 (Recommended Market Awareness)
-// MÓDOSÍTÁS (v107.0):
+// VERZIÓ: v110.1 (Recommended Direction Awareness)
+// MÓDOSÍTÁS (v110.1):
 // 1. FEJLESZTÉS: A 'MASTER_AI_PROMPT_TEMPLATE' (Főnök Prompt) most már
-//    elfogadja a 'recommendedMarket' (Matematikai Ajánlás) változót.
-// 2. LOGIKA: Az AI mostantól "hallja", amit a Model.ts üzen.
-//    Ha a 'recommendedMarket' pl. 'home_total', akkor az AI tudni fogja,
-//    hogy a 9/10-es bizalom a Hazai Gólokra vonatkozik, és azt kell ajánlania.
+//    elfogadja a 'recommendedDirection' (Matematikai Irány) változót is.
+// 2. SZIGORÚ UTASÍTÁS: Az AI utasítást kap, hogy ha a matematikai modell
+//    egyértelmű irányt (pl. 'under') jelöl meg a 'recommended_market'-hez,
+//    akkor TILOS az ellenkezőjét (pl. 'over') választania.
+// 3. CÉL: Megakadályozni a tegnapihoz hasonló "Matematikailag Under, Tippben Over" hibákat.
 
 import { 
     _callGemini, 
@@ -264,8 +265,8 @@ Consider context: Pace, Absentees. Conclude with confidence level.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"basketball_total_points_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
 
-// === A "FŐNÖK" PROMPTJA (v107.0 - RECOMMENDED MARKET AWARENESS) ===
-const MASTER_AI_PROMPT_TEMPLATE_V107 = `
+// === A "FŐNÖK" PROMPTJA (v110.1 - RECOMMENDED DIRECTION AWARENESS) ===
+const MASTER_AI_PROMPT_TEMPLATE_V110 = `
 CRITICAL TASK: You are the Head Analyst (AI Advisor).
 Your task is to analyze ALL provided reports and determine the SINGLE most compelling betting recommendation.
 **CRITICAL RULE: You MUST provide a concrete betting recommendation.**
@@ -273,10 +274,10 @@ Your task is to analyze ALL provided reports and determine the SINGLE most compe
 CRITICAL INPUTS:
 1. Value Bets: {valueBetsJson} (Includes Team Totals, Main & Side markets)
 2. Sim Probs: H:{sim_pHome}%, D:{sim_pDraw}%, A:{sim_pAway}%, O/U {sim_mainTotalsLine}: O:{sim_pOver}%
-3. Model Confidence (Statistical) (v105.0):
+3. Model Confidence (Statistical) (v110.1):
    - Winner Confidence: {confidenceWinner}/10
    - Totals Confidence: {confidenceTotals}/10
-   - **MATHEMATICALLY RECOMMENDED MARKET: {recommendedMarket}** (This indicates which market has the highest statistical backing!)
+   - **RECOMMENDED MARKET: {recommendedMarket}** - **RECOMMENDED DIRECTION: {recommendedDirection}** (E.g. 'over', 'under', 'home_win')
 
 4. Expert Confidence (Narrative): "{expertConfidence}"
 5. Risk Assessment: "{riskAssessment}"
@@ -286,12 +287,14 @@ CRITICAL INPUTS:
 9. Psychologist (Agent 2.5) Report: {psychologistReportJson}
 10. Specialist (Agent 3) Report: {specialistReportJson}
 
-YOUR DECISION PROCESS (v107.0 - "THE HUNTER"):
-1. **CHECK THE RECOMMENDED MARKET:** If the mathematical model recommends "home_total" or "away_total", it means it found EXTREME value in that team's performance. **PRIORITIZE THIS.**
-   - Example: If 'recommendedMarket' is 'home_total', ignore the match Winner/Under and look for the best Home Team Over bet in 'Value Bets'.
-2. **Confidence Divergence:** If 'Totals Confidence' is HIGH (>8.0) but Winner is LOW, stick to Totals (Match or Team).
-3. **Team Totals:** Always check if a Team Total bet (e.g., "Warriors Over 115.5") offers better security than a match total.
-4. **Reflect Uncertainty:** Use the final_confidence score (1.0-10.0) accurately.
+YOUR DECISION PROCESS (v110.1 - "THE COMPASS"):
+1. **OBEY THE COMPASS:** Check the 'RECOMMENDED DIRECTION'. 
+   - If it says 'under', you MUST prioritize 'Under' bets for the recommended market. 
+   - If it says 'over', prioritize 'Over'.
+   - **DO NOT CONTRADICT THE MATHEMATICAL DIRECTION unless you have overwhelming narrative evidence (e.g. star player out).**
+2. **CHECK THE RECOMMENDED MARKET:** If the mathematical model recommends "home_total" or "away_total", look for that specific bet in 'Value Bets' matching the Direction.
+3. **Confidence Divergence:** If 'Totals Confidence' is HIGH (>8.0) but Winner is LOW, stick to Totals.
+4. **Team Totals:** Always check if a Team Total bet offers better security than a match total.
 
 OUTPUT FORMAT: Your response MUST be ONLY a single, valid JSON object with this EXACT structure:
 {"recommended_bet": "<The SINGLE most compelling market (e.g., Hazai győzelem, Over 224, Warriors Over 115.5)>", "final_confidence": <Number between 1.0-10.0>, "brief_reasoning": "<SINGLE concise Hungarian sentence explaining the choice>"}
@@ -516,7 +519,7 @@ async function getStrategicClosingThoughts(
 async function getMasterRecommendation(
     valueBets: any[], 
     sim: any, 
-    confidenceScores: { winner: number, totals: number, overall: number, recommended_market?: string }, // v107.0: recommended_market
+    confidenceScores: { winner: number, totals: number, overall: number, recommended_market?: string, recommended_direction?: string }, // v110.1: recommended_direction
     expertConfidence: string,
     riskAssessment: string, 
     microAnalyses: any, 
@@ -560,7 +563,8 @@ async function getMasterRecommendation(
             confidenceWinner: confidenceScores.winner.toFixed(1), 
             confidenceTotals: confidenceScores.totals.toFixed(1), 
             confidenceOverall: confidenceScores.overall.toFixed(1),
-            recommendedMarket: confidenceScores.recommended_market || "N/A", // v107.0: Átadjuk az AI-nak
+            recommendedMarket: confidenceScores.recommended_market || "N/A", 
+            recommendedDirection: confidenceScores.recommended_direction || "N/A", // v110.1: Átadjuk az AI-nak
             expertConfidence: expertConfidence || "N/A",
             riskAssessment: riskAssessment || "N/A",
             microSummary: microSummary,
@@ -571,8 +575,8 @@ async function getMasterRecommendation(
             specialistReportJson: specialistReport 
         };
 
-        // === 1. LÉPÉS: AI (Tanácsadó) hívása az ÚJ (v107.0) Prompttal ===
-        let template = MASTER_AI_PROMPT_TEMPLATE_V107; // v107-es "Hunter" prompt
+        // === 1. LÉPÉS: AI (Tanácsadó) hívása az ÚJ (v110.1) Prompttal ===
+        let template = MASTER_AI_PROMPT_TEMPLATE_V110; // v110-es "Compass" prompt
         if (sport === 'hockey' || sport === 'basketball') {
             template = template.replace(/BTTS, /g, ""); 
         }
@@ -656,7 +660,7 @@ interface FinalAnalysisInput {
     valueBetsJson: any[];
     richContext: string;
     sportStrategy: ISportStrategy;
-    confidenceScores: { winner: number, totals: number, overall: number, recommended_market?: string }; // v107.0 Update
+    confidenceScores: { winner: number, totals: number, overall: number, recommended_market?: string, recommended_direction?: string }; // v110.1 Update
 }
 
 export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<any> {
@@ -756,7 +760,7 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
         masterRecommendation = await getMasterRecommendation(
             valueBetsJson,
             sim,
-            confidenceScores, // Ez tartalmazza a v107.0-ás recommended_market-et
+            confidenceScores, // Ez tartalmazza a v110.1-es recommended_market/direction-t
             expertConfidence, 
             riskAssessment,
             microAnalyses,
