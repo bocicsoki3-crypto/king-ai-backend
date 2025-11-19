@@ -1,11 +1,10 @@
 // FÁJL: providers/apiBasketballProvider.ts
-// VERZIÓ: v110.0 (Alternative Lines & Handicap Expansion)
-// MÓDOSÍTÁS (v110.0):
-// 1. BŐVÍTÉS: A 'parseTheRundownEvent' funkció most már nemcsak a fő bukméker (Pinnacle/Bovada)
-//    fővonalát olvassa be, hanem megpróbálja kinyerni az 'alternate_totals' és 'alternate_spreads'
-//    adatokat is, ha az API (TheRundown) biztosítja őket.
-// 2. CÉL: Adatot szolgáltatni a 'Model.ts' v109.0+ "Wide Angle" logikájának, hogy
-//    a kosárlabdánál is megtalálja a legjobb értékű vonalat (pl. Over 225.5 a 220.5 helyett).
+// VERZIÓ: v110.1 (TS Error Fix - Null Safety)
+// MÓDOSÍTÁS (v110.1):
+// 1. JAVÍTVA: TS18047 hiba. A 'mainSpread' és 'mainTotal' változóknál
+//    bevezettem egy szigorú null-ellenőrzést. Ha a 'point' értéke null/undefined,
+//    akkor a változó nem kap értéket, vagy 0-t kap, így a matematikai műveletek
+//    biztonságosan lefutnak.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -302,23 +301,17 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
         // Vesszük a legelső (fő) vonalakat alapnak
         const mainTotal = totalOutcomes[0].point;
         const mainSpreadOutcome = spreadOutcomes.find(o => o.name.startsWith('Home'));
-        const mainSpread = mainSpreadOutcome ? mainSpreadOutcome.point : 0;
+        
+        // === JAVÍTÁS (v110.1 - TS Error Fix) ===
+        // A 'point' mező opcionális (number | null | undefined), ezért ellenőrizni kell.
+        // Ha null/undefined, akkor 0-nak vesszük (vagy kihagyjuk a számítást).
+        const mainSpread = (mainSpreadOutcome && mainSpreadOutcome.point != null) ? mainSpreadOutcome.point : 0;
 
-        if (mainTotal && mainSpread !== undefined) {
-             const impliedHomeTotal = (mainTotal + mainSpread) / 2; // Spread a Home szempontjából (ha negatív, akkor levonjuk)
-             // Várjunk! Ha Home -5.0 (favorit), akkor Home > Away. 
-             // Total = H + A. Spread = H - A.
-             // H = (Total + Spread) / 2. 
-             // Ha Spread -5.0 (Home favorit), akkor H = (220 + (-5)) / 2 = 107.5. (EZ NEM JÓ!)
-             // Ha Home favorit, többet kéne dobnia.
-             // TheRundown spread: "point_spread_home": -5.0. 
-             // Ez azt jelenti, hogy Home Score - 5.0 > Away Score.
-             // Tehát Home Score > Away Score + 5.0. Home a nagyobb.
-             // Akkor H - A = +5.0 (a valódi különbség). De a spread érték -5.0.
-             // Tehát a képlet: H = (Total - Spread_Value) / 2.
-             // Pl. Total 220, Spread -10. H = (220 - (-10)) / 2 = 230 / 2 = 115.
-             // A = (Total + Spread_Value) / 2 = (220 + (-10)) / 2 = 210 / 2 = 105.
-             // H - A = 10. Stimmel.
+        // Csak akkor számolunk, ha a mainTotal létezik (nem null/undefined)
+        if (mainTotal != null) { 
+             // Matematika: 
+             // Implied Home = (Total - Spread_Home) / 2
+             // Implied Away = (Total + Spread_Home) / 2
 
             const impliedHomeVal = (mainTotal - mainSpread) / 2;
             const impliedAwayVal = (mainTotal + mainSpread) / 2;
