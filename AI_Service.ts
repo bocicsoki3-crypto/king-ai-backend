@@ -1,13 +1,11 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v106.0 (Team Totals Integration & Master Prompt Upgrade)
-// MÓDOSÍTÁS (v106.0):
-// 1. PROMPT FRISSÍTÉS: A 'MASTER_AI_PROMPT_TEMPLATE' frissítve v106.0-ra.
-//    - Új instrukciók hozzáadva a "Csapat Totals" (Team Totals) kezelésére.
-//    - Az AI most már explicit keresi a csapat-specifikus Over/Under tippeket
-//      a 'Value Bets' listában, és prioritást ad nekik, ha a bizalom és a
-//      narratíva (pl. erős támadójáték) támogatja őket.
-// 2. FINOMHANGOLÁS: A 'STRATEGIC_CLOSING_PROMPT' is frissült, hogy
-//    említést tegyen a csapatok egyéni teljesítményének fontosságáról.
+// VERZIÓ: v107.0 (Recommended Market Awareness)
+// MÓDOSÍTÁS (v107.0):
+// 1. FEJLESZTÉS: A 'MASTER_AI_PROMPT_TEMPLATE' (Főnök Prompt) most már
+//    elfogadja a 'recommendedMarket' (Matematikai Ajánlás) változót.
+// 2. LOGIKA: Az AI mostantól "hallja", amit a Model.ts üzen.
+//    Ha a 'recommendedMarket' pl. 'home_total', akkor az AI tudni fogja,
+//    hogy a 9/10-es bizalom a Hazai Gólokra vonatkozik, és azt kell ajánlania.
 
 import { 
     _callGemini, 
@@ -266,19 +264,20 @@ Consider context: Pace, Absentees. Conclude with confidence level.
 CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON object with this structure: {"basketball_total_points_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
 
-// === A "FŐNÖK" PROMPTJA (v106.0 - TEAM TOTALS ENABLED) ===
-const MASTER_AI_PROMPT_TEMPLATE_V106 = `
+// === A "FŐNÖK" PROMPTJA (v107.0 - RECOMMENDED MARKET AWARENESS) ===
+const MASTER_AI_PROMPT_TEMPLATE_V107 = `
 CRITICAL TASK: You are the Head Analyst (AI Advisor).
 Your task is to analyze ALL provided reports and determine the SINGLE most compelling betting recommendation.
-**CRITICAL RULE: You MUST provide a concrete betting recommendation. Avoid "Nincs fogadás".**
+**CRITICAL RULE: You MUST provide a concrete betting recommendation.**
 
 CRITICAL INPUTS:
-1. Value Bets: {valueBetsJson} (Now includes **Team Totals**, Main & Side markets)
+1. Value Bets: {valueBetsJson} (Includes Team Totals, Main & Side markets)
 2. Sim Probs: H:{sim_pHome}%, D:{sim_pDraw}%, A:{sim_pAway}%, O/U {sim_mainTotalsLine}: O:{sim_pOver}%
 3. Model Confidence (Statistical) (v105.0):
    - Winner Confidence: {confidenceWinner}/10
    - Totals Confidence: {confidenceTotals}/10
-   - Overall (Avg): {confidenceOverall}/10
+   - **MATHEMATICALLY RECOMMENDED MARKET: {recommendedMarket}** (This indicates which market has the highest statistical backing!)
+
 4. Expert Confidence (Narrative): "{expertConfidence}"
 5. Risk Assessment: "{riskAssessment}"
 6. Specialist Conclusions: "{microSummary}"
@@ -287,18 +286,12 @@ CRITICAL INPUTS:
 9. Psychologist (Agent 2.5) Report: {psychologistReportJson}
 10. Specialist (Agent 3) Report: {specialistReportJson}
 
-YOUR DECISION PROCESS (v106.0):
-1. Synthesize ALL reports.
-2. **PRIORITY 1: Check for Confidence Divergence.**
-   - If 'Totals Confidence' is HIGH (>7.5) and 'Winner Confidence' is LOW (<5.0), prioritize Totals.
-3. **PRIORITY 2: Check TEAM TOTALS (New Feature!).**
-   - Look at 'Value Bets' for markets like "Home Over 112.5" or "Away Under 2.5".
-   - If a Team Total bet has solid value (>5%) AND is supported by the narrative (e.g., "Home offense is on fire", "Away defense is weak"), **RECOMMEND THIS**.
-   - Team Totals are often safer than Match Totals because they isolate one team's performance.
-4. **PRIORITY 3: Default to Main Market.**
-   - If no strong Team Total, choose the best Main Market (1X2, Match Totals) supported by evidence.
-5. **RULE:** Your recommended_bet MUST be from the main markets or Team Totals.
-6. **Reflect Uncertainty:** Use the final_confidence score (1.0-10.0) accurately.
+YOUR DECISION PROCESS (v107.0 - "THE HUNTER"):
+1. **CHECK THE RECOMMENDED MARKET:** If the mathematical model recommends "home_total" or "away_total", it means it found EXTREME value in that team's performance. **PRIORITIZE THIS.**
+   - Example: If 'recommendedMarket' is 'home_total', ignore the match Winner/Under and look for the best Home Team Over bet in 'Value Bets'.
+2. **Confidence Divergence:** If 'Totals Confidence' is HIGH (>8.0) but Winner is LOW, stick to Totals (Match or Team).
+3. **Team Totals:** Always check if a Team Total bet (e.g., "Warriors Over 115.5") offers better security than a match total.
+4. **Reflect Uncertainty:** Use the final_confidence score (1.0-10.0) accurately.
 
 OUTPUT FORMAT: Your response MUST be ONLY a single, valid JSON object with this EXACT structure:
 {"recommended_bet": "<The SINGLE most compelling market (e.g., Hazai győzelem, Over 224, Warriors Over 115.5)>", "final_confidence": <Number between 1.0-10.0>, "brief_reasoning": "<SINGLE concise Hungarian sentence explaining the choice>"}
@@ -523,7 +516,7 @@ async function getStrategicClosingThoughts(
 async function getMasterRecommendation(
     valueBets: any[], 
     sim: any, 
-    confidenceScores: { winner: number, totals: number, overall: number }, 
+    confidenceScores: { winner: number, totals: number, overall: number, recommended_market?: string }, // v107.0: recommended_market
     expertConfidence: string,
     riskAssessment: string, 
     microAnalyses: any, 
@@ -566,7 +559,8 @@ async function getMasterRecommendation(
             sim_mainTotalsLine: safeSim.mainTotalsLine, sim_pOver: safeSim.pOver,
             confidenceWinner: confidenceScores.winner.toFixed(1), 
             confidenceTotals: confidenceScores.totals.toFixed(1), 
-            confidenceOverall: confidenceScores.overall.toFixed(1), 
+            confidenceOverall: confidenceScores.overall.toFixed(1),
+            recommendedMarket: confidenceScores.recommended_market || "N/A", // v107.0: Átadjuk az AI-nak
             expertConfidence: expertConfidence || "N/A",
             riskAssessment: riskAssessment || "N/A",
             microSummary: microSummary,
@@ -577,8 +571,8 @@ async function getMasterRecommendation(
             specialistReportJson: specialistReport 
         };
 
-        // === 1. LÉPÉS: AI (Tanácsadó) hívása az ÚJ (v106.0) Prompttal ===
-        let template = MASTER_AI_PROMPT_TEMPLATE_V106; // v106-os "Team Totals" prompt
+        // === 1. LÉPÉS: AI (Tanácsadó) hívása az ÚJ (v107.0) Prompttal ===
+        let template = MASTER_AI_PROMPT_TEMPLATE_V107; // v107-es "Hunter" prompt
         if (sport === 'hockey' || sport === 'basketball') {
             template = template.replace(/BTTS, /g, ""); 
         }
@@ -662,7 +656,7 @@ interface FinalAnalysisInput {
     valueBetsJson: any[];
     richContext: string;
     sportStrategy: ISportStrategy;
-    confidenceScores: { winner: number, totals: number, overall: number };
+    confidenceScores: { winner: number, totals: number, overall: number, recommended_market?: string }; // v107.0 Update
 }
 
 export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<any> {
@@ -762,7 +756,7 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
         masterRecommendation = await getMasterRecommendation(
             valueBetsJson,
             sim,
-            confidenceScores,
+            confidenceScores, // Ez tartalmazza a v107.0-ás recommended_market-et
             expertConfidence, 
             riskAssessment,
             microAnalyses,
