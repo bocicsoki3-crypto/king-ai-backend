@@ -1,12 +1,12 @@
 // FÁJL: Model.ts
-// VERZIÓ: v110.0 ("Full Spectrum" - Handicap & Wide Angle)
-// MÓDOSÍTÁS (v110.0):
-// 1. HENDIKEP (SPREAD) TÁMOGATÁS: A 'calculateValue' függvény mostantól feldolgozza
-//    a 'spread' piacokat is (Jégkorongnál Puck Line, Kosárnál Spread).
-// 2. VADÁSZ FEJLESZTÉS: A 'calculateConfidenceScores' most már a Hendikep piacokat
-//    is bevonja a vizsgálatba. Ha a Meccs Győztes bizonytalan, de a Hendikep
-//    erős (pl. +1.5 gólos előny), akkor azt ajánlja.
-// 3. MEGŐRZÖTT FUNKCIÓK: Wide Angle (v109.0), OT Fix (v108.0), Hunter (v107.0).
+// VERZIÓ: v110.1 ("The Compass" - Market Direction Fix)
+// MÓDOSÍTÁS (v110.1):
+// 1. IRÁNYTŰ (Compass): A 'calculateConfidenceScores' mostantól visszaadja
+//    a 'recommended_direction' (pl. 'over', 'under', 'home_win') értékét is.
+// 2. OK: A logok alapján a "Vadász" megtalálta a jó piacot (pl. Oilers Total),
+//    de az AI néha rossz irányba (Over helyett Under vagy fordítva) tippelt,
+//    mert csak a piac nevét kapta meg, az irányt nem.
+// 3. MEGŐRZÖTT FUNKCIÓK: Wide Angle (v109.0), Handicap (v110.0), OT Fix.
 
 import { SPORT_CONFIG } from './config.js';
 import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
@@ -23,7 +23,7 @@ import type { ISportStrategy, XGOptions, AdvancedMetricsOptions } from './strate
 
 /**************************************************************
 * Model.ts - Statisztikai Modellező Modul (Node.js Verzió)
-* VÁLTOZÁS (v110.0): Full Spectrum (Handicap Support).
+* VÁLTOZÁS (v110.1): The Compass Update.
 **************************************************************/
 
 // --- Segédfüggvények (Poisson és Normális eloszlás mintavétel) ---
@@ -111,7 +111,7 @@ export function estimateAdvancedMetrics(
 }
 
 
-// === 4. ÜGYNÖK (SZIMULÁTOR) (OT Fix megtartva v108.0-ból) ===
+// === 4. ÜGYNÖK (SZIMULÁTOR) (OT Fix megtartva) ===
 export function simulateMatchProgress(
     mu_h: number, 
     mu_a: number, 
@@ -126,10 +126,6 @@ export function simulateMatchProgress(
     let home = 0, draw = 0, away = 0, btts = 0, over_main = 0;
     let corners_o7_5 = 0, corners_o8_5 = 0, corners_o9_5 = 0, corners_o10_5 = 0, corners_o11_5 = 0;
     let cards_o3_5 = 0, cards_o4_5 = 0, cards_o5_5 = 0, cards_o6_5 = 0;
-    
-    // Hendikep gyűjtők (későbbi bővítésre előkészítve, de most a dinamikus számítás a fő)
-    let ah_h_m0_5 = 0, ah_h_m1_5 = 0, ah_a_m0_5 = 0, ah_a_m1_5 = 0;
-    let ah_h_p0_5 = 0, ah_h_p1_5 = 0, ah_a_p0_5 = 0, ah_a_p1_5 = 0;
     
     const scores: { [key: string]: number } = {};
     const safeSims = Math.max(1, sims || 1);
@@ -161,7 +157,7 @@ export function simulateMatchProgress(
             else if (ga > gh) away++;
             else {
                 draw++;
-                // OT Gól Hozzáadása Jégkorongnál (v108.0 Fix)
+                // OT Gól Hozzáadása Jégkorongnál
                 if (sport === 'hockey') {
                     totalGoals += 1; 
                 }
@@ -232,7 +228,7 @@ export function simulateMatchProgress(
 }
 
 
-// === calculateConfidenceScores (MÓDOSÍTVA v110.0: Handicap Hunting) ===
+// === MÓDOSÍTVA v110.1: calculateConfidenceScores (The Compass) ===
 export function calculateConfidenceScores(
     sport: string, 
     home: string, 
@@ -243,7 +239,7 @@ export function calculateConfidenceScores(
     mu_a: number, 
     mainTotalsLine: number,
     marketIntel: string
-): { winner: number, totals: number, overall: number, recommended_market: string } {
+): { winner: number, totals: number, overall: number, recommended_market: string, recommended_direction: string } {
     
     const MAX_SCORE = 10.0;
     const MIN_SCORE = 1.0;
@@ -251,6 +247,7 @@ export function calculateConfidenceScores(
     let winnerScore = 5.0;
     let totalsScore = 5.0;
     let recommendedMarket = 'totals';
+    let recommendedDirection = 'neutral'; // === ÚJ: Iránytű ===
 
     try {
         let generalBonus = 0;
@@ -293,7 +290,7 @@ export function calculateConfidenceScores(
         if (xgDiff < thresholdLow) winnerScore -= 2.0;
         else if (xgDiff < thresholdLow * 1.5) winnerScore -= 1.0;
 
-        // Formakorrekció (Változatlan)
+        // Formakorrekció
         const getFormPointsPerc = (formString: string | null | undefined): number | null => {
              if (!formString || typeof formString !== 'string' || formString === "N/A") return null;
             const wins = (formString.match(/W/g) || []).length;
@@ -320,13 +317,22 @@ export function calculateConfidenceScores(
         const totalsThresholdLow = sport === 'basketball' ? 2 : sport === 'hockey' ? 0.4 : 0.1;
         
         let mainMarketBonus = 0;
-        if (totalsDiff > totalsThresholdHigh) mainMarketBonus += 4.0;
-        else if (totalsDiff > totalsThresholdHigh * 0.6) mainMarketBonus += 2.5;
+        let mainMarketDirection = 'neutral';
+
+        if (totalsDiff > totalsThresholdHigh) {
+            mainMarketBonus += 4.0;
+            mainMarketDirection = modelTotal > marketTotal ? 'over' : 'under';
+        }
+        else if (totalsDiff > totalsThresholdHigh * 0.6) {
+            mainMarketBonus += 2.5;
+            mainMarketDirection = modelTotal > marketTotal ? 'over' : 'under';
+        }
         if (totalsDiff < totalsThresholdLow) mainMarketBonus -= 2.0;
         
-        // --- CSAPAT TOTALS VADÁSZAT (v108.0) ---
+        // --- CSAPAT TOTALS VADÁSZAT ---
         let teamTotalsBonus = -99;
         let bestTeamMarket = '';
+        let bestTeamDirection = 'neutral';
 
         if (true) { 
             const impliedLineH = mainTotalsLine / 2;
@@ -338,47 +344,58 @@ export function calculateConfidenceScores(
             
             let bonusH = 0;
             let bonusA = 0;
+            
+            // Hazai Vizsgálat
             if (diffH > teamThreshold) bonusH = 4.5;
             else if (diffH > teamThreshold * 0.6) bonusH = 3.0;
+            const dirH = mu_h > impliedLineH ? 'over' : 'under';
 
+            // Vendég Vizsgálat
             if (diffA > teamThreshold) bonusA = 4.5;
             else if (diffA > teamThreshold * 0.6) bonusA = 3.0;
+            const dirA = mu_a > impliedLineA ? 'over' : 'under';
 
             if (bonusH > 0 || bonusA > 0) {
                 if (bonusH >= bonusA) {
                     teamTotalsBonus = bonusH;
                     bestTeamMarket = 'home_total';
+                    bestTeamDirection = dirH; // === ÚJ: Megjegyezzük az irányt! ===
                 } else {
                     teamTotalsBonus = bonusA;
                     bestTeamMarket = 'away_total';
+                    bestTeamDirection = dirA; // === ÚJ: Megjegyezzük az irányt! ===
                 }
             }
         }
         
-        // --- HENDIKEP VADÁSZAT (v110.0 - ÚJ!) ---
-        // Ha a gólkülönbség nagy (simDiff), akkor a Hendikep (Spread) lehet a legjobb piac.
+        // --- HENDIKEP VADÁSZAT ---
         let handicapBonus = -99;
+        let handicapDirection = 'neutral';
         const simDiff = mu_h - mu_a;
         
-        // Ha nagy a favorit (pl. 2+ gól előny), akkor a -1.5 hendikepnek magas a bizalma
         if (Math.abs(simDiff) > 1.8 && sport === 'hockey') { 
-            handicapBonus = 5.0; // Maximális bónusz
+            handicapBonus = 5.0; 
             console.log(`[Model.ts v110.0] VADÁSZ: Erős hendikep lehetőség észlelve (Diff: ${simDiff.toFixed(2)}).`);
+            handicapDirection = simDiff > 0 ? 'home_spread' : 'away_spread';
         }
         
-        // Döntés: Melyik a legerősebb?
+        // Döntés
         const maxBonus = Math.max(mainMarketBonus, teamTotalsBonus, handicapBonus);
         
         if (maxBonus === handicapBonus && handicapBonus > 0) {
             totalsScore += handicapBonus;
-            recommendedMarket = 'spread'; // Jelezzük az AI-nak, hogy a Hendikep a nyerő!
+            recommendedMarket = 'spread'; 
+            recommendedDirection = handicapDirection;
         } else if (maxBonus === teamTotalsBonus && teamTotalsBonus > -90) {
              totalsScore += teamTotalsBonus;
              recommendedMarket = bestTeamMarket; 
+             recommendedDirection = bestTeamDirection; // === ÚJ: Átadjuk az irányt ===
         } else {
              totalsScore += mainMarketBonus;
+             recommendedDirection = mainMarketDirection;
              if (winnerScore > totalsScore + 1.5) {
                  recommendedMarket = 'h2h';
+                 recommendedDirection = mu_h > mu_a ? 'home_win' : 'away_win';
              } else {
                  recommendedMarket = 'totals';
              }
@@ -389,19 +406,19 @@ export function calculateConfidenceScores(
 
         const finalWinnerScore = Math.max(MIN_SCORE, Math.min(MAX_SCORE, winnerScore));
         const finalTotalsScore = Math.max(MIN_SCORE, Math.min(MAX_SCORE, totalsScore));
-        
         const finalOverallScore = (finalWinnerScore * 0.6) + (finalTotalsScore * 0.4);
 
         return {
             winner: finalWinnerScore,
             totals: finalTotalsScore,
             overall: finalOverallScore,
-            recommended_market: recommendedMarket
+            recommended_market: recommendedMarket,
+            recommended_direction: recommendedDirection // === ÚJ KINET: Ezt küldjük az AI-nak! ===
         };
 
     } catch(e: any) {
         console.error(`Hiba bizalom számításakor (${home} vs ${away}): ${e.message}`, e.stack);
-        return { winner: 4.0, totals: 4.0, overall: 4.0, recommended_market: 'totals' };
+        return { winner: 4.0, totals: 4.0, overall: 4.0, recommended_market: 'totals', recommended_direction: 'neutral' };
     }
 }
 
@@ -411,7 +428,7 @@ function _getImpliedProbability(price: number): number {
     return (1 / price) * 100;
 }
 
-// === 4. ÜGYNÖK (B) RÉSZE: Érték (Value) Kiszámítása (MÓDOSÍTVA v110.0: Handicap Support) ===
+// === 4. ÜGYNÖK (B) RÉSZE: Érték (Value) Kiszámítása (Változatlan v110.0) ===
 export function calculateValue(
     sim: any, 
     oddsData: ICanonicalOdds | null, 
@@ -539,12 +556,10 @@ export function calculateValue(
     evaluateTeamTotal('home_total', homeTeam, true);
     evaluateTeamTotal('away_total', awayTeam, false);
     
-    // === 5. HENDIKEP (SPREAD/PUCK LINE) (v110.0 - ÚJ!) ===
+    // === 5. HENDIKEP (SPREAD/PUCK LINE) (v110.0) ===
     const spreadMarket = oddsData.allMarkets.find(m => m.key === 'spread');
     if (spreadMarket && spreadMarket.outcomes) {
         spreadMarket.outcomes.forEach(outcome => {
-            // line: pl. -1.5 (Home -1.5), vagy +1.5 (Home +1.5)
-            // Ha a névben "Home", akkor Home hendikep. Ha "Away", akkor Away.
             let line = outcome.point;
              if (line === undefined || line === null) {
                 const match = outcome.name.match(/([+-]?\d+(\.\d+)?)/);
@@ -555,19 +570,7 @@ export function calculateValue(
             const isHome = outcome.name.toLowerCase().includes('home') || outcome.name.toLowerCase().includes(homeTeam.toLowerCase());
             
             let simProb = 0;
-            // Számítás: HomeScore + Line > AwayScore  (pl. 3 + (-1.5) > 1 -> 1.5 > 1 -> WIN)
             simProb = calculateProbabilityFromScores(sim.scores, safeTotalSims, (h, a) => {
-                 // OT gólokat is figyelembe vesszük jégkorongnál
-                 let homeS = h;
-                 let awayS = a;
-                 if (sport === 'hockey' && h === a) {
-                     // Draw esetén szimulálunk egy győztest (50-50 alapvetően, de itt egyszerűsítünk: egyik nyer)
-                     // A hendikepnél a döntetlen (OT) általában 1 gólos különbséget jelent
-                     // De a pontos hendikephez ez bonyolultabb. Maradjunk a rendes játékidő + line-nál, 
-                     // vagy fogadjuk el, hogy a Puck Line tartalmazza az OT-t is.
-                     // Egyszerűsítés: A szimulációban a draw draw marad, a hendikep dönt róla.
-                 }
-                 
                  if (isHome) {
                      return (h + line) > a;
                  } else {
