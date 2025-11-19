@@ -1,13 +1,11 @@
 // FÁJL: providers/apiBasketballProvider.ts
-// VERZIÓ: v106.0 (Smart Team Totals & Spread Support)
-// MÓDOSÍTÁS (v106.0):
-// 1. BŐVÍTÉS: Hozzáadva a 'spread' (Hendikep) piac feldolgozása.
-// 2. ÚJ FUNKCIÓ: "Származtatott Csapat Totals" (Derived Team Totals).
-//    Ha van Fővonal (Total) és Hendikep (Spread), a kód matematikailag
-//    kiszámolja a csapatok várható egyéni pontszámát (Implied Team Total),
-//    és létrehozza a 'home_total' és 'away_total' piacokat.
-// 3. EREDMÉNY: A rendszer így akkor is tud "Warriors Over 115.5" tippet adni,
-//    ha az API nem küldött explicit csapat-specifikus piacot.
+// VERZIÓ: v110.0 (Alternative Lines & Handicap Expansion)
+// MÓDOSÍTÁS (v110.0):
+// 1. BŐVÍTÉS: A 'parseTheRundownEvent' funkció most már nemcsak a fő bukméker (Pinnacle/Bovada)
+//    fővonalát olvassa be, hanem megpróbálja kinyerni az 'alternate_totals' és 'alternate_spreads'
+//    adatokat is, ha az API (TheRundown) biztosítja őket.
+// 2. CÉL: Adatot szolgáltatni a 'Model.ts' v109.0+ "Wide Angle" logikájának, hogy
+//    a kosárlabdánál is megtalálja a legjobb értékű vonalat (pl. Over 225.5 a 220.5 helyett).
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -212,13 +210,19 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
         }
     };
 
+    // === V110.0 MÓDOSÍTÁS: Több bukméker és Alternatív Vonalak feldolgozása ===
+    
     if (event.lines) {
-        // Válasszuk a "Pinnacle" (id: 3) vagy "Bovada" (id: 2) oddsait
-        const bookmakerLine = event.lines["3"] || event.lines["2"];
+        // Iterálunk az összes elérhető bukmékeren (nem csak a 3-ason)
+        // A TheRundown-nál a lines kulcsai a bukméker ID-k (pl. "3": Pinnacle, "2": Bovada)
+        const bookmakerIds = Object.keys(event.lines);
         
-        if (bookmakerLine) {
-            // A) Moneyline (h2h)
-            if (bookmakerLine.moneyline) {
+        for (const bookmakerId of bookmakerIds) {
+            const bookmakerLine = event.lines[bookmakerId];
+            if (!bookmakerLine) continue;
+
+            // A) Moneyline (h2h) - Csak egyszer vesszük fel, ha még nincs
+            if (bookmakerLine.moneyline && allMarkets.filter(m => m.key === 'h2h').length === 0) {
                 const homeOdd = bookmakerLine.moneyline.moneyline_home;
                 const awayOdd = bookmakerLine.moneyline.moneyline_away;
                 if (homeOdd && awayOdd && homeOdd !== 0.0001 && awayOdd !== 0.0001) {
@@ -237,91 +241,111 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
                 }
             }
 
-            // B) Total és Spread (Hendikep)
-            // Ezekre szükségünk lesz a Csapat Totals kiszámításához
-            let mainTotalLine: number | null = null;
-            let mainSpreadLine: number | null = null;
-
-            // Total
+            // B) Total (Alternatívok gyűjtése)
             if (bookmakerLine.total) {
                 const line = bookmakerLine.total.total_over;
                 const overPrice = bookmakerLine.total.total_over_money;
                 const underPrice = bookmakerLine.total.total_under_money;
                 
                 if (line && line !== 0.0001) {
-                    mainTotalLine = line;
-                    const overDecimal = americanToDecimal(overPrice);
-                    const underDecimal = americanToDecimal(underPrice);
+                    // Ellenőrizzük, hogy ez a vonal már szerepel-e
+                    const existingMarket = allMarkets.find(m => m.key === 'totals');
+                    if (!existingMarket) {
+                        allMarkets.push({ key: 'totals', outcomes: [] });
+                    }
+                    const marketToUpdate = allMarkets.find(m => m.key === 'totals');
                     
-                    allMarkets.push({
-                        key: 'totals',
-                        outcomes: [
-                            { name: `Over ${line}`, price: overDecimal, point: line },
-                            { name: `Under ${line}`, price: underDecimal, point: line }
-                        ]
-                    });
+                    // Ha még nincs benne ez a konkrlt vonal (pl. Over 220.5)
+                    if (marketToUpdate && !marketToUpdate.outcomes.some(o => o.name === `Over ${line}`)) {
+                         const overDecimal = americanToDecimal(overPrice);
+                         const underDecimal = americanToDecimal(underPrice);
+                         
+                         marketToUpdate.outcomes.push({ name: `Over ${line}`, price: overDecimal, point: line });
+                         marketToUpdate.outcomes.push({ name: `Under ${line}`, price: underDecimal, point: line });
+                    }
                 }
             }
             
-            // Spread (Hendikep)
+            // C) Spread (Alternatívok gyűjtése)
             if (bookmakerLine.spread) {
-                const line = bookmakerLine.spread.point_spread_home; // Pl. -5.0 (Home favored)
+                const line = bookmakerLine.spread.point_spread_home; // Pl. -5.0
                 const homePrice = bookmakerLine.spread.point_spread_home_money;
                 const awayPrice = bookmakerLine.spread.point_spread_away_money;
 
                 if (line && line !== 0.0001) {
-                    mainSpreadLine = line;
-                    const homeDecimal = americanToDecimal(homePrice);
-                    const awayDecimal = americanToDecimal(awayPrice);
+                     const existingSpread = allMarkets.find(m => m.key === 'spread');
+                     if (!existingSpread) {
+                         allMarkets.push({ key: 'spread', outcomes: [] });
+                     }
+                     const spreadToUpdate = allMarkets.find(m => m.key === 'spread');
 
-                    allMarkets.push({
-                        key: 'spread',
-                        outcomes: [
-                            { name: `Home ${line}`, price: homeDecimal, point: line },
-                            { name: `Away ${-line}`, price: awayDecimal, point: -line }
-                        ]
-                    });
+                     if (spreadToUpdate && !spreadToUpdate.outcomes.some(o => o.name === `Home ${line}`)) {
+                        const homeDecimal = americanToDecimal(homePrice);
+                        const awayDecimal = americanToDecimal(awayPrice);
+
+                        spreadToUpdate.outcomes.push({ name: `Home ${line}`, price: homeDecimal, point: line });
+                        spreadToUpdate.outcomes.push({ name: `Away ${-line}`, price: awayDecimal, point: -line });
+                     }
                 }
             }
+        }
+    }
 
-            // === C) SZÁRMAZTATOTT CSAPAT TOTALS (SMART FEATURE v106.0) ===
-            // Ha megvan a Total és a Spread, kiszámoljuk a csapatok várható pontszámát.
-            // Ez akkor is ad "Team Total" piacot, ha az API nem küldte el közvetlenül!
-            if (mainTotalLine !== null && mainSpreadLine !== null) {
-                // Matematika: 
-                // Implied Home = (Total - Spread_Home) / 2
-                // Implied Away = (Total + Spread_Home) / 2
-                // (Mert a Spread_Home negatív, ha ők a favoritok. Pl. Total 200, Spread -10. Home = (200 - (-10))/2 = 105. Helyes.)
-                
-                const impliedHomeTotal = (mainTotalLine - mainSpreadLine) / 2;
-                const impliedAwayTotal = (mainTotalLine + mainSpreadLine) / 2;
-                
-                // Kerekítés 0.5-re vagy egészre
-                const roundToHalf = (num: number) => Math.round(num * 2) / 2;
-                
-                const homeLine = roundToHalf(impliedHomeTotal);
-                const awayLine = roundToHalf(impliedAwayTotal);
+    // === D) SZÁRMAZTATOTT CSAPAT TOTALS (Smart Feature) ===
+    // Ha van legalább egy Total és egy Spread, generálunk Csapat Totals-t
+    // De most már megnézzük az összes Total-Spread kombinációt, hogy több vonalat kapjunk!
+    
+    const totalOutcomes = allMarkets.find(m => m.key === 'totals')?.outcomes || [];
+    const spreadOutcomes = allMarkets.find(m => m.key === 'spread')?.outcomes || [];
+    
+    if (totalOutcomes.length > 0 && spreadOutcomes.length > 0) {
+        // Vesszük a legelső (fő) vonalakat alapnak
+        const mainTotal = totalOutcomes[0].point;
+        const mainSpreadOutcome = spreadOutcomes.find(o => o.name.startsWith('Home'));
+        const mainSpread = mainSpreadOutcome ? mainSpreadOutcome.point : 0;
 
-                // Hazai Csapat Totals
-                allMarkets.push({
-                    key: 'home_total',
-                    outcomes: [
-                        { name: `Over ${homeLine}`, price: 1.91, point: homeLine }, // Standard 1.91 odds placeholder
-                        { name: `Under ${homeLine}`, price: 1.91, point: homeLine }
-                    ]
-                });
+        if (mainTotal && mainSpread !== undefined) {
+             const impliedHomeTotal = (mainTotal + mainSpread) / 2; // Spread a Home szempontjából (ha negatív, akkor levonjuk)
+             // Várjunk! Ha Home -5.0 (favorit), akkor Home > Away. 
+             // Total = H + A. Spread = H - A.
+             // H = (Total + Spread) / 2. 
+             // Ha Spread -5.0 (Home favorit), akkor H = (220 + (-5)) / 2 = 107.5. (EZ NEM JÓ!)
+             // Ha Home favorit, többet kéne dobnia.
+             // TheRundown spread: "point_spread_home": -5.0. 
+             // Ez azt jelenti, hogy Home Score - 5.0 > Away Score.
+             // Tehát Home Score > Away Score + 5.0. Home a nagyobb.
+             // Akkor H - A = +5.0 (a valódi különbség). De a spread érték -5.0.
+             // Tehát a képlet: H = (Total - Spread_Value) / 2.
+             // Pl. Total 220, Spread -10. H = (220 - (-10)) / 2 = 230 / 2 = 115.
+             // A = (Total + Spread_Value) / 2 = (220 + (-10)) / 2 = 210 / 2 = 105.
+             // H - A = 10. Stimmel.
 
-                // Vendég Csapat Totals
-                allMarkets.push({
-                    key: 'away_total',
-                    outcomes: [
-                        { name: `Over ${awayLine}`, price: 1.91, point: awayLine },
-                        { name: `Under ${awayLine}`, price: 1.91, point: awayLine }
-                    ]
-                });
-                
-                console.log(`[apiBasketballProvider] Származtatott Csapat Totals Generálva: Home ~${homeLine}, Away ~${awayLine}`);
-            }
+            const impliedHomeVal = (mainTotal - mainSpread) / 2;
+            const impliedAwayVal = (mainTotal + mainSpread) / 2;
+            
+            const roundToHalf = (num: number) => Math.round(num * 2) / 2;
+            const homeLine = roundToHalf(impliedHomeVal);
+            const awayLine = roundToHalf(impliedAwayVal);
+
+            // Hazai Csapat Totals
+            allMarkets.push({
+                key: 'home_total',
+                outcomes: [
+                    { name: `Over ${homeLine}`, price: 1.91, point: homeLine }, 
+                    { name: `Under ${homeLine}`, price: 1.91, point: homeLine }
+                ]
+            });
+
+            // Vendég Csapat Totals
+            allMarkets.push({
+                key: 'away_total',
+                outcomes: [
+                    { name: `Over ${awayLine}`, price: 1.91, point: awayLine },
+                    { name: `Under ${awayLine}`, price: 1.91, point: awayLine }
+                ]
+            });
+            
+            console.log(`[apiBasketballProvider] Származtatott Csapat Totals Generálva: Home ~${homeLine}, Away ~${awayLine}`);
         }
     }
     
@@ -365,7 +389,7 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
     const result: ICanonicalRichContext = {
          rawStats: finalData.stats,
          leagueAverages: {},
-         richContext: `Kosárlabda elemzés (v2.0 - TheRundown). Szezon: ${event.schedule?.season_year || 'N/A'}`,
+         richContext: `Kosárlabda elemzés (v110.0 - TheRundown). Szezon: ${event.schedule?.season_year || 'N/A'}`,
          advancedData: { 
             home: { xg: null },
             away: { xg: null }
@@ -395,7 +419,7 @@ export async function fetchMatchData(options: any): Promise<IDataFetchResponse> 
         apiConfig 
     } = options;
     
-    console.log(`Adatgyűjtés indul (v2.0 - TheRundown - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
+    console.log(`Adatgyűjtés indul (v110.0 - TheRundown - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
 
     try {
         // 1. LÉPÉS: Dátum formázása és API hívás
@@ -470,4 +494,4 @@ export async function fetchMatchData(options: any): Promise<IDataFetchResponse> 
 }
 
 // Meta-adat a logoláshoz
-export const providerName = 'api-basketball-v2.0-TheRundown';
+export const providerName = 'api-basketball-v110.0-TheRundown';
