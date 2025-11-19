@@ -1,13 +1,13 @@
 // FÁJL: Model.ts
-// VERZIÓ: v106.1 (Hockey Threshold Correction)
-// MÓDOSÍTÁS (v106.1):
-// 1. FINOMHANGOLÁS: A 'calculateConfidenceScores' függvényben a Jégkorong (hockey)
-//    'totalsThresholdHigh' értékét 0.6-ról 1.0-ra, a 'totalsThresholdLow' értékét
-//    0.2-ről 0.5-re emeltem.
-// 2. OK: A korábbi 0.6-os eltérés túl agresszíven adott maximális (+4.0) bizalmat
-//    a jégkorong totals piacokon, ami fals magas bizalmat eredményezett szoros meccseken (pl. 5-2).
-// 3. CÉL: A rendszer csak akkor adjon "Bombabiztos" (High Confidence) jelzést jégkorong
-//    gólokra, ha az eltérés legalább 1.0 gól a Vegas-i vonalhoz képest.
+// VERZIÓ: v107.0 (Multi-Market Confidence & Hockey Hunt)
+// MÓDOSÍTÁS (v107.0):
+// 1. ÚJ LOGIKA: A 'calculateConfidenceScores' most már nem csak a Fő Piacot (Totals)
+//    nézi, hanem megvizsgálja a Csapat Totals (Home/Away) piacokat is.
+// 2. VADÁSZ ÜZEMMÓD: Ha a Csapat Totals piacokon nagyobb az eltérés (Value),
+//    mint a Fő Piacon, akkor a rendszer a 'totals' bizalmi pontszámot
+//    felhúzza a legjobb részpiac szintjére.
+// 3. CÉL: Ha a meccs Totals (pl. Under 6) necces, de az egyik csapat gólja
+//    (pl. Flames Over 2.5) "Tökéletes", akkor a rendszer azt a magas bizalmat adja vissza.
 
 import { SPORT_CONFIG } from './config.js';
 import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
@@ -24,7 +24,7 @@ import type { ISportStrategy, XGOptions, AdvancedMetricsOptions } from './strate
 
 /**************************************************************
 * Model.ts - Statisztikai Modellező Modul (Node.js Verzió)
-* VÁLTOZÁS (v106.1): Hockey Threshold Correction.
+* VÁLTOZÁS (v107.0): Multi-Market Confidence & Hockey Hunt.
 **************************************************************/
 
 // --- Segédfüggvények (Poisson és Normális eloszlás mintavétel) ---
@@ -254,7 +254,7 @@ export function simulateMatchProgress(
 }
 
 
-// === MÓDOSÍTVA v106.1: calculateConfidenceScores (Hockey Fix) ===
+// === MÓDOSÍTVA v107.0: calculateConfidenceScores (Hockey Multi-Market) ===
 export function calculateConfidenceScores(
     sport: string, 
     home: string, 
@@ -339,23 +339,59 @@ export function calculateConfidenceScores(
             }
         }
         
-        // --- B. PONTOK (TOTALS) PIACOK BIZALMA ---
+        // --- B. PONTOK (TOTALS) PIACOK BIZALMA (FŐPIAC) ---
         const modelTotal = mu_h + mu_a;
         const marketTotal = mainTotalsLine;
         const totalsDiff = Math.abs(modelTotal - marketTotal);
         
-        // === MÓDOSÍTÁS (v106.1): Hockey Thresholds Szigorítása ===
-        // Régi: hockey high=0.6, low=0.2 (Túl agresszív)
-        // Új:   hockey high=1.0, low=0.5 (Kiegyensúlyozottabb)
-        // Magyarázat: Jégkorongban 0.6 gól eltérés még nem indokol +4.0 bizalmat.
-        // 1.0 gól eltérés már igen.
-        const totalsThresholdHigh = sport === 'basketball' ? 5 : sport === 'hockey' ? 1.0 : 0.4;
-        const totalsThresholdLow = sport === 'basketball' ? 2 : sport === 'hockey' ? 0.5 : 0.1;
-        // === MÓDOSÍTÁS VÉGE ===
+        const totalsThresholdHigh = sport === 'basketball' ? 5 : sport === 'hockey' ? 0.9 : 0.4; // v106.1-hez képest kicsit finomítva
+        const totalsThresholdLow = sport === 'basketball' ? 2 : sport === 'hockey' ? 0.4 : 0.1;
         
-        if (totalsDiff > totalsThresholdHigh) totalsScore += 4.0;
-        else if (totalsDiff > totalsThresholdHigh * 0.6) totalsScore += 2.5;
-        if (totalsDiff < totalsThresholdLow) totalsScore -= 2.0;
+        let mainMarketBonus = 0;
+        if (totalsDiff > totalsThresholdHigh) mainMarketBonus += 4.0;
+        else if (totalsDiff > totalsThresholdHigh * 0.6) mainMarketBonus += 2.5;
+        if (totalsDiff < totalsThresholdLow) mainMarketBonus -= 2.0;
+        
+        // === ÚJ (v107.0): CSAPAT TOTALS VADÁSZAT (HOCKEY/BASKETBALL) ===
+        // Ha a fő piac bizonytalan (kicsi az eltérés), megvizsgáljuk a részpiacokat.
+        let teamTotalsBonus = -99; // Alapértelmezett: nem találtunk jobbat
+
+        if (sport === 'hockey' || sport === 'basketball') {
+            // Becsült "piaci" vonalak a csapatokra (általában a Total fele)
+            // Ezt pontosíthatnánk, ha az API visszaadná a Team Total vonalat, 
+            // de most becsüljük a Main Line / 2 alapján.
+            const impliedLineH = mainTotalsLine / 2;
+            const impliedLineA = mainTotalsLine / 2;
+            
+            const diffH = Math.abs(mu_h - impliedLineH);
+            const diffA = Math.abs(mu_a - impliedLineA);
+            
+            // Keresünk "Kiugró" értéket a csapatoknál
+            const teamThreshold = totalsThresholdHigh * 0.8; // Kicsit alacsonyabb küszöb, mert a csapatgól kevesebb
+            
+            let bestTeamBonus = 0;
+            if (diffH > teamThreshold) bestTeamBonus = 4.5; // Magasabb mint a Fő Piac bónusza!
+            else if (diffH > teamThreshold * 0.6) bestTeamBonus = 3.0;
+            
+            if (diffA > teamThreshold) bestTeamBonus = Math.max(bestTeamBonus, 4.5);
+            else if (diffA > teamThreshold * 0.6) bestTeamBonus = Math.max(bestTeamBonus, 3.0);
+            
+            if (bestTeamBonus > 0) {
+                console.log(`[Model.ts v107.0] CSAPAT TOTALS VADÁSZAT: Találat! Jobb lehetőség a csapatoknál. (Bonus: ${bestTeamBonus})`);
+                teamTotalsBonus = bestTeamBonus;
+            }
+        }
+        
+        // A 'totalsScore' a JOBBIK érték lesz: vagy a Fő Piac, vagy a legjobb Csapat Piac
+        const bestMarketBonus = Math.max(mainMarketBonus, teamTotalsBonus > -90 ? teamTotalsBonus : -99);
+        
+        // Ha a Csapat Totals jobb volt, akkor azt használjuk, és nem vonunk le büntetést a fő piac bizonytalansága miatt
+        if (teamTotalsBonus > mainMarketBonus) {
+             totalsScore += teamTotalsBonus;
+        } else {
+             totalsScore += mainMarketBonus;
+        }
+        // === VÉGE (v107.0) ===
         
         winnerScore = winnerScore + generalBonus - generalPenalty;
         totalsScore = totalsScore + generalBonus - generalPenalty;
@@ -363,6 +399,7 @@ export function calculateConfidenceScores(
         const finalWinnerScore = Math.max(MIN_SCORE, Math.min(MAX_SCORE, winnerScore));
         const finalTotalsScore = Math.max(MIN_SCORE, Math.min(MAX_SCORE, totalsScore));
         
+        // Ha a Totals (bármelyik) nagyon erős, az húzza fel az átlagot is
         const finalOverallScore = (finalWinnerScore * 0.6) + (finalTotalsScore * 0.4);
 
         return {
