@@ -1,13 +1,13 @@
 // FÁJL: Model.ts
-// VERZIÓ: v106.0 (Team Totals Value Calculation)
-// MÓDOSÍTÁS (v106.0):
-// 1. ÚJ FUNKCIÓ: 'calculateProbabilityFromScores'. Ez egy segédfüggvény,
-//    ami a szimulációs eredményekből (scores map) kiszámolja egy adott
-//    feltétel (pl. Hazai > 2.5) valószínűségét.
-// 2. BŐVÍTÉS: A 'calculateValue' funkció most már feldolgozza a
-//    'home_total' és 'away_total' piacokat is.
-// 3. EREDMÉNY: A rendszer képes 'Value Bet'-et találni a csapat-specifikus
-//    Over/Under piacokon is (pl. "Warriors Over 115.5").
+// VERZIÓ: v106.1 (Hockey Threshold Correction)
+// MÓDOSÍTÁS (v106.1):
+// 1. FINOMHANGOLÁS: A 'calculateConfidenceScores' függvényben a Jégkorong (hockey)
+//    'totalsThresholdHigh' értékét 0.6-ról 1.0-ra, a 'totalsThresholdLow' értékét
+//    0.2-ről 0.5-re emeltem.
+// 2. OK: A korábbi 0.6-os eltérés túl agresszíven adott maximális (+4.0) bizalmat
+//    a jégkorong totals piacokon, ami fals magas bizalmat eredményezett szoros meccseken (pl. 5-2).
+// 3. CÉL: A rendszer csak akkor adjon "Bombabiztos" (High Confidence) jelzést jégkorong
+//    gólokra, ha az eltérés legalább 1.0 gól a Vegas-i vonalhoz képest.
 
 import { SPORT_CONFIG } from './config.js';
 import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
@@ -24,7 +24,7 @@ import type { ISportStrategy, XGOptions, AdvancedMetricsOptions } from './strate
 
 /**************************************************************
 * Model.ts - Statisztikai Modellező Modul (Node.js Verzió)
-* VÁLTOZÁS (v106.0): Team Totals Value Calculation.
+* VÁLTOZÁS (v106.1): Hockey Threshold Correction.
 **************************************************************/
 
 // --- Segédfüggvények (Poisson és Normális eloszlás mintavétel) ---
@@ -254,7 +254,7 @@ export function simulateMatchProgress(
 }
 
 
-// === MÓDOSÍTVA v105.1: calculateConfidenceScores ===
+// === MÓDOSÍTVA v106.1: calculateConfidenceScores (Hockey Fix) ===
 export function calculateConfidenceScores(
     sport: string, 
     home: string, 
@@ -344,9 +344,14 @@ export function calculateConfidenceScores(
         const marketTotal = mainTotalsLine;
         const totalsDiff = Math.abs(modelTotal - marketTotal);
         
-        // (v105.1 Bátrabb küszöbök)
-        const totalsThresholdHigh = sport === 'basketball' ? 5 : sport === 'hockey' ? 0.6 : 0.4;
-        const totalsThresholdLow = sport === 'basketball' ? 2 : sport === 'hockey' ? 0.2 : 0.1;
+        // === MÓDOSÍTÁS (v106.1): Hockey Thresholds Szigorítása ===
+        // Régi: hockey high=0.6, low=0.2 (Túl agresszív)
+        // Új:   hockey high=1.0, low=0.5 (Kiegyensúlyozottabb)
+        // Magyarázat: Jégkorongban 0.6 gól eltérés még nem indokol +4.0 bizalmat.
+        // 1.0 gól eltérés már igen.
+        const totalsThresholdHigh = sport === 'basketball' ? 5 : sport === 'hockey' ? 1.0 : 0.4;
+        const totalsThresholdLow = sport === 'basketball' ? 2 : sport === 'hockey' ? 0.5 : 0.1;
+        // === MÓDOSÍTÁS VÉGE ===
         
         if (totalsDiff > totalsThresholdHigh) totalsScore += 4.0;
         else if (totalsDiff > totalsThresholdHigh * 0.6) totalsScore += 2.5;
