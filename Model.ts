@@ -210,6 +210,7 @@ export function simulateMatchProgress(
         }
     }
     
+    // Moneyline (Winner incl. OT) korrekció Jégkorongnál
     if (sport === 'hockey' && draw > 0) {
         const homeOTWinPct = 0.55; 
         const awayOTWinPct = 0.45;
@@ -290,6 +291,7 @@ export function calculateConfidenceScores(
         let generalBonus = 0;
         let generalPenalty = 0;
         
+        // H2H és egyéb bónuszok (Változatlan)
         if (rawData?.h2h_structured && rawData.h2h_structured.length > 0) {
             try {
                  const latestH2HDate = new Date(rawData.h2h_structured[0].date);
@@ -326,6 +328,7 @@ export function calculateConfidenceScores(
         if (xgDiff < thresholdLow) winnerScore -= 2.0;
         else if (xgDiff < thresholdLow * 1.5) winnerScore -= 1.0;
 
+        // Formakorrekció (Változatlan)
         const getFormPointsPerc = (formString: string | null | undefined): number | null => {
              if (!formString || typeof formString !== 'string' || formString === "N/A") return null;
             const wins = (formString.match(/W/g) || []).length;
