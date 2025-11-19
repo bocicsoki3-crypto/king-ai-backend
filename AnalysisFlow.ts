@@ -1,14 +1,11 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v105.0 ("Intelligens Bizalom Refaktor")
-// MÓDOSÍTÁS (v105.0):
-// 1. REFaktor: A 'calculateModelConfidence' hívás cserélve 'calculateConfidenceScores'-ra.
-// 2. MÓDOSÍTVA: A rendszer már nem egy 'modelConfidence' (Number) számot kezel,
-//    hanem egy 'confidenceScores' (Object) objektumot, ami tartalmazza a
-//    szétválasztott 'winner' és 'totals' bizalmi pontszámokat.
-// 3. MÓDOSÍTVA: A 'sim' objektum mostantól mindkét pontszámot megkapja.
-// 4. MÓDOSÍTVA: A 'runStep_FinalAnalysis' (Hibrid Főnök) megkapja a teljes
-//    'confidenceScores' objektumot, hogy az AI ágensek már
-//    piac-specifikus bizalommal dolgozhassanak.
+// VERZIÓ: v106.0 ("Market Aware" Update)
+// MÓDOSÍTÁS (v106.0):
+// 1. BŐVÍTÉS: A 'calculateConfidenceScores' hívás eredményét (ami már tartalmazza
+//    a 'recommended_market' stringet is) teljes egészében átadjuk a
+//    'runStep_FinalAnalysis' (Hibrid Főnök) függvénynek.
+// 2. TÍPUS FRISSÍTÉS: A 'confidenceScores' típus kiegészítve az opcionális
+//    'recommended_market' mezővel.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -33,7 +30,7 @@ import {
     estimatePureXG,           // (1. Ügynök - Quant)
     estimateAdvancedMetrics,
     simulateMatchProgress,    // (4. Ügynök - Szimulátor)
-    calculateConfidenceScores, // === MÓDOSÍTVA v105.0 ===
+    calculateConfidenceScores, 
     calculateValue,
     analyzeLineMovement
 } from './Model.js';
@@ -56,7 +53,7 @@ import type { ISportStrategy } from './strategies/ISportStrategy.js';
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 /**************************************************************
 * AnalysisFlow.ts - Fő Elemzési Munkafolyamat (TypeScript)
-* VÁLTOZÁS (v105.0): Intelligens Bizalom Refaktor.
+* VÁLTOZÁS (v106.0): Market Aware Update.
 **************************************************************/
 
 // Az új, strukturált JSON válasz
@@ -83,11 +80,12 @@ interface IAnalysisResponse {
         };
         oddsData: ICanonicalOdds | null;
         valueBets: any[];
-        // === MÓDOSÍTVA v105.0: Objektummá alakítva ===
+        // === MÓDOSÍTVA v106.0: recommended_market hozzáadva ===
         confidenceScores: {
             winner: number;
             totals: number;
             overall: number;
+            recommended_market?: string; // Opcionális, mert nem biztos, hogy minden verzió visszaadja
         };
         // ===========================================
         finalConfidenceScore: number; 
@@ -153,8 +151,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
         
-        // v105.0 Cache kulcs (a refaktorálás miatt)
-        analysisCacheKey = `analysis_v105.0_smartconf_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
+        analysisCacheKey = `analysis_v106.0_marketaware_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
         
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
@@ -169,11 +166,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         }
 
         // --- 1. Alapkonfiguráció ---
-        
-        // === ÚJ (v104.0): Stratégia objektum létrehozása ===
         console.log(`[Lánc 0/6] Stratégia Gyár: Elemzési stratégia kiválasztása a '${sport}' sportághoz...`);
         const sportStrategy: ISportStrategy = getSportStrategy(sport);
-        // === VÉGE ===
 
         const sportConfig = SPORT_CONFIG[sport];
         if (!sportConfig) {
@@ -207,7 +201,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             xgSource,
             availableRosters
         }: IDataFetchResponse = await getRichContextualData(dataFetchOptions);
-        // === Scout Végzett ===
         
         console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
         if (rawData && rawData.apiFootballData && rawData.apiFootballData.fixtureId) {
@@ -255,7 +248,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
 
         // === 1. ÜGYNÖK (QUANT): "Tiszta xG" számítása ===
         console.log(`[Lánc 1/6] Quant Ügynök: Tiszta xG számítása...`);
-        // === MÓDOSÍTÁS (v104.0): A 'sportStrategy' objektum átadása ===
         const { pure_mu_h, pure_mu_a, source: quantSource } = estimatePureXG(
             home, 
             away, 
@@ -264,9 +256,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             form, 
             leagueAverages, 
             advancedData,
-            sportStrategy // Az új stratégia objektum
+            sportStrategy 
         );
-        // === MÓDOSÍTÁS VÉGE ===
         console.log(`Quant (Tiszta xG) [${quantSource}]: H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)}`);
         
         // === 3. ÜGYNÖK (SPECIALISTA) ===
@@ -296,30 +287,26 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
 
         // === 4. ÜGYNÖK (SZIMULÁTOR): Meccs szimulálása ===
         console.log(`[Lánc 4/6] Szimulátor Ügynök: 25000 szimuláció futtatása...`);
-        // === MÓDOSÍTÁS (v104.0): A 'sportStrategy' objektum átadása ===
         const { mu_corners, mu_cards } = estimateAdvancedMetrics(
             rawData, 
             sport, 
             leagueAverages,
-            sportStrategy // Az új stratégia objektum
+            sportStrategy 
         );
-        // === MÓDOSÍTÁS VÉGE ===
         
-        // === MÓDOSÍTÁS v105.0: Intelligens Bizalom ===
-        // A 'calculateModelConfidence' hívás cserélve 'calculateConfidenceScores'-ra.
-        // Ez már egy objektumot ad vissza: { winner, totals, overall }
+        // === MÓDOSÍTÁS v106.0: Market Signal Fogadása ===
         const confidenceScores = calculateConfidenceScores(
             sport, 
             home, 
             away, 
             rawData, 
             form, 
-            mu_h, // A súlyozott xG-t használjuk (v105.0)
-            mu_a, // A súlyozott xG-t használjuk (v105.0)
+            mu_h, 
+            mu_a, 
             mainTotalsLine,
             marketIntel
         );
-        console.log(`Szimulátor (Bizalom v105.0): Győztes=${confidenceScores.winner.toFixed(1)}, Pontok=${confidenceScores.totals.toFixed(1)}, Átlag=${confidenceScores.overall.toFixed(1)}`);
+        console.log(`Szimulátor (Bizalom v107.0): Győztes=${confidenceScores.winner.toFixed(1)}, Pontok=${confidenceScores.totals.toFixed(1)}, Átlag=${confidenceScores.overall.toFixed(1)} | AJÁNLOTT PIAC: ${confidenceScores.recommended_market || 'N/A'}`);
         // === MÓDOSÍTÁS VÉGE ===
 
         const sim = simulateMatchProgress(
@@ -327,7 +314,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData
         );
         
-        // A 'sim' objektum mostantól a szétválasztott bizalmat tárolja
         sim.stat_confidence_winner = confidenceScores.winner; 
         sim.stat_confidence_totals = confidenceScores.totals;
         sim.stat_confidence_overall = confidenceScores.overall;
@@ -346,26 +332,26 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         interface FinalAnalysisInput {
             matchData: { home: string; away: string; sport: string; leagueName: string; };
             rawDataJson: ICanonicalRawData; 
-            specialistReport: any; // Agent 3
-            simulatorReport: any;  // Agent 4 (Sim)
-            psyReport: any;        // Agent 2.5
+            specialistReport: any; 
+            simulatorReport: any;  
+            psyReport: any;        
             valueBetsJson: any[];
             richContext: string;
             sportStrategy: ISportStrategy;
-            // === ÚJ MEZŐ (v105.0) ===
-            confidenceScores: { winner: number; totals: number; overall: number }; 
+            // === MÓDOSÍTÁS v106.0: recommended_market mező ===
+            confidenceScores: { winner: number; totals: number; overall: number; recommended_market?: string }; 
         }
 
         const finalAnalysisInput: FinalAnalysisInput = {
             matchData: { home, away, sport, leagueName },
             rawDataJson: rawData,
-            specialistReport: specialistReport, // Agent 3
-            simulatorReport: sim,              // Agent 4
-            psyReport: psychologistReport,     // Agent 2.5
+            specialistReport: specialistReport, 
+            simulatorReport: sim,              
+            psyReport: psychologistReport,     
             valueBetsJson: valueBets,
             richContext: richContext,
             sportStrategy: sportStrategy,
-            confidenceScores: confidenceScores // === ÚJ OBJEKTUM ÁTADVA ===
+            confidenceScores: confidenceScores 
         };
 
         const finalReport: any = await runStep_FinalAnalysis(finalAnalysisInput);
@@ -412,11 +398,12 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                     mu_a: sim.mu_a_sim
                 },
                 valueBets: valueBets, 
-                // === MÓDOSÍTVA v105.0 ===
+                // === MÓDOSÍTVA v106.0 ===
                 confidenceScores: {
                     winner: parseFloat(confidenceScores.winner.toFixed(1)),
                     totals: parseFloat(confidenceScores.totals.toFixed(1)),
-                    overall: parseFloat(confidenceScores.overall.toFixed(1))
+                    overall: parseFloat(confidenceScores.overall.toFixed(1)),
+                    recommended_market: confidenceScores.recommended_market // Mentjük a Sheetbe is!
                 },
                 // ==========================
                 finalConfidenceScore: parseFloat(finalConfidenceScore.toFixed(1)),
@@ -449,7 +436,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 matchData: auditData.analysisData.matchData,
                 oddsData: mutableOddsData,
                 valueBets: valueBets,
-                confidenceScores: auditData.analysisData.confidenceScores, // v105.0
+                confidenceScores: auditData.analysisData.confidenceScores, // v106.0
                 finalConfidenceScore: auditData.analysisData.finalConfidenceScore,
                 sim: sim,
                 recommendation: masterRecommendation,
