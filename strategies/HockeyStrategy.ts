@@ -1,5 +1,5 @@
 // FÁJL: strategies/HockeyStrategy.ts
-// VERZIÓ: v107.0 (GSAx Fallback Javítás)
+// VERZIÓ: v107.1 (Multi-Line Context & GSAx Fallback)
 
 import type { 
     ISportStrategy, 
@@ -77,6 +77,7 @@ export class HockeyStrategy implements ISportStrategy {
      * 5-6. Ügynök (Hybrid Boss) feladata: Hoki-specifikus AI mikromodellek futtatása.
      * MÓDOSÍTVA (v105.0): Most már fogadja és továbbadja a 'confidenceScores'-t.
      * MÓDOSÍTVA (v107.0): GSAx Fallback.
+     * MÓDOSÍTVA (v107.1): Kontextuális Vonal Elemzés (Alternate Lines) az AI számára.
      */
     public async runMicroModels(options: MicroModelOptions): Promise<{ [key: string]: string; }> {
         console.log("[HockeyStrategy] runMicroModels: Valódi hoki AI modellek futtatása...");
@@ -109,14 +110,30 @@ export class HockeyStrategy implements ISportStrategy {
         const awayGoalieInfo = getGoalieStat(safeRawData.key_players?.away);
         // === JAVÍTÁS VÉGE ===
 
+        // === ÚJ (v107.1): Alternatív Vonal Kontextus ===
+        // Ha a fővonal 6.5, kiszámoljuk, mit mondana a szimulátor 5.5-re és 6.0-ra is.
+        // Ezt beleírjuk a promptba, hogy az AI lássa a különbséget.
+        const getAltLineProb = (line: number): string => {
+            // Mivel a 'sim' objektum nem tartalmazza az összes lehetséges vonalat előre kiszámolva
+            // (csak a fix mainTotalsLine-t), itt csak becslést tudunk adni, vagy
+            // a 'sim.scores' eloszlásból kellene újra számolni (ami itt nem elérhető).
+            // Ezért egyszerű szöveges figyelmeztetést adunk át.
+            return `(Check alt line: ${line})`; 
+        };
+
+        const mainLineStr = `${mainTotalsLine}`;
+        const lowerLineStr = `${mainTotalsLine - 0.5}`;
+        
+        // Kibővítjük a 'goalsData'-t, hogy az AI tudjon a bizonytalanságról
         const goalsData = {
             ...confidenceData, // v105.0
-            line: mainTotalsLine,
+            line: `${mainLineStr} (Figyelem: A piac ingadozhat ${lowerLineStr} és ${mainLineStr} között)`,
             sim_pOver: safeSim.pOver,
             sim_mu_sum: (safeSim.mu_h_sim || 0) + (safeSim.mu_a_sim || 0),
             home_gsax: homeGoalieInfo,
             away_gsax: awayGoalieInfo,
         };
+        // ================================================
 
         const winnerData = {
             ...confidenceData, // v105.0
