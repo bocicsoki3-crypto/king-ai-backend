@@ -1,10 +1,5 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v106.1 (Dátum Dekódolás Javítás)
-// MÓDOSÍTÁS (v106.1):
-// 1. JAVÍTVA: A 'generateEmptyStubContext' és a redundáns odds fallback hívásoknál
-//    a nyers 'options.utcKickoff' helyett a 'decodedUtcKickoff'-ot használjuk.
-// 2. OK: A logok alapján a dátum URL-kódolva érkezett ("...T19%3A45Z"),
-//    ami miatt az odds provider nem találta a meccset. A dekódolás ezt megoldja.
+// VERZIÓ: v107.0 (Explicit Stub Jelölés)
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -92,14 +87,10 @@ export interface IDataFetchResponse extends ICanonicalRichContext {
     xgSource: string; 
 }
 
-/**************************************************************
-* DataFetch.ts - Külső Adatgyűjtő Modul (Node.js Verzió)
-* VERZIÓ: v106.1 (Dátum Dekódolás Javítás)
-**************************************************************/
-
 /**
  * === "Stub" Válasz Generátor ===
  * MÓDOSÍTVA (v106.1): Most már dekódolja a dátumot hívás előtt.
+ * MÓDOSÍTVA (v107.0): Explicit STUB_DATA jelölés.
  */
 async function generateEmptyStubContext(options: IDataFetchOptions): Promise<IDataFetchResponse> {
     const { sport, homeTeamName, awayTeamName, utcKickoff } = options;
@@ -180,10 +171,12 @@ async function generateEmptyStubContext(options: IDataFetchOptions): Promise<IDa
          availableRosters: { home: [], away: [] }
     };
     
-    let xgSource = "N/A (API Hiba)";
+    // === JAVÍTÁS (v107.0): Explicit STUB_DATA jelölés ===
+    let xgSource = "STUB_DATA"; 
     if (options.manual_H_xG != null) {
         xgSource = "Manual (Components)";
     }
+    // === VÉGE ===
     
     return {
         ...result,
