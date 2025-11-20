@@ -1,10 +1,5 @@
 // FÁJL: strategies/HockeyStrategy.ts
-// VERZIÓ: v105.0 ("Intelligens Bizalom Refaktor")
-// MÓDOSÍTÁS (v105.0):
-// 1. MÓDOSÍTVA: A 'runMicroModels' most már fogadja a 'confidenceScores'
-//    objektumot az 'options'-ben.
-// 2. MÓDOSÍTVA: A 'confidenceWinner' és 'confidenceTotals' pontszámok
-//    továbbadva az összes hoki-specifikus AI mikromodell-hívásnak.
+// VERZIÓ: v107.0 (GSAx Fallback Javítás)
 
 import type { 
     ISportStrategy, 
@@ -81,6 +76,7 @@ export class HockeyStrategy implements ISportStrategy {
     /**
      * 5-6. Ügynök (Hybrid Boss) feladata: Hoki-specifikus AI mikromodellek futtatása.
      * MÓDOSÍTVA (v105.0): Most már fogadja és továbbadja a 'confidenceScores'-t.
+     * MÓDOSÍTVA (v107.0): GSAx Fallback.
      */
     public async runMicroModels(options: MicroModelOptions): Promise<{ [key: string]: string; }> {
         console.log("[HockeyStrategy] runMicroModels: Valódi hoki AI modellek futtatása...");
@@ -96,21 +92,38 @@ export class HockeyStrategy implements ISportStrategy {
         };
         // ==========================================
 
+        // === JAVÍTÁS (v107.0): GSAx Fallback Logika ===
+        const getGoalieStat = (players: any[] | undefined) => {
+            if (!players) return "Adat nem elérhető";
+            const goalie = players.find((p: any) => p.position === 'G' || p.pos === 'G');
+            if (!goalie) return "Kezdő kapus ismeretlen";
+            
+            // Ha van rating, azt használjuk, ha nincs, de van 'rating_last_5', akkor azt.
+            if (goalie.rating && goalie.rating !== "N/A") return `Rating: ${goalie.rating}`;
+            if (goalie.rating_last_5) return `Form: ${goalie.rating_last_5}/10`;
+            
+            return "Átlagos (Nincs részletes adat)";
+        };
+
+        const homeGoalieInfo = getGoalieStat(safeRawData.key_players?.home);
+        const awayGoalieInfo = getGoalieStat(safeRawData.key_players?.away);
+        // === JAVÍTÁS VÉGE ===
+
         const goalsData = {
             ...confidenceData, // v105.0
             line: mainTotalsLine,
             sim_pOver: safeSim.pOver,
             sim_mu_sum: (safeSim.mu_h_sim || 0) + (safeSim.mu_a_sim || 0),
-            home_gsax: safeRawData.key_players?.home?.find((p: any) => p.position === 'G')?.rating || "N/A",
-            away_gsax: safeRawData.key_players?.away?.find((p: any) => p.position === 'G')?.rating || "N/A",
+            home_gsax: homeGoalieInfo,
+            away_gsax: awayGoalieInfo,
         };
 
         const winnerData = {
             ...confidenceData, // v105.0
             sim_pHome: safeSim.pHome,
             sim_pAway: safeSim.pAway,
-            home_gsax: safeRawData.key_players?.home?.find((p: any) => p.position === 'G')?.rating || "N/A",
-            away_gsax: safeRawData.key_players?.away?.find((p: any) => p.position === 'G')?.rating || "N/A",
+            home_gsax: homeGoalieInfo,
+            away_gsax: awayGoalieInfo,
             form_home: safeRawData.form?.home_overall || "N/A",
             form_away: safeRawData.form?.away_overall || "N/A",
         };
