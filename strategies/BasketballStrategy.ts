@@ -1,10 +1,5 @@
 // FÁJL: strategies/BasketballStrategy.ts
-// VERZIÓ: v105.0 ("Intelligens Bizalom Refaktor")
-// MÓDOSÍTÁS (v105.0):
-// 1. MÓDOSÍTVA: A 'runMicroModels' most már fogadja a 'confidenceScores'
-//    objektumot az 'options'-ben.
-// 2. MÓDOSÍTVA: A 'confidenceWinner' és 'confidenceTotals' pontszámok
-//    továbbadva az összes kosár-specifikus AI mikromodell-hívásnak.
+// VERZIÓ: v107.0 (Valós P4 Becslés Javítás)
 
 import type { 
     ISportStrategy, 
@@ -30,19 +25,17 @@ export class BasketballStrategy implements ISportStrategy {
 
     /**
      * 1. Ügynök (Quant) feladata: Pontok becslése kosárlabdához.
-     * (Változatlan v104.2)
+     * JAVÍTVA (v107.0): Valós statisztikai becslés a "hardcoded" 107.8 helyett.
      */
     public estimatePureXG(options: XGOptions): { pure_mu_h: number; pure_mu_a: number; source: string; } {
         const { rawStats, leagueAverages, advancedData } = options;
 
         // === P1 (Manuális) Adatok Ellenőrzése ===
-        // Először ellenőrizzük, hogy a P1 (manuális) adatok rendelkezésre állnak-e.
         if (advancedData?.manual_H_xG != null && 
             advancedData?.manual_H_xGA != null && 
             advancedData?.manual_A_xG != null && 
             advancedData?.manual_A_xGA != null) {
             
-            // Ha igen, a P1 adatokból számolunk, felülírva minden mást.
             const p1_mu_h = (advancedData.manual_H_xG + advancedData.manual_A_xGA) / 2;
             const p1_mu_a = (advancedData.manual_A_xG + advancedData.manual_H_xGA) / 2;
             
@@ -53,17 +46,36 @@ export class BasketballStrategy implements ISportStrategy {
             };
         }
         
-        // === P4 (Automatikus) Adatok Ellenőrzése ===
-        // Ha nincsenek P1 adatok, megpróbálunk P4 (Pace/Ratings) alapú becslést adni.
+        // === P4 (Automatikus) Becslés (v107.0 JAVÍTÁS) ===
+        // Ha nincsenek P1 adatok, a csapatok átlagos pontszámaiból számolunk.
+        // Formula: (Hazai Támadás + Vendég Védekezés) / 2  és fordítva.
         
-        // TODO: Valódi P4-es számítás implementálása
-        // Jelenlegi (v104.2) "csonk" logika.
-        const defaultLeaguePoints = 107.8; 
+        // Alapértelmezett liga átlag (ha minden adat hiányzik)
+        const leagueAvgPoints = 112.0; // NBA átlag közelebb van a 112-115-höz manapság
+
+        // Biztonságos adatkinyerés (ha 0 vagy null, akkor liga átlag)
+        const h_scored = (rawStats.home.gf && rawStats.home.gp) ? (rawStats.home.gf / rawStats.home.gp) : leagueAvgPoints;
+        const h_conceded = (rawStats.home.ga && rawStats.home.gp) ? (rawStats.home.ga / rawStats.home.gp) : leagueAvgPoints;
+        
+        const a_scored = (rawStats.away.gf && rawStats.away.gp) ? (rawStats.away.gf / rawStats.away.gp) : leagueAvgPoints;
+        const a_conceded = (rawStats.away.ga && rawStats.away.gp) ? (rawStats.away.ga / rawStats.away.gp) : leagueAvgPoints;
+
+        // Súlyozott számítás
+        // Hazai várható pont = (Hazai szerzett átlag + Vendég kapott átlag) / 2
+        // Hazai pálya előny: kb. +2.5 pont
+        const HOME_ADVANTAGE = 2.5;
+
+        let est_mu_h = (h_scored + a_conceded) / 2 + (HOME_ADVANTAGE / 2);
+        let est_mu_a = (a_scored + h_conceded) / 2 - (HOME_ADVANTAGE / 2);
+
+        // Értékek "normalizálása" (hogy ne legyenek extrém kiugrók hibás adat esetén)
+        est_mu_h = Math.max(80, Math.min(140, est_mu_h));
+        est_mu_a = Math.max(80, Math.min(140, est_mu_a));
 
         return {
-            pure_mu_h: defaultLeaguePoints,
-            pure_mu_a: defaultLeaguePoints,
-            source: "Calculated (Becsült) Pontok [P4]"
+            pure_mu_h: Number(est_mu_h.toFixed(1)),
+            pure_mu_a: Number(est_mu_a.toFixed(1)),
+            source: "Calculated (Avg Pts Based)"
         };
     }
 
