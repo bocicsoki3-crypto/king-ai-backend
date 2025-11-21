@@ -1,12 +1,9 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v108.2 (CRITICAL: A-League Fix & Type Fixes)
-// MÓDOSÍTÁS (v108.2):
-// 1. JAVÍTVA: Hozzáadva az 'australia_aleague': 188 a STATIC_LEAGUE_MAP-hez.
-// 2. JAVÍTVA: TS2552 hiba (_getApiSportsLineupData). A hibás 'stats' hivatkozás
-//    lecserélve a helyes 'homeTeamId' paraméterre.
-// 3. JAVÍTVA: TS2304 hiba (_getApiSportsRefereeStyle). A catch blokkban
-//    az 'e' változó helyett a helyes 'error' változóra hivatkozunk.
-// 4. LOGIKA: A 'makeRequestWithRotation' most már az 500-as hibánál is rotál/próbálkozik.
+// VERZIÓ: v108.3 (LIGA ID FIX: Germany 2. Bundesliga)
+// MÓDOSÍTÁS (v108.3):
+// 1. JAVÍTVA: A 'STATIC_LEAGUE_MAP' bővítve a 'germany_2bundesliga': 79 kulccsal.
+//    A kulcsgenerátor kiszedi a pontot ("2. Bundesliga" -> "2bundesliga"),
+//    ezért a térképnek is pont nélküli kulcsot kell tartalmaznia.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -37,6 +34,11 @@ import {
 // === ÚJ (v107.1): STATIKUS LIGA TÉRKÉP (A "Golyóálló" Megoldás) ===
 // Ide gyűjtjük azokat a ligákat, amikkel gond szokott lenni.
 const STATIC_LEAGUE_MAP: { [key: string]: number } = {
+    // --- NÉMETORSZÁG (JAVÍTVA v108.3) ---
+    'germany_bundesliga': 78,
+    'germany_2bundesliga': 79, // JAVÍTVA: Pont nélkül, ahogy a generátor kéri!
+    'germany_3liga': 80,
+
     // --- AUSZTRÁLIA (JAVÍTVA v108.2) ---
     'australia_aleague': 188,
 
@@ -60,8 +62,6 @@ const STATIC_LEAGUE_MAP: { [key: string]: number } = {
     'spain_laliga2': 141,
     'italy_seriea': 135,
     'italy_serieb': 136,
-    'germany_bundesliga': 78,
-    'germany_2.bundesliga': 79,
     'france_ligue1': 61,
     'france_ligue2': 62,
     'netherlands_eredivisie': 88,
@@ -89,7 +89,7 @@ function getStaticLeagueKey(country: string, leagueName: string): string {
     
     let cleanLeague = leagueName.toLowerCase()
         .replace(/\(.*\)/, '')
-        .replace(/[^a-z0-9]/g, '')
+        .replace(/[^a-z0-9]/g, '') // Ez kiszedi a pontot is! (2. -> 2)
         .replace(/\s+/g, '');
     
     if (cleanLeague === 'seriea') cleanLeague = 'seriea'; 
@@ -979,7 +979,7 @@ async function _getApiSportsRefereeStyle(
         let params: any = { search: refereeName, league: leagueId, season: season };
         let response = await makeRequestWithRotation(sport, searchEndpoint, { params });
         if (!response?.data?.response || response.data.response.length === 0) {
-            console.warn(`[API-SPORTS Bíró] Nem található ${refereeName} a ${leagueId} ligában. Kiterjesztett keresés...`);
+            console.warn(`[API-SPORTS Bíró] Nem található ${refereeName} a ${leagueId} ligához. Kiterjesztett keresés...`);
             params = { search: refereeName };
             response = await makeRequestWithRotation(sport, searchEndpoint, { params });
         }
