@@ -1,12 +1,12 @@
 // FÁJL: providers/apiSportsProvider.ts
-// VERZIÓ: v108.1 (CRITICAL: Syntax and Type Fixes)
-// MÓDOSÍTÁS (v108.1):
-// 1. JAVÍTVA: TS2552 hiba (_getApiSportsLineupData). A hibás 'stats' hivatkozás
+// VERZIÓ: v108.2 (CRITICAL: A-League Fix & Type Fixes)
+// MÓDOSÍTÁS (v108.2):
+// 1. JAVÍTVA: Hozzáadva az 'australia_aleague': 188 a STATIC_LEAGUE_MAP-hez.
+// 2. JAVÍTVA: TS2552 hiba (_getApiSportsLineupData). A hibás 'stats' hivatkozás
 //    lecserélve a helyes 'homeTeamId' paraméterre.
-// 2. JAVÍTVA: TS2304 hiba (_getApiSportsRefereeStyle). A catch blokkban
+// 3. JAVÍTVA: TS2304 hiba (_getApiSportsRefereeStyle). A catch blokkban
 //    az 'e' változó helyett a helyes 'error' változóra hivatkozunk.
-// 3. LOGIKA: A 'makeRequestWithRotation' most már az 500-as hibánál is rotál/próbálkozik
-//    (a v108.0-ás kritikus fix miatt).
+// 4. LOGIKA: A 'makeRequestWithRotation' most már az 500-as hibánál is rotál/próbálkozik.
 
 import axios, { type AxiosRequestConfig } from 'axios';
 import NodeCache from 'node-cache';
@@ -37,6 +37,9 @@ import {
 // === ÚJ (v107.1): STATIKUS LIGA TÉRKÉP (A "Golyóálló" Megoldás) ===
 // Ide gyűjtjük azokat a ligákat, amikkel gond szokott lenni.
 const STATIC_LEAGUE_MAP: { [key: string]: number } = {
+    // --- AUSZTRÁLIA (JAVÍTVA v108.2) ---
+    'australia_aleague': 188,
+
     // --- BRAZÍLIA (Stabilizálva v107.0) ---
     'brazil_seriea': 71,
     'brazil_serieb': 72,
