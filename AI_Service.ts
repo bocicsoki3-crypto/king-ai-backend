@@ -1,12 +1,12 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v109.0 (Apex Logic - Market, Motivation, Tactics)
-// MÓDOSÍTÁS (v109.0):
-// 1. IMPLEMENTÁLVA: A "Szent Háromság" elemzési módszertan a Főnök (Master) promptjában.
-//    - PILLAR 1: Market Wisdom (Odds mozgás és Smart Money követése).
-//    - PILLAR 2: Motivation Matrix (Must-win, kiesés, bosszú faktor).
-//    - PILLAR 3: Tactical Clash (Stílusok harca).
-// 2. MEGTARTVA: A v108.4-es "Math Guardrail" (Matek Őrszem), mint alapvető szűrő.
-// 3. CÉL: A lehető legközelebb kerülni a "tökéletes tipphez" a kontextus és a matek fúziójával.
+// VERZIÓ: v111.0 (AI-First Deep Scout Architecture)
+// MÓDOSÍTÁS (v111.0):
+// 1. ÚJ ÜGYNÖK: "Deep Scout" (Szuper Felderítő) implementálva.
+// 2. ÚJ PROMPT: PROMPT_DEEP_SCOUT_V1 - Ez a rendszer "lelke".
+//    Kifejezetten kéri a Google Search használatát 5 dimenzióban:
+//    Fizikai (utazás/pihenő), Pszichológiai (morál/nyilatkozatok),
+//    Taktikai (hírek), Külső (időjárás/pálya) és Statisztikai (Matek fallback).
+// 3. CÉL: Az AI legyen az elsődleges információforrás, ne csak fallback.
 
 import { 
     _callGemini, 
@@ -33,14 +33,59 @@ export async function getAndParse(
             const value = result[keyToExtract];
             return value || "N/A (AI nem adott értéket)";
         }
-        console.error(`[AI_Service v109.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
+        console.error(`[AI_Service v111.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
         return `AI Hiba: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot.`;
     } catch (e: any) {
-        console.error(`[AI_Service v109.0] Végleges AI Hiba (${stepName}): ${e.message}`);
+        console.error(`[AI_Service v111.0] Végleges AI Hiba (${stepName}): ${e.message}`);
         return `AI Hiba (${keyToExtract}): ${e.message}`;
     }
 }
 
+// === ÚJ: 0. ÜGYNÖK (DEEP SCOUT / SZUPER FELDERÍTŐ) PROMPT ===
+const PROMPT_DEEP_SCOUT_V1 = `
+TASK: You are the 'Deep Scout', the eyes and ears of the King AI system.
+Your goal is to perform a LIVE GOOGLE SEARCH investigation for the match: {home} vs {away} ({sport}).
+You must find "Hidden Information" that standard APIs miss.
+
+[INVESTIGATION DIMENSIONS]:
+1. **PHYSICAL STATE:**
+   - Travel issues? (e.g. Did the away team travel 4000km to Kazakhstan?)
+   - Fatigue? (Did they play 48-72 hours ago? Is there heavy rotation?)
+   - Illness in the camp?
+
+2. **PSYCHOLOGICAL STATE:**
+   - Locker room morale? (Manager under fire? Player revolt? Unpaid wages?)
+   - Motivation? (Is this a "Must-Win" for the title or relegation? Is it a meaningless "dead rubber"?)
+   - Revenge narrative? (Did they lose the last H2H badly?)
+
+3. **TACTICAL INTEL:**
+   - Leaked lineups? (Is a key player benched?)
+   - Style clash news? (Manager quotes about changing tactics?)
+
+4. **EXTERNAL FACTORS:**
+   - Weather impact? (Heavy snow, extreme heat, waterlogged pitch?)
+   - Fan impact? (Empty stadium sanction? Derby atmosphere?)
+
+5. **STATISTICAL FALLBACK (CRITICAL):**
+   - If APIs fail, I need you to find the "Last 5 Matches" form string (e.g. "W,L,D,W,W") for both teams.
+
+[OUTPUT STRUCTURE]:
+Your response MUST be ONLY a single, valid JSON object with this EXACT structure:
+{
+  "narrative_summary": "<A concise, 3-4 sentence Hungarian summary of the most critical findings (Travel, Morale, Context).>",
+  "physical_factor": "<Specific note on fatigue/travel or 'Neutral'>",
+  "psychological_factor": "<Specific note on morale/motivation or 'Neutral'>",
+  "weather_context": "<Weather forecast or 'Neutral'>",
+  "stats_fallback": {
+      "home_last_5": "<String, e.g. 'W,W,L,D,L' or 'N/A'>",
+      "away_last_5": "<String, e.g. 'L,L,L,W,D' or 'N/A'>"
+  },
+  "key_news": [
+      "<Bullet point 1 (Source)>",
+      "<Bullet point 2 (Source)>"
+  ]
+}
+`;
 
 // === 8. ÜGYNÖK (A TÉRKÉPÉSZ) PROMPT (Változatlan) ===
 const PROMPT_TEAM_RESOLVER_V1 = `
@@ -68,8 +113,8 @@ const PROMPT_PSYCHOLOGIST_V93 = `
 TASK: You are 'The Psychologist', the 2.5th Agent.
 Your job is to analyze the qualitative, narrative, and psychological state of both teams.
 [INPUTS]:
-1. Full Raw Context (from Agent 2, Scout): {rawDataJson}
-   (Includes: H2H history, Form strings, Absentees, Coach names, Referee, Weather)
+1. Full Raw Context (from Deep Scout & APIs): {rawDataJson}
+   (Includes: H2H history, Form strings, Absentees, Coach names, Referee, Weather, DEEP SCOUT INTEL)
 2. Match Info: {homeTeamName} (Home) vs {awayTeamName} (Away)
 [YOUR TASK]:
 1. Analyze all inputs to understand the *story* of this match.
@@ -308,6 +353,22 @@ OUTPUT FORMAT: Your response MUST be ONLY a single, valid JSON object with this 
 
 
 // --- ÜGYNÖK FUTTATÓ FÜGGVÉNYEK ---
+
+// === 0. ÜGYNÖK (DEEP SCOUT - v111.0) ===
+export async function runStep_DeepScout(data: { home: string, away: string, sport: string }): Promise<any> {
+    try {
+        console.log(`[AI_Service v111.0] 0. ÜGYNÖK (DEEP SCOUT) INDÍTÁSA: ${data.home} vs ${data.away}...`);
+        const filledPrompt = fillPromptTemplate(PROMPT_DEEP_SCOUT_V1, data);
+        // ITT HASZNÁLJUK A 'useSearch: true' PARAMÉTERT!
+        const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_DeepScout", 2, true);
+        
+        console.log(`[AI_Service v111.0] Deep Scout Jelentés: "${result?.narrative_summary?.substring(0, 50)}..."`);
+        return result;
+    } catch (e: any) {
+        console.error(`[AI_Service v111.0] Deep Scout Hiba: ${e.message}`);
+        return null;
+    }
+}
 
 // === 8. ÜGYNÖK (TÉRKÉPÉSZ) HÍVÁSA (Változatlan) ===
 interface TeamNameResolverInput {
@@ -836,6 +897,7 @@ If the answer isn't in the context or history, politely state that the informati
 // --- FŐ EXPORT (v109.0) ---
 export default {
     runStep_TeamNameResolver,
+    runStep_DeepScout, // ÚJ EXPORT!
     runStep_Psychologist,
     runStep_Specialist,
     runStep_FinalAnalysis,
