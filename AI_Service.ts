@@ -1,12 +1,10 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v111.0 (AI-First Deep Scout Architecture)
-// MÓDOSÍTÁS (v111.0):
-// 1. ÚJ ÜGYNÖK: "Deep Scout" (Szuper Felderítő) implementálva.
-// 2. ÚJ PROMPT: PROMPT_DEEP_SCOUT_V1 - Ez a rendszer "lelke".
-//    Kifejezetten kéri a Google Search használatát 5 dimenzióban:
-//    Fizikai (utazás/pihenő), Pszichológiai (morál/nyilatkozatok),
-//    Taktikai (hírek), Külső (időjárás/pálya) és Statisztikai (Matek fallback).
-// 3. CÉL: Az AI legyen az elsődleges információforrás, ne csak fallback.
+// VERZIÓ: v112.0 (Deep Scout xG/xGA Hunter)
+// MÓDOSÍTÁS (v112.0):
+// 1. PROMPT BŐVÍTÉS: A PROMPT_DEEP_SCOUT_V2 most már kifejezetten vadászik
+//    az xG (Expected Goals) és xGA (Expected Goals Against) adatokra.
+// 2. JSON STRUKTÚRA: A Deep Scout kimenete bővült az 'xg_stats' objektummal.
+// 3. CÉL: Kiváltani a manuális adatbevitelt azzal, hogy az AI megkeresi a neten.
 
 import { 
     _callGemini, 
@@ -33,49 +31,58 @@ export async function getAndParse(
             const value = result[keyToExtract];
             return value || "N/A (AI nem adott értéket)";
         }
-        console.error(`[AI_Service v111.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
+        console.error(`[AI_Service v112.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
         return `AI Hiba: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot.`;
     } catch (e: any) {
-        console.error(`[AI_Service v111.0] Végleges AI Hiba (${stepName}): ${e.message}`);
+        console.error(`[AI_Service v112.0] Végleges AI Hiba (${stepName}): ${e.message}`);
         return `AI Hiba (${keyToExtract}): ${e.message}`;
     }
 }
 
-// === ÚJ: 0. ÜGYNÖK (DEEP SCOUT / SZUPER FELDERÍTŐ) PROMPT ===
-const PROMPT_DEEP_SCOUT_V1 = `
+// === ÚJ: 0. ÜGYNÖK (DEEP SCOUT / SZUPER FELDERÍTŐ) PROMPT v2 ===
+const PROMPT_DEEP_SCOUT_V2 = `
 TASK: You are the 'Deep Scout', the eyes and ears of the King AI system.
 Your goal is to perform a LIVE GOOGLE SEARCH investigation for the match: {home} vs {away} ({sport}).
-You must find "Hidden Information" that standard APIs miss.
+You must find "Hidden Information" and CRITICAL STATISTICS that standard APIs miss.
 
 [INVESTIGATION DIMENSIONS]:
-1. **PHYSICAL STATE:**
-   - Travel issues? (e.g. Did the away team travel 4000km to Kazakhstan?)
-   - Fatigue? (Did they play 48-72 hours ago? Is there heavy rotation?)
-   - Illness in the camp?
+1. **XG HUNT (CRITICAL):**
+   - Search for "Expected Goals (xG) stats {home} current season" and "{away} xG stats".
+   - Find the **xG (For)** and **xGA (Against)** per 90 minutes (or total average) for BOTH teams.
+   - If exact xG is not found, estimate based on "Goals Scored/Conceded per game".
 
-2. **PSYCHOLOGICAL STATE:**
-   - Locker room morale? (Manager under fire? Player revolt? Unpaid wages?)
-   - Motivation? (Is this a "Must-Win" for the title or relegation? Is it a meaningless "dead rubber"?)
-   - Revenge narrative? (Did they lose the last H2H badly?)
+2. **PHYSICAL STATE:**
+   - Travel issues? (e.g. Did the away team travel 4000km?)
+   - Fatigue? (Did they play <72 hours ago?)
+   - Illness/Virus in the camp?
 
-3. **TACTICAL INTEL:**
-   - Leaked lineups? (Is a key player benched?)
-   - Style clash news? (Manager quotes about changing tactics?)
+3. **PSYCHOLOGICAL STATE:**
+   - Locker room morale? (Manager under fire? Player revolt?)
+   - Motivation? (Must-Win for title/relegation vs Dead Rubber?)
+   - Revenge narrative?
 
-4. **EXTERNAL FACTORS:**
+4. **TACTICAL INTEL:**
+   - Leaked lineups? Key player benched?
+   - Style clash news?
+
+5. **EXTERNAL FACTORS:**
    - Weather impact? (Heavy snow, extreme heat, waterlogged pitch?)
-   - Fan impact? (Empty stadium sanction? Derby atmosphere?)
-
-5. **STATISTICAL FALLBACK (CRITICAL):**
-   - If APIs fail, I need you to find the "Last 5 Matches" form string (e.g. "W,L,D,W,W") for both teams.
+   - Fan impact? (Empty stadium?)
 
 [OUTPUT STRUCTURE]:
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure:
 {
-  "narrative_summary": "<A concise, 3-4 sentence Hungarian summary of the most critical findings (Travel, Morale, Context).>",
+  "narrative_summary": "<A concise, 3-4 sentence Hungarian summary of the most critical findings.>",
   "physical_factor": "<Specific note on fatigue/travel or 'Neutral'>",
   "psychological_factor": "<Specific note on morale/motivation or 'Neutral'>",
   "weather_context": "<Weather forecast or 'Neutral'>",
+  "xg_stats": {
+      "home_xg": <Number or null (e.g. 1.85)>,
+      "home_xga": <Number or null (e.g. 1.10)>,
+      "away_xg": <Number or null (e.g. 1.45)>,
+      "away_xga": <Number or null (e.g. 1.60)>,
+      "source": "<String, e.g. 'FBref/Understat via Search' or 'Estimated'>"
+  },
   "stats_fallback": {
       "home_last_5": "<String, e.g. 'W,W,L,D,L' or 'N/A'>",
       "away_last_5": "<String, e.g. 'L,L,L,W,D' or 'N/A'>"
@@ -354,18 +361,21 @@ OUTPUT FORMAT: Your response MUST be ONLY a single, valid JSON object with this 
 
 // --- ÜGYNÖK FUTTATÓ FÜGGVÉNYEK ---
 
-// === 0. ÜGYNÖK (DEEP SCOUT - v111.0) ===
+// === 0. ÜGYNÖK (DEEP SCOUT - v112.0) ===
 export async function runStep_DeepScout(data: { home: string, away: string, sport: string }): Promise<any> {
     try {
-        console.log(`[AI_Service v111.0] 0. ÜGYNÖK (DEEP SCOUT) INDÍTÁSA: ${data.home} vs ${data.away}...`);
-        const filledPrompt = fillPromptTemplate(PROMPT_DEEP_SCOUT_V1, data);
+        console.log(`[AI_Service v112.0] 0. ÜGYNÖK (DEEP SCOUT) INDÍTÁSA: ${data.home} vs ${data.away}...`);
+        const filledPrompt = fillPromptTemplate(PROMPT_DEEP_SCOUT_V2, data);
         // ITT HASZNÁLJUK A 'useSearch: true' PARAMÉTERT!
         const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_DeepScout", 2, true);
         
-        console.log(`[AI_Service v111.0] Deep Scout Jelentés: "${result?.narrative_summary?.substring(0, 50)}..."`);
+        console.log(`[AI_Service v112.0] Deep Scout Jelentés: "${result?.narrative_summary?.substring(0, 50)}..."`);
+        if (result?.xg_stats) {
+            console.log(`[AI_Service v112.0] xG ADAT TALÁLAT! H_xG: ${result.xg_stats.home_xg}, H_xGA: ${result.xg_stats.home_xga}`);
+        }
         return result;
     } catch (e: any) {
-        console.error(`[AI_Service v111.0] Deep Scout Hiba: ${e.message}`);
+        console.error(`[AI_Service v112.0] Deep Scout Hiba: ${e.message}`);
         return null;
     }
 }
@@ -711,186 +721,6 @@ async function getMasterRecommendation(
     } catch (e: any) {
         console.error(`[AI_Service v109.0 - Főnök] Végleges hiba a Mester Ajánlás generálása során: ${e.message}`, e.stack);
         throw new Error(`AI Hiba (Főnök): ${e.message.substring(0, 100)}`);
-    }
-}
-
-
-// === FŐ ORCHESTRÁCIÓS LÉPÉS (Változatlan v105.0) ===
-interface FinalAnalysisInput {
-    matchData: { home: string; away: string; sport: string; leagueName: string; };
-    rawDataJson: ICanonicalRawData; 
-    specialistReport: any;
-    simulatorReport: any;
-    psyReport: any;
-    valueBetsJson: any[];
-    richContext: string;
-    sportStrategy: ISportStrategy;
-    confidenceScores: { winner: number; totals: number; overall: number };
-}
-
-export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<any> {
-    
-    const { 
-        rawDataJson, 
-        specialistReport, 
-        simulatorReport, 
-        psyReport, 
-        valueBetsJson, 
-        richContext, 
-        matchData, 
-        sportStrategy,
-        confidenceScores 
-    } = data;
-
-    const sim = simulatorReport || {};
-    const home = matchData.home || 'Hazai';
-    const away = matchData.away || 'Vendég';
-    const sport = matchData.sport || 'soccer';
-    
-    let expertConfidence = `**${confidenceScores.overall.toFixed(1)}/10** - AI Hiba: Az Expert Confidence hívás nem futott le.`;
-    let riskAssessment = "AI Hiba: A Risk Assessment hívás nem futott le.";
-    let tacticalBriefing = "AI Hiba: A Tactical Briefing hívás nem futott le.";
-    let generalAnalysis = "AI Hiba: A General Analysis hívás nem futott le.";
-    let propheticTimeline = "AI Hiba: A Prophetic Timeline hívás nem futott le.";
-    let strategic_synthesis = "AI Hiba: A Strategic Synthesis hívás nem futott le.";
-    let masterRecommendation = { 
-        "recommended_bet": "Hiba", 
-        "final_confidence": 1.0, 
-        "brief_reasoning": "AI Hiba: A Master Recommendation lánc megszakadt." 
-    };
-    
-    let microAnalyses: { [key: string]: string } = {};
-    
-    try {
-        // Mikromodellek
-        const expertConfidencePromise = getExpertConfidence(confidenceScores, richContext, rawDataJson, psyReport, specialistReport);
-        const riskAssessmentPromise = getRiskAssessment(sim, rawDataJson, sport, confidenceScores);
-        const playerMarketsPromise = getPlayerMarkets(rawDataJson.key_players, richContext);
-
-        const microModelResultsPromise = sportStrategy.runMicroModels({
-            sim: sim,
-            rawDataJson: rawDataJson,
-            mainTotalsLine: sim.mainTotalsLine,
-            confidenceScores: confidenceScores 
-        });
-
-        const results = await Promise.allSettled([
-            expertConfidencePromise, 
-            riskAssessmentPromise, 
-            playerMarketsPromise,
-            microModelResultsPromise 
-        ]);
-
-        expertConfidence = (results[0].status === 'fulfilled') ? (results[0].value as string) : `**1.0/10** - AI Hiba: ${results[0].reason?.message || 'Ismeretlen'}`;
-        riskAssessment = (results[1].status === 'fulfilled') ? (results[1].value as string) : `AI Hiba: ${results[1].reason?.message || 'Ismeretlen'}`;
-        
-        if (results[3].status === 'fulfilled') {
-            microAnalyses = results[3].value as { [key: string]: string };
-        } else {
-            console.error(`[AI_Service] KRITIKUS HIBA: A sportág-specifikus mikromodellek (${sport}) futtatása sikertelen: ${results[3].reason?.message}`);
-            microAnalyses = { "error": `Stratégia hiba: ${results[3].reason?.message}` };
-        }
-        
-        microAnalyses['player_market_analysis'] = (results[2].status === 'fulfilled') ? (results[2].value as string) : `AI Hiba: ${results[2].reason?.message || 'Ismeretlen'}`;
-
-        
-        // Fő elemzések
-        try {
-            tacticalBriefing = await getTacticalBriefing(rawDataJson, sport, home, away, riskAssessment);
-        } catch (e: any) { tacticalBriefing = `AI Hiba (Tactical): ${e.message}`; }
-        
-        try {
-            generalAnalysis = await getFinalGeneralAnalysis(sim, tacticalBriefing, rawDataJson, confidenceScores, psyReport);
-        } catch (e: any) { generalAnalysis = `AI Hiba (General): ${e.message}`; }
-
-        if (sport === 'soccer') {
-            try {
-                propheticTimeline = await getPropheticTimeline(rawDataJson, home, away, sport, tacticalBriefing);
-            } catch (e: any) { 
-                propheticTimeline = `AI Hiba (Prophetic): ${e.message}`; 
-            }
-        } else {
-            propheticTimeline = "N/A (Nem focihoz nem releváns)";
-        }
-
-        try {
-            strategic_synthesis = await getStrategicClosingThoughts(
-                sim, rawDataJson, richContext, microAnalyses, riskAssessment,
-                tacticalBriefing, valueBetsJson, confidenceScores, expertConfidence,
-                psyReport, specialistReport, sport
-            );
-        } catch (e: any) { strategic_synthesis = `AI Hiba (Strategic): ${e.message}`; }
-
-        // Főnök hívása (v109.0)
-        masterRecommendation = await getMasterRecommendation(
-            valueBetsJson,
-            sim,
-            confidenceScores,
-            expertConfidence, 
-            riskAssessment,
-            microAnalyses,
-            generalAnalysis,
-            strategic_synthesis,
-            "N/A", 
-            psyReport,
-            specialistReport,
-            sport
-        );
-
-    } catch (e: any) {
-        console.error(`[AI_Service v109.0] KRITIKUS HIBA a runStep_FinalAnalysis során: ${e.message}`);
-        masterRecommendation.brief_reasoning = `KRITIKUS HIBA: ${e.message}. A többi elemzés (ha van) még érvényes lehet.`;
-    }
-    
-    return {
-        risk_assessment: riskAssessment,
-        tactical_briefing: tacticalBriefing,
-        general_analysis: generalAnalysis,
-        strategic_synthesis: strategic_synthesis,
-        prophetic_timeline: propheticTimeline,
-        final_confidence_report: expertConfidence,
-        micromodels: microAnalyses,
-        master_recommendation: masterRecommendation,
-        agent_reports: {
-            psychologist: psyReport,
-            specialist: specialistReport
-        }
-    };
-}
-
-// --- CHAT FUNKCIÓ --- (Változatlan)
-interface ChatMessage {
-  role: 'user' | 'model' | 'ai';
-  parts: { text: string }[];
-}
-
-export async function getChatResponse(context: string, history: ChatMessage[], question: string): Promise<{ answer?: string; error?: string }> {
-    if (!context || !question) return { error: "Hiányzó 'context' vagy 'question'." };
-    try {
-        const historyString = (history || [])
-             .map(msg => `${msg.role === 'user' ? 'Felhasználó' : 'AI'}: ${msg.parts?.[0]?.text || ''}`)
-            .join('\n');
-        
-        const prompt = `You are an elite sports analyst AI assistant specialized in the provided match analysis.
-[CONTEXT of the analysis]:
---- START CONTEXT ---
-${context}
---- END CONTEXT ---
-
-CONVERSATION HISTORY:
-${historyString}
-
-Current User Question: ${question}
-
-Answer concisely and accurately in Hungarian based ONLY on the provided Analysis Context and Conversation History.
-Do not provide betting advice. Do not make up information not present in the context.
-If the answer isn't in the context or history, politely state that the information is not available in the analysis.`;
-        
-        const rawAnswer = await _callGemini(prompt, false); 
-        return rawAnswer ? { answer: rawAnswer } : { error: "Az AI nem tudott válaszolni." };
-    } catch (e: any) {
-        console.error(`[AI_Service v109.0] Chat hiba: ${e.message}`, e.stack);
-        return { error: `Chat AI Hiba: ${e.message}` };
     }
 }
 
