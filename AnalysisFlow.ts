@@ -1,11 +1,8 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v112.0 (Final Integration - Full xG Pipeline)
-// MÓDOSÍTÁS (v112.0):
-// 1. STABILITÁS: Nem változott drasztikusan, csak megerősítve, hogy a
-//    'DataFetch v112.0'-tól kapott adatokat (köztük a Deep Scout xG-t)
-//    továbbra is helyesen adja át az ügynököknek.
-// 2. BIZTOSÍTÉK: Az 'analysisCacheKey' frissítve v112.0-ra, hogy elkerüljük
-//    a régi, hiányos adatok betöltését a cache-ből.
+// VERZIÓ: v112.1 (Import Fix)
+// MÓDOSÍTÁS:
+// 1. JAVÍTÁS: A 'runStep_FinalAnalysis', 'runStep_Psychologist', 'runStep_Specialist' importálása
+//    az AI_Service.ts-ből most már named importként történik.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -34,11 +31,11 @@ import {
     calculateValue,
     analyzeLineMovement
 } from './Model.js';
-// AI Szolgáltatás Importok
+// AI Szolgáltatás Importok - JAVÍTOTT IMPORT
 import {
-    runStep_Psychologist, // (2.5 Ügynök - Pszichológus)
-    runStep_Specialist,   // (3. Ügynök - AI Specialista)
-    runStep_FinalAnalysis // (ÚJ Hibrid Főnök - v109.0 Logic)
+    runStep_Psychologist, 
+    runStep_Specialist,   
+    runStep_FinalAnalysis 
 } from './AI_Service.js';
 import { saveAnalysisToSheet } from './sheets.js'; 
 // Önjavító Hurok importálása
@@ -146,7 +143,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
         
-        // v112.0 Cache kulcs (Frissítve az új xG logikához)
+        // v112.0 Cache kulcs
         analysisCacheKey = `analysis_v112.0_apex_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
         
         if (!forceNew) {
