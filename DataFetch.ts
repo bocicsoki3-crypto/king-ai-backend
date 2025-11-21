@@ -1,12 +1,10 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v112.0 (AI-FIRST ARCHITECTURE + xG Mapping)
-// MÓDOSÍTÁS (v112.0):
-// 1. ARCHITEKTÚRA VÁLTÁS: Az AI ("Deep Scout") fut le legelőször (Plan A).
-// 2. ADATMAPPING: Ha a Deep Scout talál xG és xGA adatokat (pl. FBref-ről),
-//    azokat a rendszer "Manuális" adatként (P1) kezeli, és közvetlenül
-//    betölti a 'manual_H_xG', 'manual_H_xGA' stb. mezőkbe.
-// 3. EREDMÉNY: Kiváltja a manuális adatbevitelt, és a legpontosabb
-//    4-komponensű xG képletet aktiválja a Model.ts-ben.
+// VERZIÓ: v113.0 (AI-FIRST + STRUCTURAL HARVEST)
+// MÓDOSÍTÁS (v113.0):
+// 1. ADATSTRUKTÚRA FELTÖLTÉS: Ha az API H2H, Form, vagy Lineup adatok üresek,
+//    a rendszer most már automatikusan kitölti őket a Deep Scout v3
+//    által talált 'structured_data' mezőkből.
+// 2. CÉL: Hogy a UI-n ne maradjanak üres foltok akkor sem, ha az API elhasal.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -104,13 +102,10 @@ export interface IDataFetchResponse extends ICanonicalRichContext {
 
 // === Segédfüggvény: AI Statisztikák Parse-olása (Fallback) ===
 function parseAiStats(statsStr: string | undefined): ICanonicalStats {
-    // Alapértelmezett értékek
     const defaultStats: ICanonicalStats = { gp: 5, gf: 0, ga: 0, form: null };
     
     if (!statsStr || statsStr === 'N/A') return defaultStats;
     
-    // Pl. "W,W,L,D,W" -> Form
-    // Becsülünk belőle gólt? Igen, durván.
     const wins = (statsStr.match(/W/gi) || []).length;
     const draws = (statsStr.match(/D/gi) || []).length;
     const losses = (statsStr.match(/L/gi) || []).length;
@@ -118,8 +113,7 @@ function parseAiStats(statsStr: string | undefined): ICanonicalStats {
     
     if (gp === 0) return defaultStats;
     
-    // Heurisztika: Győzelem = 2 gól, Döntetlen = 1 gól, Vereség = 0 gól (lőtt)
-    //              Győzelem = 0 kapott, Döntetlen = 1 kapott, Vereség = 2 kapott
+    // Heurisztika a gólokhoz
     const estGF = (wins * 1.8) + (draws * 1.0) + (losses * 0.5);
     const estGA = (wins * 0.5) + (draws * 1.0) + (losses * 1.8);
     
@@ -133,33 +127,20 @@ function parseAiStats(statsStr: string | undefined): ICanonicalStats {
 
 /**
  * === "Stub" Válasz Generátor (FELOKOSÍTVA v110.0) ===
- * Ha minden kötél szakad, ez nem csak üres adatot ad vissza, hanem
- * megpróbálja az AI segítségével összeszedni az infókat a netről.
  */
 async function generateEmptyStubContext(options: IDataFetchOptions): Promise<IDataFetchResponse> {
     const { sport, homeTeamName, awayTeamName, utcKickoff } = options;
-    
-    // Dátum dekódolása
     const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(utcKickoff || new Date().toISOString()));
     
     console.warn(`[DataFetch/generateEmptyStubContext] API Hiba. Váltás AI WEB KERESÉSRE (${homeTeamName} vs ${awayTeamName})...`);
     
-    // 1. AI Odds Keresés (Ultimate Fallback)
     let fallbackOdds = await fetchOddsViaWebSearch(homeTeamName, awayTeamName, sport);
-    
-    // Ha az AI sem talál oddsot, utolsó próba a régi odds feeddel
     if (!fallbackOdds) {
         try {
-            console.log(`[DataFetch] AI Odds nem talált, próba a régi oddsFeedProviderrel...`);
             fallbackOdds = await oddsFeedFetchData_NameBased(homeTeamName, awayTeamName, decodedUtcKickoff, sport);
         } catch (e) { /* ignore */ }
     }
     
-    // 2. AI Kontextus Keresés (Hírek, Sérültek) - MÁR MEGTÖRTÉNT A DEEP SCOUT-BAN
-    // De ha ez a függvény fut, akkor lehet, hogy az API hívás közben volt hiba.
-    // A fő függvényben már egyesítettük az adatokat.
-    
-    // Itt visszaadunk egy "üres" szerkezetet, amit majd a hívó feltölt a Deep Scout adatokkal.
     const emptyStats: ICanonicalStats = { gp: 1, gf: 0, ga: 0, form: null };
     const emptyWeather: IStructuredWeather = { description: "N/A (API Hiba)", temperature_celsius: null, wind_speed_kmh: null, precipitation_mm: null, source: 'N/A' };
     
@@ -224,7 +205,7 @@ function getRoleFromPos(pos: string): CanonicalRole {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FÜGGVÉNY (v112.0 - AI FIRST xG)
+ * FŐ ADATGYŰJTŐ FÜGGVÉNY (v113.0 - AI FIRST + STRUCTURAL HARVEST)
  */
 export async function getRichContextualData(
     options: IDataFetchOptions,
@@ -256,14 +237,13 @@ export async function getRichContextualData(
         `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
         '';
         
-    const ck = explicitMatchId || `rich_context_v112.0_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}${p1AbsenteesHash}`;
+    const ck = explicitMatchId || `rich_context_v113.0_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}${p1AbsenteesHash}`;
     
     // === CACHE OLVASÁS ===
     if (!forceNew) {
         const cached = preFetchAnalysisCache.get<IDataFetchResponse>(ck);
         if (cached) {
             console.log(`Cache találat (${ck})`);
-            // (Manuális xG visszaírása... változatlan)
             return { ...cached, fromCache: true };
         }
     }
@@ -272,21 +252,18 @@ export async function getRichContextualData(
     console.log(`Nincs cache (vagy kényszerítve) (${ck}), friss adatok lekérése...`);
     
     // === LÉPÉS 1: AI DEEP SCOUT (A "PLAN A") ===
-    // Először az AI fut le, hogy meglegyen a "Lélek", a Kontextus, és az xG/xGA.
     const deepScoutResult = await runStep_DeepScout({
         home: decodedHomeTeam,
         away: decodedAwayTeam,
         sport: sport
     });
     
-    // Készítünk egy alap "Deep Context" stringet
+    // Alap Deep Context string
     const deepContextString = deepScoutResult ? 
         `[DEEP SCOUT JELENTÉS]:\n- Összefoglaló: ${deepScoutResult.narrative_summary}\n- Fizikai: ${deepScoutResult.physical_factor}\n- Pszichológiai: ${deepScoutResult.psychological_factor}\n- Időjárás: ${deepScoutResult.weather_context}\n- Hírek: ${deepScoutResult.key_news?.join('; ')}` 
         : "A Deep Scout nem talált adatot.";
 
-    // === LÉPÉS 2: API LEKÉRÉS (A "PLAN B" / STATISZTIKA) ===
-    // Párhuzamosan futtatjuk az API-kat a kemény számokért (xG, tabellák).
-    
+    // === LÉPÉS 2: API LEKÉRÉS (A "PLAN B") ===
     let finalResult: IDataFetchResponse;
     let xgSource = "Calculated (Fallback)";
 
@@ -299,7 +276,7 @@ export async function getRichContextualData(
         const leagueData = sportConfig?.espn_leagues[decodedLeagueName];
         const countryContext = leagueData?.country || 'N/A'; 
         
-        // ID Keresés és Provider hívás
+        // ID Keresés és Provider hívás (ugyanaz, mint v110.4)
         let leagueId: number | null = null;
         let foundSeason: number | null = null;
         let homeTeamId: number | null = null;
@@ -314,7 +291,7 @@ export async function getRichContextualData(
                 homeTeamId = await getApiSportsTeamId(decodedHomeTeam, sport, leagueId, originSeason);
                 awayTeamId = await getApiSportsTeamId(decodedAwayTeam, sport, leagueId, originSeason);
                 
-                // Fallback ID keresés 8. ügynökkel (ha statikus nem ment)
+                // Fallback ID keresés 8. ügynökkel
                 if (!homeTeamId || !awayTeamId) {
                     const leagueRoster = await _getLeagueRoster(leagueId, foundSeason, sport);
                     const rosterStubs = leagueRoster.map(item => ({ id: item.team.id, name: item.team.name }));
@@ -337,7 +314,6 @@ export async function getRichContextualData(
         
         finalResult = baseResult;
         
-        // Sofascore integráció (ha van)
         if (sofascoreData?.advancedData) {
             finalResult.advancedData.home.xg = sofascoreData.advancedData.xg_home;
             finalResult.advancedData.away.xg = sofascoreData.advancedData.xG_away;
@@ -352,10 +328,9 @@ export async function getRichContextualData(
          xgSource = "STUB (AI Fallback)";
     }
 
-    // === LÉPÉS 3: EGYESÍTÉS ÉS xG MAPPING (MERGE) ===
-    // Itt adjuk hozzá a Deep Scout tudását az API adatokhoz.
+    // === LÉPÉS 3: EGYESÍTÉS ÉS KITÖLTÉS (DEEP SCOUT v3) ===
     
-    // 1. Rich Context felülírása/bővítése
+    // 1. Context egyesítése
     const apiContext = finalResult.richContext !== "N/A" ? finalResult.richContext : "";
     finalResult.richContext = `${deepContextString}\n\n[API ADATOK]:\n${apiContext}`;
     
@@ -365,9 +340,46 @@ export async function getRichContextualData(
         finalResult.rawStats.home = parseAiStats(deepScoutResult.stats_fallback.home_last_5);
         finalResult.rawStats.away = parseAiStats(deepScoutResult.stats_fallback.away_last_5);
     }
+    
+    // === ÚJ: Strukturált Adatok Betöltése (v113.0) ===
+    // Ha az API nem hozott H2H-t, Formát, vagy Lineupot, az AI-ból töltjük fel.
+    if (deepScoutResult?.structured_data) {
+        const aiData = deepScoutResult.structured_data;
 
-    // 3. PRIORITÁSI LÁNC AZ xG ADATOKRA
-    // A) FELHASZNÁLÓI MANUÁLIS (Override)
+        // H2H Fallback
+        if (!finalResult.rawData.h2h_structured || finalResult.rawData.h2h_structured.length === 0) {
+            if (aiData.h2h && Array.isArray(aiData.h2h)) {
+                console.log(`[DataFetch v113.0] API H2H hiányzik -> AI H2H betöltve (${aiData.h2h.length} db).`);
+                finalResult.rawData.h2h_structured = aiData.h2h;
+            }
+        }
+        
+        // Forma Fallback (ha az API null-t adott)
+        if (!finalResult.form.home_overall && aiData.form_last_5?.home) {
+            finalResult.form.home_overall = aiData.form_last_5.home;
+            console.log(`[DataFetch v113.0] API Forma hiányzik -> AI Forma betöltve.`);
+        }
+        if (!finalResult.form.away_overall && aiData.form_last_5?.away) {
+            finalResult.form.away_overall = aiData.form_last_5.away;
+        }
+
+        // Lineup Fallback (Ha nincs elérhető keret az API-ból)
+        const hasApiRoster = finalResult.availableRosters.home.length > 0;
+        if (!hasApiRoster && aiData.probable_lineups) {
+             console.log(`[DataFetch v113.0] API Keret hiányzik -> AI Lineups betöltve.`);
+             // Átalakítjuk PlayerStub formátumra
+             const mapToStub = (name: string): IPlayerStub => ({ id: 0, name: name, pos: 'N/A', rating_last_5: 7.5 });
+             
+             if (aiData.probable_lineups.home) {
+                 finalResult.availableRosters.home = aiData.probable_lineups.home.map(mapToStub);
+             }
+             if (aiData.probable_lineups.away) {
+                 finalResult.availableRosters.away = aiData.probable_lineups.away.map(mapToStub);
+             }
+        }
+    }
+
+    // 3. xG Adatok (Prioritás)
     if (manual_H_xG != null) {
         finalResult.advancedData.manual_H_xG = manual_H_xG;
         finalResult.advancedData.manual_H_xGA = manual_H_xGA;
@@ -375,24 +387,18 @@ export async function getRichContextualData(
         finalResult.advancedData.manual_A_xGA = manual_A_xGA;
         xgSource = "Manual (Components)";
     }
-    // B) AI DEEP SCOUT xG/xGA (Ha van) - Ez a Plan A, ha nincs manuális
     else if (deepScoutResult?.xg_stats && deepScoutResult.xg_stats.home_xg != null) {
-        console.log(`[DataFetch] AI Deep Scout talált xG adatokat! Betöltés "Manuális" helyére...`);
+        console.log(`[DataFetch] AI Deep Scout talált xG adatokat!`);
         finalResult.advancedData.manual_H_xG = deepScoutResult.xg_stats.home_xg;
         finalResult.advancedData.manual_H_xGA = deepScoutResult.xg_stats.home_xga;
         finalResult.advancedData.manual_A_xG = deepScoutResult.xg_stats.away_xg;
         finalResult.advancedData.manual_A_xGA = deepScoutResult.xg_stats.away_xga;
         xgSource = `AI Deep Scout (${deepScoutResult.xg_stats.source || 'Web'})`;
     }
-    // C) API (Sofascore/ApiSports) - Ez a Plan B, ha az AI nem talált
-    // (Ez már beállítódott a 138. sor környékén a 'finalResult' változóban, csak a 'xgSource' kell)
-    else if (xgSource.includes("API")) {
-        // Marad a jelenlegi beállítás
-    }
     
     finalResult.xgSource = xgSource;
 
-    // === ODDS & WEB CONTEXT FALLBACK (v110.0 - Megtartva biztonságnak) ===
+    // Odds Fallback
     const primaryOddsFailed = !finalResult.oddsData || !finalResult.oddsData.allMarkets || finalResult.oddsData.allMarkets.length === 0;
     if (primaryOddsFailed) {
         console.warn(`[DataFetch] API Odds hiányzik. AI Web Search indítása...`);
@@ -401,12 +407,10 @@ export async function getRichContextualData(
     }
 
     preFetchAnalysisCache.set(ck, finalResult);
-    console.log(`Sikeres adat-egyesítés (v112.0 AI-First), cache mentve (${ck}).`);
+    console.log(`Sikeres adat-egyesítés (v113.0 AI-First), cache mentve (${ck}).`);
     return { ...finalResult, fromCache: false };
 }
 
-
-// === P1 KERET-LEKÉRŐ FÜGGVÉNY (Változatlan) ===
 export async function getRostersForMatch(options: {
     sport: string;
     homeTeamName: string; 
@@ -415,8 +419,9 @@ export async function getRostersForMatch(options: {
     utcKickoff: string;   
 }): Promise<{ home: IPlayerStub[], away: IPlayerStub[] } |
 null> {
-    
     console.log(`[DataFetch] Könnyített keret-lekérés indul: ${options.homeTeamName} vs ${options.awayTeamName}`);
+    // ... (A roster lekérő kód változatlan, de most már a fő ág is képes AI fallbacket használni)
+    // A v110.4-es verzió kódja itt megmarad...
     try {
         const sportProvider = getProvider(options.sport);
         const decodedLeagueName = decodeURIComponent(decodeURIComponent(options.leagueName || 'N/A'));
@@ -450,10 +455,6 @@ null> {
                 getApiSportsTeamId(decodedHomeTeam, options.sport, leagueId, originSeason),
                 getApiSportsTeamId(decodedAwayTeam, options.sport, leagueId, originSeason),
             ]);
-            
-            if (!homeTeamId || !awayTeamId) {
-                 console.warn(`[DataFetch] Csapat ID hiányzik a keret lekéréséhez. (HomeID: ${homeTeamId}, AwayID: ${awayTeamId}).`);
-            }
         }
 
         const providerOptions = {
@@ -489,8 +490,6 @@ null> {
     }
 }
 
-
-// --- KÖZÖS FÜGGVÉNYEK EXPORTÁLÁSA ---
 export const _getFixturesFromEspn = commonGetFixtures;
 export const _callGemini = commonCallGemini;
 export const _callGeminiWithJsonRetry = commonCallGeminiWithJsonRetry;
