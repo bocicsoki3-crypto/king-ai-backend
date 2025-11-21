@@ -1,14 +1,13 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v105.0 ("Intelligens Bizalom Refaktor")
-// MÓDOSÍTÁS (v105.0):
-// 1. REFaktor: A 'calculateModelConfidence' hívás cserélve 'calculateConfidenceScores'-ra.
-// 2. MÓDOSÍTVA: A rendszer már nem egy 'modelConfidence' (Number) számot kezel,
-//    hanem egy 'confidenceScores' (Object) objektumot, ami tartalmazza a
-//    szétválasztott 'winner' és 'totals' bizalmi pontszámokat.
-// 3. MÓDOSÍTVA: A 'sim' objektum mostantól mindkét pontszámot megkapja.
-// 4. MÓDOSÍTVA: A 'runStep_FinalAnalysis' (Hibrid Főnök) megkapja a teljes
-//    'confidenceScores' objektumot, hogy az AI ágensek már
-//    piac-specifikus bizalommal dolgozhassanak.
+// VERZIÓ: v106.0 ("Full History Fix")
+// MÓDOSÍTÁS (v106.0):
+// 1. JAVÍTVA: Az 'auditData' összeállításánál a 'committee' objektum
+//    most már tartalmazza a 'scout' és 'critic' (Agent 5) adatait is.
+//    Ez lehetővé teszi, hogy az Előzmények részletező nézete (viewHistoryDetail)
+//    újra tudja építeni a teljes jelentést anélkül, hogy "Hiba: Scout jelentés..."
+//    üzenetet dobna.
+// 2. OPTIMALIZÁLÁS: A 'richContext' szöveget használjuk 'scout' summary-ként,
+//    hogy spóroljunk a hellyel, de mégis legyen tartalom.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -72,6 +71,9 @@ interface IAnalysisResponse {
                 report: any   
             };
             strategist: any;
+            // === JAVÍTÁS: Opcionális mezők a teljes típusbiztonságért ===
+            scout?: any;
+            critic?: any;
         };
         matchData: {
             home: string;
@@ -397,11 +399,29 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         };
         
         // "EXTRA Karcsúsított" 'auditData' a Google Sheets limit miatt
+        // === JAVÍTÁS (v106.0): Hozzáadjuk a Scout és Critic (Risk) összefoglalókat,
+        // hogy a frontend újra tudja építeni az előzménynézetet.
         const auditData = {
             analysisData: {
                 committee: {
                     quant: { mu_h: pure_mu_h, mu_a: pure_mu_a, source: quantSource },
-                    specialist_mu: { mu_h: mu_h, mu_a: mu_a } // Csak a módosított xG
+                    specialist_mu: { mu_h: mu_h, mu_a: mu_a },
+                    // ITT A JAVÍTÁS: Hozzáadjuk a hiányzó láncszemeket
+                    scout: { 
+                        summary: richContext || "Nincs részletes kontextus.",
+                        key_insights: [] 
+                    },
+                    critic: {
+                        tactical_summary: finalReport?.risk_assessment || "Nincs kockázati elemzés.",
+                        key_risks: [],
+                        contradiction_score: 0.0
+                    },
+                    strategist: {
+                        final_confidence_report: finalReport?.final_confidence_report,
+                        prophetic_timeline: finalReport?.prophetic_timeline,
+                        strategic_synthesis: finalReport?.strategic_synthesis,
+                        micromodels: finalReport?.micromodels
+                    }
                 },
                 matchData: {
                     home, 
@@ -432,6 +452,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 }
             }
         };
+        // === JAVÍTÁS VÉGE ===
         
         const jsonResponse: IAnalysisResponse = { 
             analysisData: {
