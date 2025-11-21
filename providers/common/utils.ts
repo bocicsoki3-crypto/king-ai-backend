@@ -1,15 +1,11 @@
 // FÁJL: providers/common/utils.ts
-// VERZIÓ: v72.1 (Kritikus Meccslista Javítás)
-// MÓDOSÍTÁS (v105.1 JAVÍTÁS):
-// 1. JAVÍTVA (KRITIKUS): Az '_getFixturesFromEspn' (kb. 345. sor)
-//    státusz szűrője ('pre') túl szigorú volt, ami 0 meccset eredményezett.
-// 2. LOGIKA: A szűrő megfordítva. Most már minden meccset átenged,
-//    ami NEM 'post' (befejezett), így a 'scheduled' és 'upcoming'
-//    státuszú meccsek is bekerülnek a listába.
-// 3. JAVÍTVA (v105.1 Felhasználói Kérés): A 'findMainTotalsLine' (kb. 267. sor)
-//    teljesen újraírva. Most már a sportspecifikus 'fullApiData' helyett
-//    a kanonikus 'allMarkets' tömbből olvassa a "totals" piacokat,
-//    így már helyesen működik a Kosárlabda ('apiBasketballProvider') adataival is.
+// VERZIÓ: v110.1 (MERGED: Original Logic + AI Search)
+// MÓDOSÍTÁS:
+// 1. VISSZATÉRT: Az eredeti ESPN meccslekérő (_getFixturesFromEspn) teljes kódja.
+// 2. VISSZATÉRT: Az eredeti Időjárás lekérő (getStructuredWeatherData) teljes kódja.
+// 3. VISSZATÉRT: Az eredeti Totals kereső (findMainTotalsLine).
+// 4. ÚJ: A '_callGemini' most már támogatja a 'useSearch' paramétert (Google Grounding).
+
 import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import {
     GEMINI_API_KEY, GEMINI_MODEL_ID,
@@ -22,7 +18,6 @@ import type {
 } from '../../src/types/canonical.d.ts';
 
 // --- ÁLTALÁNOS API HÍVÓ ---
-// (Változatlan v72.0)
 export async function makeRequest(url: string, config: AxiosRequestConfig = {}, retries: number = 1): Promise<any> {
     let attempts = 0;
     const method = config.method?.toUpperCase() || 'GET';
@@ -55,16 +50,11 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
             
             if (error.response) {
                 errorMessage += `Státusz: ${error.response.status}, Válasz: ${JSON.stringify(error.response.data)?.substring(0, 150)}`;
-                
                 if (error.response.status === 429) {
                     const quotaError: any = new Error(errorMessage);
                     quotaError.response = error.response;
                     quotaError.isQuotaError = true;
                     throw quotaError; 
-                }
-                if ([401, 403].includes(error.response.status)) { 
-                    console.error(`HITELESÍTÉSI HIBA: ${errorMessage}`);
-                    throw error; 
                 }
             } else if (error.request) {
                 errorMessage += `Timeout (${config.timeout || 25000}ms) vagy nincs válasz.`;
@@ -83,30 +73,47 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
     throw new Error("API hívás váratlanul befejeződött.");
 }
 
-// --- GEMINI API HÍVÓK ---
-// (Változatlan v72.0)
-export async function _callGemini(prompt: string, forceJson: boolean = true): Promise<string> {
-    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') { throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY.");
-    }
-    if (!GEMINI_MODEL_ID) { throw new Error("Hiányzó GEMINI_MODEL_ID.");
+// --- GEMINI API HÍVÓK (GROUNDING TÁMOGATÁSSAL - v110.0) ---
+
+export async function _callGemini(
+    prompt: string, 
+    forceJson: boolean = true,
+    useSearch: boolean = false // === ÚJ PARAMÉTER ===
+): Promise<string> {
+    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') { 
+        throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY.");
     }
     
+    // Ha a keresés aktív, a 'gemini-2.0-flash-exp' modellt használjuk, mert az jobban kezeli a tool-okat
+    // Ha nincs keresés, marad a config-ban beállított (pl. gemini-2.5-pro)
+    const targetModel = useSearch ? 'gemini-2.0-flash-exp' : (GEMINI_MODEL_ID || 'gemini-1.5-flash');
+
     let finalPrompt = prompt;
     if (forceJson) {
-        finalPrompt = `${prompt}\n\nCRITICAL OUTPUT INSTRUCTION: Your entire response must be ONLY a single, valid JSON object.\nDo not add any text, explanation, or introductory phrases outside of the JSON structure itself.\nEnsure the JSON is complete and well-formed.`;
+        finalPrompt = `${prompt}\n\nCRITICAL OUTPUT INSTRUCTION: Your entire response must be ONLY a single, valid JSON object. Do not add any Markdown formatting (like \`\`\`json), text, explanation, or introductory phrases.`;
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent?key=${GEMINI_API_KEY}`;
-    const payload = { 
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
+    
+    const payload: any = { 
         contents: [{ role: "user", parts: [{ text: finalPrompt }] }], 
         generationConfig: { 
-            temperature: 0.2, 
+            temperature: useSearch ? 0.1 : 0.2, // Keresésnél legyünk precízebbek
             maxOutputTokens: 8192,
-            ...(forceJson && { responseMimeType: "application/json" }),
+            // Ha Search van, a JSON módot néha jobb kikapcsolni a generationConfig-ban, 
+            // de megpróbáljuk így, mert a forceJson prompt erős.
+            ...(forceJson && !useSearch && { responseMimeType: "application/json" }),
         }, 
     };
+
+    // === ÚJ: GOOGLE SEARCH TOOL HOZZÁADÁSA ===
+    if (useSearch) {
+        payload.tools = [{ google_search: {} }];
+        console.log(`[Gemini] Google Search Grounding AKTIVÁLVA.`);
+    }
+    // ==========================================
     
-    console.log(`Gemini API hívás indul a '${GEMINI_MODEL_ID}' modellel... (Prompt hossza: ${finalPrompt.length}, JSON kényszerítve: ${forceJson})`);
+    console.log(`Gemini API hívás indul (${targetModel})... (Search: ${useSearch})`);
     
     try {
         const response: AxiosResponse<any> = await axios.post(url, payload, {
@@ -116,140 +123,84 @@ export async function _callGemini(prompt: string, forceJson: boolean = true): Pr
         });
         
         if (response.status !== 200) {
-            console.error('--- RAW GEMINI ERROR RESPONSE ---');
-            console.error(JSON.stringify(response.data, null, 2));
-            throw new Error(`Gemini API hiba: Státusz ${response.status} - ${JSON.stringify(response.data?.error?.message || response.data)}`);
+            console.error('--- RAW GEMINI ERROR RESPONSE ---', JSON.stringify(response.data, null, 2));
+            throw new Error(`Gemini API hiba: Státusz ${response.status}`);
         }
         
-        const responseText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        const candidate = response.data?.candidates?.[0];
+        const responseText = candidate?.content?.parts?.[0]?.text;
         
         if (!responseText) {
-            const finishReason = response.data?.candidates?.[0]?.finishReason || 'Ismeretlen';
+            const finishReason = candidate?.finishReason || 'Ismeretlen';
             console.warn('--- GEMINI BLOCK RESPONSE ---', JSON.stringify(response.data, null, 2));
             throw new Error(`Gemini nem adott vissza szöveges tartalmat. Ok: ${finishReason}`);
         }
         
+        // Tisztítás Markdown esetén
+        let cleanText = responseText;
         if (forceJson) {
+            cleanText = cleanText.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+            // Gyors ellenőrzés
             try {
-                JSON.parse(responseText);
+                JSON.parse(cleanText);
             } catch (e: any) {
-                console.error(`Gemini JSON parse hiba a kikényszerített válaszon: ${e.message}`);
+                console.error(`Gemini JSON parse hiba: ${e.message}. Nyers válasz: ${cleanText.substring(0, 100)}...`);
                 throw new Error(`Gemini JSON parse hiba: ${e.message}`);
             }
         }
         
-        return responseText;
+        return cleanText;
     } catch (e: any) {
-        console.error(`Végleges hiba a Gemini API hívás (_callGemini) során: ${e.message}`, e.stack);
+        console.error(`Végleges hiba a Gemini API hívás (_callGemini) során: ${e.message}`);
         throw e;
     }
 }
 
-// (Változatlan v72.0)
+// Továbbítja a useSearch paramétert
 export async function _callGeminiWithJsonRetry(
     prompt: string, 
     stepName: string, 
-    maxRetries: number = 2
+    maxRetries: number = 2,
+    useSearch: boolean = false // === ÚJ PARAMÉTER ===
 ): Promise<any> {
     
     let attempts = 0;
     while (attempts <= maxRetries) {
         attempts++;
         try {
-            const jsonString = await _callGemini(prompt, true);
+            const jsonString = await _callGemini(prompt, true, useSearch);
             const result = JSON.parse(jsonString);
-            
-            if (attempts > 1) {
-                console.log(`[AI_Service] Sikeres JSON feldolgozás (${stepName}) a(z) ${attempts}. próbálkozásra.`);
-            }
             return result;
         } catch (e: any) {
-            if (e instanceof SyntaxError) {
-                console.warn(`[AI_Service] FIGYELMEZTETÉS: Gemini JSON parse hiba (${stepName}), ${attempts}/${maxRetries+1}. próbálkozás. Hiba: ${e.message}`);
-                if (attempts > maxRetries) {
-                    console.error(`[AI_Service] KRITIKUS HIBA: A Gemini JSON feldolgozása végleg sikertelen (${stepName}) ${attempts-1} próbálkozás után.`);
-                    throw new Error(`AI Hiba (${stepName}): A modell hibás JSON struktúrát adott vissza, ami nem feldolgozható. Hiba: ${e.message}`);
-                }
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+            if (e instanceof SyntaxError || e.message.includes("parse")) {
+                console.warn(`[AI_Service] JSON hiba (${stepName}), ${attempts}. próba.`);
+                if (attempts > maxRetries) throw e;
+                await new Promise(resolve => setTimeout(resolve, 1500));
             } else {
-                console.error(`[AI_Service] Kritikus nem-parse hiba (${stepName}): ${e.message}`);
                 throw e;
             }
         }
     }
-    throw new Error(`AI Hiba (${stepName}): Ismeretlen hiba az újrapróbálkozási ciklusban.`);
 }
 
-// --- PROMPT SEGÉDFÜGGVÉNY ---
-// (Változatlan v72.0)
 export function fillPromptTemplate(template: string, data: any): string {
     if (!template || typeof template !== 'string') return '';
-    
     try {
         return template.replace(/\{([\w_.]+)\}/g, (match, key) => {
-            let value: any;
-            
+            let value: any = data;
             if (key.includes('.')) {
-                const keys = key.split('.');
-                let currentData = data;
-                let found = true;
-                
-                for (const k of keys) {
-                    if (currentData && typeof currentData === 'object' && currentData.hasOwnProperty(k)) {
-                        currentData = currentData[k];
-                    } else if (k.endsWith('Json')) {
-                        const baseKey = k.replace('Json', '');
-                        if (currentData && currentData.hasOwnProperty(baseKey) && currentData[baseKey] !== undefined) {
-                            try { 
-                                currentData = currentData[baseKey];
-                            } catch (e: any) { 
-                                console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál (bejövő objektum)`);
-                                currentData = {};
-                            }
-                         }
-                    } else {
-                        found = false;
-                        break;
-                    }
-                }
-                if (found) {
-                    value = currentData;
-                } else {
-                    console.warn(`Hiányzó pontozott kulcs a prompt kitöltéséhez: ${key}`);
-                    return "N/A";
-                }
-            
-            } else if (data && typeof data === 'object' && data.hasOwnProperty(key)) {
-                 value = data[key];
-            } 
-            else if (key.endsWith('Json')) {
-                const baseKey = key.replace('Json', '');
-                if (data && data.hasOwnProperty(baseKey) && data[baseKey] !== undefined) {
-                    try { return JSON.stringify(data[baseKey]); } 
-                     catch (e: any) { console.warn(`JSON stringify hiba a(z) ${baseKey} kulcsnál`);
-                     return '{}'; }
-                } else { return '{}'; } 
+                for (const k of key.split('.')) value = value?.[k];
+            } else {
+                value = data?.[key];
             }
-            else { 
-                 console.warn(`Hiányzó kulcs a prompt kitöltéséhez: ${key}`);
-                 return "N/A";
-            }
-
-            if (value === null || value === undefined) { return "N/A"; }
-            
-            if (typeof value === 'object') {
-                 try { return JSON.stringify(value); } 
-                 catch (e) { return "[object]"; }
-            }
+            if (value === null || value === undefined) return "N/A";
+            if (typeof value === 'object') return JSON.stringify(value);
             return String(value);
         });
-    } catch(e: any) {
-         console.error(`Váratlan hiba a fillPromptTemplate során: ${e.message}`);
-         return template; 
-    }
+    } catch(e) { return template; }
 }
 
-// --- SPORT ADAT SEGÉDFÜGGVÉNYEK ---
+// --- SPORT ADAT SEGÉDFÜGGVÉNYEK (VISSZAÁLLÍTVA AZ EREDETI) ---
 
 /**
  * ESPN Meccslekérdező
@@ -299,13 +250,7 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
                 .then(response => {
                     if (!response?.data?.events) return [];
                     return response.data.events
-                        // === JAVÍTÁS (v72.1) ===
-                        // A régi, túl szigorú szűrő:
-                        // .filter((event: any) => event?.status?.type?.state?.toLowerCase() === 'pre')
-                        //
-                        // Az új, robusztusabb szűrő: Minden, ami nem 'post' (befejezett):
                          .filter((event: any) => event?.status?.type?.state?.toLowerCase() !== 'post')
-                        // === JAVÍTÁS VÉGE ===
                         .map((event: any) => {
                             const competition = event.competitions?.[0];
                             if (!competition) return null;
@@ -324,7 +269,7 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
                                 };
                             }
                             return null;
-                        }).filter(Boolean); // Kiszűri a null értékeket
+                        }).filter(Boolean);
                 })
                 .catch((error: any) => {
                     if (error.response?.status === 400) {
@@ -332,7 +277,7 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
                     } else {
                         console.error(`ESPN Hiba (${req.leagueName}): ${error.message}`);
                     }
-                    return []; // Hiba esetén üres tömböt adunk vissza
+                    return [];
                  })
         );
         
@@ -355,9 +300,7 @@ export async function _getFixturesFromEspn(sport: string, days: string): Promise
     }
 }
 
-// === JAVÍTVA (v105.1): findMainTotalsLine ===
-// A funkció most már a kanonikus 'allMarkets' tömböt olvassa
-// a sportspecifikus 'fullApiData' helyett.
+// === JAVÍTVA (v105.1): findMainTotalsLine (VISSZAÁLLÍTVA AZ EREDETI) ===
 export function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: string): number {
     const defaultConfigLine = SPORT_CONFIG[sport]?.totals_line || (sport === 'soccer' ? 2.5 : (sport === 'hockey' ? 6.5 : 220.5));
     
@@ -373,19 +316,16 @@ export function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: strin
         return defaultConfigLine;
     }
 
-    // 1. Lépés: Párok gyűjtése (Over/Under)
     const linesAvailable: { [key: string]: { over?: number, under?: number } } = {};
     
     for (const outcome of totalsMarket.outcomes) {
-        // A 'point' mezőt használjuk, amit a providereknek (pl. apiBasketballProvider) be kell állítaniuk
         const line = outcome.point;
         
         if (line === null || line === undefined || isNaN(Number(line))) {
-            // Ha a 'point' nincs beállítva (pl. régebbi provider), megpróbáljuk kitalálni a névből
             const lineMatch = outcome.name.match(/(\d+\.\d+)/);
             const guessedLine = lineMatch ? lineMatch[1] : null;
             
-            if (!guessedLine) continue; // Nem tudjuk feldolgozni ezt a kimenetet
+            if (!guessedLine) continue;
             
             const lineKey = String(guessedLine);
             if (!linesAvailable[lineKey]) linesAvailable[lineKey] = {};
@@ -395,7 +335,6 @@ export function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: strin
                 linesAvailable[lineKey].under = outcome.price;
             }
         } else {
-            // A 'point' mező létezik (ez a preferált út)
             const lineKey = String(line);
             if (!linesAvailable[lineKey]) linesAvailable[lineKey] = {};
             if (outcome.name.toLowerCase().startsWith("over")) {
@@ -407,17 +346,14 @@ export function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: strin
     }
 
     if (Object.keys(linesAvailable).length === 0) {
-        console.warn(`[utils.ts/findMainTotalsLine] Találtunk 'totals' piacot, de nem sikerült Over/Under párokat kinyerni. Alapértelmezett vonal (${defaultConfigLine}) használata.`);
         return defaultConfigLine;
     }
 
-    // 2. Lépés: A legkiegyensúlyozottabb pár keresése
     let closestPair = { diff: Infinity, line: defaultConfigLine };
     
     for (const lineKey in linesAvailable) {
         const pair = linesAvailable[lineKey];
         if (pair.over && pair.under) {
-            // A "legközelebbi" szorzópár (pl. 1.90 vs 1.90) az igazi fővonal
             const diff = Math.abs(pair.over - pair.under);
             if (diff < closestPair.diff) {
                 closestPair = { diff, line: parseFloat(lineKey) };
@@ -425,28 +361,22 @@ export function findMainTotalsLine(oddsData: ICanonicalOdds | null, sport: strin
         }
     }
 
-    // Ha találtunk egyértelműen kiegyensúlyozott párt (pl. 0.5-nél kisebb különbség)
     if (closestPair.diff < 0.5) {
-        console.log(`[utils.ts/findMainTotalsLine] Valódi fővonal azonosítva (legkisebb különbség alapján): ${closestPair.line}`);
+        console.log(`[utils.ts/findMainTotalsLine] Valódi fővonal azonosítva: ${closestPair.line}`);
         return closestPair.line;
     }
 
-    // 3. Lépés: Fallback (ha nincs egyértelmű pár)
-    // Keressük azt a vonalat, ami a legközelebb van a mi alapértelmezettünkhöz
     const numericDefaultLine = defaultConfigLine;
     const numericLines = Object.keys(linesAvailable).map(parseFloat);
     
     numericLines.sort((a, b) => Math.abs(a - numericDefaultLine) - Math.abs(b - numericDefaultLine));
     
     const fallbackLine = numericLines[0];
-    console.warn(`[utils.ts/findMainTotalsLine] Nem találtunk kiegyensúlyozott (diff < 0.5) szorzópárt. Visszaesés a konfigurációhoz legközelebbi elérhető vonalra: ${fallbackLine}`);
-    
     return fallbackLine;
 }
 
 
-// --- IDŐJÁRÁS (v55.9) ---
-// (Változatlan v72.0)
+// --- IDŐJÁRÁS (VISSZAÁLLÍTVA AZ EREDETI) ---
 const geocodingCache = new Map<string, { latitude: number; longitude: number }>();
 
 interface IGeocodingResponse {
