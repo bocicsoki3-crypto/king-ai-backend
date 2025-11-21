@@ -1,10 +1,11 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v111.0 (Market Intel Injection + Deep Scout Integration)
-// MÓDOSÍTÁS (v111.0):
-// 1. ADATINJEKTÁLÁS: A 'marketIntel' (Piaci Hírszerzés) sztringet, amit az
-//    'analyzeLineMovement' generál, mostantól hozzáfűzzük a 'richContext'-hez.
-// 2. INTEGRÁCIÓ: A 'DataFetch' v111.0 már tartalmazza a Deep Scout adatait
-//    a 'richContext'-ben, így itt nem kell külön hívni, csak továbbítani.
+// VERZIÓ: v112.0 (Final Integration - Full xG Pipeline)
+// MÓDOSÍTÁS (v112.0):
+// 1. STABILITÁS: Nem változott drasztikusan, csak megerősítve, hogy a
+//    'DataFetch v112.0'-tól kapott adatokat (köztük a Deep Scout xG-t)
+//    továbbra is helyesen adja át az ügynököknek.
+// 2. BIZTOSÍTÉK: Az 'analysisCacheKey' frissítve v112.0-ra, hogy elkerüljük
+//    a régi, hiányos adatok betöltését a cache-ből.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -145,8 +146,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
         
-        // v111.0 Cache kulcs
-        analysisCacheKey = `analysis_v111.0_apex_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
+        // v112.0 Cache kulcs (Frissítve az új xG logikához)
+        analysisCacheKey = `analysis_v112.0_apex_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
         
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
@@ -170,7 +171,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         }
 
         // === 2. ÜGYNÖK (SCOUT): Kontextus, Piac és P1 Kezelése ===
-        // ITT HÍVÓDIK MEG A DataFetch.ts v111.0, ami már tartalmazza a Deep Scout-ot!
+        // ITT HÍVÓDIK MEG A DataFetch.ts v112.0, ami már vadássza az xG-t!
         console.log(`[Lánc 2/6] Scout Ügynök: Kontextus és Piac lekérése (AI-First)...`);
         const dataFetchOptions: IDataFetchOptions = {
             sport: sport,
