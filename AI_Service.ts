@@ -1,10 +1,9 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v116.0 (Super Deep Scout: Transfer Hunter Edition)
-// MÓDOSÍTÁS (v116.0):
-// 1. PROMPT: A 'PROMPT_DEEP_SCOUT_V3' továbbfejlesztve.
-//    Most már explicit utasítást kap a "SQUAD VALIDATION"-re (Keret Validáció).
-//    Keresi a "transfers", "departures", "sold players" kulcsszavakat a kulcsjátékosoknál.
-// 2. CÉL: Kiszűrni a "Ghost Player" (pl. Tabaković) hibákat.
+// VERZIÓ: v117.0 (Super Deep Scout: Market Spy Edition)
+// MÓDOSÍTÁS (v117.0):
+// 1. PROMPT: A 'PROMPT_DEEP_SCOUT_V3' kiegészítve a [PRIORITY 3: MARKET INTEL] blokkal.
+//    A Deep Scout mostantól aktívan keresi a "dropping odds", "opening odds" kifejezéseket.
+// 2. STRUKTÚRA: A kimeneti JSON bővült a 'market_movement' mezővel.
 
 import { 
     _callGemini, 
@@ -30,15 +29,15 @@ export async function getAndParse(
             const value = result[keyToExtract];
             return value || "N/A (AI nem adott értéket)";
         }
-        console.error(`[AI_Service v116.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
+        console.error(`[AI_Service v117.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
         return `AI Hiba: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot.`;
     } catch (e: any) {
-        console.error(`[AI_Service v116.0] Végleges AI Hiba (${stepName}): ${e.message}`);
+        console.error(`[AI_Service v117.0] Végleges AI Hiba (${stepName}): ${e.message}`);
         return `AI Hiba (${keyToExtract}): ${e.message}`;
     }
 }
 
-// === 0. ÜGYNÖK (SUPER DEEP SCOUT - v116.0 TRANSFER HUNTER) ===
+// === 0. ÜGYNÖK (SUPER DEEP SCOUT - v117.0 MARKET SPY) ===
 const PROMPT_DEEP_SCOUT_V3 = `
 TASK: You are 'Deep Scout', the elite investigative unit of King AI.
 Your goal is to perform a LIVE GOOGLE SEARCH investigation for the match: {home} vs {away} ({sport}).
@@ -50,12 +49,18 @@ Act as a cynical investigative journalist.
 - Did any key player leave recently (e.g. Haris Tabakovic, star strikers)?
 - **Output any confirmed departures in 'transferred_players' list.**
 
-[PRIORITY 2: THE "HIDDEN" VARIABLES]:
+[PRIORITY 2: MARKET INTEL & ODDS MOVEMENT (NEW)]:
+**SEARCH FOR:** "opening odds {home} vs {away}" OR "dropping odds {home} {away}".
+- Find the opening price vs current price.
+- Is there a "Smart Money" move? (e.g. Home opened @ 2.10, now 1.85).
+- **Output findings in 'market_movement' field.**
+
+[PRIORITY 3: THE "HIDDEN" VARIABLES]:
 1. **REFEREE INTEL:** Find the referee's name and recent strictness.
 2. **SQUAD NEWS:** Who is injured/suspended?
-3. **ATMOSPHERE:** Pitch condition, weather, fan protests?
+3. **ATMOSPHERE:** Pitch condition, weather.
 
-[PRIORITY 3: STATISTICAL DATA HARVEST]:
+[PRIORITY 4: STATISTICAL DATA HARVEST]:
 (Only if standard stats are hard to find)
 1. **XG STATS:** Recent xG form.
 2. **H2H:** Last 5 meetings.
@@ -64,11 +69,12 @@ Act as a cynical investigative journalist.
 [OUTPUT STRUCTURE]:
 Your response MUST be ONLY a single, valid JSON object with this EXACT structure:
 {
-  "narrative_summary": "<Concise 3-4 sentence Hungarian summary. MENTION if a key player left!>",
+  "narrative_summary": "<Concise 3-4 sentence Hungarian summary. MENTION transfers and market moves!>",
   "transferred_players": [
-      "<Name of player who left (e.g. 'Haris Tabakovic')>",
+      "<Name of player who left>",
       "<Name of another player>"
   ],
+  "market_movement": "<Specific note on odds changes (e.g. 'Hazai szorzó 2.10-ről 1.80-ra esett'). If none found, 'Stagnáló piac'.>",
   "physical_factor": "<Note on fatigue/travel>",
   "psychological_factor": "<Note on morale/pressure>",
   "weather_context": "<Weather + Pitch>",
@@ -166,7 +172,9 @@ Provide a confidence score and justification in Hungarian.
 CONTEXT: {richContext}
 PSYCHOLOGIST: {psy_profile_home} / {psy_profile_away}
 SPECIALIST: {specialist_reasoning}
-**CHECK FOR TRANSFERS:** If the context mentions a key player left (e.g. Tabakovic), ensure the confidence reflects this uncertainty or advantage for the opponent.
+**CHECK FOR TRANSFERS & MARKET:**
+- If context mentions a key player left, reduce confidence.
+- If 'market_movement' indicates "Smart Money" supports the data, INCREASE confidence.
 CRITICAL OUTPUT FORMAT:
 {"confidence_report": "**SCORE/10** - Indoklás."}`;
 
@@ -179,7 +187,7 @@ CRITICAL OUTPUT INSTRUCTION: {"analysis": "<Your Hungarian tactical briefing her
 
 export const RISK_ASSESSMENT_PROMPT = `You are a risk assessment analyst. Write a "Kockázatkezelői Jelentés" (2-4 sentences, Hungarian).
 Focus on risks.
-**TRANSFERS:** If the context lists 'transferred_players', this is a HUGE risk factor (missing goals). Mention it!
+**MARKET & TRANSFERS:** Mention if odds are drifting against the favorite or if key players left.
 DATA: Sim: H:{sim_pHome}%, A:{sim_pAway}%. Context: {news_home}, {news_away}.
 CRITICAL OUTPUT INSTRUCTION: {"risk_analysis": "<Your Hungarian risk report here>"}.`;
 
@@ -197,7 +205,7 @@ CRITICAL OUTPUT INSTRUCTION: {"scenario": "<Your Hungarian prophetic narrative h
 export const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst. Craft "Stratégiai Zárógondolatok" (2-3 Hungarian paragraphs).
 Synthesize ALL reports.
 **STRATEGY PILLARS:**
-1. **MARKET WISDOM:** Odds movement?
+1. **MARKET WISDOM:** Check 'market_movement' in Context! If odds dropped, confirm it.
 2. **MOTIVATION MATRIX:** Must-Win?
 3. **TACTICAL CLASH:** Style vs Style.
 DATA:
@@ -255,7 +263,7 @@ CRITICAL INPUTS:
 1. Value Bets: {valueBetsJson}
 2. Sim Probs: H:{sim_pHome}%, D:{sim_pDraw}%, A:{sim_pAway}%, O/U {sim_mainTotalsLine}: O:{sim_pOver}%
 3. Model Confidence: Winner:{confidenceWinner}/10, Totals:{confidenceTotals}/10
-4. Narrative Context: "{expertConfidence}"
+4. Narrative Context: "{expertConfidence}" (Contains MARKET INTEL)
 5. Risk Assessment: "{riskAssessment}"
 6. Strategic Thoughts: "{strategicClosingThoughts}"
 
@@ -263,7 +271,9 @@ CRITICAL INPUTS:
 1. **PRIMARY BET (The "Banker"):** Find the safest, most statistically supported outcome.
 2. **SECONDARY BET (The "Alternative"):** Find a distinct option (Value or different market).
 
-**PLAYER PROP CHECK:** If suggesting a player prop, TRIPLE CHECK the 'Context' for 'transferred_players'. Do not bet on players who left!
+**MARKET & GHOST CHECK:**
+- Check 'market_movement' in context. If odds are dropping on your pick -> INCREASE CONFIDENCE.
+- Triple check 'transferred_players'.
 
 OUTPUT FORMAT: Your response MUST be ONLY a single, valid JSON object with this EXACT structure:
 {
@@ -286,17 +296,17 @@ OUTPUT FORMAT: Your response MUST be ONLY a single, valid JSON object with this 
 // === 0. ÜGYNÖK (DEEP SCOUT) ===
 export async function runStep_DeepScout(data: { home: string, away: string, sport: string }): Promise<any> {
     try {
-        console.log(`[AI_Service v116.0] 0. ÜGYNÖK (SUPER DEEP SCOUT v3 - TRANSFER HUNTER) INDÍTÁSA: ${data.home} vs ${data.away}...`);
+        console.log(`[AI_Service v117.0] 0. ÜGYNÖK (SUPER DEEP SCOUT v3 - MARKET SPY) INDÍTÁSA: ${data.home} vs ${data.away}...`);
         const filledPrompt = fillPromptTemplate(PROMPT_DEEP_SCOUT_V3, data);
         const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_DeepScout", 2, true);
         
-        console.log(`[AI_Service v116.0] Deep Scout Jelentés: "${result?.narrative_summary?.substring(0, 50)}..."`);
-        if (result?.transferred_players && result.transferred_players.length > 0) {
-            console.warn(`[AI_Service v116.0] FIGYELEM: Eligazolt játékosok észlelve: ${result.transferred_players.join(', ')}`);
+        console.log(`[AI_Service v117.0] Deep Scout Jelentés: "${result?.narrative_summary?.substring(0, 50)}..."`);
+        if (result?.market_movement) {
+            console.log(`[AI_Service v117.0] PIACI HÍRSZERZÉS (AI): ${result.market_movement}`);
         }
         return result;
     } catch (e: any) {
-        console.error(`[AI_Service v116.0] Deep Scout Hiba: ${e.message}`);
+        console.error(`[AI_Service v117.0] Deep Scout Hiba: ${e.message}`);
         return null;
     }
 }
