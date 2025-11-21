@@ -1,11 +1,12 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v111.0 (AI-FIRST ARCHITECTURE)
-// MÓDOSÍTÁS (v111.0):
+// VERZIÓ: v112.0 (AI-FIRST ARCHITECTURE + xG Mapping)
+// MÓDOSÍTÁS (v112.0):
 // 1. ARCHITEKTÚRA VÁLTÁS: Az AI ("Deep Scout") fut le legelőször (Plan A).
-// 2. LOGIKA: Az 'apiSportsProvider' (és társai) már csak a "Plan B" vagy
-//    statisztikai kiegészítők.
-// 3. INTEGRÁCIÓ: A 'runStep_DeepScout' eredménye közvetlenül beépül a
-//    richContext-be és a nyers adatokba.
+// 2. ADATMAPPING: Ha a Deep Scout talál xG és xGA adatokat (pl. FBref-ről),
+//    azokat a rendszer "Manuális" adatként (P1) kezeli, és közvetlenül
+//    betölti a 'manual_H_xG', 'manual_H_xGA' stb. mezőkbe.
+// 3. EREDMÉNY: Kiváltja a manuális adatbevitelt, és a legpontosabb
+//    4-komponensű xG képletet aktiválja a Model.ts-ben.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -223,7 +224,7 @@ function getRoleFromPos(pos: string): CanonicalRole {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FÜGGVÉNY (v111.0 - AI FIRST)
+ * FŐ ADATGYŰJTŐ FÜGGVÉNY (v112.0 - AI FIRST xG)
  */
 export async function getRichContextualData(
     options: IDataFetchOptions,
@@ -255,7 +256,7 @@ export async function getRichContextualData(
         `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
         '';
         
-    const ck = explicitMatchId || `rich_context_v111.0_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}${p1AbsenteesHash}`;
+    const ck = explicitMatchId || `rich_context_v112.0_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}${p1AbsenteesHash}`;
     
     // === CACHE OLVASÁS ===
     if (!forceNew) {
@@ -271,7 +272,7 @@ export async function getRichContextualData(
     console.log(`Nincs cache (vagy kényszerítve) (${ck}), friss adatok lekérése...`);
     
     // === LÉPÉS 1: AI DEEP SCOUT (A "PLAN A") ===
-    // Először az AI fut le, hogy meglegyen a "Lélek" és a Kontextus.
+    // Először az AI fut le, hogy meglegyen a "Lélek", a Kontextus, és az xG/xGA.
     const deepScoutResult = await runStep_DeepScout({
         home: decodedHomeTeam,
         away: decodedAwayTeam,
@@ -298,9 +299,7 @@ export async function getRichContextualData(
         const leagueData = sportConfig?.espn_leagues[decodedLeagueName];
         const countryContext = leagueData?.country || 'N/A'; 
         
-        // ID Keresés és Provider hívás (ugyanaz, mint v110.4, de rövidítve a példában)
-        // ... (Itt megtartjuk a teljes API hívási logikát a pontosság kedvéért)
-        
+        // ID Keresés és Provider hívás
         let leagueId: number | null = null;
         let foundSeason: number | null = null;
         let homeTeamId: number | null = null;
@@ -353,11 +352,10 @@ export async function getRichContextualData(
          xgSource = "STUB (AI Fallback)";
     }
 
-    // === LÉPÉS 3: EGYESÍTÉS (MERGE) ===
+    // === LÉPÉS 3: EGYESÍTÉS ÉS xG MAPPING (MERGE) ===
     // Itt adjuk hozzá a Deep Scout tudását az API adatokhoz.
     
     // 1. Rich Context felülírása/bővítése
-    // Ha az API context "N/A", akkor teljesen lecseréljük. Ha van benne valami, hozzáfűzzük.
     const apiContext = finalResult.richContext !== "N/A" ? finalResult.richContext : "";
     finalResult.richContext = `${deepContextString}\n\n[API ADATOK]:\n${apiContext}`;
     
@@ -368,13 +366,28 @@ export async function getRichContextualData(
         finalResult.rawStats.away = parseAiStats(deepScoutResult.stats_fallback.away_last_5);
     }
 
-    // 3. Manuális P1 adatok (Legmagasabb prioritás)
+    // 3. PRIORITÁSI LÁNC AZ xG ADATOKRA
+    // A) FELHASZNÁLÓI MANUÁLIS (Override)
     if (manual_H_xG != null) {
         finalResult.advancedData.manual_H_xG = manual_H_xG;
         finalResult.advancedData.manual_H_xGA = manual_H_xGA;
         finalResult.advancedData.manual_A_xG = manual_A_xG;
         finalResult.advancedData.manual_A_xGA = manual_A_xGA;
         xgSource = "Manual (Components)";
+    }
+    // B) AI DEEP SCOUT xG/xGA (Ha van) - Ez a Plan A, ha nincs manuális
+    else if (deepScoutResult?.xg_stats && deepScoutResult.xg_stats.home_xg != null) {
+        console.log(`[DataFetch] AI Deep Scout talált xG adatokat! Betöltés "Manuális" helyére...`);
+        finalResult.advancedData.manual_H_xG = deepScoutResult.xg_stats.home_xg;
+        finalResult.advancedData.manual_H_xGA = deepScoutResult.xg_stats.home_xga;
+        finalResult.advancedData.manual_A_xG = deepScoutResult.xg_stats.away_xg;
+        finalResult.advancedData.manual_A_xGA = deepScoutResult.xg_stats.away_xga;
+        xgSource = `AI Deep Scout (${deepScoutResult.xg_stats.source || 'Web'})`;
+    }
+    // C) API (Sofascore/ApiSports) - Ez a Plan B, ha az AI nem talált
+    // (Ez már beállítódott a 138. sor környékén a 'finalResult' változóban, csak a 'xgSource' kell)
+    else if (xgSource.includes("API")) {
+        // Marad a jelenlegi beállítás
     }
     
     finalResult.xgSource = xgSource;
@@ -388,7 +401,7 @@ export async function getRichContextualData(
     }
 
     preFetchAnalysisCache.set(ck, finalResult);
-    console.log(`Sikeres adat-egyesítés (v111.0 AI-First), cache mentve (${ck}).`);
+    console.log(`Sikeres adat-egyesítés (v112.0 AI-First), cache mentve (${ck}).`);
     return { ...finalResult, fromCache: false };
 }
 
