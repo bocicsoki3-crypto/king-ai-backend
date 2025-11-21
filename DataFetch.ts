@@ -1,11 +1,13 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v107.0 (Explicit Stub Jelölés)
+// VERZIÓ: v110.2 (MERGED - FULL: v107.0 Logic + AI Web Search)
+// CÉL: A meglévő komplex logika megtartása MELLETT az API-k kiváltása/kiegészítése AI-val.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
 import path from 'path';
 // Kanonikus típusok importálása
 import type { ICanonicalRichContext, ICanonicalPlayerStats, IPlayerStub, ICanonicalPlayer, ICanonicalRawData, ICanonicalStats, IStructuredWeather, ICanonicalOdds } from './src/types/canonical.d.ts';
+
 // Providerek importálása
 import {
     fetchMatchData as apiSportsFetchData,
@@ -32,6 +34,10 @@ import { fetchSofascoreData, type ISofascoreResponse } from './providers/sofasco
 
 // A HELYES 'oddsFeedProvider.ts' (v1.9.4) BEKÖTVE
 import { fetchOddsData as oddsFeedFetchData_NameBased } from './providers/oddsFeedProvider.js'; 
+
+// === ÚJ PROVIDER (v110.0): AI Web Search ===
+import { fetchOddsViaWebSearch } from './providers/aiOddsProvider.js';
+// ==========================================
 
 import { runStep_TeamNameResolver } from './AI_Service.js';
 import { SPORT_CONFIG, API_HOSTS } from './config.js'; 
@@ -87,33 +93,48 @@ export interface IDataFetchResponse extends ICanonicalRichContext {
     xgSource: string; 
 }
 
+// === ÚJ: AI Context Generator via Web Search ===
+async function generateContextViaWebSearch(home: string, away: string, sport: string): Promise<string> {
+    console.log(`[DataFetch] AI Hírszerzés indítása (Web Search): ${home} vs ${away}...`);
+    const prompt = `
+    TASK: Search for the latest team news, injuries, and predicted lineups for the match: ${home} vs ${away} (${sport}).
+    Focus on key players missing, recent form, and any specific motivation (e.g. must-win, derby).
+    Summarize the findings in a concise Hungarian paragraph suitable for a sports betting analysis context.
+    Output JSON: { "context": "Your summary here" }
+    `;
+    try {
+        // useSearch = true aktiválása
+        const result = await commonCallGeminiWithJsonRetry(prompt, "ContextSearch", 2, true); 
+        return result?.context || "Nem sikerült friss híreket találni a weben.";
+    } catch (e) {
+        return "AI Hírszerzés hiba (Web Search).";
+    }
+}
+
 /**
- * === "Stub" Válasz Generátor ===
- * MÓDOSÍTVA (v106.1): Most már dekódolja a dátumot hívás előtt.
- * MÓDOSÍTVA (v107.0): Explicit STUB_DATA jelölés.
+ * === "Stub" Válasz Generátor (FELOKOSÍTVA v110.0) ===
+ * Most már nem csak üres adatot ad, hanem megpróbálja a netről összeszedni az infót.
  */
 async function generateEmptyStubContext(options: IDataFetchOptions): Promise<IDataFetchResponse> {
     const { sport, homeTeamName, awayTeamName, utcKickoff } = options;
     
-    // === JAVÍTÁS (v106.1): Dátum dekódolása ===
+    // Dátum dekódolása
     const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(utcKickoff || new Date().toISOString()));
-    // =========================================
     
-    console.warn(`[DataFetch/generateEmptyStubContext] Visszaadok egy üres adatszerkezetet (${homeTeamName} vs ${awayTeamName}). Az elemzés P1 adatokra fog támaszkodni.`);
+    console.warn(`[DataFetch/generateEmptyStubContext] API Hiba. Váltás AI WEB KERESÉSRE (${homeTeamName} vs ${awayTeamName})...`);
     
-    let fallbackOdds: ICanonicalOdds | null = null;
-    try {
-        console.log(`[DataFetch/generateEmptyStubContext] P4 hiba. Név-alapú tartalék odds provider (v104.6) indítása (oddsFeedProvider.ts)...`);
-        // Itt már a dekódolt dátumot adjuk át!
-        fallbackOdds = await oddsFeedFetchData_NameBased(homeTeamName, awayTeamName, decodedUtcKickoff, sport);
-        if (fallbackOdds) {
-            console.log(`[DataFetch/generateEmptyStubContext] SIKER: A név-alapú provider (oddsFeedProvider.ts) talált oddsokat.`);
-        } else {
-            console.warn(`[DataFetch/generateEmptyStubContext] A név-alapú provider (oddsFeedProvider.ts) sem talált oddsokat.`);
-        }
-    } catch (e: any) {
-        console.error(`[DataFetch/generateEmptyStubContext] Név-alapú provider (oddsFeedProvider.ts) hiba: ${e.message}`);
+    // 1. AI Odds Keresés (Ultimate Fallback)
+    let fallbackOdds = await fetchOddsViaWebSearch(homeTeamName, awayTeamName, sport);
+    
+    if (!fallbackOdds) {
+        try {
+            console.log(`[DataFetch] AI Odds nem talált, próba a régi oddsFeedProviderrel...`);
+            fallbackOdds = await oddsFeedFetchData_NameBased(homeTeamName, awayTeamName, decodedUtcKickoff, sport);
+        } catch (e) { /* ignore */ }
     }
+    
+    // 2. AI Kontextus Keresés (Hírek)
+    const webContext = await generateContextViaWebSearch(homeTeamName, awayTeamName, sport);
 
     const emptyStats: ICanonicalStats = { gp: 1, gf: 0, ga: 0, form: null };
     const emptyWeather: IStructuredWeather = {
@@ -155,7 +176,7 @@ async function generateEmptyStubContext(options: IDataFetchOptions): Promise<IDa
     const result: ICanonicalRichContext = {
          rawStats: emptyRawData.stats,
          leagueAverages: {},
-         richContext: "Figyelem: Az automatikus P4 API adatgyűjtés sikertelen. Az elemzés kizárólag a manuálisan megadott P1 adatokra támaszkodik.",
+         richContext: `[AI WEB SEARCH] ${webContext}`,
          advancedData: { 
              home: { xg: defaultXG }, 
              away: { xg: defaultXG },
@@ -171,12 +192,10 @@ async function generateEmptyStubContext(options: IDataFetchOptions): Promise<IDa
          availableRosters: { home: [], away: [] }
     };
     
-    // === JAVÍTÁS (v107.0): Explicit STUB_DATA jelölés ===
-    let xgSource = "STUB_DATA"; 
+    let xgSource = "STUB_DATA (AI Search)"; 
     if (options.manual_H_xG != null) {
         xgSource = "Manual (Components)";
     }
-    // === VÉGE ===
     
     return {
         ...result,
@@ -209,7 +228,7 @@ function getRoleFromPos(pos: string): CanonicalRole {
 }
 
 /**
- * FŐ ADATGYŰJTŐ FÜGGVÉNY (v106.1)
+ * FŐ ADATGYŰJTŐ FÜGGVÉNY (v110.2 - MERGED)
  */
 export async function getRichContextualData(
     options: IDataFetchOptions,
@@ -233,7 +252,6 @@ export async function getRichContextualData(
     const decodedLeagueName = decodeURIComponent(decodeURIComponent(leagueName || 'N/A'));
     const decodedHomeTeam = decodeURIComponent(decodeURIComponent(homeTeamName || 'N/A'));
     const decodedAwayTeam = decodeURIComponent(decodeURIComponent(awayTeamName || 'N/A'));
-    // === DÁTUM DEKÓDOLÁS ===
     const decodedUtcKickoff = decodeURIComponent(decodeURIComponent(utcKickoff || new Date().toISOString()));
 
     const teamNames = [decodedHomeTeam, decodedAwayTeam].sort();
@@ -302,10 +320,6 @@ export async function getRichContextualData(
         const leagueData = sportConfig?.espn_leagues[decodedLeagueName];
         const countryContext = leagueData?.country || 'N/A'; 
         
-        if (sport === 'soccer' && countryContext === 'N/A') {
-            console.warn(`[DataFetch] Nincs 'country' kontextus a(z) '${decodedLeagueName}' ligához. A Sofascore névfeloldás pontatlan lehet.`);
-        }
-        
         let leagueId: number | null = null;
         let foundSeason: number | null = null;
         let homeTeamId: number | null = null;
@@ -320,7 +334,6 @@ export async function getRichContextualData(
             
             if (!leagueDataResponse || !leagueDataResponse.leagueId) {
                  console.error(`[DataFetch] KRITIKUS P4 HIBA: Végleg nem sikerült a 'leagueId' azonosítása ('${decodedLeagueName}' néven).`);
-                 console.warn(`[DataFetch] TISZTA P1 MÓD KÉNYSZERÍTVE. A rendszer üres adat-stubot ad vissza.`);
                  return await generateEmptyStubContext(options);
             }
             
@@ -348,7 +361,6 @@ export async function getRichContextualData(
             
             if (!homeTeamId || !awayTeamId) {
                 console.error(`[DataFetch] KRITIKUS P4 HIBA (Foci): A csapat azonosítókat nem sikerült feloldani. HomeID: ${homeTeamId}, AwayID: ${awayTeamId}.`);
-                console.warn(`[DataFetch] TISZTA P1 MÓD KÉNYSZERÍTVE. A rendszer üres adat-stubot ad vissza.`);
                 return await generateEmptyStubContext(options);
             }
 
@@ -363,7 +375,7 @@ export async function getRichContextualData(
             homeTeamName: decodedHomeTeam,
             awayTeamName: decodedAwayTeam,
             leagueName: decodedLeagueName,
-            utcKickoff: decodedUtcKickoff, // DEKÓDOLT DÁTUM HASZNÁLATA
+            utcKickoff: decodedUtcKickoff,
             countryContext: countryContext,
             homeTeamId: homeTeamId,
             awayTeamId: awayTeamId, 
@@ -421,37 +433,33 @@ export async function getRichContextualData(
         
         console.log(`[DataFetch] xG Forrás meghatározva: ${xgSource}. (H:${finalHomeXg ?? 'N/A'}, A:${finalAwayXg ?? 'N/A'})`);
 
-        // === MÓDOSÍTÁS (v106.1): REDUNDÁNS ODDS FALLBACK JAVÍTÁS ===
+        // === ODDS FALLBACK (v110.0): AI Search Integráció ===
         const primaryOddsFailed = !finalResult.oddsData || 
                                   !finalResult.oddsData.allMarkets || 
                                   finalResult.oddsData.allMarkets.length === 0;
         
-        if (primaryOddsFailed && (sport === 'soccer' || sport === 'hockey' || sport === 'basketball')) {
-            console.warn(`[DataFetch v104.6] Az alap provider (${sportProvider.providerName}) nem adott vissza Odds adatot. Fallback indítása az 'oddsFeedProvider.ts' [38] funkcióra...`);
-            
-            try {
-                // Itt is a dekódolt dátumot használjuk!
-                const oddsFeedResult = await oddsFeedFetchData_NameBased(
-                    decodedHomeTeam, 
-                    decodedAwayTeam, 
-                    decodedUtcKickoff, 
-                    sport
-                );
-                
-                if (oddsFeedResult) {
-                    console.log(`[DataFetch v104.6] SIKER. Az 'oddsFeedProvider.ts' megbízható odds adatokat adott vissza.`);
-                    finalResult.oddsData = oddsFeedResult; 
-                } else {
-                    console.warn(`[DataFetch v104.6] A 'fetchOddsData' (fallback) sem adott vissza adatot ehhez: ${decodedHomeTeam} vs ${decodedAwayTeam}.`);
-                }
-            } catch (e: any) {
-                console.error(`[DataFetch v104.6] Kritikus hiba az 'oddsFeedProvider.ts' fallback hívása során: ${e.message}`);
+        if (primaryOddsFailed) {
+            console.warn(`[DataFetch] API Odds hiányzik. AI Web Search indítása...`);
+            const aiOdds = await fetchOddsViaWebSearch(decodedHomeTeam, decodedAwayTeam, sport);
+            if (aiOdds) {
+                 finalResult.oddsData = aiOdds;
+                 console.log(`[DataFetch] AI Odds SIKERESEN beszúrva.`);
+            } else {
+                 console.warn(`[DataFetch] AI Odds keresés is sikertelen. Végső próba a régi odds feeddel...`);
+                 try {
+                    const legacyOdds = await oddsFeedFetchData_NameBased(decodedHomeTeam, decodedAwayTeam, decodedUtcKickoff, sport);
+                    if (legacyOdds) finalResult.oddsData = legacyOdds;
+                 } catch (e) { console.error(e); }
             }
-        } else if (!primaryOddsFailed) {
-            console.log(`[DataFetch v104.6] Az alap provider (${sportProvider.providerName}) sikeresen adott vissza Odds adatot. Fallback kihagyva.`);
         }
-        // === MÓDOSÍTÁS VÉGE ===
 
+        // === CONTEXT FALLBACK (v110.0): AI Search Integráció ===
+        if (!finalResult.richContext || finalResult.richContext === "N/A" || finalResult.richContext.length < 20) {
+             console.warn(`[DataFetch] RichContext hiányzik. AI Web Hírszerzés indítása...`);
+             const webContext = await generateContextViaWebSearch(decodedHomeTeam, decodedAwayTeam, sport);
+             finalResult.richContext = `[AI WEB SEARCH] ${webContext}`;
+        }
+        
         
         // 2. HIÁNYZÓK PRIORITÁSI LÁNC
         if (manual_absentees && (manual_absentees.home.length > 0 || manual_absentees.away.length > 0)) {
@@ -502,7 +510,6 @@ export async function getRichContextualData(
         
     } catch (e: any) {
          console.error(`KRITIKUS HIBA a getRichContextualData (v104.3) során (${decodedHomeTeam} vs ${decodedAwayTeam}): ${e.message}`, e.stack);
-         console.warn(`[DataFetch] TISZTA P1 MÓD KÉNYSZERÍTVE (Catch Blokk). A rendszer üres adat-stubot ad vissza.`);
          return await generateEmptyStubContext(options);
     }
 }
