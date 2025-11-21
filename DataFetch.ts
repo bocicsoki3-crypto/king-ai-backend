@@ -1,6 +1,9 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v110.3 (MERGED - FULL: v107.0 Logic + AI Web Search)
-// CÉL: A meglévő komplex logika (P1 prioritás, Sofascore integráció) megtartása MELLETT az API-k kiváltása/kiegészítése AI-val.
+// VERZIÓ: v110.4 (MERGED - FULL + TUNED AI SEARCH)
+// MÓDOSÍTÁS (v110.4):
+// 1. A 'generateContextViaWebSearch' promptja radikálisan szigorítva.
+// 2. CÉL: Elkerülni a "Haris Tabakovic" típusú hibákat (régi játékosok).
+// 3. ESZKÖZ: Explicit utasítás az AI-nak a KERETEK és DÁTUM ellenőrzésére.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -93,16 +96,28 @@ export interface IDataFetchResponse extends ICanonicalRichContext {
     xgSource: string; 
 }
 
-// === ÚJ: AI Context Generator via Web Search ===
-// Ez a függvény hívja meg a Google Keresőt a hírekért
+// === ÚJ: AI Context Generator via Web Search (TUNED v110.4) ===
+// Ez a függvény hívja meg a Google Keresőt a hírekért - MOST SOKKAL OKOSABBAN
 async function generateContextViaWebSearch(home: string, away: string, sport: string): Promise<string> {
     console.log(`[DataFetch] AI Hírszerzés indítása (Web Search): ${home} vs ${away}...`);
+    
+    // SZIGORÍTOTT PROMPT (v110.4)
     const prompt = `
-    TASK: Search for the latest team news, injuries, and predicted lineups for the match: ${home} vs ${away} (${sport}).
-    Focus on key players missing, recent form, and any specific motivation (e.g. must-win, derby).
-    Summarize the findings in a concise Hungarian paragraph suitable for a sports betting analysis context.
-    Output JSON: { "context": "Your summary here" }
+    TASK: Perform a live Google Search for the UPCOMING match: ${home} vs ${away} (${sport}).
+    
+    CRITICAL REQUIREMENTS:
+    1. **FIND CONFIRMED/PREDICTED LINEUPS:** Look for reliable sources (e.g., Flashscore, Sofascore, Kicker, local sports news) published in the last 24-48 hours.
+    2. **VERIFY PLAYERS:** Do NOT hallucinate players from old rosters. Verify that key players mentioned are currently active for the team. (e.g. Check if Haris Tabakovic is still at Hertha - NO, he is at Hoffenheim/Gladbach).
+    3. **IDENTIFY MISSING PLAYERS:** Who is injured or suspended?
+    4. **MATCH CONTEXT:** Is it a cup game? Relegation battle?
+    
+    OUTPUT FORMAT:
+    Return a concise Hungarian summary JSON:
+    { 
+      "context": "Summary of lineups, injuries and motivation. Mention the source if possible." 
+    }
     `;
+    
     try {
         // useSearch = true aktiválása a common/utils.ts-ből
         const result = await commonCallGeminiWithJsonRetry(prompt, "ContextSearch", 2, true); 
