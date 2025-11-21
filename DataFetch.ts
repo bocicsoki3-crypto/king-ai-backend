@@ -1,10 +1,10 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v115.1 (Syntax Fix: TS1443)
-// MÓDOSÍTÁS (v115.1):
-// 1. JAVÍTVA: A 'deepContextString' template literal formázása kijavítva.
-//    A sortörések és a beágyazott kifejezések (${...}) most helyesen vannak kezelve.
-// 2. JAVÍTVA: Az összes TS1443 hiba (Module declaration names...) megszűnt,
-//    mivel ezek valójában szintaktikai hibák voltak a stringekben.
+// VERZIÓ: v116.0 (Ghost Player Filter)
+// MÓDOSÍTÁS (v116.0):
+// 1. GHOST FILTER: Ha a Deep Scout (v116.0) jelzi, hogy valaki eligazolt
+//    (a 'transferred_players' tömbben), akkor azt a játékost TÖRÖLJÜK
+//    az 'availableRosters' és 'key_players' listákból.
+// 2. CÉL: Megakadályozni, hogy a rendszer olyan játékosra tippeljen, aki már nincs ott.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -237,7 +237,7 @@ export async function getRichContextualData(
         `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
         '';
         
-    const ck = explicitMatchId || `rich_context_v115.0_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}${p1AbsenteesHash}`;
+    const ck = explicitMatchId || `rich_context_v116.0_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}${p1AbsenteesHash}`;
     
     // === CACHE OLVASÁS ===
     if (!forceNew) {
@@ -251,17 +251,20 @@ export async function getRichContextualData(
 
     console.log(`Nincs cache (vagy kényszerítve) (${ck}), friss adatok lekérése...`);
     
-    // === LÉPÉS 1: AI DEEP SCOUT (v115.0) ===
+    // === LÉPÉS 1: AI DEEP SCOUT (v116.0 - TRANSFER HUNTER) ===
     const deepScoutResult = await runStep_DeepScout({
         home: decodedHomeTeam,
         away: decodedAwayTeam,
         sport: sport
     });
     
-    // === JAVÍTÁS v115.1: Helyesen formázott template literal ===
+    // === MÓDOSÍTÁS v116.0: Eligazolt Játékosok Beépítése ===
+    const transferredPlayers = deepScoutResult?.transferred_players?.join(', ') || 'Nincs jelentett eligazolás';
+    
     const deepContextString = deepScoutResult 
-        ? `[DEEP SCOUT JELENTÉS (v115.0)]:
+        ? `[DEEP SCOUT JELENTÉS (v116.0)]:
         - Összefoglaló: ${deepScoutResult.narrative_summary}
+        - ELIGAZOLT JÁTÉKOSOK (FIGYELEM!): ${transferredPlayers}
         - Fizikai Állapot: ${deepScoutResult.physical_factor}
         - Pszichológia: ${deepScoutResult.psychological_factor}
         - Időjárás/Pálya: ${deepScoutResult.weather_context}
@@ -356,6 +359,35 @@ export async function getRichContextualData(
                 (finalResult.rawData.contextual_factors.match_tension_index || "") + 
                 ` | Taktikai Hír: ${deepScoutResult.tactical_leaks}`;
         }
+
+        // === ÚJ v116.0: GHOST PLAYER FILTER (Adatszellem Szűrő) ===
+        // Ha a Deep Scout talált eligazolt játékosokat, azokat könyörtelenül töröljük a keretből.
+        if (deepScoutResult.transferred_players && Array.isArray(deepScoutResult.transferred_players) && deepScoutResult.transferred_players.length > 0) {
+            const transferredSet = new Set(deepScoutResult.transferred_players.map((n: string) => n.toLowerCase().trim()));
+            
+            const filterRoster = (roster: IPlayerStub[]) => {
+                return roster.filter(player => {
+                    const isTransferred = transferredSet.has(player.name.toLowerCase().trim());
+                    if (isTransferred) {
+                        console.log(`[DataFetch v116.0] GHOST PLAYER ELTÁVOLÍTVA: ${player.name}`);
+                    }
+                    return !isTransferred;
+                });
+            };
+            
+            // Szűrjük mindkét csapat keretét
+            finalResult.availableRosters.home = filterRoster(finalResult.availableRosters.home);
+            finalResult.availableRosters.away = filterRoster(finalResult.availableRosters.away);
+            
+            // Szűrjük a kulcsjátékos listát is (ha van a rawData-ban)
+            if (finalResult.rawData.key_players) {
+                // @ts-ignore - key_players dinamikus mező lehet
+                if (finalResult.rawData.key_players.home) finalResult.rawData.key_players.home = filterRoster(finalResult.rawData.key_players.home);
+                // @ts-ignore
+                if (finalResult.rawData.key_players.away) finalResult.rawData.key_players.away = filterRoster(finalResult.rawData.key_players.away);
+            }
+        }
+        // ==========================================================
     }
     // ==============================================================================
     
@@ -432,7 +464,7 @@ export async function getRichContextualData(
     }
 
     preFetchAnalysisCache.set(ck, finalResult);
-    console.log(`Sikeres adat-egyesítés (v115.0 Super Deep Scout), cache mentve (${ck}).`);
+    console.log(`Sikeres adat-egyesítés (v116.0 Super Deep Scout + Ghost Filter), cache mentve (${ck}).`);
     return { ...finalResult, fromCache: false };
 }
 
