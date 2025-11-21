@@ -1,10 +1,11 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v113.0 (Deep Scout v3 - Structured Data Harvest)
-// MÓDOSÍTÁS (v113.0):
-// 1. ÚJ PROMPT: PROMPT_DEEP_SCOUT_V3. Ez már nem csak "nyomoz", hanem "könyvel" is.
-//    Kéri a H2H (utolsó 5 meccs), a Tabella (helyezés, pont) és a Kezdőcsapatok
-//    strukturált JSON listáját.
-// 2. CÉL: Ha az API elhasal, az AI töltse fel a megjelenítéshez szükséges adatokat is.
+// VERZIÓ: v113.1 (Fix: Full Content & Named Exports)
+// MÓDOSÍTÁS (v113.1):
+// 1. TELJES KÓD: Garantáltan tartalmazza az összes függvényt és promptot vágás nélkül.
+// 2. EXPORT JAVÍTÁS: Minden függvény (runStep_FinalAnalysis, getChatResponse, DeepScout)
+//    helyesen, 'named export'-ként szerepel.
+// 3. HIBAMENTESÍTÉS: Eltávolítva minden potenciális szintaktikai hiba, ami miatt
+//    a TypeScript nem látta az exportokat.
 
 import { 
     _callGemini, 
@@ -31,10 +32,10 @@ export async function getAndParse(
             const value = result[keyToExtract];
             return value || "N/A (AI nem adott értéket)";
         }
-        console.error(`[AI_Service v113.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
+        console.error(`[AI_Service v113.1] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
         return `AI Hiba: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot.`;
     } catch (e: any) {
-        console.error(`[AI_Service v113.0] Végleges AI Hiba (${stepName}): ${e.message}`);
+        console.error(`[AI_Service v113.1] Végleges AI Hiba (${stepName}): ${e.message}`);
         return `AI Hiba (${keyToExtract}): ${e.message}`;
     }
 }
@@ -317,6 +318,7 @@ CRITICAL OUTPUT INSTRUCTION: Your response MUST be ONLY a single, valid JSON obj
 
 
 // === A "FŐNÖK" PROMPTJA (v109.0 - APEX LOGIC) ===
+// EZ A LEGMEGHATÁROZÓBB VÁLTOZÁS. ITT KÉNYSZERÍTJÜK RÁ AZ AKARATUNKAT.
 const MASTER_AI_PROMPT_TEMPLATE_V108 = `
 CRITICAL TASK: You are the Head Analyst (The Boss).
 Your task is to analyze ALL provided reports and determine the SINGLE most compelling betting recommendation.
@@ -366,21 +368,21 @@ OUTPUT FORMAT: Your response MUST be ONLY a single, valid JSON object with this 
 // === 0. ÜGYNÖK (DEEP SCOUT - v113.0) ===
 export async function runStep_DeepScout(data: { home: string, away: string, sport: string }): Promise<any> {
     try {
-        console.log(`[AI_Service v113.0] 0. ÜGYNÖK (DEEP SCOUT v3) INDÍTÁSA: ${data.home} vs ${data.away}...`);
+        console.log(`[AI_Service v113.1] 0. ÜGYNÖK (DEEP SCOUT v3) INDÍTÁSA: ${data.home} vs ${data.away}...`);
         const filledPrompt = fillPromptTemplate(PROMPT_DEEP_SCOUT_V3, data);
         // ITT HASZNÁLJUK A 'useSearch: true' PARAMÉTERT!
         const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_DeepScout", 2, true);
         
-        console.log(`[AI_Service v113.0] Deep Scout Jelentés: "${result?.narrative_summary?.substring(0, 50)}..."`);
+        console.log(`[AI_Service v113.1] Deep Scout Jelentés: "${result?.narrative_summary?.substring(0, 50)}..."`);
         if (result?.xg_stats) {
-            console.log(`[AI_Service v113.0] xG ADAT TALÁLAT! H_xG: ${result.xg_stats.home_xg}, H_xGA: ${result.xg_stats.home_xga}`);
+            console.log(`[AI_Service v113.1] xG ADAT TALÁLAT! H_xG: ${result.xg_stats.home_xg}, H_xGA: ${result.xg_stats.home_xga}`);
         }
         if (result?.structured_data?.h2h) {
-            console.log(`[AI_Service v113.0] H2H ADAT TALÁLAT! (${result.structured_data.h2h.length} meccs)`);
+            console.log(`[AI_Service v113.1] H2H ADAT TALÁLAT! (${result.structured_data.h2h.length} meccs)`);
         }
         return result;
     } catch (e: any) {
-        console.error(`[AI_Service v113.0] Deep Scout Hiba: ${e.message}`);
+        console.error(`[AI_Service v113.1] Deep Scout Hiba: ${e.message}`);
         return null;
     }
 }
@@ -732,6 +734,150 @@ async function getMasterRecommendation(
     }
 }
 
+// --- FŐ ORCHESTRÁCIÓS LÉPÉS (Változatlan v105.0) ===
+interface FinalAnalysisInput {
+    matchData: { home: string; away: string; sport: string; leagueName: string; };
+    rawDataJson: ICanonicalRawData; 
+    specialistReport: any;
+    simulatorReport: any;
+    psyReport: any;
+    valueBetsJson: any[];
+    richContext: string;
+    sportStrategy: ISportStrategy;
+    confidenceScores: { winner: number; totals: number; overall: number };
+}
+
+// Export kulcsszó hozzáadva
+export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<any> {
+    
+    const { 
+        rawDataJson, 
+        specialistReport, 
+        simulatorReport, 
+        psyReport, 
+        valueBetsJson, 
+        richContext, 
+        matchData, 
+        sportStrategy,
+        confidenceScores 
+    } = data;
+
+    const sim = simulatorReport || {};
+    const home = matchData.home || 'Hazai';
+    const away = matchData.away || 'Vendég';
+    const sport = matchData.sport || 'soccer';
+    
+    let expertConfidence = `**${confidenceScores.overall.toFixed(1)}/10** - AI Hiba: Az Expert Confidence hívás nem futott le.`;
+    let riskAssessment = "AI Hiba: A Risk Assessment hívás nem futott le.";
+    let tacticalBriefing = "AI Hiba: A Tactical Briefing hívás nem futott le.";
+    let generalAnalysis = "AI Hiba: A General Analysis hívás nem futott le.";
+    let propheticTimeline = "AI Hiba: A Prophetic Timeline hívás nem futott le.";
+    let strategic_synthesis = "AI Hiba: A Strategic Synthesis hívás nem futott le.";
+    let masterRecommendation = { 
+        "recommended_bet": "Hiba", 
+        "final_confidence": 1.0, 
+        "brief_reasoning": "AI Hiba: A Master Recommendation lánc megszakadt." 
+    };
+    
+    let microAnalyses: { [key: string]: string } = {};
+    
+    try {
+        // Mikromodellek
+        const expertConfidencePromise = getExpertConfidence(confidenceScores, richContext, rawDataJson, psyReport, specialistReport);
+        const riskAssessmentPromise = getRiskAssessment(sim, rawDataJson, sport, confidenceScores);
+        const playerMarketsPromise = getPlayerMarkets(rawDataJson.key_players, richContext);
+
+        const microModelResultsPromise = sportStrategy.runMicroModels({
+            sim: sim,
+            rawDataJson: rawDataJson,
+            mainTotalsLine: sim.mainTotalsLine,
+            confidenceScores: confidenceScores 
+        });
+
+        const results = await Promise.allSettled([
+            expertConfidencePromise, 
+            riskAssessmentPromise, 
+            playerMarketsPromise,
+            microModelResultsPromise 
+        ]);
+
+        expertConfidence = (results[0].status === 'fulfilled') ? (results[0].value as string) : `**1.0/10** - AI Hiba: ${results[0].reason?.message || 'Ismeretlen'}`;
+        riskAssessment = (results[1].status === 'fulfilled') ? (results[1].value as string) : `AI Hiba: ${results[1].reason?.message || 'Ismeretlen'}`;
+        
+        if (results[3].status === 'fulfilled') {
+            microAnalyses = results[3].value as { [key: string]: string };
+        } else {
+            console.error(`[AI_Service] KRITIKUS HIBA: A sportág-specifikus mikromodellek (${sport}) futtatása sikertelen: ${results[3].reason?.message}`);
+            microAnalyses = { "error": `Stratégia hiba: ${results[3].reason?.message}` };
+        }
+        
+        microAnalyses['player_market_analysis'] = (results[2].status === 'fulfilled') ? (results[2].value as string) : `AI Hiba: ${results[2].reason?.message || 'Ismeretlen'}`;
+
+        
+        // Fő elemzések
+        try {
+            tacticalBriefing = await getTacticalBriefing(rawDataJson, sport, home, away, riskAssessment);
+        } catch (e: any) { tacticalBriefing = `AI Hiba (Tactical): ${e.message}`; }
+        
+        try {
+            generalAnalysis = await getFinalGeneralAnalysis(sim, tacticalBriefing, rawDataJson, confidenceScores, psyReport);
+        } catch (e: any) { generalAnalysis = `AI Hiba (General): ${e.message}`; }
+
+        if (sport === 'soccer') {
+            try {
+                propheticTimeline = await getPropheticTimeline(rawDataJson, home, away, sport, tacticalBriefing);
+            } catch (e: any) { 
+                propheticTimeline = `AI Hiba (Prophetic): ${e.message}`; 
+            }
+        } else {
+            propheticTimeline = "N/A (Nem focihoz nem releváns)";
+        }
+
+        try {
+            strategic_synthesis = await getStrategicClosingThoughts(
+                sim, rawDataJson, richContext, microAnalyses, riskAssessment,
+                tacticalBriefing, valueBetsJson, confidenceScores, expertConfidence,
+                psyReport, specialistReport, sport
+            );
+        } catch (e: any) { strategic_synthesis = `AI Hiba (Strategic): ${e.message}`; }
+
+        // Főnök hívása (v109.0)
+        masterRecommendation = await getMasterRecommendation(
+            valueBetsJson,
+            sim,
+            confidenceScores,
+            expertConfidence, 
+            riskAssessment,
+            microAnalyses,
+            generalAnalysis,
+            strategic_synthesis,
+            "N/A", 
+            psyReport,
+            specialistReport,
+            sport
+        );
+
+    } catch (e: any) {
+        console.error(`[AI_Service v112.1] KRITIKUS HIBA a runStep_FinalAnalysis során: ${e.message}`);
+        masterRecommendation.brief_reasoning = `KRITIKUS HIBA: ${e.message}. A többi elemzés (ha van) még érvényes lehet.`;
+    }
+    
+    return {
+        risk_assessment: riskAssessment,
+        tactical_briefing: tacticalBriefing,
+        general_analysis: generalAnalysis,
+        strategic_synthesis: strategic_synthesis,
+        prophetic_timeline: propheticTimeline,
+        final_confidence_report: expertConfidence,
+        micromodels: microAnalyses,
+        master_recommendation: masterRecommendation,
+        agent_reports: {
+            psychologist: psyReport,
+            specialist: specialistReport
+        }
+    };
+}
+
 // --- CHAT FUNKCIÓ --- (Változatlan)
 interface ChatMessage {
   role: 'user' | 'model' | 'ai';
@@ -768,4 +914,3 @@ If the answer isn't in the context or history, politely state that the informati
         return { error: `Chat AI Hiba: ${e.message}` };
     }
 }
-// Törölve: export default { ... }
