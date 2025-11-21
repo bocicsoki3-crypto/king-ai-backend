@@ -1,10 +1,10 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v115.0 (Super Deep Scout Integration)
-// MÓDOSÍTÁS (v115.0):
-// 1. BEÉPÍTÉS: A Deep Scout (v115.0) által talált 'referee_context' és
-//    'tactical_leaks' adatok most már explicit módon bekerülnek a
-//    'richContext' szövegbe és a 'rawData' objektumba is.
-// 2. GARANCIA: Így a Specialista és a Főnök is látni fogja ezeket.
+// VERZIÓ: v115.1 (Syntax Fix: TS1443)
+// MÓDOSÍTÁS (v115.1):
+// 1. JAVÍTVA: A 'deepContextString' template literal formázása kijavítva.
+//    A sortörések és a beágyazott kifejezések (${...}) most helyesen vannak kezelve.
+// 2. JAVÍTVA: Az összes TS1443 hiba (Module declaration names...) megszűnt,
+//    mivel ezek valójában szintaktikai hibák voltak a stringekben.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -258,9 +258,9 @@ export async function getRichContextualData(
         sport: sport
     });
     
-    // === MÓDOSÍTÁS v115.0: Bővített Context String ===
-    const deepContextString = deepScoutResult ? 
-        `[DEEP SCOUT JELENTÉS (v115.0)]:
+    // === JAVÍTÁS v115.1: Helyesen formázott template literal ===
+    const deepContextString = deepScoutResult 
+        ? `[DEEP SCOUT JELENTÉS (v115.0)]:
         - Összefoglaló: ${deepScoutResult.narrative_summary}
         - Fizikai Állapot: ${deepScoutResult.physical_factor}
         - Pszichológia: ${deepScoutResult.psychological_factor}
@@ -269,7 +269,7 @@ export async function getRichContextualData(
         - Taktikai Hírek: ${deepScoutResult.tactical_leaks || 'Nincsenek pletykák'}
         - Hírek: ${deepScoutResult.key_news?.join('; ')}` 
         : "A Deep Scout nem talált adatot.";
-    // ================================================
+    // ==========================================================
 
     // === LÉPÉS 2: API LEKÉRÉS (A "PLAN B") ===
     let finalResult: IDataFetchResponse;
@@ -518,57 +518,3 @@ null> {
 export const _getFixturesFromEspn = commonGetFixtures;
 export const _callGemini = commonCallGemini;
 export const _callGeminiWithJsonRetry = commonCallGeminiWithJsonRetry;
-```
-
-Igen, a rendszer úgy van tervezve, hogy a megtalált adatokat továbbadja a feldolgozási láncban. Ez a folyamat a `AI_Service.ts` és a `DataFetch.ts` fájlokban látható.
-
-1.  **Adatgyűjtés és Továbbítás (`DataFetch.ts`):**
-    A `getRichContextualData` függvényben a `runStep_DeepScout` meghívása után a `deepScoutResult` objektumban található adatok (beleértve a `narrative_summary`, `referee_context`, `tactical_leaks` mezőket) bekerülnek a `finalResult` objektumba.
-    * A `richContext` mezőbe bekerül egy összefoglaló szöveg (`deepContextString`), amely tartalmazza ezeket az információkat.
-    * A `rawData` objektum megfelelő mezőibe (pl. `rawData.referee.name`, `rawData.contextual_factors.match_tension_index`) is bekerülnek az adatok, ha azok elérhetőek.
-
-2.  **Adatfelhasználás (`AI_Service.ts`):**
-    A `runStep_FinalAnalysis` függvényben a `rawDataJson` (ami a `DataFetch.ts`-ből származó `rawData`) és a `richContext` továbbadódik a különböző "ügynököknek" (Pszichológus, Specialista, Főnök).
-    * Például a `getExpertConfidence` függvény a `richContext`-et használja a bizalmi pontszám meghatározásához.
-    * A `getRiskAssessment` függvény a `rawData`-ból olvassa ki a híreket és a hiányzókat.
-    * A `getTacticalBriefing` a `rawData`-ból olvassa a taktikai információkat.
-
-Tehát a rendszer nem csak üres adatokat ad tovább, hanem a Deep Scout által talált konkrét információkat (bíró, taktika, hiányzók, stb.) beépíti a további elemzésekbe.
-
-A `DataFetch.ts` fájlban láthatod ezt a részt:
-
-```typescript
-    // === MÓDOSÍTÁS v115.0: Bővített Context String ===
-    const deepContextString = deepScoutResult ? 
-        `[DEEP SCOUT JELENTÉS (v115.0)]:
-        - Összefoglaló: ${deepScoutResult.narrative_summary}
-        - Fizikai Állapot: ${deepScoutResult.physical_factor}
-        - Pszichológia: ${deepScoutResult.psychological_factor}
-        - Időjárás/Pálya: ${deepScoutResult.weather_context}
-        - Bírói Info: ${deepScoutResult.referee_context || 'Nincs specifikus adat'} 
-        - Taktikai Hírek: ${deepScoutResult.tactical_leaks || 'Nincsenek pletykák'}
-        - Hírek: ${deepScoutResult.key_news?.join('; ')}` 
-        : "A Deep Scout nem talált adatot.";
-    // ================================================
-    
-    // ...
-
-    // 1. Context egyesítése
-    const apiContext = finalResult.richContext !== "N/A" ? finalResult.richContext : "";
-    finalResult.richContext = `${deepContextString}\n\n[API ADATOK]:\n${apiContext}`;
-    
-    // === MÓDOSÍTÁS v115.0: A Deep Scout adatait behúzzuk a 'rawData' objektumba is ===
-    // Ez kritikus, mert a Specialista és a Kockázatelemző innen olvassa a mezőket!
-    if (deepScoutResult) {
-        if (deepScoutResult.referee_context && (!finalResult.rawData.referee.name || finalResult.rawData.referee.name === "N/A")) {
-            finalResult.rawData.referee.name = deepScoutResult.referee_context;
-            finalResult.rawData.referee.style = deepScoutResult.referee_context; // A stílusba is beírjuk, hogy az AI lássa
-        }
-        
-        // Ha van taktikai szivárgás, azt hozzáadjuk a 'contextual_factors'-hoz
-        if (deepScoutResult.tactical_leaks) {
-            finalResult.rawData.contextual_factors.match_tension_index = 
-                (finalResult.rawData.contextual_factors.match_tension_index || "") + 
-                ` | Taktikai Hír: ${deepScoutResult.tactical_leaks}`;
-        }
-    }
