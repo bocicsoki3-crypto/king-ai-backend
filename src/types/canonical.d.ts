@@ -1,10 +1,9 @@
 // FÁJL: src/types/canonical.d.ts
-// VERZIÓ: v72.0 (P1 Manuális Roster Választó - Objektum Típusbiztonság)
+// VERZIÓ: v113.0 (Deep Scout Types Integrated)
 // MÓDOSÍTÁS:
-// 1. IPlayerStub interfész frissítve a P1 keretválasztó által várt és küldött adatokra.
-// 2. ICanonicalPlayer interfészhez hozzáadtuk a hiányzó 'role' mező magyar nyelvű megfeleléseit, hogy a Specialista (Model.ts) szerepkör-súlyozása konzisztensen fusson.
-// 3. JAVÍTVA: Minden szintaktikai hiba eltávolítva.
-// Ezen interfészek definiálják a rendszeren belüli "adatszerződést".
+// 1. ÚJ INTERFÉSZEK: IDeepScoutResult, IDeepScoutStructuredData, IDeepScoutXgStats, stb.
+//    Ezek definálják a 0. Ügynök (Deep Scout) válaszát.
+// 2. CÉL: Típusbiztonság a DataFetch.ts és AI_Service.ts számára.
 
 /**
  * A csapatok alapvető statisztikai adatai, amelyeket a Model.ts vár.
@@ -30,7 +29,6 @@ export interface ICanonicalPlayer {
 }
 
 /**
- * === ÚJ (v62.1) ===
  * Egyszerűsített játékos-objektum a P1-es keret-kiválasztóhoz.
  * (Ez a Kanban kártya adatmodellje)
  */
@@ -68,6 +66,7 @@ export interface ICanonicalOdds {
   }[];
   fullApiData: any; // A nyers API válasz tárolása (pl. 'findMainTotalsLine' számára)
   fromCache: boolean;
+  source?: string; // Opcionális forrásmegjelölés
 }
 
 /**
@@ -82,11 +81,78 @@ export interface IStructuredWeather {
     source?: 'Open-Meteo' | 'N/A';
 }
 
+/**
+ * === ÚJ (v113.0): DEEP SCOUT TÍPUSDEFINÍCIÓK ===
+ */
+
+export interface IDeepScoutXgStats {
+    home_xg: number | null;
+    home_xga: number | null;
+    away_xg: number | null;
+    away_xga: number | null;
+    source: string;
+}
+
+export interface IDeepScoutH2H {
+    date: string;
+    score: string;
+    home_team: string;
+    away_team: string;
+}
+
+export interface IDeepScoutStandings {
+    home_pos: number | null;
+    home_points: number | null;
+    away_pos: number | null;
+    away_points: number | null;
+}
+
+export interface IDeepScoutLineups {
+    home: string[];
+    away: string[];
+}
+
+export interface IDeepScoutForm {
+    home: string;
+    away: string;
+}
+
+export interface IDeepScoutStructuredData {
+    h2h: IDeepScoutH2H[];
+    standings: IDeepScoutStandings;
+    probable_lineups: IDeepScoutLineups;
+    form_last_5: IDeepScoutForm;
+}
+
+/**
+ * A 0. Ügynök (Deep Scout) teljes válaszának struktúrája.
+ */
+export interface IDeepScoutResult {
+    narrative_summary: string;
+    physical_factor: string;
+    psychological_factor: string;
+    weather_context: string;
+    
+    // xG Adatok (V2/V3)
+    xg_stats?: IDeepScoutXgStats;
+    
+    // Strukturált Adatok (V3 - Data Harvest)
+    structured_data?: IDeepScoutStructuredData;
+    
+    // Fallback a V2 prompt kompatibilitáshoz (opcionális)
+    stats_fallback?: {
+        home_last_5: string;
+        away_last_5: string;
+    };
+    
+    key_news: string[];
+}
+// === DEEP SCOUT TÍPUSOK VÉGE ===
+
 
 /**
  * A "nyers" adatcsomag, amelyet a CoT (Chain-of-Thought) elemzéshez
  * és a Model.ts-hez gyűjtünk.
- * === MÓDOSÍTVA (v62.1) ===
  */
 export interface ICanonicalRawData {
   stats: {
@@ -99,7 +165,7 @@ export interface ICanonicalRawData {
     [key: string]: any;
   };
   detailedPlayerStats: ICanonicalPlayerStats;
-  h2h_structured: any[] | null;
+  h2h_structured: any[] | null; // Lehet API válasz vagy IDeepScoutH2H[]
   form: {
     home_overall: string | null;
     away_overall: string | null;
@@ -111,7 +177,7 @@ export interface ICanonicalRawData {
   };
   referee: {
     name: string | null;
-    style: string | null; // v58.1
+    style: string | null;
   };
   contextual_factors: {
     stadium_location: string | null;
@@ -119,19 +185,17 @@ export interface ICanonicalRawData {
     weather: string | null;
     match_tension_index: string | null;
     structured_weather: IStructuredWeather; 
-    coach: { // v58.1
+    coach: {
         home_name: string | null;
         away_name: string | null;
     };
   };
   
-  // === ÚJ (v62.1) ===
   // A teljes elérhető keret a P1-es kiválasztáshoz
   availableRosters: {
     home: IPlayerStub[];
     away: IPlayerStub[];
   };
-  // === VÉGE ===
 
   [key: string]: any;
 }
@@ -139,7 +203,6 @@ export interface ICanonicalRawData {
 /**
  * A fő adatcsomag, amelyet a getRichContextualData visszaad
  * és az AnalysisFlow.ts felhasznál.
- * === MÓDOSÍTVA (v62.1) ===
  */
 export interface ICanonicalRichContext {
   rawStats: {
@@ -150,12 +213,11 @@ export interface ICanonicalRichContext {
   advancedData: {
     home: { [key:string]: any };
     away: { [key:string]: any };
-// === ÚJ (v62.1) A TS2339 [image: 438084.png] hiba javítása ===
+    // P1 Manuális mezők
     manual_H_xG?: number | null;
     manual_H_xGA?: number | null;
     manual_A_xG?: number | null;
     manual_A_xGA?: number | null;
-    // === VÉGE ===
   };
   form: {
     home_overall: string | null;
@@ -163,17 +225,14 @@ export interface ICanonicalRichContext {
     [key: string]: any;
   };
   rawData: ICanonicalRawData;
-// Ez már tartalmazza a v62.1-es mezőket
   leagueAverages: { [key: string]: any };
   oddsData: ICanonicalOdds | null;
   fromCache: boolean;
-// === ÚJ (v62.1) ===
   // Ezt küldjük a kliensnek a lista feltöltéséhez
   availableRosters: {
     home: IPlayerStub[];
     away: IPlayerStub[];
   };
-  // === VÉGE ===
 }
 
 /**
