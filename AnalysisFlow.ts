@@ -1,13 +1,13 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v106.0 ("Full History Fix")
-// MÓDOSÍTÁS (v106.0):
-// 1. JAVÍTVA: Az 'auditData' összeállításánál a 'committee' objektum
-//    most már tartalmazza a 'scout' és 'critic' (Agent 5) adatait is.
-//    Ez lehetővé teszi, hogy az Előzmények részletező nézete (viewHistoryDetail)
-//    újra tudja építeni a teljes jelentést anélkül, hogy "Hiba: Scout jelentés..."
-//    üzenetet dobna.
-// 2. OPTIMALIZÁLÁS: A 'richContext' szöveget használjuk 'scout' summary-ként,
-//    hogy spóroljunk a hellyel, de mégis legyen tartalom.
+// VERZIÓ: v108.3 (Safe xG Sanitization)
+// MÓDOSÍTÁS (v108.3):
+// 1. BIZTONSÁGI JAVÍTÁS: A Specialista (Agent 3) kimenetének
+//    szigorú ellenőrzése ("Sanitization").
+// 2. LOGIKA: Ha a Specialista 'null', 'undefined' vagy 'NaN' értéket ad
+//    (pl. hiányzó adatok miatt), a rendszer automatikusan visszavált
+//    a Quant (Agent 1) Tiszta xG értékére.
+// 3. EREDMÉNY: Megszűnik az "N/A" a Súlyozott xG kártyán, a szimuláció
+//    pedig mindig valós számokkal fut.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -287,12 +287,19 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         };
         const specialistReport = await runStep_Specialist(specialistInput);
 
-        const { 
-            modified_mu_h: mu_h, 
-            modified_mu_a: mu_a 
-        } = specialistReport; 
+        // === MÓDOSÍTÁS (v108.3): BIZTONSÁGI SANITIZÁLÁS ===
+        // Ha a Specialista hibás (null/undefined/NaN) értéket ad, visszaváltunk a Quant (Tiszta xG) értékére.
+        const { modified_mu_h: raw_mu_h, modified_mu_a: raw_mu_a } = specialistReport;
         
-        console.log(`Specialista (AI) (Súlyozott xG): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
+        const mu_h = (typeof raw_mu_h === 'number' && !isNaN(raw_mu_h)) ? raw_mu_h : pure_mu_h;
+        const mu_a = (typeof raw_mu_a === 'number' && !isNaN(raw_mu_a)) ? raw_mu_a : pure_mu_a;
+        
+        if (mu_h !== raw_mu_h || mu_a !== raw_mu_a) {
+            console.warn(`[AnalysisFlow v108.3] FIGYELEM: A Specialista hibás adatot küldött (H:${raw_mu_h}, A:${raw_mu_a}). Visszaváltás a Quant értékekre (H:${pure_mu_h}, A:${pure_mu_a}).`);
+        }
+        // === SANITIZÁLÁS VÉGE ===
+        
+        console.log(`Specialista (AI) (Súlyozott xG - Végleges): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
         
         const finalXgSource = xgSource;
 
@@ -316,8 +323,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             away, 
             rawData, 
             form, 
-            mu_h, // A súlyozott xG-t használjuk (v105.0)
-            mu_a, // A súlyozott xG-t használjuk (v105.0)
+            mu_h, // A súlyozott (és sanitizált) xG-t használjuk
+            mu_a, // A súlyozott (és sanitizált) xG-t használjuk
             mainTotalsLine,
             marketIntel
         );
