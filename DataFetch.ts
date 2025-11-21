@@ -1,6 +1,6 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v110.2 (MERGED - FULL: v107.0 Logic + AI Web Search)
-// CÉL: A meglévő komplex logika megtartása MELLETT az API-k kiváltása/kiegészítése AI-val.
+// VERZIÓ: v110.3 (MERGED - FULL: v107.0 Logic + AI Web Search)
+// CÉL: A meglévő komplex logika (P1 prioritás, Sofascore integráció) megtartása MELLETT az API-k kiváltása/kiegészítése AI-val.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -94,6 +94,7 @@ export interface IDataFetchResponse extends ICanonicalRichContext {
 }
 
 // === ÚJ: AI Context Generator via Web Search ===
+// Ez a függvény hívja meg a Google Keresőt a hírekért
 async function generateContextViaWebSearch(home: string, away: string, sport: string): Promise<string> {
     console.log(`[DataFetch] AI Hírszerzés indítása (Web Search): ${home} vs ${away}...`);
     const prompt = `
@@ -103,7 +104,7 @@ async function generateContextViaWebSearch(home: string, away: string, sport: st
     Output JSON: { "context": "Your summary here" }
     `;
     try {
-        // useSearch = true aktiválása
+        // useSearch = true aktiválása a common/utils.ts-ből
         const result = await commonCallGeminiWithJsonRetry(prompt, "ContextSearch", 2, true); 
         return result?.context || "Nem sikerült friss híreket találni a weben.";
     } catch (e) {
@@ -113,7 +114,8 @@ async function generateContextViaWebSearch(home: string, away: string, sport: st
 
 /**
  * === "Stub" Válasz Generátor (FELOKOSÍTVA v110.0) ===
- * Most már nem csak üres adatot ad, hanem megpróbálja a netről összeszedni az infót.
+ * Ha minden kötél szakad, ez nem csak üres adatot ad vissza, hanem
+ * megpróbálja az AI segítségével összeszedni az infókat a netről.
  */
 async function generateEmptyStubContext(options: IDataFetchOptions): Promise<IDataFetchResponse> {
     const { sport, homeTeamName, awayTeamName, utcKickoff } = options;
@@ -126,6 +128,7 @@ async function generateEmptyStubContext(options: IDataFetchOptions): Promise<IDa
     // 1. AI Odds Keresés (Ultimate Fallback)
     let fallbackOdds = await fetchOddsViaWebSearch(homeTeamName, awayTeamName, sport);
     
+    // Ha az AI sem talál oddsot, utolsó próba a régi odds feeddel
     if (!fallbackOdds) {
         try {
             console.log(`[DataFetch] AI Odds nem talált, próba a régi oddsFeedProviderrel...`);
@@ -133,7 +136,7 @@ async function generateEmptyStubContext(options: IDataFetchOptions): Promise<IDa
         } catch (e) { /* ignore */ }
     }
     
-    // 2. AI Kontextus Keresés (Hírek)
+    // 2. AI Kontextus Keresés (Hírek, Sérültek)
     const webContext = await generateContextViaWebSearch(homeTeamName, awayTeamName, sport);
 
     const emptyStats: ICanonicalStats = { gp: 1, gf: 0, ga: 0, form: null };
@@ -320,6 +323,10 @@ export async function getRichContextualData(
         const leagueData = sportConfig?.espn_leagues[decodedLeagueName];
         const countryContext = leagueData?.country || 'N/A'; 
         
+        if (sport === 'soccer' && countryContext === 'N/A') {
+            console.warn(`[DataFetch] Nincs 'country' kontextus a(z) '${decodedLeagueName}' ligához. A Sofascore névfeloldás pontatlan lehet.`);
+        }
+        
         let leagueId: number | null = null;
         let foundSeason: number | null = null;
         let homeTeamId: number | null = null;
@@ -434,6 +441,7 @@ export async function getRichContextualData(
         console.log(`[DataFetch] xG Forrás meghatározva: ${xgSource}. (H:${finalHomeXg ?? 'N/A'}, A:${finalAwayXg ?? 'N/A'})`);
 
         // === ODDS FALLBACK (v110.0): AI Search Integráció ===
+        // Ha az alap provider nem talált oddsot, megpróbáljuk az AI Web Search-öt
         const primaryOddsFailed = !finalResult.oddsData || 
                                   !finalResult.oddsData.allMarkets || 
                                   finalResult.oddsData.allMarkets.length === 0;
@@ -454,6 +462,7 @@ export async function getRichContextualData(
         }
 
         // === CONTEXT FALLBACK (v110.0): AI Search Integráció ===
+        // Ha a richContext üres vagy csak hibaüzenet van benne, akkor jöhet a hírszerzés
         if (!finalResult.richContext || finalResult.richContext === "N/A" || finalResult.richContext.length < 20) {
              console.warn(`[DataFetch] RichContext hiányzik. AI Web Hírszerzés indítása...`);
              const webContext = await generateContextViaWebSearch(decodedHomeTeam, decodedAwayTeam, sport);
