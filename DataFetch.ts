@@ -1,9 +1,9 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v117.0 (Market Spy Integration)
-// MÓDOSÍTÁS (v117.0):
-// 1. ADATÁTADÁS: A Deep Scout 'market_movement' mezőjét beépíti
-//    a 'richContext'-be, így a Főnök látni fogja a piaci mozgást
-//    akkor is, ha az API nem adott nyitó oddsokat.
+// VERZIÓ: v117.1 (TS1117 Fix)
+// MÓDOSÍTÁS (v117.1):
+// 1. JAVÍTVA: A 'providerOptions' objektumban a duplikált kulcsok
+//    (countryContext, homeTeamId, awayTeamId) törölve.
+//    Ez okozta a TS1117 hibát ("An object literal cannot have multiple properties with the same name").
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -313,11 +313,13 @@ export async function getRichContextualData(
             }
         }
 
+        // === JAVÍTÁS (v117.1): TS1117 Hiba javítása (Duplikált kulcsok törlése) ===
         const providerOptions = {
             sport, homeTeamName: decodedHomeTeam, awayTeamName: decodedAwayTeam,
             leagueName: decodedLeagueName, utcKickoff: decodedUtcKickoff,
-            countryContext, countryContext, homeTeamId, homeTeamId, awayTeamId, awayTeamId, leagueId, foundSeason, apiConfig
+            countryContext, homeTeamId, awayTeamId, leagueId, foundSeason, apiConfig
         };
+        // ==========================================================================
         
         const [baseResult, sofascoreData] = await Promise.all([
              sportProvider.fetchMatchData(providerOptions), 
