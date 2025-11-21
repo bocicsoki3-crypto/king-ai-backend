@@ -1,10 +1,9 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v116.0 (Ghost Player Filter)
-// MÓDOSÍTÁS (v116.0):
-// 1. GHOST FILTER: Ha a Deep Scout (v116.0) jelzi, hogy valaki eligazolt
-//    (a 'transferred_players' tömbben), akkor azt a játékost TÖRÖLJÜK
-//    az 'availableRosters' és 'key_players' listákból.
-// 2. CÉL: Megakadályozni, hogy a rendszer olyan játékosra tippeljen, aki már nincs ott.
+// VERZIÓ: v117.0 (Market Spy Integration)
+// MÓDOSÍTÁS (v117.0):
+// 1. ADATÁTADÁS: A Deep Scout 'market_movement' mezőjét beépíti
+//    a 'richContext'-be, így a Főnök látni fogja a piaci mozgást
+//    akkor is, ha az API nem adott nyitó oddsokat.
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -237,7 +236,7 @@ export async function getRichContextualData(
         `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
         '';
         
-    const ck = explicitMatchId || `rich_context_v116.0_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}${p1AbsenteesHash}`;
+    const ck = explicitMatchId || `rich_context_v117.0_${sport}_${encodeURIComponent(teamNames[0])}_${encodeURIComponent(teamNames[1])}${p1AbsenteesHash}`;
     
     // === CACHE OLVASÁS ===
     if (!forceNew) {
@@ -251,20 +250,22 @@ export async function getRichContextualData(
 
     console.log(`Nincs cache (vagy kényszerítve) (${ck}), friss adatok lekérése...`);
     
-    // === LÉPÉS 1: AI DEEP SCOUT (v116.0 - TRANSFER HUNTER) ===
+    // === LÉPÉS 1: AI DEEP SCOUT (v117.0 - MARKET SPY) ===
     const deepScoutResult = await runStep_DeepScout({
         home: decodedHomeTeam,
         away: decodedAwayTeam,
         sport: sport
     });
     
-    // === MÓDOSÍTÁS v116.0: Eligazolt Játékosok Beépítése ===
+    // === MÓDOSÍTÁS v117.0: Piaci Hírszerzés Beépítése ===
     const transferredPlayers = deepScoutResult?.transferred_players?.join(', ') || 'Nincs jelentett eligazolás';
+    const marketIntel = deepScoutResult?.market_movement || 'Nincs AI piaci adat';
     
     const deepContextString = deepScoutResult 
-        ? `[DEEP SCOUT JELENTÉS (v116.0)]:
+        ? `[DEEP SCOUT JELENTÉS (v117.0)]:
         - Összefoglaló: ${deepScoutResult.narrative_summary}
-        - ELIGAZOLT JÁTÉKOSOK (FIGYELEM!): ${transferredPlayers}
+        - PIACI HÍRSZERZÉS: ${marketIntel}
+        - ELIGAZOLT JÁTÉKOSOK: ${transferredPlayers}
         - Fizikai Állapot: ${deepScoutResult.physical_factor}
         - Pszichológia: ${deepScoutResult.psychological_factor}
         - Időjárás/Pálya: ${deepScoutResult.weather_context}
@@ -315,7 +316,7 @@ export async function getRichContextualData(
         const providerOptions = {
             sport, homeTeamName: decodedHomeTeam, awayTeamName: decodedAwayTeam,
             leagueName: decodedLeagueName, utcKickoff: decodedUtcKickoff,
-            countryContext, homeTeamId, awayTeamId, leagueId, foundSeason, apiConfig
+            countryContext, countryContext, homeTeamId, homeTeamId, awayTeamId, awayTeamId, leagueId, foundSeason, apiConfig
         };
         
         const [baseResult, sofascoreData] = await Promise.all([
@@ -346,22 +347,19 @@ export async function getRichContextualData(
     finalResult.richContext = `${deepContextString}\n\n[API ADATOK]:\n${apiContext}`;
     
     // === MÓDOSÍTÁS v115.0: A Deep Scout adatait behúzzuk a 'rawData' objektumba is ===
-    // Ez kritikus, mert a Specialista és a Kockázatelemző innen olvassa a mezőket!
     if (deepScoutResult) {
         if (deepScoutResult.referee_context && (!finalResult.rawData.referee.name || finalResult.rawData.referee.name === "N/A")) {
             finalResult.rawData.referee.name = deepScoutResult.referee_context;
-            finalResult.rawData.referee.style = deepScoutResult.referee_context; // A stílusba is beírjuk, hogy az AI lássa
+            finalResult.rawData.referee.style = deepScoutResult.referee_context;
         }
         
-        // Ha van taktikai szivárgás, azt hozzáadjuk a 'contextual_factors'-hoz
         if (deepScoutResult.tactical_leaks) {
             finalResult.rawData.contextual_factors.match_tension_index = 
                 (finalResult.rawData.contextual_factors.match_tension_index || "") + 
                 ` | Taktikai Hír: ${deepScoutResult.tactical_leaks}`;
         }
 
-        // === ÚJ v116.0: GHOST PLAYER FILTER (Adatszellem Szűrő) ===
-        // Ha a Deep Scout talált eligazolt játékosokat, azokat könyörtelenül töröljük a keretből.
+        // === GHOST PLAYER FILTER (v116.0) ===
         if (deepScoutResult.transferred_players && Array.isArray(deepScoutResult.transferred_players) && deepScoutResult.transferred_players.length > 0) {
             const transferredSet = new Set(deepScoutResult.transferred_players.map((n: string) => n.toLowerCase().trim()));
             
@@ -375,23 +373,19 @@ export async function getRichContextualData(
                 });
             };
             
-            // Szűrjük mindkét csapat keretét
             finalResult.availableRosters.home = filterRoster(finalResult.availableRosters.home);
             finalResult.availableRosters.away = filterRoster(finalResult.availableRosters.away);
             
-            // Szűrjük a kulcsjátékos listát is (ha van a rawData-ban)
             if (finalResult.rawData.key_players) {
-                // @ts-ignore - key_players dinamikus mező lehet
+                // @ts-ignore
                 if (finalResult.rawData.key_players.home) finalResult.rawData.key_players.home = filterRoster(finalResult.rawData.key_players.home);
                 // @ts-ignore
                 if (finalResult.rawData.key_players.away) finalResult.rawData.key_players.away = filterRoster(finalResult.rawData.key_players.away);
             }
         }
-        // ==========================================================
     }
-    // ==============================================================================
     
-    // 2. Statisztikai Fallback (Ha az API nem hozott számokat)
+    // 2. Statisztikai Fallback
     if (finalResult.rawStats.home.gp <= 1 && deepScoutResult?.stats_fallback) {
         console.log(`[DataFetch] API statisztika hiányos. Deep Scout fallback alkalmazása...`);
         finalResult.rawStats.home = parseAiStats(deepScoutResult.stats_fallback.home_last_5);
@@ -399,11 +393,9 @@ export async function getRichContextualData(
     }
     
     // === ÚJ: Strukturált Adatok Betöltése (v113.0) ===
-    // Ha az API nem hozott H2H-t, Formát, vagy Lineupot, az AI-ból töltjük fel.
     if (deepScoutResult?.structured_data) {
         const aiData = deepScoutResult.structured_data;
 
-        // H2H Fallback
         if (!finalResult.rawData.h2h_structured || finalResult.rawData.h2h_structured.length === 0) {
             if (aiData.h2h && Array.isArray(aiData.h2h)) {
                 console.log(`[DataFetch v113.0] API H2H hiányzik -> AI H2H betöltve (${aiData.h2h.length} db).`);
@@ -411,7 +403,6 @@ export async function getRichContextualData(
             }
         }
         
-        // Forma Fallback (ha az API null-t adott)
         if (!finalResult.form.home_overall && aiData.form_last_5?.home) {
             finalResult.form.home_overall = aiData.form_last_5.home;
             console.log(`[DataFetch v113.0] API Forma hiányzik -> AI Forma betöltve.`);
@@ -420,11 +411,9 @@ export async function getRichContextualData(
             finalResult.form.away_overall = aiData.form_last_5.away;
         }
 
-        // Lineup Fallback (Ha nincs elérhető keret az API-ból)
         const hasApiRoster = finalResult.availableRosters.home.length > 0;
         if (!hasApiRoster && aiData.probable_lineups) {
              console.log(`[DataFetch v113.0] API Keret hiányzik -> AI Lineups betöltve.`);
-             // Átalakítjuk PlayerStub formátumra
              const mapToStub = (name: string): IPlayerStub => ({ id: 0, name: name, pos: 'N/A', rating_last_5: 7.5 });
              
              if (aiData.probable_lineups.home) {
@@ -436,7 +425,7 @@ export async function getRichContextualData(
         }
     }
 
-    // 3. xG Adatok (Prioritás)
+    // 3. xG Adatok
     if (manual_H_xG != null) {
         finalResult.advancedData.manual_H_xG = manual_H_xG;
         finalResult.advancedData.manual_H_xGA = manual_H_xGA;
@@ -464,7 +453,7 @@ export async function getRichContextualData(
     }
 
     preFetchAnalysisCache.set(ck, finalResult);
-    console.log(`Sikeres adat-egyesítés (v116.0 Super Deep Scout + Ghost Filter), cache mentve (${ck}).`);
+    console.log(`Sikeres adat-egyesítés (v117.0 Market Spy), cache mentve (${ck}).`);
     return { ...finalResult, fromCache: false };
 }
 
