@@ -1,9 +1,6 @@
-// --- index.ts (v72.1 - BFF Transzformer ELTÁVOLÍTVA) ---
+// --- index.ts (v72.2 - TS Import Fix) ---
 // MÓDOSÍTÁS:
-// 1. JAVÍTVA: A felesleges és hibás 'bff_transformer.js' importálása
-//    és hívása eltávolítva a /runAnalysis végpontról.
-// 2. VISSZAÁLLÍTVA: A /runAnalysis most már közvetlenül a 'runFullAnalysis'
-//    eredményét adja vissza, ahogy a kliens (script.js) elvárja.
+// 1. JAVÍTÁS: A 'getChatResponse' importálása az AI_Service.js-ből most már named importként történik.
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
@@ -14,11 +11,9 @@ import { fileURLToPath } from 'url';
 import { PORT } from './config.js';
 // Importáljuk a típusosított fő funkciókat
 import { runFullAnalysis } from './AnalysisFlow.js';
-// === HIBÁS IMPORT ELTÁVOLÍTVA ===
-// import { transformAnalysisToLegacyFormat } from './bff_transformer.js'; 
-// ================================
 import { _getFixturesFromEspn, getRostersForMatch } from './DataFetch.js';
 import { getHistoryFromSheet, getAnalysisDetailFromSheet, deleteHistoryItemFromSheet } from './sheets.js';
+// JAVÍTOTT IMPORT: named import
 import { getChatResponse } from './AI_Service.js';
 import { updatePowerRatings, runConfidenceCalibration } from './LearningService.js';
 import { runSettlementProcess } from './settlementService.js';
