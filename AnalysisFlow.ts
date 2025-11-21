@@ -41,7 +41,7 @@ import { saveAnalysisToSheet } from './sheets.js';
 // Önjavító Hurok importálása
 import { getNarrativeRatings } from './LearningService.js';
 
-// === ÚJ IMPORT A STRATÉGIÁKHOZ ===
+// === ÚJ IMPORT A STRATÉGIÁHOZ ===
 import { getSportStrategy } from './strategies/StrategyFactory.js';
 import type { ISportStrategy } from './strategies/ISportStrategy.js';
 // === IMPORT VÉGE ===
