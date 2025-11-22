@@ -1,8 +1,9 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v112.1 (Import Fix)
+// VERZIÓ: v113.0 (Full Source + Confidence Cap)
 // MÓDOSÍTÁS:
-// 1. JAVÍTÁS: A 'runStep_FinalAnalysis', 'runStep_Psychologist', 'runStep_Specialist' importálása
-//    az AI_Service.ts-ből most már named importként történik.
+// 1. ADATMINŐSÉG ELLENŐRZÉS: Ha nincs valódi API adat (Stub/AI/Fallback), a rendszer 'Low Quality' módba vált.
+// 2. BIZALOM KORLÁTOZÁS: Low Quality módban a bizalom max 6.0 lehet.
+// 3. TELJES FORRÁSKÓD: Nincs rövidítés.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -31,7 +32,7 @@ import {
     calculateValue,
     analyzeLineMovement
 } from './Model.js';
-// AI Szolgáltatás Importok - JAVÍTOTT IMPORT
+// AI Szolgáltatás Importok
 import {
     runStep_Psychologist, 
     runStep_Specialist,   
@@ -88,6 +89,7 @@ interface IAnalysisResponse {
             home: IPlayerStub[];
             away: IPlayerStub[];
         };
+        dataQualityWarning?: string; // ÚJ MEZŐ (v113.0)
     };
     debugInfo: any;
 }
@@ -143,8 +145,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
         
-        // v112.0 Cache kulcs
-        analysisCacheKey = `analysis_v112.0_apex_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
+        // v113.0 Cache kulcs (verzióváltás)
+        analysisCacheKey = `analysis_v113.0_apex_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
         
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
@@ -168,7 +170,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         }
 
         // === 2. ÜGYNÖK (SCOUT): Kontextus, Piac és P1 Kezelése ===
-        // ITT HÍVÓDIK MEG A DataFetch.ts v112.0, ami már vadássza az xG-t!
         console.log(`[Lánc 2/6] Scout Ügynök: Kontextus és Piac lekérése (AI-First)...`);
         const dataFetchOptions: IDataFetchOptions = {
             sport: sport,
@@ -202,6 +203,17 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             fixtureIdForSaving = rawData.apiFootballData.fixtureId;
         }
 
+        // === 2.1 ADATMINŐSÉG ELLENŐRZÉS (v113.0) ===
+        // Ha az xG forrás nem valós API vagy manuális, akkor az adatok megbízhatatlanok.
+        const isLowQualityData = xgSource.includes("Stub") || xgSource.includes("AI") || xgSource.includes("Calculated") || xgSource.includes("Fallback");
+        let dataQualityWarning = "";
+        
+        if (isLowQualityData) {
+            console.warn(`[AnalysisFlow] FIGYELEM: Alacsony minőségű adatforrás (${xgSource}). A bizalom korlátozásra kerül.`);
+            dataQualityWarning = "⚠️ ADATHIÁNY: A rendszer nem ért el hivatalos API adatokat (pl. xG, sérültek). Az elemzés becsléseken alapul, a bizalmi szint korlátozva van.";
+        }
+        // ============================================
+
         // --- 3. Piaci adatok előkészítése ---
         let mutableOddsData: ICanonicalOdds | null = oddsData;
         if (!mutableOddsData) {
@@ -220,9 +232,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         console.log(`Meghatározott fő gól/pont vonal: ${mainTotalsLine}`);
         console.log(`Piaci Hírszerzés: ${marketIntel}`);
 
-        // === KRITIKUS LÉPÉS (v109.0): A Piaci Infó Injektálása a Kontextusba ===
-        // Így minden AI ügynök (Pszichológus, Specialista, Főnök) látni fogja az oddsok mozgását.
-        const enhancedRichContext = `${richContext}\n\n[PIACI HÍRSZERZÉS (MARKET WISDOM)]:\n${marketIntel}`;
+        // === KRITIKUS LÉPÉS (v109.0 + v113.0): A Piaci Infó és a Warning Injektálása ===
+        const enhancedRichContext = `${richContext}\n\n[PIACI HÍRSZERZÉS (MARKET WISDOM)]:\n${marketIntel}\n${dataQualityWarning}`;
         
         // === 2.5 ÜGYNÖK (PSZICHOLÓGUS) ===
         console.log(`[Lánc 2.5/6] Pszichológus Ügynök: Narratív profilalkotás...`);
@@ -351,7 +362,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             simulatorReport: sim,              
             psyReport: psychologistReport,     
             valueBetsJson: valueBets,
-            // Itt adjuk át a KIBŐVÍTETT kontextust (v109.0)
+            // Itt adjuk át a KIBŐVÍTETT kontextust (v109.0 + Warning)
             richContext: enhancedRichContext,
             sportStrategy: sportStrategy,
             confidenceScores: confidenceScores 
@@ -374,6 +385,28 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         }
         // === Hibrid Főnök Végzett ===
 
+        // === BIZALOM KORLÁTOZÁS (CAP) - ÚJ (v113.0) ===
+        if (isLowQualityData) {
+            const MAX_CONFIDENCE_ON_MISSING_DATA = 6.0; // Maximum 6.0 lehet, ha nincs adat
+            if (finalConfidenceScore > MAX_CONFIDENCE_ON_MISSING_DATA) {
+                console.log(`[AnalysisFlow] Bizalom csökkentése adatvakság miatt: ${finalConfidenceScore} -> ${MAX_CONFIDENCE_ON_MISSING_DATA}`);
+                finalConfidenceScore = MAX_CONFIDENCE_ON_MISSING_DATA;
+                
+                if (masterRecommendation) {
+                    masterRecommendation.final_confidence = finalConfidenceScore;
+                    masterRecommendation.brief_reasoning = `(FIGYELEM: ADATHIÁNY MIATT A BIZALOM KORLÁTOZVA) ${masterRecommendation.brief_reasoning}`;
+                    if (masterRecommendation.primary) {
+                        masterRecommendation.primary.confidence = Math.min(masterRecommendation.primary.confidence, MAX_CONFIDENCE_ON_MISSING_DATA);
+                        masterRecommendation.primary.reason = `[ADATHIÁNY] ${masterRecommendation.primary.reason}`;
+                    }
+                    if (masterRecommendation.secondary) {
+                        masterRecommendation.secondary.confidence = Math.min(masterRecommendation.secondary.confidence, MAX_CONFIDENCE_ON_MISSING_DATA);
+                    }
+                }
+            }
+        }
+        // =================================================
+
         console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterRecommendation)} (Végső bizalom: ${finalConfidenceScore})`);
 
         // --- 7. Válasz Elküldése és Naplózás ---
@@ -382,7 +415,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 (manual_absentees ? 'P1 (Manuális)' : 'P2/P4 (Automatikus)') : 
                 'Nincs adat',
             realXgUsed: finalXgSource,
-            fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
+            fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen',
+            dataQualityMode: isLowQualityData ? 'FALLBACK' : 'FULL_API'
         };
         
         const auditData = {
@@ -430,7 +464,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 narrativeRatingsUsed: {
                     home: homeNarrativeRating,
                     away: awayNarrativeRating
-                }
+                },
+                dataQualityWarning: dataQualityWarning
             }
         };
         
@@ -455,7 +490,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 sim: sim,
                 recommendation: masterRecommendation,
                 xgSource: finalXgSource, 
-                availableRosters: availableRosters
+                availableRosters: availableRosters,
+                dataQualityWarning: dataQualityWarning
             },
             debugInfo: debugInfo 
         };
