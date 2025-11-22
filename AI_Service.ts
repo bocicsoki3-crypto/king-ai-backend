@@ -1,11 +1,10 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v121.1 (MISSING FUNCTIONS RESTORED)
-// CÉL: A fordítási hibák (TS2304, TS2552) javítása a hiányzó mikromodell-futtatók visszaállításával.
-// MECHANIZMUS:
-// 1. Visszaállítva: getBTTSAnalysis, getSoccerGoalsOUAnalysis, getCornerAnalysis, getCardAnalysis.
-// 2. Visszaállítva: getHockeyGoalsOUAnalysis, getHockeyWinnerAnalysis.
-// 3. Javítva: Typo a BASKETBALL_TOTAL_POINTS_PROMPT hívásnál.
-// 4. Megmarad: Hibrid Prompt + Verdict + Matematikai Guardrails.
+// VERZIÓ: v123.0 (GOD MODE - The Ultimate Sniper)
+// CÉL: Maximális pontosság. A rendszer csak akkor "lő", ha biztos a dolgában.
+// STRATÉGIA:
+// 1. "Banker" (Tuti) kiválasztása a legszigorúbb matematikai + narratív szűrővel.
+// 2. "Verdict" (Ítélet): Egyetlen mondat, ami elmondja, miért ez a nyerő.
+// 3. Teljes kompatibilitás a rendszer többi részével (DataFetch, AnalysisFlow).
 
 import { 
     _callGemini, 
@@ -21,7 +20,7 @@ export async function getAndParse(
     promptTemplate: string, 
     data: any, 
     keyToExtract: string,
-    stepName: string // Logoláshoz
+    stepName: string
 ): Promise<string> {
     try {
         const filledPrompt = fillPromptTemplate(promptTemplate, data);
@@ -31,10 +30,10 @@ export async function getAndParse(
             const value = result[keyToExtract];
             return value || "N/A (AI nem adott értéket)";
         }
-        console.error(`[AI_Service v121.1] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
+        console.error(`[AI_Service v123.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
         return `AI Hiba: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot.`;
     } catch (e: any) {
-        console.error(`[AI_Service v121.1] Végleges AI Hiba (${stepName}): ${e.message}`);
+        console.error(`[AI_Service v123.0] Végleges AI Hiba (${stepName}): ${e.message}`);
         return `AI Hiba (${keyToExtract}): ${e.message}`;
     }
 }
@@ -186,10 +185,11 @@ DATA: Sim Over {line}: {sim_pOver}%, Expected Sum: {sim_mu_sum}.
 CRITICAL OUTPUT INSTRUCTION: {"basketball_total_points_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
 
-// === A "HIBRID MESTER" PROMPT + THE VERDICT (v121.0) ===
-const MASTER_AI_PROMPT_TEMPLATE_HYBRID = `
-CRITICAL TASK: You are the Head Analyst (AI Advisor).
-Your task is to determine TWO betting recommendations AND a final "Verdict" summary.
+// === A FŐNÖK PROMPTJA (GOD MODE) ===
+// Ez a prompt kíméletlen. Csak a legjobbat fogadja el.
+const MASTER_AI_PROMPT_TEMPLATE_GOD_MODE = `
+CRITICAL TASK: You are the "King AI" Head Analyst.
+Your mission is to identify the **SINGLE ABSOLUTE BANKER** bet that is "Sure to Win".
 
 CRITICAL INPUTS:
 1. Value Bets: {valueBetsJson}
@@ -199,26 +199,31 @@ CRITICAL INPUTS:
 5. Risk Assessment: "{riskAssessment}"
 6. Strategic Thoughts: "{strategicClosingThoughts}"
 
-**DECISION PROTOCOL (STRICT):**
-1. **PRIMARY BET (THE BANKER):** This must be the SINGLE SAFEST bet. Must be supported by MATH.
-2. **SECONDARY BET (VALUE/ALT):** Find a second option. Can be higher risk/reward.
-3. **THE VERDICT (A LÉNYEG):** - Synthesize everything into ONE readable Hungarian sentence.
-   - Explain WHY the Primary bet is the one to pick, despite all other noise.
-   - Example: "Bár a statisztika óvatos, a Liverpool formája és a hazai pálya miatt a Hazai győzelem a nap tuti tippje."
+**THE GOD MODE PROTOCOL:**
+1. **PRIMARY BET (THE BANKER):**
+   - Look for the convergence of MATH + NARRATIVE.
+   - If the Math says >65% AND Narrative is positive, that's a Banker.
+   - Do not be afraid to bet on favorites if the data is solid.
+   - MAIN MARKETS ONLY (1X2, Over/Under, BTTS, Moneyline).
+
+2. **THE VERDICT (A LÉNYEG - HUNGARIAN):**
+   - Write ONE powerful sentence in Hungarian.
+   - Tell the user WHY this is the "Tuti" (Sure thing).
+   - Be confident but professional.
 
 OUTPUT FORMAT (Exact JSON):
 {
   "primary": {
-      "market": "<The SAFEST bet>",
+      "market": "<The BANKER bet>",
       "confidence": <Number 1.0-10.0>,
       "reason": "<Short Hungarian reason>"
   },
   "secondary": {
-      "market": "<Alternative bet>",
+      "market": "<Strong Alternative>",
       "confidence": <Number 1.0-10.0>,
       "reason": "<Short Hungarian reason>"
   },
-  "verdict": "<A LÉNYEG: Egyetlen, tömör mondat, ami elmondja a tutit.>"
+  "verdict": "<A LÉNYEG: Egyetlen mondat, ami összefoglalja, miért ez a tuti.>"
 }
 `;
 
@@ -231,7 +236,7 @@ export async function runStep_DeepScout(data: { home: string, away: string, spor
         const filledPrompt = fillPromptTemplate(PROMPT_DEEP_SCOUT_V3, data);
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_DeepScout", 2, true);
     } catch (e: any) {
-        console.error(`[AI_Service v121.1] Deep Scout Hiba: ${e.message}`);
+        console.error(`[AI_Service v123.0] Deep Scout Hiba: ${e.message}`);
         return null;
     }
 }
@@ -243,7 +248,7 @@ export async function runStep_TeamNameResolver(data: { inputName: string; search
         const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_TeamNameResolver");
         return result && result.matched_id ? Number(result.matched_id) : null;
     } catch (e: any) {
-        console.error(`[AI_Service v121.1] Térképész Hiba: ${e.message}`);
+        console.error(`[AI_Service v123.0] Térképész Hiba: ${e.message}`);
         return null;
     }
 }
@@ -345,7 +350,7 @@ async function getStrategicClosingThoughts(sim: any, rawData: ICanonicalRawData,
     return await getAndParse(template, data, "strategic_analysis", "StrategicClosing");
 }
 
-// === FOCI MIKROMODELL FUTTATÓK (VISSZAÁLLÍTVA!) ===
+// === MIKROMODELL FUTTATÓK (V121.1) ===
 async function getBTTSAnalysis(sim: any, rawData: ICanonicalRawData) {
      const safeSim = sim || {};
      const data = {
@@ -399,14 +404,13 @@ async function getCardAnalysis(sim: any, rawData: ICanonicalRawData) {
     return await getAndParse(CARD_ANALYSIS_PROMPT, data, "card_analysis", "CardAnalysis");
 }
 
-// === HOKI MIKROMODELL FUTTATÓK (VISSZAÁLLÍTVA!) ===
 async function getHockeyGoalsOUAnalysis(sim: any, rawData: ICanonicalRawData, mainTotalsLine: number) {
      const safeSim = sim || {};
      const data = {
         line: mainTotalsLine,
         sim_pOver: safeSim.pOver,
         sim_mu_sum: (safeSim.mu_h_sim ?? 0) + (safeSim.mu_a_sim ?? 0),
-        home_gsax: rawData?.advanced_stats_goalie?.home_goalie?.GSAx || "N/A", // Opcionális láncolás
+        home_gsax: rawData?.advanced_stats_goalie?.home_goalie?.GSAx || "N/A", 
         away_gsax: rawData?.advanced_stats_goalie?.away_goalie?.GSAx || "N/A"
      };
      return await getAndParse(HOCKEY_GOALS_OU_PROMPT, data, "hockey_goals_ou_analysis", "HockeyGoalsOUAnalysis");
@@ -426,7 +430,8 @@ async function getHockeyWinnerAnalysis(sim: any, rawData: ICanonicalRawData) {
 }
 
 
-// === A FŐNÖK: getMasterRecommendation (HIBRID + VERDICT VERZIÓ) ===
+// === A FŐNÖK: getMasterRecommendation (GOD MODE) ===
+// Ez a döntési motor lelke.
 async function getMasterRecommendation(
     valueBets: any[], 
     sim: any, 
@@ -467,7 +472,8 @@ async function getMasterRecommendation(
             specialistReportJson: specialistReport 
         };
 
-        let template = MASTER_AI_PROMPT_TEMPLATE_HYBRID;
+        // GOD MODE PROMPT HASZNÁLATA
+        let template = MASTER_AI_PROMPT_TEMPLATE_GOD_MODE;
         if (sport === 'hockey') {
             template = template.replace(/BTTS, /g, ""); 
         }
@@ -477,6 +483,7 @@ async function getMasterRecommendation(
 
         if (!rec || (!rec.primary && !rec.recommended_bet)) throw new Error("Master AI hiba: Érvénytelen válasz struktúra.");
         
+        // Struktúra normalizálás
         if (!rec.primary) {
             rec = {
                 primary: { market: rec.recommended_bet, confidence: rec.final_confidence, reason: rec.brief_reasoning },
@@ -485,7 +492,8 @@ async function getMasterRecommendation(
             };
         }
 
-        // --- MATEMATIKAI BÜNTETÉS (Guardrails) ---
+        // --- SZIGORÚ MATEMATIKAI BÜNTETÉS (THE GUARDRAILS) ---
+        // Ez szűri ki a hallucinációkat. Ha a matek gyenge, a tipp is az lesz.
         const confidenceDiff = Math.abs(safeModelConfidence - expertConfScore);
         const disagreementThreshold = 3.0;
         let confidencePenalty = 0;
@@ -503,6 +511,8 @@ async function getMasterRecommendation(
         rec.primary.confidence -= confidencePenalty;
         rec.primary.confidence = Math.max(1.0, Math.min(10.0, rec.primary.confidence));
         
+        // --- VERDICT (Ítélet) BEOLVASZTÁSA ---
+        // Ez jelenik meg a kártyán, mint "A Lényeg".
         if (rec.verdict) {
             rec.primary.reason = (rec.primary.reason || "") + `\n\n💡 A LÉNYEG: ${rec.verdict}` + disagreementNote;
         } else {
@@ -514,16 +524,17 @@ async function getMasterRecommendation(
              rec.secondary.reason += " (Kockázatos)";
         }
 
+        // Kompatibilitás
         rec.recommended_bet = rec.primary.market;
         rec.final_confidence = rec.primary.confidence;
         rec.brief_reasoning = rec.primary.reason;
 
-        console.log(`[AI_Service v121.1 - Főnök] HIBRID+VERDICT Tippek. Fő: ${rec.primary.market} (${rec.primary.confidence}/10).`);
+        console.log(`[AI_Service v123.0 - Főnök] GOD MODE Tipp. Fő: ${rec.primary.market} (${rec.primary.confidence}/10). Ítélet: ${rec.verdict}`);
         
         return rec;
 
     } catch (e: any) {
-        console.error(`[AI_Service v121.1 - Főnök] Hiba: ${e.message}`, e.stack);
+        console.error(`[AI_Service v123.0 - Főnök] Hiba: ${e.message}`, e.stack);
         return { 
             recommended_bet: "Hiba", final_confidence: 1.0, brief_reasoning: `Hiba: ${e.message}`,
             primary: { market: "Hiba", confidence: 1.0, reason: "Hiba" },
@@ -533,7 +544,7 @@ async function getMasterRecommendation(
 }
 
 
-// --- FŐ ORCHESTRÁCIÓS LÉPÉS (V103 Logika + Sportág specifikus) ---
+// --- FŐ ORCHESTRÁCIÓS LÉPÉS ---
 export async function runStep_FinalAnalysis(data: any): Promise<any> {
     
     const { rawDataJson, specialistReport, simulatorReport, psyReport, valueBetsJson, richContext, matchData, sportStrategy, confidenceScores } = data;
@@ -552,12 +563,10 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
     let microAnalyses: { [key: string]: string } = {};
     
     try {
-        // 1. Általános modellek futtatása
         const expertConfidencePromise = getExpertConfidence(confidenceScores, richContext, rawDataJson, psyReport, specialistReport);
         const riskAssessmentPromise = getRiskAssessment(sim, rawDataJson, sport, confidenceScores);
         const playerMarketsPromise = getPlayerMarkets(rawDataJson.key_players, richContext);
 
-        // 2. Sportág-specifikus mikromodellek (JAVÍTVA v121.1)
         let sportSpecificPromises: Promise<any>[] = [];
         
         if (sport === 'soccer') {
@@ -575,7 +584,6 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
         } else if (sport === 'basketball') {
              sportSpecificPromises = [
                 getAndParse(BASKETBALL_WINNER_PROMPT, { sim_pHome: sim.pHome, sim_pAway: sim.pAway }, "basketball_winner_analysis", "Bask.Winner"),
-                // JAVÍTVA: BASKEBALL -> BASKETBALL typo fix
                 getAndParse(BASKETBALL_TOTAL_POINTS_PROMPT, { line: sim.mainTotalsLine, sim_pOver: sim.pOver, sim_mu_sum: (sim.mu_h_sim+sim.mu_a_sim) }, "basketball_total_points_analysis", "Bask.Totals")
              ];
         }
@@ -601,7 +609,6 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
             microAnalyses['hockey_winner_analysis'] = (results[4].status === 'fulfilled') ? (results[4].value as string) : "Hiba";
         }
 
-        // 3. Szöveges elemzések
         try { tacticalBriefing = await getTacticalBriefing(rawDataJson, sport, home, away, riskAssessment); } catch (e) {}
         try { generalAnalysis = await getFinalGeneralAnalysis(sim, tacticalBriefing, rawDataJson, confidenceScores, psyReport); } catch (e) {}
         
@@ -611,7 +618,7 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
 
         try { strategic_synthesis = await getStrategicClosingThoughts(sim, rawDataJson, richContext, microAnalyses, riskAssessment, tacticalBriefing, valueBetsJson, confidenceScores, expertConfidence, psyReport, specialistReport, sport); } catch (e) {}
 
-        // 4. A "FŐNÖK" HÍVÁSA (HIBRID + VERDICT)
+        // 4. A "FŐNÖK" HÍVÁSA (GOD MODE)
         masterRecommendation = await getMasterRecommendation(
             valueBetsJson, 
             sim, 
@@ -628,7 +635,7 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
         );
 
     } catch (e: any) {
-        console.error(`[AI_Service v121.1] KRITIKUS HIBA: ${e.message}`);
+        console.error(`[AI_Service v123.0] KRITIKUS HIBA: ${e.message}`);
         masterRecommendation.brief_reasoning = `KRITIKUS HIBA: ${e.message}`;
     }
     
