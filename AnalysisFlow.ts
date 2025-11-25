@@ -1,8 +1,9 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v112.1 (Import Fix)
+// VERZIÓ: v112.2 (Safety Pick Integration)
 // MÓDOSÍTÁS:
-// 1. JAVÍTÁS: A 'runStep_FinalAnalysis', 'runStep_Psychologist', 'runStep_Specialist' importálása
-//    az AI_Service.ts-ből most már named importként történik.
+// 1. BEKÖTVE: 'getBestBetByProbability' hívása a Model.ts-ből.
+// 2. HOZZÁADVA: A 'bestSafeBet' objektum átadása a 'finalAnalysisInput'-nak.
+// 3. CÉL: A GOD MODE AI megkapja a legbiztosabb statisztikai tippet tartaléknak.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -29,9 +30,10 @@ import {
     simulateMatchProgress,    // (4. Ügynök - Szimulátor)
     calculateConfidenceScores, // v105.0
     calculateValue,
-    analyzeLineMovement
+    analyzeLineMovement,
+    getBestBetByProbability // <--- ÚJ IMPORT
 } from './Model.js';
-// AI Szolgáltatás Importok - JAVÍTOTT IMPORT
+// AI Szolgáltatás Importok
 import {
     runStep_Psychologist, 
     runStep_Specialist,   
@@ -168,7 +170,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         }
 
         // === 2. ÜGYNÖK (SCOUT): Kontextus, Piac és P1 Kezelése ===
-        // ITT HÍVÓDIK MEG A DataFetch.ts v112.0, ami már vadássza az xG-t!
         console.log(`[Lánc 2/6] Scout Ügynök: Kontextus és Piac lekérése (AI-First)...`);
         const dataFetchOptions: IDataFetchOptions = {
             sport: sport,
@@ -220,8 +221,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         console.log(`Meghatározott fő gól/pont vonal: ${mainTotalsLine}`);
         console.log(`Piaci Hírszerzés: ${marketIntel}`);
 
-        // === KRITIKUS LÉPÉS (v109.0): A Piaci Infó Injektálása a Kontextusba ===
-        // Így minden AI ügynök (Pszichológus, Specialista, Főnök) látni fogja az oddsok mozgását.
         const enhancedRichContext = `${richContext}\n\n[PIACI HÍRSZERZÉS (MARKET WISDOM)]:\n${marketIntel}`;
         
         // === 2.5 ÜGYNÖK (PSZICHOLÓGUS) ===
@@ -275,7 +274,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         };
         const specialistReport = await runStep_Specialist(specialistInput);
 
-        // === BIZTONSÁGI SANITIZÁLÁS (v108.3) ===
+        // === BIZTONSÁGI SANITIZÁLÁS ===
         const { modified_mu_h: raw_mu_h, modified_mu_a: raw_mu_a } = specialistReport;
         
         const mu_h = (typeof raw_mu_h === 'number' && !isNaN(raw_mu_h)) ? raw_mu_h : pure_mu_h;
@@ -298,7 +297,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             sportStrategy 
         );
         
-        // === BIZALOM SZÁMÍTÁS (v105.0) ===
+        // === BIZALOM SZÁMÍTÁS ===
         const confidenceScores = calculateConfidenceScores(
             sport, 
             home, 
@@ -327,21 +326,25 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const valueBets = calculateValue(sim, mutableOddsData, sport, home, away);
         console.log(`Szimulátor végzett.`);
 
+        // === ÚJ (v112.2): BIZTONSÁGI TIPP LEKÉRÉSE ===
+        const bestSafeBet = getBestBetByProbability(sim, sport);
+        console.log(`Legbiztosabb statisztikai tipp (Safety Pick): ${bestSafeBet.market} (${bestSafeBet.probability.toFixed(1)}%)`);
+        // ==============================================
 
-        // === 5/6. ÜGYNÖK (HIBRID FŐNÖK - v109.0) ===
+        // === 5/6. ÜGYNÖK (HIBRID FŐNÖK) ===
         console.log(`[Lánc 5/6] "Hibrid Főnök" hívása (Apex Logic)...`);
         
-        // Interfész definiálása
         interface FinalAnalysisInput {
             matchData: { home: string; away: string; sport: string; leagueName: string; };
             rawDataJson: ICanonicalRawData; 
-            specialistReport: any; // Agent 3
-            simulatorReport: any;  // Agent 4 (Sim)
-            psyReport: any;        // Agent 2.5
+            specialistReport: any; 
+            simulatorReport: any;  
+            psyReport: any;        
             valueBetsJson: any[];
             richContext: string;
             sportStrategy: ISportStrategy;
             confidenceScores: { winner: number; totals: number; overall: number }; 
+            bestSafeBet: any; // <--- ÚJ MEZŐ
         }
 
         const finalAnalysisInput: FinalAnalysisInput = {
@@ -351,10 +354,10 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             simulatorReport: sim,              
             psyReport: psychologistReport,     
             valueBetsJson: valueBets,
-            // Itt adjuk át a KIBŐVÍTETT kontextust (v109.0)
             richContext: enhancedRichContext,
             sportStrategy: sportStrategy,
-            confidenceScores: confidenceScores 
+            confidenceScores: confidenceScores,
+            bestSafeBet: bestSafeBet // <--- ÁTADJUK A FŐNÖKNEK
         };
 
         const finalReport: any = await runStep_FinalAnalysis(finalAnalysisInput);
@@ -415,6 +418,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                     mu_a: sim.mu_a_sim
                 },
                 valueBets: valueBets, 
+                bestSafeBet: bestSafeBet, // <--- NAPLÓZZUK IS
                 confidenceScores: {
                     winner: parseFloat(confidenceScores.winner.toFixed(1)),
                     totals: parseFloat(confidenceScores.totals.toFixed(1)),
