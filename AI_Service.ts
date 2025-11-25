@@ -1,10 +1,12 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v123.0 (GOD MODE - The Ultimate Sniper)
-// CÉL: Maximális pontosság. A rendszer csak akkor "lő", ha biztos a dolgában.
-// STRATÉGIA:
-// 1. "Banker" (Tuti) kiválasztása a legszigorúbb matematikai + narratív szűrővel.
-// 2. "Verdict" (Ítélet): Egyetlen mondat, ami elmondja, miért ez a nyerő.
-// 3. Teljes kompatibilitás a rendszer többi részével (DataFetch, AnalysisFlow).
+// VERZIÓ: v124.1 (BOLD PREDICTION MODE - "No More Safe Plays")
+// CÉL: BÁTOR, KONKRÉT PREDIKCIÓK - Az AI most már valódi eredményeket mond!
+// MÓDOSÍTÁS (v124.1):
+// 1. ÚJ: topScore (legvalószínűbb eredmény) beépítve a Master AI promptba
+// 2. ÚJ: Explicit instrukciók a bátor, konkrét predikciókra
+// 3. ÚJ: Példa helyes válaszra (2-1, ne "1-2 gól várható")
+// 4. EREDMÉNY: Az AI most már kimondja hogy "Norwich 2-1-re nyeri a meccset"
+//    ahelyett hogy "várhatóan kiegyenlített mérkőzés, döntetlen is elképzelhető"
 
 import { 
     _callGemini, 
@@ -697,6 +699,11 @@ Your mission: Identify the **ABSOLUTE BEST BET** based on mathematical convergen
 - Away Win: {sim_pAway}%
 - Over/Under {sim_mainTotalsLine}: Over {sim_pOver}%
 
+**🎯 LEGVALÓSZÍNŰBB EREDMÉNY (25,000 SZIMULÁCIÓ ALAPJÁN):**
+- **Leggyakoribb eredmény:** {sim_topScore} ({sim_topScoreProb}% eséllyel)
+- **Várható xG:** Hazai {sim_mu_h} vs Vendég {sim_mu_a}
+- **FONTOS:** Ez nem csak átlag - ez a TÉNYLEGESEN LEGGYAKRABBAN előforduló eredmény a szimulációkban!
+
 **VALUE BETS IDENTIFIED:**
 {valueBetsJson}
 
@@ -746,6 +753,19 @@ Your mission: Identify the **ABSOLUTE BEST BET** based on mathematical convergen
 - Should be uncorrelated with primary
 - Safety net if primary seems risky
 
+**STEP 5: BÁTOR PREDIKCIÓRA ÖSZTÖNZÉS 🔥**
+- **NE FÉLJ KONKRÉT EREDMÉNYT MONDANI!**
+- Ha a szimuláció azt mondja {sim_topScore} a legvalószínűbb, akkor **AZT MONDD**!
+- Ne rejtőzz a "várhatóan kiegyenlített" mögé
+- Ha Home Win 42%, **MONDD HOGY HAZAI GYŐZELEM** (ne csak "lehet")
+- Ha a topScore 2-1, **MONDD HOGY 2-1 LESZ** (ne csak "várhatóan 1-2 gól")
+- A fogadók KONKRÉT tippeket akarnak, nem statisztikai bizonytalanságot!
+- **PÉLDÁK HELYES MEGFOGALMAZÁSRA:**
+  ✅ "A Norwich 2-1-re fogja győzni az Oxfordot"
+  ✅ "Hazai győzelem várható, legvalószínűbb eredmény: 2-1"
+  ❌ "Kiegyenlített mérkőzés várható, döntetlen is elképzelhető"
+  ❌ "Várhatóan mindkét csapat 1-2 gólt szerez"
+
 ═══════════════════════════════════════════════════════════════
 📋 OUTPUT REQUIREMENTS (MANDATORY STRUCTURE)
 ═══════════════════════════════════════════════════════════════
@@ -763,7 +783,7 @@ You MUST provide a valid JSON with this EXACT structure:
     "confidence": <Szám 1.0-10.0>,
     "reason": "<RÉSZLETES 4-5 MONDATOS INDOKLÁS MAGYARUL: Miért jó ez másodlagos opcióként? Hogyan különbözik az elsődlegestől? Milyen forgatókönyvben lehet jobb?>"
   },
-  "verdict": "<A LÉNYEG - 2-3 MONDATOS ÖSSZEFOGLALÓ MAGYARUL: Miért ez a 'BIZTOS' tipp? Mi az a 1-2 kulcsfontosságú tényező, ami miatt ez valószínűleg bejön? Legyen magabiztos, de realisztikus.>",
+  "verdict": "<A LÉNYEG - 2-3 MONDATOS ÖSSZEFOGLALÓ MAGYARUL: Miért ez a 'BIZTOS' tipp? KÖTELEZŐ konkrét eredményt említeni (pl: 'Norwich 2-1-re nyeri a meccset'). Mi az a 1-2 kulcsfontosságú tényező, ami miatt ez valószínűleg bejön? Legyen magabiztos és BÁTOR! Használd a {sim_topScore} eredményt ha releváns!>",
   "betting_strategy": {
     "stake_recommendation": "<1-5 egység ajánlás, ahol 5 = maximális bizalom>",
     "market_timing": "<Fogadj most / Várj jobb oddsra / Nincs időzítési előny>",
@@ -781,12 +801,27 @@ You MUST provide a valid JSON with this EXACT structure:
 
 1. **BE SPECIFIC & DETAILED**: Generic reasoning is useless
 2. **EVIDENCE-BASED**: Every claim must be backed by data
-3. **HONEST ABOUT UNCERTAINTY**: If confidence is medium/low, say why
+3. **BÁTOR PREDIKCIÓ**: Konkrét eredményt KÖTELEZŐ mondani! Használd a {sim_topScore} értéket!
 4. **CONSIDER ALL ANGLES**: Stats, tactics, psychology, value
 5. **FOCUS ON VALUE**: Not just "who will win" but "where is the edge"
 6. **MAIN MARKETS PRIORITY**: 1X2/Moneyline, Over/Under, BTTS first
 7. **REALISTIC CONFIDENCE**: Don't inflate scores without justification
 8. **HUNGARIAN LANGUAGE**: All reasoning must be in clear, professional Hungarian
+9. **NE LÉGY "SAFE"**: A felhasználó nyerni akar, nem bizonytalan válaszokat olvasni!
+10. **KONKRÉT SZÁMOK**: Ha mondasz eredményt, mondd: "2-1", "1-0", stb. - NE "1-2 gól várható"
+
+═══════════════════════════════════════════════════════════════
+💡 PÉLDA HELYES VÁLASZRA (BÁTOR ÉS KONKRÉT)
+═══════════════════════════════════════════════════════════════
+
+{
+  "primary": {
+    "market": "Hazai Győzelem",
+    "confidence": 7.5,
+    "reason": "**Statisztikai Alap:** A szimuláció 42.2% esélyt ad a Norwich győzelmére, ami jelentősen meghaladja a döntetlen (26.9%) és vendég győzelem (30.9%) valószínűségét. A leggyakoribb eredmény a 25,000 szimulációból a **2-1 Norwich javára**. Az xG is támogatja ezt: Norwich 1.35 vs Oxford 1.11.\\n\\n**Taktikai Elemzés:** A Norwich támadóbb felállással játszik hazai pályán, miközben az Oxford védekezésre összpontosít. A hazai csapat kulcsjátékosai elérhetőek, míg az Oxford egyik védője sérült.\\n\\n**Pszichológiai Elem:** A Norwich remek formában van (3 győzelem az utolsó 5-ből), míg az Oxford küzd idegenben.\\n\\n**Konkrét Predikció:** A **Norwich 2-1-re fogja nyerni ezt a meccset**. A statisztika, a forma és a taktika mind ezt támasztja alá."
+  },
+  "verdict": "A Norwich 2-1-es győzelme a legvalószínűbb kimenetel. A 42.2%-os győzelmi esély, a kiváló hazai forma és a kulcsjátékosok elérhetősége mind ezt támasztja alá. Ez nem csak matematikai előny - ez valós taktikai és mentális fölény."
+}
 
 ═══════════════════════════════════════════════════════════════
 🚀 DECISION TIME - ANALYZE & EXECUTE
@@ -1129,6 +1164,12 @@ async function getMasterRecommendation(
 
         const safeModelConfidence = typeof confidenceScores.winner === 'number' ? confidenceScores.winner : 5.0;
 
+        // === ÚJ v124.1: LEGVALÓSZÍNŰBB EREDMÉNY (topScore) HOZZÁADÁSA ===
+        const topScoreHome = safeSim.topScore?.gh ?? Math.round(safeSim.mu_h_sim || 1);
+        const topScoreAway = safeSim.topScore?.ga ?? Math.round(safeSim.mu_a_sim || 1);
+        const topScoreString = `${topScoreHome}-${topScoreAway}`;
+        const topScoreProb = safeSim.scores?.[topScoreString] ? ((safeSim.scores[topScoreString] / 25000) * 100).toFixed(1) : "N/A";
+        
         const data = {
             valueBetsJson: JSON.stringify(valueBets, null, 2),
             sim_pHome: safeSim.pHome?.toFixed(1) || "N/A", 
@@ -1136,6 +1177,12 @@ async function getMasterRecommendation(
             sim_pAway: safeSim.pAway?.toFixed(1) || "N/A",
             sim_mainTotalsLine: safeSim.mainTotalsLine || "N/A", 
             sim_pOver: safeSim.pOver?.toFixed(1) || "N/A",
+            // === ÚJ v124.1: TOP SCORE ADATOK ===
+            sim_topScore: topScoreString,
+            sim_topScoreProb: topScoreProb,
+            sim_mu_h: safeSim.mu_h_sim?.toFixed(2) || "N/A",
+            sim_mu_a: safeSim.mu_a_sim?.toFixed(2) || "N/A",
+            // ====================================
             modelConfidence: safeModelConfidence.toFixed(1), 
             expertConfidence: expertConfidence || "N/A",
             riskAssessment: riskAssessment || "N/A",
