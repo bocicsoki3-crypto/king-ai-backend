@@ -1,12 +1,18 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v124.1 (BOLD PREDICTION MODE - "No More Safe Plays")
-// CÉL: BÁTOR, KONKRÉT PREDIKCIÓK - Az AI most már valódi eredményeket mond!
-// MÓDOSÍTÁS (v124.1):
-// 1. ÚJ: topScore (legvalószínűbb eredmény) beépítve a Master AI promptba
-// 2. ÚJ: Explicit instrukciók a bátor, konkrét predikciókra
-// 3. ÚJ: Példa helyes válaszra (2-1, ne "1-2 gól várható")
-// 4. EREDMÉNY: Az AI most már kimondja hogy "Norwich 2-1-re nyeri a meccset"
-//    ahelyett hogy "várhatóan kiegyenlített mérkőzés, döntetlen is elképzelhető"
+// VERZIÓ: v124.2 (BOLD PREDICTION MODE - FULL SYSTEM UPGRADE)
+// CÉL: VALÓSÁGHŰ, NYERŐ PREDIKCIÓK - Az ÖSSZES PROMPT bátor és konkrét!
+// MÓDOSÍTÁS (v124.2 - TELJES RENDSZER ÁTDOLGOZÁS):
+// 1. MASTER AI PROMPT: topScore beépítve, bátor predikciókra ösztönzés, példák
+// 2. EXPERT CONFIDENCE: Bátor, konkrét indoklások, nincs több "safe" válasz
+// 3. RISK ASSESSMENT: Kiegyensúlyozott megközelítés, nem ijesztgető
+// 4. BTTS ANALYSIS: Konkrét IGEN/NEM, példa eredményekkel
+// 5. GOALS O/U (Soccer): Egyértelmű OVER/UNDER, várható eredményekkel
+// 6. HOCKEY GOALS O/U: Bátor predikciók, konkrét eredmények (4-3, 2-1)
+// 7. HOCKEY WINNER: Határozott győztes választás, várható eredmény
+// 8. BASKETBALL WINNER: Konkrét győztes, várható pontszám különbség
+// 9. BASKETBALL TOTALS: Egyértelmű OVER/UNDER, várható eredmény
+// 10. EREDMÉNY: A TELJES RENDSZER most már KONKRÉT, VALÓSÁGHŰ tippeket ad!
+//     Nincs több "várhatóan kiegyenlített" - csak GYŐZELEM! 🏆
 
 import { 
     _callGemini, 
@@ -341,8 +347,8 @@ Analyze how KEY PLAYERS will influence this match: {home} vs {away}
 
 // === MIKROMODELL PROMPTOK (V103 Standard) ===
 
-export const EXPERT_CONFIDENCE_PROMPT = `You are a master betting risk analyst with 20+ years of experience.
-Provide a COMPREHENSIVE confidence assessment in Hungarian.
+export const EXPERT_CONFIDENCE_PROMPT = `You are a master betting risk analyst with 20+ years of experience AND a PROVEN WINNER.
+Provide a COMPREHENSIVE confidence assessment in Hungarian with **ACTIONABLE, REALISTIC PREDICTIONS**.
 
 **MATCH CONTEXT: {home} vs {away}**
 
@@ -364,26 +370,29 @@ Provide a COMPREHENSIVE confidence assessment in Hungarian.
 {keyPlayersImpact}
 
 [YOUR TASK]:
-Synthesize ALL information and provide a FINAL CONFIDENCE rating (1-10) with detailed reasoning.
+Synthesize ALL information and provide a FINAL CONFIDENCE rating (1-10) with **SPECIFIC, BOLD REASONING**.
 
-**CONFIDENCE SCALE**:
-- 9-10: Exceptionally strong bet, rare opportunity
-- 7-8: Strong confidence, favorable conditions
-- 5-6: Moderate confidence, some uncertainty
-- 3-4: Low confidence, significant risks
-- 1-2: Very risky, avoid
+**CONFIDENCE SCALE (v124.1 - REVISED FOR BOLD PREDICTIONS)**:
+- 9-10: Exceptionally strong bet, rare opportunity → **MONDJ KONKRÉT EREDMÉNYT!**
+- 7-8: Strong confidence, favorable conditions → **MONDJ KONKRÉT TIPPET!**
+- 5-6: Moderate confidence, some uncertainty → **MONDJ VALÓSZÍNŰBB IRÁNYT!**
+- 3-4: Low confidence, significant risks → **LÉGY ÓVATOS, DE KONKRÉT!**
+- 1-2: Very risky, avoid → **MONDD MEG MIÉRT!**
 
 [CRITICAL OUTPUT FORMAT] - MUST be valid JSON:
 {
-  "confidence_report": "**VÉGLEGES BIZALOM: X/10**\\n\\n**INDOKLÁS:**\\n1. Statisztikai Alap: <Mennyire erősek a matematikai mutatók?>\\n2. Kontextuális Tényezők: <Hogyan hatnak a körülmények?>\\n3. Pszichológiai Elem: <Mentális előnyök/hátrányok?>\\n4. Kulcsjátékosok: <Hiányzó/elérhető sztárok hatása?>\\n5. Piaci Mozgások: <Mit mondanak az oddsok?>\\n\\n**ÖSSZEGZÉS:** <Miért éri meg vagy nem éri meg ezt a tippet választani? 2-3 mondat.>"
+  "confidence_report": "**VÉGLEGES BIZALOM: X/10**\\n\\n**INDOKLÁS (KONKRÉT ÉS BÁTOR):**\\n1. Statisztikai Alap: <Mennyire erősek a matematikai mutatók? KONKRÉT SZÁMOKKAL!>\\n2. Várható Eredmény: <Milyen konkrét eredmény várható? NE LÉGY ÓVATOS!>\\n3. Kontextuális Tényezők: <Hogyan hatnak a körülmények? SPECIFIKUS HATÁSOK!>\\n4. Pszichológiai Elem: <Ki van mentális előnyben és MENNYIRE?>\\n5. Kulcsjátékosok: <Hiányzó/elérhető sztárok KONKRÉT HATÁSA gólokra>\\n6. Piaci Helyzet: <Mit mondanak az oddsok? Van VALUE?>\\n\\n**ÖSSZEGZÉS (BÁTOR ÉS KONKRÉT):** <Milyen KONKRÉT TIPPRE fogadsz? Milyen KONKRÉT EREDMÉNY VÁRHATÓ? Ne rejtőzz a 'lehet' mögé! 3-4 mondat.>"
 }
 
-[INSTRUCTIONS]:
-- Be thorough but concise
-- Highlight RISKS and OPPORTUNITIES
-- Consider variance and upside/downside
-- Write in professional Hungarian
-- Be honest about uncertainty
+[CRITICAL INSTRUCTIONS - v124.1 BOLD MODE]:
+- **NE LÉGY "SAFE"** - A fogadók KONKRÉT tippeket akarnak!
+- **MONDJ KONKRÉT EREDMÉNYT** - pl: "Norwich 2-1-re nyeri" NE "várhatóan 1-2 gól"
+- Highlight RISKS but also OPPORTUNITIES  
+- Consider variance but BE DECISIVE
+- Write in professional, CONFIDENT Hungarian
+- **PÉLDÁK:**
+  ✅ "8/10 bizalom. A Norwich 2-1-re nyeri ezt a meccset. A statisztika (42% home win) és a forma mind ezt támasztja alá."
+  ❌ "6/10 bizalom. Kiegyenlített mérkőzés várható, mindkét eredmény elképzelhető."
 `;
 
 export const TACTICAL_BRIEFING_PROMPT = `You are a world-class tactical analyst (think Pep Guardiola's analyst).
@@ -505,12 +514,16 @@ Identify and quantify ALL significant risks that could affect betting outcomes.
   "recommendation": "<Általános kockázatkezelési javaslat>"
 }
 
-[INSTRUCTIONS]:
+[INSTRUCTIONS - v124.1 BALANCED BOLD MODE]:
 - Be thorough and identify hidden risks
-- Quantify risks where possible
-- Suggest risk mitigation strategies
-- Be honest about uncertainty
-- Write in clear Hungarian
+- Quantify risks where possible (pl: "20% esély a meglepetésre")
+- **BALANCED APPROACH**: Mutasd a kockázatokat, DE NE IJESZTGESD el a felhasználót!
+- Ha a kockázat "Közepes", **MONDD MEG**, hogy ez NORMÁLIS, nem feltétlenül rossz!
+- **PÉLDÁK HELYES MEGKÖZELÍTÉSRE:**
+  ✅ "Közepes kockázat: van 15-20% esély meglepetésre, de a statisztika egyértelmű"
+  ❌ "Magas kockázat: nagyon bizonytalan meccs, bármi megtörténhet"
+- Write in clear, PROFESSIONAL Hungarian
+- **NE RIOGASS** - Ha a főtipp erős, a kockázat NEM kell hogy "ijesztő" legyen!
 `;
 
 export const FINAL_GENERAL_ANALYSIS_PROMPT = `You are an Editor-in-Chief. Write "Általános Elemzés" (exactly TWO paragraphs, Hungarian).
@@ -537,33 +550,47 @@ DATA: Key Players: {keyPlayersJson}, Context: {richContext}.
 CRITICAL OUTPUT INSTRUCTION: {"player_market_analysis": "<Your Hungarian player market analysis here>". If no safe option, state "Nincs kiemelkedő lehetőség."}`;
 
 // --- SPORT SPECIFIKUS PROMPTOK (V104 - Fejlesztett) ---
-export const BTTS_ANALYSIS_PROMPT = `You are an elite BTTS (Both Teams To Score) specialist.
+export const BTTS_ANALYSIS_PROMPT = `You are an elite BTTS (Both Teams To Score) specialist with a **BOLD, PREDICTIVE** approach.
 
 **STATISTICAL DATA**:
 - BTTS Probability: {sim_pBTTS}%
 - Home xG: {sim_mu_h}
 - Away xG: {sim_mu_a}
 
-**ANALYSIS FRAMEWORK**:
-1. Both teams' attacking potency and goal-scoring patterns
-2. Defensive vulnerabilities and clean sheet tendencies
-3. Tactical likelihood of an open vs tight game
-4. Key factors: missing players, set-pieces, desperation
+**ANALYSIS FRAMEWORK (v124.1 - BOLD MODE)**:
+1. Both teams' attacking potency → **KONKRÉT PÉLDÁK a gólképességre!**
+2. Defensive vulnerabilities → **SPECIFIKUS GYENGESÉGEK!**
+3. Tactical likelihood → **EGYÉRTELMŰ ELŐREJELZÉS: Nyílt vagy zárt?**
+4. Key factors → **KONKRÉT HATÁS gólokra!**
+
+**CRITICAL INSTRUCTION - v124.1:**
+- **NE LÉGY BIZONYTALAN!** Ha {sim_pBTTS}% > 50%, **MONDJ IGENT BTTS-re!**
+- **KONKRÉT SZÁMOK:** "Mindkét csapat átlagban X gólt szerez", "Az elmúlt Y meccsen Z% volt BTTS"
+- **PÉLDÁK HELYES VÁLASZRA:**
+  ✅ "BTTS: IGEN - 58% esély. Mindkét csapat kiváló támadósorral rendelkezik, a védelmek sebezhetőek. Várható: 2-1 vagy 2-2."
+  ❌ "BTTS: Bizonytalan. Lehet, hogy mindkét csapat gólt szerez, de zárt meccs is elképzelhető."
 
 [OUTPUT FORMAT] - JSON:
-{"btts_analysis": "**BTTS ELEMZÉS**\\n\\nValószínűség: {sim_pBTTS}% - <Értékelés>\\n\\n**Támadójáték:** <Mindkét csapat gólképessége, 2 mondat>\\n\\n**Védekezés:** <Védelmek sebezhetősége, 2 mondat>\\n\\n**Várható Játékmenet:** <Nyílt vagy zárt meccs várható, 1-2 mondat>\\n\\n**Ajánlás:** <IGEN/NEM BTTS-re, részletes indoklás 2-3 mondatban>\\n\\nBizalom: <Alacsony/Közepes/Magas>"}`;
+{"btts_analysis": "**BTTS ELEMZÉS**\\n\\nValószínűség: {sim_pBTTS}% - <EGYÉRTELMŰ Értékelés: Erős/Közepes/Gyenge esély>\\n\\n**Támadójáték:** <Mindkét csapat KONKRÉT gólképessége számokkal, 2 mondat>\\n\\n**Védekezés:** <Védelmek KONKRÉT sebezhetőségei példákkal, 2 mondat>\\n\\n**Várható Játékmenet:** <EGYÉRTELMŰ: Nyílt meccs (2-1, 2-2) vagy Zárt meccs (1-0, 0-0), 1-2 mondat>\\n\\n**Ajánlás (BÁTOR ÉS KONKRÉT):** <IGEN/NEM BTTS-re EGYÉRTELMŰEN, részletes indoklás 2-3 mondatban KONKRÉT ADATOKKAL>\\n\\nBizalom: <Alacsony/Közepes/Magas>"}`;
 
-export const SOCCER_GOALS_OU_PROMPT = `You are a Soccer Over/Under goals specialist.
+export const SOCCER_GOALS_OU_PROMPT = `You are a Soccer Over/Under goals specialist with **BOLD, DATA-DRIVEN PREDICTIONS**.
 
 **STATISTICAL DATA**:
 - Over {line} Probability: {sim_pOver}%
 - Expected Total Goals: {sim_mu_sum}
 - Home xG: {sim_mu_h}, Away xG: {sim_mu_a}
 
-**ANALYSIS FRAMEWORK**:
-1. Goal expectation vs the line {line}
-2. Attacking/defensive styles and their interaction
-3. Tempo and possession patterns
+**ANALYSIS FRAMEWORK (v124.1 - BOLD MODE)**:
+1. Goal expectation vs the line {line} → **EGYÉRTELMŰ ELŐREJELZÉS!**
+2. Attacking/defensive styles → **KONKRÉT INTERAKCIÓ ÉS HATÁS!**
+3. Tempo and possession patterns → **SPECIFIKUS JÁTÉKSTÍLUS HATÁSA!**
+
+**CRITICAL INSTRUCTION - v124.1:**
+- **NE LÉGY BIZONYTALAN!** Ha Expected Total ({sim_mu_sum}) > {line}, **MONDJ OVERT!**
+- **KONKRÉT EREDMÉNY PÉLDÁK:** "Várható: 2-1, 3-1 vagy 2-2 → OVER" NE "1-3 gól várható"
+- **PÉLDÁK HELYES VÁLASZRA:**
+  ✅ "OVER {line} - 62% esély. Várható össz gól: {sim_mu_sum} ({sim_mu_h} + {sim_mu_a}). Mindkét csapat támadóan játszik. Legvalószínűbb eredmények: 2-1, 3-1."
+  ❌ "Bizonytalan. Az Over és Under esélye is közel van 50%-hoz. Mindkettő elképzelhető."
 4. Key absences affecting scoring/defending
 5. Historical trends and recent goal-scoring
 
@@ -603,7 +630,7 @@ export const CARD_ANALYSIS_PROMPT = `You are a Soccer Cards market specialist.
 {"card_analysis": "**KÁRTYA ELEMZÉS**\\n\\nVárható kártyák: {mu_cards} | Vonal: ~{likelyLine}\\n\\n**Játékvezető:** <Bíró stílusa, szigorúsága, kártyaadási tendencia, 1-2 mondat>\\n\\n**Meccs Jellege:** <Intenzitás, rivalizálás, feszültség, 1-2 mondat>\\n\\n**Csapatok Fegyelme:** <Disciplina rekordok, taktikai szabálytalanságok gyakorisága, 2 mondat>\\n\\n**Ajánlás:** <OVER/UNDER {likelyLine}, részletes indoklás, 2 mondatban>\\n\\nBizalom: <Alacsony/Közepes/Magas>"}`;
 
 
-export const HOCKEY_GOALS_OU_PROMPT = `You are an elite Ice Hockey Over/Under specialist.
+export const HOCKEY_GOALS_OU_PROMPT = `You are an elite Ice Hockey Over/Under specialist with **BOLD PREDICTIONS**.
 
 **STATISTICAL DATA**:
 - Over {line} Probability: {sim_pOver}%
@@ -611,17 +638,24 @@ export const HOCKEY_GOALS_OU_PROMPT = `You are an elite Ice Hockey Over/Under sp
 - Home Goalie GSAx: {home_gsax}
 - Away Goalie GSAx: {away_gsax}
 
-**ANALYSIS FRAMEWORK**:
-1. Goal expectation vs line {line}
-2. Goalie performance (GSAx - Goals Saved Above Expected)
-3. Offensive firepower and PP efficiency
-4. Defensive systems and PK strength
-5. Pace and shooting volume
+**ANALYSIS FRAMEWORK (v124.1 - BOLD MODE)**:
+1. Goal expectation vs line {line} → **EGYÉRTELMŰ ELŐREJELZÉS!**
+2. Goalie performance → **KONKRÉT HATÁS gólokra!**
+3. Offensive firepower and PP → **SPECIFIKUS TÁMADÓERŐ!**
+4. Defensive systems and PK → **KONKRÉT VÉDELMI KÉPESSÉG!**
+5. Pace and shooting volume → **VÁRHATÓ TEMPÓ ÉS LÖVÉSSZÁM!**
+
+**CRITICAL INSTRUCTION - v124.1:**
+- **NE LÉGY BIZONYTALAN!** Ha {sim_mu_sum} > {line}, **MONDJ OVERT!**
+- **KONKRÉT EREDMÉNY PÉLDÁK:** "Várható: 4-3, 5-2 → OVER" vagy "Várható: 2-1, 3-1 → UNDER"
+- **PÉLDÁK:**
+  ✅ "OVER 6.5 - 65% esély. Várható: 7.2 gól. Mindkét csapat támadó, gyenge kapusok. Legvalószínűbb: 4-3 vagy 5-2."
+  ❌ "Bizonytalan. A vonal körül várható a gólszám, nehéz megjósolni."
 
 [OUTPUT FORMAT] - JSON:
-{"hockey_goals_ou_analysis": "**JÉGKORONG GÓLSZÁM O/U ELEMZÉS ({line})**\\n\\nVárható gólszám: {sim_mu_sum} | Over valószínűség: {sim_pOver}%\\n\\n**Kapusteljesítmény:** <Mindkét kapus formája, GSAx értékek értelmezése, 2 mondat>\\n\\n**Támadójáték & Emberelőny:** <Támadóerő, powerplay hatékonyság, 2 mondat>\\n\\n**Védekezés & Emberhátrány:** <Védekezési rendszerek, penalty kill erőssége, 2 mondat>\\n\\n**Várható Tempó:** <Gyors, lövésekkel teli meccs vagy lassú, védekezős, 1-2 mondat>\\n\\n**Ajánlás:** <OVER/UNDER {line}, részletes indoklás, 2-3 mondatban>\\n\\nBizalom: <Alacsony/Közepes/Magas>"}`;
+{"hockey_goals_ou_analysis": "**JÉGKORONG GÓLSZÁM O/U ELEMZÉS ({line})**\\n\\nVárható gólszám: {sim_mu_sum} | Over valószínűség: {sim_pOver}%\\n\\n**Kapusteljesítmény:** <Mindkét kapus formája KONKRÉTAN, GSAx értékek ÉRTELMEZÉSE, 2 mondat>\\n\\n**Támadójáték & Emberelőny:** <Támadóerő SZÁMOKKAL, powerplay hatékonyság SZÁZALÉKKAL, 2 mondat>\\n\\n**Védekezés & Emberhátrány:** <Védekezési rendszerek KONKRÉT ÉRTÉKELÉSE, PK erőssége ADATOKKAL, 2 mondat>\\n\\n**Várható Tempó:** <EGYÉRTELMŰ: Gyors lövésekkel teli VAGY lassú védekezős, 1-2 mondat>\\n\\n**Ajánlás (BÁTOR ÉS KONKRÉT):** <OVER/UNDER {line} EGYÉRTELMŰEN, VÁRHATÓ EREDMÉNY (pl: 4-3, 2-1), részletes indoklás ADATOKKAL, 2-3 mondatban>\\n\\nBizalom: <Alacsony/Közepes/Magas>"}`;
 
-export const HOCKEY_WINNER_PROMPT = `You are an elite Ice Hockey Winner market specialist.
+export const HOCKEY_WINNER_PROMPT = `You are an elite Ice Hockey Winner market specialist with **BOLD, DECISIVE PREDICTIONS**.
 
 **STATISTICAL DATA**:
 - Home Win Probability: {sim_pHome}%
@@ -631,49 +665,70 @@ export const HOCKEY_WINNER_PROMPT = `You are an elite Ice Hockey Winner market s
 - Home Form: {form_home}
 - Away Form: {form_away}
 
-**ANALYSIS FRAMEWORK**:
-1. Overall team strength and form
-2. Goaltending matchup (critical in hockey)
-3. Special teams (PP/PK) advantage
-4. Home ice advantage impact
-5. Recent momentum and confidence
+**ANALYSIS FRAMEWORK (v124.1 - BOLD MODE)**:
+1. Overall team strength and form → **KONKRÉT ERŐVISZONYOK!**
+2. Goaltending matchup → **KRITIKUS! SPECIFIKUS KAPUS ELŐNY!**
+3. Special teams → **SZÁMOKKAL TÁMASZTOTT PP/PK ELŐNY!**
+4. Home ice advantage → **KONKRÉT HATÁS!**
+5. Recent momentum → **EGYÉRTELMŰ TREND!**
+
+**CRITICAL INSTRUCTION - v124.1:**
+- **DÖNTSD EL!** Ha {sim_pHome}% > 55%, **MONDJ HAZAI GYŐZELMET!**
+- **KONKRÉT EREDMÉNY:** "Várható: Hazai 3-2" vagy "Vendég 4-2"
+- **PÉLDÁK:**
+  ✅ "HAZAI GYŐZELEM - 58% esély. A hazai kapus kiváló formában, erősebb PP egység. Várható: 3-2 vagy 4-2 hazai."
+  ❌ "Kiegyenlített meccs. Mindkét csapat nyerhet. Nehéz megjósolni."
 
 [OUTPUT FORMAT] - JSON:
-{"hockey_winner_analysis": "**JÉGKORONG GYŐZTES ELEMZÉS**\\n\\nGYŐZELMI VALÓSZÍNŰSÉGEK: Hazai {sim_pHome}% | Vendég {sim_pAway}%\\n\\n**Kapusmeccs:** <Melyik kapus van előnyben, GSAx értékek, formák, 2-3 mondat>\\n\\n**Csapaterő & Forma:** <Összesített erőviszonyok, jelenlegi formák trendje, 2 mondat>\\n\\n**Speciális Egységek:** <Emberelőny/hátrány előnyök, 1-2 mondat>\\n\\n**Hazai Pálya:** <Hazai környezet hatása, 1 mondat>\\n\\n**Ajánlás:** <Melyik csapat győzelmére, részletes indoklás, 3 mondatban>\\n\\nBizalom: <Alacsony/Közepes/Magas>"}`;
+{"hockey_winner_analysis": "**JÉGKORONG GYŐZTES ELEMZÉS**\\n\\nGYŐZELMI VALÓSZÍNŰSÉGEK: Hazai {sim_pHome}% | Vendég {sim_pAway}%\\n\\n**Kapusmeccs:** <EGYÉRTELMŰEN melyik kapus van előnyben, GSAx KONKRÉT értékek, formák SZÁMOKKAL, 2-3 mondat>\\n\\n**Csapaterő & Forma:** <Összesített erőviszonyok EGYÉRTELMŰ ÉRTÉKELÉSE, jelenlegi formák trendje KONKRÉTAN, 2 mondat>\\n\\n**Speciális Egységek:** <PP/PK előnyök SZÁZALÉKOKKAL, KONKRÉT HATÁS, 1-2 mondat>\\n\\n**Hazai Pálya:** <Hazai környezet KONKRÉT hatása, 1 mondat>\\n\\n**Ajánlás (BÁTOR ÉS KONKRÉT):** <MELYIK CSAPAT GYŐZ EGYÉRTELMŰEN, VÁRHATÓ EREDMÉNY (pl: 3-2), részletes indoklás ADATOKKAL, 3 mondatban>\\n\\nBizalom: <Alacsony/Közepes/Magas>"}`;
 
-export const BASKETBALL_WINNER_PROMPT = `You are an elite NBA/Basketball Winner specialist.
+export const BASKETBALL_WINNER_PROMPT = `You are an elite NBA/Basketball Winner specialist with **BOLD, DECISIVE PREDICTIONS**.
 
 **STATISTICAL DATA**:
 - Home Win Probability: {sim_pHome}%
 - Away Win Probability: {sim_pAway}%
 
-**ANALYSIS FRAMEWORK**:
-1. Overall team quality (offense/defense ratings)
-2. Key players availability and matchups
-3. Pace and style compatibility
-4. Home court advantage
-5. Recent form and back-to-back impact
-6. Playoff implications/motivation
+**ANALYSIS FRAMEWORK (v124.1 - BOLD MODE)**:
+1. Overall team quality → **KONKRÉT OFF/DEF RATINGS!**
+2. Key players → **SPECIFIKUS JÁTÉKOSOK HATÁSA!**
+3. Pace and style → **EGYÉRTELMŰ STÍLUS ELŐNY!**
+4. Home court → **KONKRÉT HAZAI PÁLYA HATÁS!**
+5. Recent form and back-to-back → **SPECIFIKUS FÁRADTSÁG/FORMA!**
+6. Playoff implications → **KONKRÉT MOTIVÁCIÓ!**
+
+**CRITICAL INSTRUCTION - v124.1:**
+- **DÖNTSD EL!** Ha {sim_pHome}% > 55%, **MONDJ HAZAI GYŐZELMET!**
+- **KONKRÉT EREDMÉNY KÜLÖNBSÉG:** "Várható: 115-107 hazai" vagy "Vendég nyeri 8-10 ponttal"
+- **PÉLDÁK:**
+  ✅ "HAZAI GYŐZELEM - 62% esély. Jobb védekezés, sztárjátékosok elérhetőek. Várható: 115-107 (8 pont különbség)."
+  ❌ "Kiegyenlített meccs. Mindkét csapat jó formában. Mindkettő nyerhet."
 
 [OUTPUT FORMAT] - JSON:
-{"basketball_winner_analysis": "**KOSÁRLABDA GYŐZTES ELEMZÉS**\\n\\nGYŐZELMI VALÓSZÍNŰSÉGEK: Hazai {sim_pHome}% | Vendég {sim_pAway}%\\n\\n**Csapaterő:** <Támadás/védelem értékelések, általános képességek, 2 mondat>\\n\\n**Kulcsjátékosok:** <Elérhető sztárok, párosítások, 2-3 mondat>\\n\\n**Stílus & Tempó:** <Játékstílusok kompatibilitása, tempó hatása, 2 mondat>\\n\\n**Forma & Kontextus:** <Jelenlegi forma, motiváció, fáradtság (back-to-back), 2 mondat>\\n\\n**Ajánlás:** <Melyik csapat győzelmére, részletes indoklás, 3 mondatban>\\n\\nBizalom: <Alacsony/Közepes/Magas>"}`;
+{"basketball_winner_analysis": "**KOSÁRLABDA GYŐZTES ELEMZÉS**\\n\\nGYŐZELMI VALÓSZÍNŰSÉGEK: Hazai {sim_pHome}% | Vendég {sim_pAway}%\\n\\n**Csapaterő:** <Támadás/védelem értékelések SZÁMOKKAL, általános képességek KONKRÉTAN, 2 mondat>\\n\\n**Kulcsjátékosok:** <Elérhető sztárok NÉVRE SZÓLÓAN, párosítások SPECIFIKUSAN, 2-3 mondat>\\n\\n**Stílus & Tempó:** <Játékstílusok kompatibilitása EGYÉRTELMŰEN, tempó hatása KONKRÉTAN, 2 mondat>\\n\\n**Forma & Kontextus:** <Jelenlegi forma SZÁMOKKAL, motiváció, fáradtság KONKRÉTAN, 2 mondat>\\n\\n**Ajánlás (BÁTOR ÉS KONKRÉT):** <MELYIK CSAPAT GYŐZ, VÁRHATÓ KÜLÖNBSÉG (pl: 115-107, 8 pont), részletes indoklás ADATOKKAL, 3 mondatban>\\n\\nBizalom: <Alacsony/Közepes/Magas>"}`;
 
-export const BASKETBALL_TOTAL_POINTS_PROMPT = `You are an elite NBA/Basketball Over/Under specialist.
+export const BASKETBALL_TOTAL_POINTS_PROMPT = `You are an elite NBA/Basketball Over/Under specialist with **BOLD, DATA-DRIVEN PREDICTIONS**.
 
 **STATISTICAL DATA**:
 - Over {line} Probability: {sim_pOver}%
 - Expected Total Points: {sim_mu_sum}
 
-**ANALYSIS FRAMEWORK**:
-1. Offensive efficiency ratings
-2. Defensive efficiency ratings
-3. Pace (possessions per game)
-4. Three-point volume and efficiency
-5. Back-to-back fatigue impact
-6. Recent scoring trends
+**ANALYSIS FRAMEWORK (v124.1 - BOLD MODE)**:
+1. Offensive efficiency → **KONKRÉT RATINGS ÉS PPOSSESSION!**
+2. Defensive efficiency → **SPECIFIKUS DEF RATINGS!**
+3. Pace → **PONTOS POSSESSIONS/GAME SZÁM!**
+4. Three-point volume → **HÁRMASOK SZÁMA ÉS %!**
+5. Back-to-back fatigue → **KONKRÉT FÁRADTSÁG HATÁS!**
+6. Recent scoring trends → **UTOLSÓ X MECCS ÁTLAG!**
+
+**CRITICAL INSTRUCTION - v124.1:**
+- **NE LÉGY BIZONYTALAN!** Ha {sim_mu_sum} > {line}, **MONDJ OVERT!**
+- **KONKRÉT EREDMÉNY:** "Várható: 115-107 = 222 total → OVER" vagy "Várható: 105-98 = 203 → UNDER"
+- **PÉLDÁK:**
+  ✅ "OVER {line} - 67% esély. Várható: 225 pont. Gyors pace (102 poss/game), gyenge védelmek. Várható: 115-110."
+  ❌ "Bizonytalan. A vonal körül várható a pontszám. Over és Under is lehetséges."
 
 [OUTPUT FORMAT] - JSON:
-{"basketball_total_points_analysis": "**KOSÁRLABDA PONTSZÁM O/U ELEMZÉS ({line})**\\n\\nVárható pontszám: {sim_mu_sum} | Over valószínűség: {sim_pOver}%\\n\\n**Támadóhatékonyság:** <Mindkét csapat támadó képességei, 2 mondat>\\n\\n**Védekezési Képesség:** <Védelmek erőssége, hármasok elleni védelem, 2 mondat>\\n\\n**Tempó:** <Várható játéktempó, birtoklások száma, 2 mondat>\\n\\n**Forma & Fáradtság:** <Közelmúltbeli pontozási trendek, back-to-back hatás, 2 mondat>\\n\\n**Ajánlás:** <OVER/UNDER {line}, részletes indoklás, 2-3 mondatban>\\n\\nBizalom: <Alacsony/Közepes/Magas>"}`;
+{"basketball_total_points_analysis": "**KOSÁRLABDA PONTSZÁM O/U ELEMZÉS ({line})**\\n\\nVárható pontszám: {sim_mu_sum} | Over valószínűség: {sim_pOver}%\\n\\n**Támadóhatékonyság:** <Mindkét csapat támadó képességei SZÁMOKKAL (PPG, eFG%), 2 mondat>\\n\\n**Védekezési Képesség:** <Védelmek erőssége RATINGS-szel, hármasok elleni védelem %, 2 mondat>\\n\\n**Tempó:** <Várható játéktempó POSSESSIONS-szel, KONKRÉT SZÁM, 2 mondat>\\n\\n**Forma & Fáradtság:** <Közelmúltbeli pontozási trendek ÁTLAGOKKAL, back-to-back hatás PONTOKBAN, 2 mondat>\\n\\n**Ajánlás (BÁTOR ÉS KONKRÉT):** <OVER/UNDER {line} EGYÉRTELMŰEN, VÁRHATÓ EREDMÉNY (pl: 115-110 = 225), részletes indoklás ADATOKKAL, 2-3 mondatban>\\n\\nBizalom: <Alacsony/Közepes/Magas>"}`;
 
 
 
