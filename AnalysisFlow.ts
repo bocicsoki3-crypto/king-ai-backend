@@ -1,7 +1,8 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v130.5 (CRITICAL FIX: Stringify Sniper Choice for UI)
-// JAVÍTÁS: A 'debugInfo.sniperChoice' objektumot stringgé alakítjuk,
-//          hogy a frontend 'text.includes' hívása ne omoljon össze.
+// VERZIÓ: v112.1 (Import Fix)
+// MÓDOSÍTÁS:
+// 1. JAVÍTÁS: A 'runStep_FinalAnalysis', 'runStep_Psychologist', 'runStep_Specialist' importálása
+//    az AI_Service.ts-ből most már named importként történik.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -28,20 +29,24 @@ import {
     simulateMatchProgress,    // (4. Ügynök - Szimulátor)
     calculateConfidenceScores, // v105.0
     calculateValue,
-    analyzeLineMovement,
-    getBestBetByProbability // <--- SNIPER FÜGGVÉNY
+    analyzeLineMovement
 } from './Model.js';
-// AI Szolgáltatás Importok
+// AI Szolgáltatás Importok - JAVÍTOTT IMPORT
 import {
     runStep_Psychologist, 
     runStep_Specialist,   
     runStep_FinalAnalysis 
 } from './AI_Service.js';
 import { saveAnalysisToSheet } from './sheets.js'; 
+// Önjavító Hurok importálása
 import { getNarrativeRatings } from './LearningService.js';
+
+// === ÚJ IMPORT A STRATÉGIÁHOZ ===
 import { getSportStrategy } from './strategies/StrategyFactory.js';
 import type { ISportStrategy } from './strategies/ISportStrategy.js';
+// === IMPORT VÉGE ===
 
+// Gyorsítótár inicializálása
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 
 // Az új, strukturált JSON válasz
@@ -116,11 +121,11 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             force: forceNewStr, 
             sheetUrl, 
             utcKickoff, 
-            leagueName, 
+            leagueName,
             manual_H_xG, 
-            manual_H_xGA, 
+            manual_H_xGA,
             manual_A_xG, 
-            manual_A_xGA, 
+            manual_A_xGA,
             manual_absentees
         } = params;
 
@@ -138,8 +143,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
         
-        // v130.5 Cache kulcs
-        analysisCacheKey = `analysis_v130.5_sniper_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
+        // v112.0 Cache kulcs
+        analysisCacheKey = `analysis_v112.0_apex_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
         
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
@@ -163,6 +168,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         }
 
         // === 2. ÜGYNÖK (SCOUT): Kontextus, Piac és P1 Kezelése ===
+        // ITT HÍVÓDIK MEG A DataFetch.ts v112.0, ami már vadássza az xG-t!
         console.log(`[Lánc 2/6] Scout Ügynök: Kontextus és Piac lekérése (AI-First)...`);
         const dataFetchOptions: IDataFetchOptions = {
             sport: sport,
@@ -214,7 +220,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         console.log(`Meghatározott fő gól/pont vonal: ${mainTotalsLine}`);
         console.log(`Piaci Hírszerzés: ${marketIntel}`);
 
-        // === KRITIKUS LÉPÉS: A Piaci Infó Injektálása a Kontextusba ===
+        // === KRITIKUS LÉPÉS (v109.0): A Piaci Infó Injektálása a Kontextusba ===
+        // Így minden AI ügynök (Pszichológus, Specialista, Főnök) látni fogja az oddsok mozgását.
         const enhancedRichContext = `${richContext}\n\n[PIACI HÍRSZERZÉS (MARKET WISDOM)]:\n${marketIntel}`;
         
         // === 2.5 ÜGYNÖK (PSZICHOLÓGUS) ===
@@ -268,7 +275,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         };
         const specialistReport = await runStep_Specialist(specialistInput);
 
-        // === BIZTONSÁGI SANITIZÁLÁS ===
+        // === BIZTONSÁGI SANITIZÁLÁS (v108.3) ===
         const { modified_mu_h: raw_mu_h, modified_mu_a: raw_mu_a } = specialistReport;
         
         const mu_h = (typeof raw_mu_h === 'number' && !isNaN(raw_mu_h)) ? raw_mu_h : pure_mu_h;
@@ -291,7 +298,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             sportStrategy 
         );
         
-        // === BIZALOM SZÁMÍTÁS ===
+        // === BIZALOM SZÁMÍTÁS (v105.0) ===
         const confidenceScores = calculateConfidenceScores(
             sport, 
             home, 
@@ -320,25 +327,34 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const valueBets = calculateValue(sim, mutableOddsData, sport, home, away);
         console.log(`Szimulátor végzett.`);
 
-        // === ÚJ (v130.0): BIZTONSÁGI TIPP LEKÉRÉSE (SNIPER) ===
-        const bestSafeBet = getBestBetByProbability(sim, sport, mutableOddsData);
-        console.log(`SNIPER CHOICE: ${bestSafeBet.market} (${bestSafeBet.probability.toFixed(1)}%, Odds: ${bestSafeBet.odds})`);
-        // =======================================================
 
-        // === 5/6. ÜGYNÖK (HIBRID FŐNÖK - SNIPER EDITION) ===
-        console.log(`[Lánc 5/6] "Hibrid Főnök" hívása (Sniper Logic)...`);
+        // === 5/6. ÜGYNÖK (HIBRID FŐNÖK - v109.0) ===
+        console.log(`[Lánc 5/6] "Hibrid Főnök" hívása (Apex Logic)...`);
         
-        const finalAnalysisInput = {
+        // Interfész definiálása
+        interface FinalAnalysisInput {
+            matchData: { home: string; away: string; sport: string; leagueName: string; };
+            rawDataJson: ICanonicalRawData; 
+            specialistReport: any; // Agent 3
+            simulatorReport: any;  // Agent 4 (Sim)
+            psyReport: any;        // Agent 2.5
+            valueBetsJson: any[];
+            richContext: string;
+            sportStrategy: ISportStrategy;
+            confidenceScores: { winner: number; totals: number; overall: number }; 
+        }
+
+        const finalAnalysisInput: FinalAnalysisInput = {
             matchData: { home, away, sport, leagueName },
             rawDataJson: rawData,
             specialistReport: specialistReport, 
             simulatorReport: sim,              
             psyReport: psychologistReport,     
             valueBetsJson: valueBets,
+            // Itt adjuk át a KIBŐVÍTETT kontextust (v109.0)
             richContext: enhancedRichContext,
             sportStrategy: sportStrategy,
-            confidenceScores: confidenceScores,
-            bestSafeBet: bestSafeBet // <--- SNIPER ADAT ÁTADVA
+            confidenceScores: confidenceScores 
         };
 
         const finalReport: any = await runStep_FinalAnalysis(finalAnalysisInput);
@@ -366,10 +382,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 (manual_absentees ? 'P1 (Manuális)' : 'P2/P4 (Automatikus)') : 
                 'Nincs adat',
             realXgUsed: finalXgSource,
-            fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen',
-            // === CRITICAL FIX: Átalakítás stringgé a frontend számára ===
-            sniperChoice: `${bestSafeBet.market} (${bestSafeBet.probability.toFixed(1)}%, Odds: ${bestSafeBet.odds})` 
-            // ===========================================================
+            fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
         };
         
         const auditData = {
@@ -402,7 +415,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                     mu_a: sim.mu_a_sim
                 },
                 valueBets: valueBets, 
-                bestSafeBet: bestSafeBet, // <--- Itt maradhat objektum, mert ez csak a logba megy
                 confidenceScores: {
                     winner: parseFloat(confidenceScores.winner.toFixed(1)),
                     totals: parseFloat(confidenceScores.totals.toFixed(1)),
