@@ -1,5 +1,5 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v130.2 (HOTFIX: Team Name Resolver Restored)
+// VERZIÓ: v130.3 (HOTFIX: TS2305 & Sniper Protocol)
 // CÉL: Visszahozni a v103.6 "brutálisan jó" döntési logikáját + TS2305 Javítás.
 
 import { 
@@ -30,10 +30,10 @@ export async function getAndParse(
         const foundKey = Object.keys(result || {}).find(k => k.toLowerCase() === lowerKey);
         if (foundKey) return result[foundKey];
 
-        console.warn(`[AI_Service v130.2] AI Figyelem: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot. Helyette ezeket: ${Object.keys(result || {}).join(', ')}`);
+        console.warn(`[AI_Service v130.3] AI Figyelem: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot. Helyette ezeket: ${Object.keys(result || {}).join(', ')}`);
         return "N/A";
     } catch (e: any) {
-        console.error(`[AI_Service v130.2] Végleges AI Hiba (${stepName}): ${e.message}`);
+        console.error(`[AI_Service v130.3] Végleges AI Hiba (${stepName}): ${e.message}`);
         return `AI Hiba (${keyToExtract}): ${e.message}`;
     }
 }
@@ -94,7 +94,7 @@ export async function runStep_TeamNameResolver(data: { inputName: string; search
         const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_TeamNameResolver");
         return result && result.matched_id ? Number(result.matched_id) : null;
     } catch (e: any) {
-        console.error(`[AI_Service v130.2] Térképész Hiba: ${e.message}`);
+        console.error(`[AI_Service v130.3] Térképész Hiba: ${e.message}`);
         return null;
     }
 }
@@ -115,7 +115,7 @@ export const PROPHETIC_SCENARIO_PROMPT = `You are a journalist. Write a scenario
 export const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst. Write closing thoughts. OUTPUT JSON: {"strategic_analysis": "..."}`;
 export const PLAYER_MARKETS_PROMPT = `Suggest player markets. OUTPUT JSON: {"player_market_analysis": "..."}`;
 
-// Mikromodellek (Rövidítve, mert a promptok fent vannak)
+// Mikromodellek
 export const BTTS_ANALYSIS_PROMPT = `Analyze BTTS. OUTPUT JSON: {"btts_analysis": "..."}`;
 export const SOCCER_GOALS_OU_PROMPT = `Analyze Goals O/U. OUTPUT JSON: {"goals_ou_analysis": "..."}`;
 export const CORNER_ANALYSIS_PROMPT = `Analyze Corners. OUTPUT JSON: {"corner_analysis": "..."}`;
@@ -216,39 +216,79 @@ export async function getBTTSAnalysis(sim: any, rawData: ICanonicalRawData) {
 
 export async function getSoccerGoalsOUAnalysis(sim: any, rawData: ICanonicalRawData, mainTotalsLine: number) {
      const safeSim = sim || {};
-     const data = { line: mainTotalsLine, sim_pOver: safeSim.pOver, sim_mu_sum: (safeSim.mu_h_sim ?? 0) + (safeSim.mu_a_sim ?? 0) };
+     const countKeyAbsentees = (absentees: any) => Array.isArray(absentees) ? absentees.filter(p => p.importance === 'key').length : 0;
+     const data = {
+        line: mainTotalsLine,
+        sim_pOver: safeSim.pOver,
+        sim_mu_sum: (safeSim.mu_h_sim ?? 0) + (safeSim.mu_a_sim ?? 0),
+        home_style: rawData?.tactics?.home?.style || "N/A",
+        away_style: rawData?.tactics?.away?.style || "N/A",
+        absentees_home_count: countKeyAbsentees(rawData?.absentees?.home),
+        absentees_away_count: countKeyAbsentees(rawData?.absentees?.away)
+     };
     return await getAndParse(SOCCER_GOALS_OU_PROMPT, data, "goals_ou_analysis", "GoalsOUAnalysis");
 }
 
 export async function getCornerAnalysis(sim: any, rawData: ICanonicalRawData) {
     const safeSim = sim || {};
     const muCorners = safeSim.mu_corners_sim;
-    const data = { mu_corners: muCorners };
+    const likelyLine = muCorners ? (Math.round(muCorners - 0.1)) + 0.5 : 9.5;
+    const data = {
+        mu_corners: muCorners,
+        home_style: rawData?.tactics?.home?.style || "N/A",
+        away_style: rawData?.tactics?.away?.style || "N/A",
+        likelyLine: likelyLine 
+    };
     return await getAndParse(CORNER_ANALYSIS_PROMPT, data, "corner_analysis", "CornerAnalysis");
 }
 
 export async function getCardAnalysis(sim: any, rawData: ICanonicalRawData) {
     const safeSim = sim || {};
     const muCards = safeSim.mu_cards_sim;
-    const data = { mu_cards: muCards };
+    const likelyLine = muCards ? (Math.round(muCards - 0.1)) + 0.5 : 4.5;
+    const data = {
+        mu_cards: muCards,
+        referee_style: rawData?.referee?.style || "N/A",
+        tension: rawData?.contextual_factors?.match_tension_index || "N/A",
+        likelyLine: likelyLine 
+    };
     return await getAndParse(CARD_ANALYSIS_PROMPT, data, "card_analysis", "CardAnalysis");
 }
 
 export async function getHockeyGoalsOUAnalysis(sim: any, rawData: ICanonicalRawData, mainTotalsLine: number) {
      const safeSim = sim || {};
-     const data = { line: mainTotalsLine, sim_pOver: safeSim.pOver };
+     const data = {
+        line: mainTotalsLine,
+        sim_pOver: safeSim.pOver,
+        sim_mu_sum: (safeSim.mu_h_sim ?? 0) + (safeSim.mu_a_sim ?? 0),
+        home_gsax: rawData?.advanced_stats_goalie?.home_goalie?.GSAx || "N/A", 
+        away_gsax: rawData?.advanced_stats_goalie?.away_goalie?.GSAx || "N/A"
+     };
      return await getAndParse(HOCKEY_GOALS_OU_PROMPT, data, "hockey_goals_ou_analysis", "HockeyGoalsOUAnalysis");
 }
 
 export async function getHockeyWinnerAnalysis(sim: any, rawData: ICanonicalRawData) {
      const safeSim = sim || {};
-     const data = { sim_pHome: safeSim.pHome, sim_pAway: safeSim.pAway };
+     const data = {
+        sim_pHome: safeSim.pHome,
+        sim_pAway: safeSim.pAway,
+        home_gsax: rawData?.advanced_stats_goalie?.home_goalie?.GSAx || "N/A",
+        away_gsax: rawData?.advanced_stats_goalie?.away_goalie?.GSAx || "N/A",
+        form_home: rawData?.form?.home_overall || "N/A",
+        form_away: rawData?.form?.away_overall || "N/A"
+     };
     return await getAndParse(HOCKEY_WINNER_PROMPT, data, "hockey_winner_analysis", "HockeyWinnerAnalysis");
 }
 
 export async function getBasketballPointsOUAnalysis(sim: any, rawData: ICanonicalRawData, mainTotalsLine: number) {
      const safeSim = sim || {};
-     const data = { line: mainTotalsLine, sim_pOver: safeSim.pOver };
+     const data = {
+        line: mainTotalsLine,
+        sim_pOver: safeSim.pOver,
+        pace: 98, // Egyszerűsítve
+        home_style: rawData?.shot_distribution?.home || "N/A",
+        away_style: rawData?.shot_distribution?.away || "N/A"
+     };
      return await getAndParse(BASKETBALL_TOTAL_POINTS_PROMPT, data, "basketball_total_points_analysis", "BasketballPointsOUAnalysis");
 }
 
@@ -296,7 +336,6 @@ async function getMasterRecommendation(
             specialistReportJson: specialistReport 
         };
 
-        // SNIPER PROMPT HASZNÁLATA
         let template = MASTER_AI_PROMPT_TEMPLATE_SNIPER;
         if (sport === 'hockey') {
             template = template.replace(/BTTS, /g, ""); 
@@ -315,7 +354,6 @@ async function getMasterRecommendation(
             };
         }
 
-        // --- SZIGORÚ MATEMATIKAI BÜNTETÉS (THE GUARDRAILS) ---
         const confidenceDiff = Math.abs(safeModelConfidence - expertConfScore);
         const disagreementThreshold = 3.0;
         let confidencePenalty = 0;
@@ -343,12 +381,12 @@ async function getMasterRecommendation(
         rec.final_confidence = rec.primary.confidence;
         rec.brief_reasoning = rec.primary.reason;
 
-        console.log(`[AI_Service v130.2 - Főnök] SNIPER MODE Tipp. Fő: ${rec.primary.market} (${rec.primary.confidence}/10).`);
+        console.log(`[AI_Service v130.3 - Főnök] SNIPER MODE Tipp. Fő: ${rec.primary.market} (${rec.primary.confidence}/10).`);
         
         return rec;
 
     } catch (e: any) {
-        console.error(`[AI_Service v130.2 - Főnök] Hiba: ${e.message}`, e.stack);
+        console.error(`[AI_Service v130.3 - Főnök] Hiba: ${e.message}`, e.stack);
         return { 
             recommended_bet: "Hiba", final_confidence: 1.0, brief_reasoning: `Hiba: ${e.message}`,
             primary: { market: "Hiba", confidence: 1.0, reason: "Hiba" },
@@ -397,8 +435,7 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
             ];
         } else if (sport === 'basketball') {
              sportSpecificPromises = [
-                getAndParse(BASKETBALL_WINNER_PROMPT, { sim_pHome: sim.pHome, sim_pAway: sim.pAway }, "basketball_winner_analysis", "Bask.Winner"),
-                getAndParse(BASKETBALL_TOTAL_POINTS_PROMPT, { line: sim.mainTotalsLine, sim_pOver: sim.pOver, sim_mu_sum: (sim.mu_h_sim+sim.mu_a_sim) }, "basketball_total_points_analysis", "Bask.Totals")
+                getBasketballPointsOUAnalysis(sim, rawDataJson, sim.mainTotalsLine || 220.5)
              ];
         }
 
@@ -450,7 +487,7 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
         );
 
     } catch (e: any) {
-        console.error(`[AI_Service v130.2] KRITIKUS HIBA: ${e.message}`);
+        console.error(`[AI_Service v130.3] KRITIKUS HIBA: ${e.message}`);
         masterRecommendation.brief_reasoning = `KRITIKUS HIBA: ${e.message}`;
     }
     
