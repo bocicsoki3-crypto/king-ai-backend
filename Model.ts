@@ -1,13 +1,10 @@
 // FÁJL: Model.ts
-// VERZIÓ: v106.0 (Team Totals Value Calculation)
-// MÓDOSÍTÁS (v106.0):
-// 1. ÚJ FUNKCIÓ: 'calculateProbabilityFromScores'. Ez egy segédfüggvény,
-//    ami a szimulációs eredményekből (scores map) kiszámolja egy adott
-//    feltétel (pl. Hazai > 2.5) valószínűségét.
-// 2. BŐVÍTÉS: A 'calculateValue' funkció most már feldolgozza a
-//    'home_total' és 'away_total' piacokat is.
-// 3. EREDMÉNY: A rendszer képes 'Value Bet'-et találni a csapat-specifikus
-//    Over/Under piacokon is (pl. "Warriors Over 115.5").
+// VERZIÓ: v106.1 (Safety Pick Logic Added)
+// MÓDOSÍTÁS (v106.1):
+// 1. ÚJ FUNKCIÓ: 'getBestBetByProbability'. Ez a függvény kiválasztja a
+//    legmagasabb valószínűségű kimenetelt (Home, Away, Over, Under, BTTS)
+//    az oddsoktól függetlenül. Ez a "Safety Pick".
+// 2. CÉL: Ha nincs Value Bet, az AI ebből fog dolgozni.
 
 import { SPORT_CONFIG } from './config.js';
 import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
@@ -24,7 +21,6 @@ import type { ISportStrategy, XGOptions, AdvancedMetricsOptions } from './strate
 
 /**************************************************************
 * Model.ts - Statisztikai Modellező Modul (Node.js Verzió)
-* VÁLTOZÁS (v106.0): Team Totals Value Calculation.
 **************************************************************/
 
 // --- Segédfüggvények (Poisson és Normális eloszlás mintavétel) ---
@@ -51,7 +47,7 @@ function sampleGoals(mu_h: number, mu_a: number): { gh: number, ga: number } {
     return { gh: poisson(mu_h), ga: poisson(mu_a) };
 }
 
-// === ÚJ (v106.0) Segédfüggvény: Valószínűség számítása a Scores Map-ből ===
+// === Segédfüggvény: Valószínűség számítása a Scores Map-ből ===
 function calculateProbabilityFromScores(
     scores: { [key: string]: number },
     totalSims: number,
@@ -68,7 +64,7 @@ function calculateProbabilityFromScores(
 }
 
 
-// === 1. ÜGYNÖK (QUANT): Tiszta xG Számítása (Változatlan) ===
+// === 1. ÜGYNÖK (QUANT): Tiszta xG Számítása ===
 export function estimatePureXG(
     homeTeam: string, 
     awayTeam: string, 
@@ -94,7 +90,7 @@ export function estimatePureXG(
 }
 
 
-// === estimateAdvancedMetrics (Változatlan) ===
+// === estimateAdvancedMetrics ===
 export function estimateAdvancedMetrics(
     rawData: ICanonicalRawData, 
     sport: string, 
@@ -112,7 +108,7 @@ export function estimateAdvancedMetrics(
 }
 
 
-// === 4. ÜGYNÖK (SZIMULÁTOR) (Változatlan v104.0) ===
+// === 4. ÜGYNÖK (SZIMULÁTOR) ===
 export function simulateMatchProgress(
     mu_h: number, 
     mu_a: number, 
@@ -254,7 +250,7 @@ export function simulateMatchProgress(
 }
 
 
-// === MÓDOSÍTVA v105.1: calculateConfidenceScores ===
+// === calculateConfidenceScores ===
 export function calculateConfidenceScores(
     sport: string, 
     home: string, 
@@ -344,7 +340,6 @@ export function calculateConfidenceScores(
         const marketTotal = mainTotalsLine;
         const totalsDiff = Math.abs(modelTotal - marketTotal);
         
-        // (v105.1 Bátrabb küszöbök)
         const totalsThresholdHigh = sport === 'basketball' ? 5 : sport === 'hockey' ? 0.6 : 0.4;
         const totalsThresholdLow = sport === 'basketball' ? 2 : sport === 'hockey' ? 0.2 : 0.1;
         
@@ -372,13 +367,13 @@ export function calculateConfidenceScores(
     }
 }
 
-// === Segédfüggvény: _getImpliedProbability (Változatlan) ===
+// === Segédfüggvény: _getImpliedProbability ===
 function _getImpliedProbability(price: number): number {
     if (price <= 1.0) return 100.0;
     return (1 / price) * 100;
 }
 
-// === 4. ÜGYNÖK (B) RÉSZE: Érték (Value) Kiszámítása (MÓDOSÍTVA v106.0) ===
+// === 4. ÜGYNÖK (B) RÉSZE: Érték (Value) Kiszámítása ===
 export function calculateValue(
     sim: any, 
     oddsData: ICanonicalOdds | null, 
@@ -473,8 +468,8 @@ export function calculateValue(
         }
     }
     
-    // === 4. ÚJ (v106.0): CSAPAT TOTALS (Home/Away) PIACOK ===
-    const safeTotalSims = 25000; // A szimulátorból tudjuk
+    // === 4. CSAPAT TOTALS (Home/Away) PIACOK ===
+    const safeTotalSims = 25000; 
     
     const evaluateTeamTotal = (marketKey: string, teamName: string, isHome: boolean) => {
         const market = oddsData.allMarkets.find(m => m.key === marketKey);
@@ -485,7 +480,6 @@ export function calculateValue(
             if (line === undefined || line === null) return;
 
             let simProb = 0;
-            // Használjuk az új segédfüggvényt a 'sim.scores'-ból való számoláshoz
             if (outcome.name.toLowerCase().includes('over')) {
                 simProb = calculateProbabilityFromScores(sim.scores, safeTotalSims, (h, a) => isHome ? h > line : a > line);
             } else if (outcome.name.toLowerCase().includes('under')) {
@@ -499,7 +493,7 @@ export function calculateValue(
             
             if (value > MIN_VALUE_THRESHOLD) {
                 valueBets.push({
-                    market: `${teamName} ${outcome.name}`, // Pl. "Warriors Over 115.5"
+                    market: `${teamName} ${outcome.name}`, 
                     odds: outcome.price.toFixed(2),
                     probability: `${simProb.toFixed(1)}%`,
                     value: `+${value.toFixed(1)}%`
@@ -510,7 +504,6 @@ export function calculateValue(
 
     evaluateTeamTotal('home_total', homeTeam, true);
     evaluateTeamTotal('away_total', awayTeam, false);
-    // =========================================================
 
     // 3. Piac: BTTS
     const bttsMarket = oddsData.allMarkets.find(m => m.key === 'btts');
@@ -553,7 +546,7 @@ export function calculateValue(
     return valueBets;
 }
 
-// === 4. ÜGYNÖK (C) RÉSZE: Piaci Mozgás Elemzése (Változatlan) ===
+// === 4. ÜGYNÖK (C) RÉSZE: Piaci Mozgás Elemzése ===
 export function analyzeLineMovement(
     currentOddsData: ICanonicalOdds | null, 
     openingOddsData: any, 
@@ -630,8 +623,43 @@ export function analyzeLineMovement(
     }
 }
 
-// === analyzePlayerDuels (Változatlan v104.0 - Stub) ===
+// === analyzePlayerDuels (Stub) ===
 export function analyzePlayerDuels(keyPlayers: any, sport: string): string | null {
-    // TODO: Jövőbeli implementáció
     return null;
+}
+
+// === ÚJ FUNKCIÓ: A LEGBIZTOSABB TIPP KERESÉSE (SPORT-SPECIFIKUS) ===
+// Ez a függvény a szimulációs eredmények alapján kiválasztja a "Safety Pick"-et.
+export function getBestBetByProbability(sim: any, sport: string): { market: string, probability: number, type: string } {
+    const candidates = [];
+
+    // 1. GYŐZTES (WINNER) PIAC
+    // A 'sim.pHome' és 'sim.pAway' jégkorongnál/kosárnál már tartalmazza a hosszabbítást (Moneyline),
+    // focinál pedig a rendes játékidőt. Ez így tökéletes.
+    candidates.push({ market: "Hazai győzelem", probability: sim.pHome, type: "winner" });
+    candidates.push({ market: "Vendég győzelem", probability: sim.pAway, type: "winner" });
+
+    // Döntetlen csak FOCINÁL van (1X2)
+    if (sport === 'soccer') {
+        candidates.push({ market: "Döntetlen", probability: sim.pDraw, type: "winner" });
+    }
+
+    // 2. GÓLOK / PONTOK (TOTALS) PIAC
+    // Ez minden sportnál működik (Foci 2.5, Hoki 5.5, Kosár 210.5)
+    const line = sim.mainTotalsLine;
+    candidates.push({ market: `Over ${line} (Felett)`, probability: sim.pOver, type: "totals" });
+    candidates.push({ market: `Under ${line} (Alatt)`, probability: sim.pUnder, type: "totals" });
+
+    // 3. BTTS (CSAK FOCI!)
+    // Hokiban/Kosárban értelmezhetetlen, ezért csak 'soccer' esetén adjuk hozzá.
+    if (sport === 'soccer') {
+        candidates.push({ market: "BTTS: Igen", probability: sim.pBTTS, type: "btts" });
+        candidates.push({ market: "BTTS: Nem", probability: 100 - sim.pBTTS, type: "btts" });
+    }
+
+    // Sorbarendezés: A legmagasabb valószínűségű kerül előre
+    candidates.sort((a, b) => b.probability - a.probability);
+
+    // Visszaadjuk a legjobbat (A listavezetőt)
+    return candidates[0];
 }
