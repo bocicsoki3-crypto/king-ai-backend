@@ -1,10 +1,7 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v123.1 (GOD MODE - Safety Fallback Integrated)
-// CÉL: Maximális pontosság. A rendszer csak akkor "lő", ha biztos a dolgában.
-// STRATÉGIA MÓDOSÍTÁS:
-// 1. Ha van Value Bet (EV+), az a király.
-// 2. Ha NINCS Value Bet, akkor a "SAFEST STATISTICAL BET" (Safety Pick) lép életbe.
-// 3. Így a rendszer MINDIG ad tippet, de jelzi az indoklásban, ha az csak "biztonsági".
+// VERZIÓ: v130.0 (THE SNIPER - Old School Logic Restored - FULL)
+// CÉL: Visszahozni a v103.6 "brutálisan jó" döntési logikáját.
+// ELV: "Inkább ne tippelj, ha nincs jó lehetőség, de ha tippelsz, az üljön."
 
 import { 
     _callGemini, 
@@ -13,7 +10,6 @@ import {
 } from './providers/common/utils.js'; 
 import { getConfidenceCalibrationMap } from './LearningService.js';
 import type { ICanonicalRawData } from './src/types/canonical.d.ts';
-import type { ISportStrategy } from './strategies/ISportStrategy.js';
 
 // --- Helper a Régi Promptok futtatásához ---
 export async function getAndParse(
@@ -30,10 +26,10 @@ export async function getAndParse(
             const value = result[keyToExtract];
             return value || "N/A (AI nem adott értéket)";
         }
-        console.error(`[AI_Service v123.1] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
+        console.error(`[AI_Service v130.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
         return `AI Hiba: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot.`;
     } catch (e: any) {
-        console.error(`[AI_Service v123.1] Végleges AI Hiba (${stepName}): ${e.message}`);
+        console.error(`[AI_Service v130.0] Végleges AI Hiba (${stepName}): ${e.message}`);
         return `AI Hiba (${keyToExtract}): ${e.message}`;
     }
 }
@@ -185,46 +181,29 @@ DATA: Sim Over {line}: {sim_pOver}%, Expected Sum: {sim_mu_sum}.
 CRITICAL OUTPUT INSTRUCTION: {"basketball_total_points_analysis": "<Your one-paragraph Hungarian analysis>\\nBizalom: [Alacsony/Közepes/Magas]"}.`;
 
 
-// === A FŐNÖK PROMPTJA (GOD MODE - FRISSÍTVE v123.1) ===
-const MASTER_AI_PROMPT_TEMPLATE_GOD_MODE = `
+// === A FŐNÖK PROMPTJA (SNIPER EDITION v130.0) ===
+const MASTER_AI_PROMPT_TEMPLATE_SNIPER = `
 CRITICAL TASK: You are the "King AI" Head Analyst.
-Your mission is to identify the **SINGLE BEST PREDICTION** for this match.
+Your task is to analyze ALL reports and determine the SINGLE most compelling betting recommendation.
 
 CRITICAL INPUTS:
-1. Value Bets (EV+): {valueBetsJson}
-2. SAFEST STATISTICAL BET (Fallback): {bestSafeBetJson}
+1. Value Bets: {valueBetsJson} (Priority #1)
+2. Sniper Choice (Math): {bestSafeBetJson} (Priority #2 - The Fallback)
 3. Sim Probs: H:{sim_pHome}%, A:{sim_pAway}%, O/U:{sim_pOver}%
 4. Expert Confidence: "{expertConfidence}"
 5. Risk Assessment: "{riskAssessment}"
 
-**THE GOD MODE PROTOCOL (v123.1):**
-1. **CHECK VALUE BETS (Primary):**
-   - If there are strong Value Bets (>5% EV) that align with the Narrative, prioritize them.
-   
-2. **FALLBACK TO SAFETY (The Guarantee):**
-   - If there are **NO Value Bets** (or they are too risky), you **MUST SELECT THE 'SAFEST STATISTICAL BET'** as your Primary pick.
-   - **NEVER return "No Bet" or "Skip".**
-   - Use the provided 'bestSafeBetJson' as your anchor.
-   - Example: If the safest bet is "Over 2.5 Goals" (85%) and Narrative says "Offensive game", lock it in.
-
-3. **THE VERDICT (A LÉNYEG - HUNGARIAN):**
-   - Write ONE powerful sentence in Hungarian.
-   - Tell the user WHY this is the winning pick.
-   - Be confident.
+**THE SNIPER PROTOCOL:**
+1. **Seek Value First:** If there is a Value Bet (>5% EV) on a MAIN market (1X2, Totals, BTTS) that is supported by the narrative, THIS IS THE PICK.
+2. **Analyze the Odds:** Do NOT recommend bets with extremely low odds (e.g., <1.25) unless they are absolute "Bankers" (90%+ probability). We want PROFIT, not just hits.
+3. **The "Sniper" Fallback:** If no Value Bet is found, look at the 'Sniper Choice' (Math Pick). Does the Narrative support it? If yes, take it.
+4. **No Forced Bets:** If the risks are too high and odds are bad, you CAN say "No Bet" or recommend a very safe "Double Chance".
 
 OUTPUT FORMAT (Exact JSON):
 {
-  "primary": {
-      "market": "<THE CHOSEN BET>",
-      "confidence": <Number 1.0-10.0>,
-      "reason": "<Short Hungarian reason. State if it is a Value Bet or a Safety Pick.>"
-  },
-  "secondary": {
-      "market": "<Strong Alternative>",
-      "confidence": <Number 1.0-10.0>,
-      "reason": "<Short Hungarian reason>"
-  },
-  "verdict": "<A LÉNYEG: Egyetlen, ütős magyar mondat.>"
+  "recommended_bet": "<The single best market, e.g. 'Hazai győzelem' or 'Over 2.5'>",
+  "final_confidence": <Number 1.0-10.0>,
+  "brief_reasoning": "<One sentence Hungarian explanation. Mention if it's a Value Bet.>"
 }
 `;
 
@@ -237,7 +216,7 @@ export async function runStep_DeepScout(data: { home: string, away: string, spor
         const filledPrompt = fillPromptTemplate(PROMPT_DEEP_SCOUT_V3, data);
         return await _callGeminiWithJsonRetry(filledPrompt, "Step_DeepScout", 2, true);
     } catch (e: any) {
-        console.error(`[AI_Service v123.1] Deep Scout Hiba: ${e.message}`);
+        console.error(`[AI_Service v130.0] Deep Scout Hiba: ${e.message}`);
         return null;
     }
 }
@@ -249,7 +228,7 @@ export async function runStep_TeamNameResolver(data: { inputName: string; search
         const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_TeamNameResolver");
         return result && result.matched_id ? Number(result.matched_id) : null;
     } catch (e: any) {
-        console.error(`[AI_Service v123.1] Térképész Hiba: ${e.message}`);
+        console.error(`[AI_Service v130.0] Térképész Hiba: ${e.message}`);
         return null;
     }
 }
@@ -431,8 +410,8 @@ async function getHockeyWinnerAnalysis(sim: any, rawData: ICanonicalRawData) {
 }
 
 
-// === A FŐNÖK: getMasterRecommendation (GOD MODE v123.1) ===
-// Ez a döntési motor lelke.
+// === A FŐNÖK: getMasterRecommendation (SNIPER EDITION) ===
+// Ez a döntési motor lelke. Most már a SNIPER logikát használja.
 async function getMasterRecommendation(
     valueBets: any[], 
     sim: any, 
@@ -446,7 +425,7 @@ async function getMasterRecommendation(
     psyReport: any,
     specialistReport: any,
     sport: string,
-    bestSafeBet: any // <--- ÚJ: A BIZTONSÁGI TIPP
+    bestSafeBet: any // <--- ITT KAPJA MEG A SAFETY PICK-ET
 ) {
     try {
         const safeSim = sim || {};
@@ -475,8 +454,8 @@ async function getMasterRecommendation(
             specialistReportJson: specialistReport 
         };
 
-        // GOD MODE PROMPT HASZNÁLATA (v123.1)
-        let template = MASTER_AI_PROMPT_TEMPLATE_GOD_MODE;
+        // SNIPER PROMPT HASZNÁLATA
+        let template = MASTER_AI_PROMPT_TEMPLATE_SNIPER;
         if (sport === 'hockey') {
             template = template.replace(/BTTS, /g, ""); 
         }
@@ -484,14 +463,14 @@ async function getMasterRecommendation(
         const filledPrompt = fillPromptTemplate(template, data);
         let rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation");
 
-        if (!rec || (!rec.primary && !rec.recommended_bet)) throw new Error("Master AI hiba: Érvénytelen válasz struktúra.");
+        if (!rec || (!rec.recommended_bet && !rec.primary)) throw new Error("Master AI hiba: Érvénytelen válasz struktúra.");
         
-        // Struktúra normalizálás
+        // Struktúra normalizálás (ha régi formátumot adna vissza)
         if (!rec.primary) {
             rec = {
                 primary: { market: rec.recommended_bet, confidence: rec.final_confidence, reason: rec.brief_reasoning },
                 secondary: { market: "Nincs második tipp", confidence: 0, reason: "Az AI egyetlen tippet generált." },
-                verdict: "Nem érkezett szöveges ítélet."
+                verdict: rec.brief_reasoning || "Nincs szöveges ítélet."
             };
         }
 
@@ -520,22 +499,17 @@ async function getMasterRecommendation(
             rec.primary.reason = (rec.primary.reason || "") + disagreementNote;
         }
 
-        if (rec.secondary.confidence > 8.0 && safeModelConfidence < 4.0) {
-             rec.secondary.confidence -= 2.0;
-             rec.secondary.reason += " (Kockázatos)";
-        }
-
         // Kompatibilitás
         rec.recommended_bet = rec.primary.market;
         rec.final_confidence = rec.primary.confidence;
         rec.brief_reasoning = rec.primary.reason;
 
-        console.log(`[AI_Service v123.1 - Főnök] GOD MODE Tipp. Fő: ${rec.primary.market} (${rec.primary.confidence}/10). Ítélet: ${rec.verdict}`);
+        console.log(`[AI_Service v130.0 - Főnök] SNIPER MODE Tipp. Fő: ${rec.primary.market} (${rec.primary.confidence}/10).`);
         
         return rec;
 
     } catch (e: any) {
-        console.error(`[AI_Service v123.1 - Főnök] Hiba: ${e.message}`, e.stack);
+        console.error(`[AI_Service v130.0 - Főnök] Hiba: ${e.message}`, e.stack);
         return { 
             recommended_bet: "Hiba", final_confidence: 1.0, brief_reasoning: `Hiba: ${e.message}`,
             primary: { market: "Hiba", confidence: 1.0, reason: "Hiba" },
@@ -619,7 +593,7 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
 
         try { strategic_synthesis = await getStrategicClosingThoughts(sim, rawDataJson, richContext, microAnalyses, riskAssessment, tacticalBriefing, valueBetsJson, confidenceScores, expertConfidence, psyReport, specialistReport, sport); } catch (e) {}
 
-        // 4. A "FŐNÖK" HÍVÁSA (GOD MODE)
+        // 4. A "FŐNÖK" HÍVÁSA (SNIPER MODE)
         masterRecommendation = await getMasterRecommendation(
             valueBetsJson, 
             sim, 
@@ -637,7 +611,7 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
         );
 
     } catch (e: any) {
-        console.error(`[AI_Service v123.1] KRITIKUS HIBA: ${e.message}`);
+        console.error(`[AI_Service v130.0] KRITIKUS HIBA: ${e.message}`);
         masterRecommendation.brief_reasoning = `KRITIKUS HIBA: ${e.message}`;
     }
     
