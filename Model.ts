@@ -349,10 +349,14 @@ export function calculateConfidenceScores(
              const formDiff = homeOverallFormScore - awayOverallFormScore; 
              const simDiff = (mu_h - mu_a); 
              
-             if ((simDiff > thresholdLow && formDiff < -0.2) || (simDiff < -thresholdLow && formDiff > 0.2)) {
+             // Form-xG ellentmondás ellenőrzés (fix thresholdokat használunk itt)
+             const formCheckThresholdLow = sport === 'basketball' ? 3 : sport === 'hockey' ? 0.2 : 0.1;
+             const formCheckThresholdHigh = sport === 'basketball' ? 10 : sport === 'hockey' ? 0.7 : 0.35;
+             
+             if ((simDiff > formCheckThresholdLow && formDiff < -0.2) || (simDiff < -formCheckThresholdLow && formDiff > 0.2)) {
                 winnerScore -= 1.5; 
             }
-            else if ((simDiff > thresholdHigh && formDiff > 0.25) || (simDiff < -thresholdHigh && formDiff < -0.25)) {
+            else if ((simDiff > formCheckThresholdHigh && formDiff > 0.25) || (simDiff < -formCheckThresholdHigh && formDiff < -0.25)) {
                 winnerScore += 1.0; 
             }
         }

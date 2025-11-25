@@ -103,9 +103,7 @@ export class SoccerStrategy implements ISportStrategy {
                 // Kulcs támadó hiányzik → csökken a várható gól
                 // Kulcs védő hiányzik → nő az ellenfél várható gólja
                 const attackerImpact = 0.20; // Egy kulcs támadó hiánya ~0.2 gól csökkenés
-                const defenderImpact = 0.15; // Egy kulcs védő hiánya ~0.15 gól növekedés ellenféln
-
-ek
+                const defenderImpact = 0.15; // Egy kulcs védő hiánya ~0.15 gól növekedés ellenfélnek
                 
                 p4_mu_h -= homeKeyAttackersOut * attackerImpact;
                 p4_mu_a -= awayKeyAttackersOut * attackerImpact;
