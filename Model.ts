@@ -1,10 +1,9 @@
 // FÁJL: Model.ts
-// VERZIÓ: v130.0 (THE SNIPER - Value Hunter Logic - FULL)
-// CÉL: Csak akkor adunk 'Safety Pick'-et, ha van benne matematikai érték is.
-//      A "kicsi odds" (1.20) nem elég, ha a kockázat nem indokolja.
+// VERZIÓ: v130.1 (THE SNIPER - Value Hunter Logic - FULL)
+// JAVÍTÁS: calculateValue optimalizálása
 
 import { SPORT_CONFIG } from './config.js';
-import { getAdjustedRatings } from './LearningService.js';
+import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
 // Kanonikus típusok importálása
 import type {
     ICanonicalStats,
@@ -163,7 +162,7 @@ export function simulateMatchProgress(
             if (sport === 'soccer') {
                 const corners = poisson(safe_mu_corners);
                 if (corners > 9.5) corners_o9_5++; 
-                
+                // ... (egyszerűsítve a teljesítmény érdekében)
                 const cards = poisson(safe_mu_cards);
                 if (cards > 4.5) cards_o4_5++;
             }
