@@ -1,9 +1,5 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v112.2 (Safety Pick Integration)
-// MÓDOSÍTÁS:
-// 1. BEKÖTVE: 'getBestBetByProbability' hívása a Model.ts-ből.
-// 2. HOZZÁADVA: A 'bestSafeBet' objektum átadása a 'finalAnalysisInput'-nak.
-// 3. CÉL: A GOD MODE AI megkapja a legbiztosabb statisztikai tippet tartaléknak.
+// VERZIÓ: v130.0 (SNIPER INTEGRATION - FULL)
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -31,9 +27,9 @@ import {
     calculateConfidenceScores, // v105.0
     calculateValue,
     analyzeLineMovement,
-    getBestBetByProbability // <--- ÚJ IMPORT
+    getBestBetByProbability // <--- SNIPER FÜGGVÉNY
 } from './Model.js';
-// AI Szolgáltatás Importok
+// AI Szolgáltatás Importok - JAVÍTOTT IMPORT
 import {
     runStep_Psychologist, 
     runStep_Specialist,   
@@ -145,8 +141,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
         
-        // v112.0 Cache kulcs
-        analysisCacheKey = `analysis_v112.0_apex_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
+        // v130.0 Cache kulcs
+        analysisCacheKey = `analysis_v130.0_sniper_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
         
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
@@ -221,6 +217,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         console.log(`Meghatározott fő gól/pont vonal: ${mainTotalsLine}`);
         console.log(`Piaci Hírszerzés: ${marketIntel}`);
 
+        // === KRITIKUS LÉPÉS: A Piaci Infó Injektálása a Kontextusba ===
         const enhancedRichContext = `${richContext}\n\n[PIACI HÍRSZERZÉS (MARKET WISDOM)]:\n${marketIntel}`;
         
         // === 2.5 ÜGYNÖK (PSZICHOLÓGUS) ===
@@ -326,13 +323,14 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const valueBets = calculateValue(sim, mutableOddsData, sport, home, away);
         console.log(`Szimulátor végzett.`);
 
-        // === ÚJ (v112.2): BIZTONSÁGI TIPP LEKÉRÉSE ===
-        const bestSafeBet = getBestBetByProbability(sim, sport);
-        console.log(`Legbiztosabb statisztikai tipp (Safety Pick): ${bestSafeBet.market} (${bestSafeBet.probability.toFixed(1)}%)`);
-        // ==============================================
+        // === ÚJ (v130.0): BIZTONSÁGI TIPP LEKÉRÉSE (SNIPER) ===
+        // Ezt adjuk át az AI-nak, mint "B-tervet", ha nincs value bet.
+        const bestSafeBet = getBestBetByProbability(sim, sport, mutableOddsData);
+        console.log(`SNIPER CHOICE: ${bestSafeBet.market} (${bestSafeBet.probability.toFixed(1)}%, Odds: ${bestSafeBet.odds})`);
+        // =======================================================
 
-        // === 5/6. ÜGYNÖK (HIBRID FŐNÖK) ===
-        console.log(`[Lánc 5/6] "Hibrid Főnök" hívása (Apex Logic)...`);
+        // === 5/6. ÜGYNÖK (HIBRID FŐNÖK - SNIPER EDITION) ===
+        console.log(`[Lánc 5/6] "Hibrid Főnök" hívása (Sniper Logic)...`);
         
         interface FinalAnalysisInput {
             matchData: { home: string; away: string; sport: string; leagueName: string; };
@@ -357,7 +355,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             richContext: enhancedRichContext,
             sportStrategy: sportStrategy,
             confidenceScores: confidenceScores,
-            bestSafeBet: bestSafeBet // <--- ÁTADJUK A FŐNÖKNEK
+            bestSafeBet: bestSafeBet // <--- SNIPER ADAT ÁTADVA
         };
 
         const finalReport: any = await runStep_FinalAnalysis(finalAnalysisInput);
@@ -385,7 +383,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 (manual_absentees ? 'P1 (Manuális)' : 'P2/P4 (Automatikus)') : 
                 'Nincs adat',
             realXgUsed: finalXgSource,
-            fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen'
+            fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen',
+            sniperChoice: bestSafeBet // Debug info bővítése
         };
         
         const auditData = {
@@ -418,7 +417,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                     mu_a: sim.mu_a_sim
                 },
                 valueBets: valueBets, 
-                bestSafeBet: bestSafeBet, // <--- NAPLÓZZUK IS
                 confidenceScores: {
                     winner: parseFloat(confidenceScores.winner.toFixed(1)),
                     totals: parseFloat(confidenceScores.totals.toFixed(1)),
