@@ -1,532 +1,476 @@
-// FÁJL: AI_Service.ts
-// VERZIÓ: v130.4 (SNIPER + DUAL OPTION)
-// CÉL: Megtartani a szigorú "Sniper" logikát a Fő Tippnél, 
-//      de kötelezően generálni egy Alternatív Tippet is, hogy a UI ne legyen üres.
+// FÁJL: AnalysisFlow.ts
+// VERZIÓ: v130.5 (CRITICAL FIX: Stringify Sniper Choice for UI)
+// JAVÍTÁS: A 'debugInfo.sniperChoice' objektumot stringgé alakítjuk,
+//          hogy a frontend 'text.includes' hívása ne omoljon össze.
 
+import NodeCache from 'node-cache';
+import { SPORT_CONFIG } from './config.js';
+// Kanonikus típusok importálása
+import type {
+    ICanonicalRichContext,
+    ICanonicalRawData,
+    ICanonicalStats,
+    ICanonicalOdds,
+    IPlayerStub 
+} from './src/types/canonical.d.ts';
+// A 'findMainTotalsLine'-t a központi 'utils' fájlból importáljuk
+import { findMainTotalsLine } from './providers/common/utils.js';
+// Adatgyűjtő funkciók (2. Ügynök - Scout)
 import { 
-    _callGemini, 
-    _callGeminiWithJsonRetry, 
-    fillPromptTemplate 
-} from './providers/common/utils.js'; 
-import { getConfidenceCalibrationMap } from './LearningService.js';
-import type { ICanonicalRawData } from './src/types/canonical.d.ts';
+    getRichContextualData, 
+    type IDataFetchOptions, 
+    type IDataFetchResponse 
+} from './DataFetch.js';
+// Statisztikai modellek (1. és 4. Ügynök)
+import {
+    estimatePureXG,           // (1. Ügynök - Quant)
+    estimateAdvancedMetrics,
+    simulateMatchProgress,    // (4. Ügynök - Szimulátor)
+    calculateConfidenceScores, // v105.0
+    calculateValue,
+    analyzeLineMovement,
+    getBestBetByProbability // <--- SNIPER FÜGGVÉNY
+} from './Model.js';
+// AI Szolgáltatás Importok
+import {
+    runStep_Psychologist, 
+    runStep_Specialist,   
+    runStep_FinalAnalysis 
+} from './AI_Service.js';
+import { saveAnalysisToSheet } from './sheets.js'; 
+import { getNarrativeRatings } from './LearningService.js';
+import { getSportStrategy } from './strategies/StrategyFactory.js';
+import type { ISportStrategy } from './strategies/ISportStrategy.js';
 
-// --- Helper a Régi Promptok futtatásához ---
-export async function getAndParse(
-    promptTemplate: string, 
-    data: any, 
-    keyToExtract: string,
-    stepName: string
-): Promise<string> {
-    try {
-        const filledPrompt = fillPromptTemplate(promptTemplate, data);
-        const result = await _callGeminiWithJsonRetry(filledPrompt, `getAndParse:${stepName}`);
-        
-        if (result && typeof result === 'object' && result.hasOwnProperty(keyToExtract)) {
-            const value = result[keyToExtract];
-            return value || "N/A (AI nem adott értéket)";
-        }
-        const lowerKey = keyToExtract.toLowerCase();
-        const foundKey = Object.keys(result || {}).find(k => k.toLowerCase() === lowerKey);
-        if (foundKey) return result[foundKey];
+const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 
-        console.warn(`[AI_Service v130.4] AI Figyelem: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot.`);
-        return "N/A";
-    } catch (e: any) {
-        console.error(`[AI_Service v130.4] Végleges AI Hiba (${stepName}): ${e.message}`);
-        return `AI Hiba (${keyToExtract}): ${e.message}`;
-    }
+// Az új, strukturált JSON válasz
+interface IAnalysisResponse {
+    analysisData: {
+        committee: {
+            quant: { mu_h: number, mu_a: number, source: string };
+            psychologist: any; 
+            specialist: { 
+                mu_h: number, 
+                mu_a: number, 
+                log: string,  
+                report: any   
+            };
+            strategist: any;
+            scout?: any;
+            critic?: any;
+        };
+        matchData: {
+            home: string;
+            away: string;
+            sport: string;
+            mainTotalsLine: number | string;
+            mu_h: number | string; 
+            mu_a: number | string;
+        };
+        oddsData: ICanonicalOdds | null;
+        valueBets: any[];
+        confidenceScores: {
+            winner: number;
+            totals: number;
+            overall: number;
+        };
+        finalConfidenceScore: number; 
+        sim: any; 
+        recommendation: any;
+        xgSource: string; 
+        availableRosters: {
+            home: IPlayerStub[];
+            away: IPlayerStub[];
+        };
+    };
+    debugInfo: any;
 }
 
-// === ÜGYNÖK PROMPTOK ===
-
-const PROMPT_DEEP_SCOUT_V3 = `TASK: Investigate {home} vs {away} ({sport}). OUTPUT JSON: { "narrative_summary": "...", "key_news": [] }`;
-
-const PROMPT_TEAM_RESOLVER_V1 = `
-TASK: You are 'The Mapper', an expert sports data mapping assistant.
-Your goal is to find the correct team ID for a misspelled or alternative team name.
-[CONTEXT]:
-- Input Name: "{inputName}"
-- Search Term: "{searchTerm}"
-- Roster: {rosterJson}
-[OUTPUT STRUCTURE]:
-Your response MUST be ONLY a single, valid JSON object: { "matched_id": <Number | null> }
-`;
-
-const PROMPT_PSYCHOLOGIST_V93 = `TASK: Analyze psychology for {homeTeamName} vs {awayTeamName}. OUTPUT JSON: { "psy_profile_home": "...", "psy_profile_away": "..." }`;
-const PROMPT_SPECIALIST_V94 = `TASK: Adjust xG ({pure_mu_h}-{pure_mu_a}) based on context. OUTPUT JSON: { "modified_mu_h": number, "modified_mu_a": number, "reasoning": "..." }`;
-
-// === A "SNIPER + SPOTTER" PROMPT (v130.4) ===
-// MÓDOSÍTVA: Most már expliciten kérjük a 'primary' és 'secondary' objektumokat.
-const MASTER_AI_PROMPT_TEMPLATE_SNIPER = `
-CRITICAL TASK: You are the Head Analyst.
-Your task is to analyze ALL reports and determine the TWO best betting recommendations (Primary & Secondary).
-
-CRITICAL INPUTS:
-1. Value Bets: {valueBetsJson} (Priority #1)
-2. Sniper Choice (Math): {bestSafeBetJson} (Priority #2)
-3. Sim Probs: H:{sim_pHome}%, A:{sim_pAway}%, O/U:{sim_pOver}%
-4. Expert Confidence: "{expertConfidence}"
-
-**YOUR DECISION PROCESS:**
-1. **PRIMARY BET (THE SNIPER):**
-   - Seek VALUE first (>5% EV). If found and safe, this is the Primary.
-   - If no Value, take the SAFEST statistical outcome (Banker).
-   - This must be your strongest conviction.
-
-2. **SECONDARY BET (THE SPOTTER):**
-   - Provide a solid alternative.
-   - If Primary is a Winner bet, make Secondary a Goals/BTTS bet (or vice versa).
-   - If Primary is risky (Value), make Secondary safe (Banker).
-   - If Primary is safe (Banker), make Secondary a Value pick.
-   - **NEVER leave this empty.** Even a "Double Chance" or "Over 1.5 Goals" is better than nothing.
-
-3. **THE VERDICT:**
-   - Summarize in one Hungarian sentence why the Primary bet is the winner.
-
-OUTPUT FORMAT (Exact JSON):
-{
-  "primary": {
-      "market": "<The BEST market>",
-      "confidence": <Number 1.0-10.0>,
-      "reason": "<Short Hungarian reason.>"
-  },
-  "secondary": {
-      "market": "<The ALTERNATIVE market>",
-      "confidence": <Number 1.0-10.0>,
-      "reason": "<Short Hungarian reason.>"
-  },
-  "verdict": "<A LÉNYEG: Egyetlen, ütős magyar mondat.>"
+interface IAnalysisError {
+    error: string;
 }
-`;
 
-// --- ÜGYNÖK FUTTATÓK ---
-
-export async function runStep_DeepScout(data: any) { return _callGeminiWithJsonRetry(fillPromptTemplate(PROMPT_DEEP_SCOUT_V3, data), "DeepScout", 1, true); }
-
-export async function runStep_TeamNameResolver(data: { inputName: string; searchTerm: string; rosterJson: any[]; }): Promise<number | null> {
-    try {
-        const filledPrompt = fillPromptTemplate(PROMPT_TEAM_RESOLVER_V1, data);
-        const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_TeamNameResolver");
-        return result && result.matched_id ? Number(result.matched_id) : null;
-    } catch (e: any) {
-        console.error(`[AI_Service v130.4] Térképész Hiba: ${e.message}`);
+// === Segédfüggvény a tizedesvesszők kezelésére (Változatlan) ===
+function safeConvertToNumber(value: any): number | null {
+    if (value == null || value === '') { 
         return null;
     }
-}
-
-export async function runStep_Psychologist(data: any) { return _callGeminiWithJsonRetry(fillPromptTemplate(PROMPT_PSYCHOLOGIST_V93, data), "Psychologist"); }
-export async function runStep_Specialist(data: any) { return _callGeminiWithJsonRetry(fillPromptTemplate(PROMPT_SPECIALIST_V94, data), "Specialist"); }
-
-// === MIKROMODELL FUTTATÓK (Helpers) ===
-
-export const EXPERT_CONFIDENCE_PROMPT = `You are a master betting risk analyst. Provide a confidence score and justification in Hungarian.
-CRITICAL OUTPUT FORMAT: {"confidence_report": "**SCORE/10** - Indoklás."}`;
-
-export const RISK_ASSESSMENT_PROMPT = `You are a risk assessment analyst. Write a "Kockázatkezelői Jelentés". OUTPUT JSON: {"risk_analysis": "..."}`;
-export const TACTICAL_BRIEFING_PROMPT = `You are a tactician. Write a briefing. OUTPUT JSON: {"analysis": "..."}`;
-export const FINAL_GENERAL_ANALYSIS_PROMPT = `You are an Editor. Write a summary. OUTPUT JSON: {"general_analysis": "..."}`;
-export const PROPHETIC_SCENARIO_PROMPT = `You are a journalist. Write a scenario. OUTPUT JSON: {"scenario": "..."}`;
-export const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst. Write closing thoughts. OUTPUT JSON: {"strategic_analysis": "..."}`;
-export const PLAYER_MARKETS_PROMPT = `Suggest player markets. OUTPUT JSON: {"player_market_analysis": "..."}`;
-
-// Mikromodellek
-export const BTTS_ANALYSIS_PROMPT = `Analyze BTTS. OUTPUT JSON: {"btts_analysis": "..."}`;
-export const SOCCER_GOALS_OU_PROMPT = `Analyze Goals O/U. OUTPUT JSON: {"goals_ou_analysis": "..."}`;
-export const CORNER_ANALYSIS_PROMPT = `Analyze Corners. OUTPUT JSON: {"corner_analysis": "..."}`;
-export const CARD_ANALYSIS_PROMPT = `Analyze Cards. OUTPUT JSON: {"card_analysis": "..."}`;
-export const HOCKEY_GOALS_OU_PROMPT = `Analyze Hockey Goals. OUTPUT JSON: {"hockey_goals_ou_analysis": "..."}`;
-export const HOCKEY_WINNER_PROMPT = `Analyze Hockey Winner. OUTPUT JSON: {"hockey_winner_analysis": "..."}`;
-export const BASKETBALL_WINNER_PROMPT = `Analyze NBA Winner. OUTPUT JSON: {"basketball_winner_analysis": "..."}`;
-export const BASKETBALL_TOTAL_POINTS_PROMPT = `Analyze NBA Points. OUTPUT JSON: {"basketball_total_points_analysis": "..."}`;
-
-
-async function getExpertConfidence(confidenceScores: { winner: number, totals: number, overall: number }, richContext: string, rawData: ICanonicalRawData, psyReport: any, specialistReport: any) {
-     const data = {
-         confidenceWinner: confidenceScores.winner.toFixed(1), confidenceTotals: confidenceScores.totals.toFixed(1), 
-         richContext: richContext || "Nincs kontextus.",
-         home: rawData?.home || 'Hazai', away: rawData?.away || 'Vendég',
-         psy_profile_home: psyReport?.psy_profile_home || "N/A", psy_profile_away: psyReport?.psy_profile_away || "N/A",
-         specialist_reasoning: specialistReport?.reasoning || "N/A"
-     };
-     return await getAndParse(EXPERT_CONFIDENCE_PROMPT, data, "confidence_report", "ExpertConfidence");
-}
-
-async function getRiskAssessment(sim: any, rawData: ICanonicalRawData, sport: string, confidenceScores: any) {
-    const safeSim = sim || {};
-    const data = {
-        sport,
-        sim_pHome: safeSim.pHome, sim_pDraw: safeSim.pDraw, sim_pAway: safeSim.pAway,
-        news_home: rawData?.team_news?.home || "N/A", news_away: rawData?.team_news?.away || "N/A",
-    };
-    return await getAndParse(RISK_ASSESSMENT_PROMPT, data, "risk_analysis", "RiskAssessment");
-}
-
-async function getTacticalBriefing(rawData: ICanonicalRawData, sport: string, home: string, away: string, riskAssessment: string) {
-    const data = {
-        sport, home, away, riskAssessment: riskAssessment || "N/A",
-        home_style: rawData?.tactics?.home?.style || "N/A", away_style: rawData?.tactics?.away?.style || "N/A",
-    };
-    return await getAndParse(TACTICAL_BRIEFING_PROMPT, data, "analysis", "TacticalBriefing");
-}
-
-async function getFinalGeneralAnalysis(sim: any, tacticalBriefing: string, rawData: ICanonicalRawData, confidenceScores: any, psyReport: any) {
-    const safeSim = sim || {};
-    const data = {
-        sim_pHome: safeSim.pHome, sim_pDraw: safeSim.pDraw, sim_pAway: safeSim.pAway,
-        mu_h: sim.mu_h_sim, mu_a: sim.mu_a_sim,
-        tacticalBriefing: tacticalBriefing || "N/A",
-        psy_profile_home: psyReport?.psy_profile_home || "N/A", psy_profile_away: psyReport?.psy_profile_away || "N/A",
-        home: rawData?.home || 'Hazai', away: rawData?.away || 'Vendég'
-    };
-    return await getAndParse(FINAL_GENERAL_ANALYSIS_PROMPT, data, "general_analysis", "FinalGeneralAnalysis");
-}
-
-async function getPropheticTimeline(rawData: ICanonicalRawData, home: string, away: string, sport: string, tacticalBriefing: string) {
-     const data = { sport, home, away, tacticalBriefing: tacticalBriefing || "N/A" };
-    return await getAndParse(PROPHETIC_SCENARIO_PROMPT, data, "scenario", "PropheticScenario");
-}
-
-async function getPlayerMarkets(keyPlayers: any, richContext: string) {
-    return await getAndParse(PLAYER_MARKETS_PROMPT, { keyPlayersJson: keyPlayers, richContext: richContext || "Nincs kontextus." }, "player_market_analysis", "PlayerMarkets");
-}
-
-async function getStrategicClosingThoughts(sim: any, rawData: ICanonicalRawData, richContext: string, microAnalyses: any, riskAssessment: string, tacticalBriefing: string, valueBets: any[], confidenceScores: any, expertConfidence: string, psyReport: any, specialistReport: any, sport: string) {
-    const safeSim = sim || {};
-    const microSummary = Object.entries(microAnalyses || {}).map(([key, val]) => {
-        const analysisPart = typeof val === 'string' ? val.split('\nBizalom:')[0].trim() : 'N/A';
-        return `${key}: ${analysisPart}`;
-    }).join('; ');
-
-    const data = {
-        sim_pHome: safeSim.pHome, sim_pDraw: safeSim.pDraw, sim_pAway: safeSim.pAway,
-        sim_mainTotalsLine: safeSim.mainTotalsLine, sim_pOver: safeSim.pOver,
-        tacticalBriefing: tacticalBriefing || "N/A",
-        microSummaryJson: microSummary,
-        richContext: richContext || "Nincs kontextus.",
-        riskAssessment: riskAssessment || "N/A",
-        valueBetsJson: valueBets,
-        expertConfidence: expertConfidence || "N/A",
-     };
-     
-    let template = STRATEGIC_CLOSING_PROMPT;
-    if (sport === 'hockey' || sport === 'basketball') {
-        template = template.replace(/BTTS, /g, ""); 
+    let strValue = String(value);
+    strValue = strValue.replace(',', '.');
+    const num = Number(strValue);
+    if (isNaN(num)) {
+        console.warn(`[AnalysisFlow] HIBÁS BEMENET: Nem sikerült számmá alakítani: "${value}"`);
+        return null;
     }
-    return await getAndParse(template, data, "strategic_analysis", "StrategicClosing");
+    return num;
 }
 
-// === MIKROMODELL FUTTATÓK (V121.1) ===
-export async function getBTTSAnalysis(sim: any, rawData: ICanonicalRawData) {
-     const safeSim = sim || {};
-     const data = {
-        sim_pBTTS: safeSim.pBTTS,
-        sim_mu_h: safeSim.mu_h_sim,
-        sim_mu_a: safeSim.mu_a_sim,
-        home_style: rawData?.tactics?.home?.style || "N/A",
-        away_style: rawData?.tactics?.away?.style || "N/A"
-     };
-     return await getAndParse(BTTS_ANALYSIS_PROMPT, data, "btts_analysis", "BTTSAnalysis");
-}
-
-export async function getSoccerGoalsOUAnalysis(sim: any, rawData: ICanonicalRawData, mainTotalsLine: number) {
-     const safeSim = sim || {};
-     const countKeyAbsentees = (absentees: any) => Array.isArray(absentees) ? absentees.filter(p => p.importance === 'key').length : 0;
-     const data = {
-        line: mainTotalsLine,
-        sim_pOver: safeSim.pOver,
-        sim_mu_sum: (safeSim.mu_h_sim ?? 0) + (safeSim.mu_a_sim ?? 0),
-        home_style: rawData?.tactics?.home?.style || "N/A",
-        away_style: rawData?.tactics?.away?.style || "N/A",
-        absentees_home_count: countKeyAbsentees(rawData?.absentees?.home),
-        absentees_away_count: countKeyAbsentees(rawData?.absentees?.away)
-     };
-    return await getAndParse(SOCCER_GOALS_OU_PROMPT, data, "goals_ou_analysis", "GoalsOUAnalysis");
-}
-
-export async function getCornerAnalysis(sim: any, rawData: ICanonicalRawData) {
-    const safeSim = sim || {};
-    const muCorners = safeSim.mu_corners_sim;
-    const likelyLine = muCorners ? (Math.round(muCorners - 0.1)) + 0.5 : 9.5;
-    const data = {
-        mu_corners: muCorners,
-        home_style: rawData?.tactics?.home?.style || "N/A",
-        away_style: rawData?.tactics?.away?.style || "N/A",
-        likelyLine: likelyLine 
-    };
-    return await getAndParse(CORNER_ANALYSIS_PROMPT, data, "corner_analysis", "CornerAnalysis");
-}
-
-export async function getCardAnalysis(sim: any, rawData: ICanonicalRawData) {
-    const safeSim = sim || {};
-    const muCards = safeSim.mu_cards_sim;
-    const likelyLine = muCards ? (Math.round(muCards - 0.1)) + 0.5 : 4.5;
-    const data = {
-        mu_cards: muCards,
-        referee_style: rawData?.referee?.style || "N/A",
-        tension: rawData?.contextual_factors?.match_tension_index || "N/A",
-        likelyLine: likelyLine 
-    };
-    return await getAndParse(CARD_ANALYSIS_PROMPT, data, "card_analysis", "CardAnalysis");
-}
-
-export async function getHockeyGoalsOUAnalysis(sim: any, rawData: ICanonicalRawData, mainTotalsLine: number) {
-     const safeSim = sim || {};
-     const data = {
-        line: mainTotalsLine,
-        sim_pOver: safeSim.pOver,
-        sim_mu_sum: (safeSim.mu_h_sim ?? 0) + (safeSim.mu_a_sim ?? 0),
-        home_gsax: rawData?.advanced_stats_goalie?.home_goalie?.GSAx || "N/A", 
-        away_gsax: rawData?.advanced_stats_goalie?.away_goalie?.GSAx || "N/A"
-     };
-     return await getAndParse(HOCKEY_GOALS_OU_PROMPT, data, "hockey_goals_ou_analysis", "HockeyGoalsOUAnalysis");
-}
-
-export async function getHockeyWinnerAnalysis(sim: any, rawData: ICanonicalRawData) {
-     const safeSim = sim || {};
-     const data = {
-        sim_pHome: safeSim.pHome,
-        sim_pAway: safeSim.pAway,
-        home_gsax: rawData?.advanced_stats_goalie?.home_goalie?.GSAx || "N/A",
-        away_gsax: rawData?.advanced_stats_goalie?.away_goalie?.GSAx || "N/A",
-        form_home: rawData?.form?.home_overall || "N/A",
-        form_away: rawData?.form?.away_overall || "N/A"
-     };
-    return await getAndParse(HOCKEY_WINNER_PROMPT, data, "hockey_winner_analysis", "HockeyWinnerAnalysis");
-}
-
-export async function getBasketballPointsOUAnalysis(sim: any, rawData: ICanonicalRawData, mainTotalsLine: number) {
-     const safeSim = sim || {};
-     const data = {
-        line: mainTotalsLine,
-        sim_pOver: safeSim.pOver,
-        pace: 98, // Egyszerűsítve
-        home_style: rawData?.shot_distribution?.home || "N/A",
-        away_style: rawData?.shot_distribution?.away || "N/A"
-     };
-     return await getAndParse(BASKETBALL_TOTAL_POINTS_PROMPT, data, "basketball_total_points_analysis", "BasketballPointsOUAnalysis");
-}
-
-
-// === A FŐNÖK: getMasterRecommendation (SNIPER + SPOTTER EDITION) ===
-async function getMasterRecommendation(
-    valueBets: any[], 
-    sim: any, 
-    confidenceScores: { winner: number, totals: number, overall: number }, 
-    expertConfidence: string,
-    riskAssessment: string, 
-    microAnalyses: any, 
-    generalAnalysis: string, 
-    strategicClosingThoughts: string, 
-    contradictionAnalysisResult: string,
-    psyReport: any,
-    specialistReport: any,
-    sport: string,
-    bestSafeBet: any
-) {
+export async function runFullAnalysis(params: any, sport: string, openingOdds: any): Promise<IAnalysisResponse | IAnalysisError> {
+    let analysisCacheKey = 'unknown_analysis';
+    let fixtureIdForSaving: number | string | null = null;
     try {
-        const safeSim = sim || {};
-        const microSummary = Object.entries(microAnalyses || {}).map(([key, val]) => `${key}: ${val || 'N/A'}`).join('; ');
+        const { 
+            home: rawHome, 
+            away: rawAway, 
+            force: forceNewStr, 
+            sheetUrl, 
+            utcKickoff, 
+            leagueName, 
+            manual_H_xG, 
+            manual_H_xGA, 
+            manual_A_xG, 
+            manual_A_xGA, 
+            manual_absentees
+        } = params;
 
-        let expertConfScore = 1.0;
-        try {
-            let match = expertConfidence?.match(/\*\*(\d+(\.\d+)?)\/10\*\*/);
-            if (!match) { match = expertConfidence?.match(/(\d+(\.\d+)?)\s*\/\s*10/); }
-            if (match && match[1]) expertConfScore = parseFloat(match[1]);
-        } catch(e) {}
-
-        const safeModelConfidence = typeof confidenceScores.winner === 'number' ? confidenceScores.winner : 5.0;
-
-        const data = {
-            valueBetsJson: valueBets,
-            bestSafeBetJson: JSON.stringify(bestSafeBet),
-            sim_pHome: safeSim.pHome, sim_pDraw: safeSim.pDraw, sim_pAway: safeSim.pAway,
-            sim_mainTotalsLine: safeSim.mainTotalsLine, sim_pOver: safeSim.pOver,
-            modelConfidence: safeModelConfidence, 
-            expertConfidence: expertConfidence || "N/A",
-            riskAssessment: riskAssessment || "N/A",
-            microSummary: microSummary,
-            strategicClosingThoughts: strategicClosingThoughts || "N/A",
-            psychologistReportJson: psyReport, 
-            specialistReportJson: specialistReport 
-        };
-
-        let template = MASTER_AI_PROMPT_TEMPLATE_SNIPER;
-        if (sport === 'hockey') {
-            template = template.replace(/BTTS, /g, ""); 
+        if (!rawHome || !rawAway || !sport || !utcKickoff) {
+            throw new Error("Hiányzó kötelező paraméterek: 'home', 'away', 'sport', 'utcKickoff'.");
         }
         
-        const filledPrompt = fillPromptTemplate(template, data);
-        let rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation");
-
-        if (!rec || !rec.primary) throw new Error("Master AI hiba: Érvénytelen válasz struktúra.");
+        const home: string = String(rawHome).trim();
+        const away: string = String(rawAway).trim();
+        const forceNew: boolean = String(forceNewStr).toLowerCase() === 'true';
+        const safeHome = encodeURIComponent(home.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
+        const safeAway = encodeURIComponent(away.toLowerCase().replace(/\s+/g, '')).substring(0, 50);
         
-        // Struktúra ellenőrzése, biztosítva, hogy van másodlagos tipp is
-        if (!rec.secondary || !rec.secondary.market) {
-             rec.secondary = {
-                 market: "Dupla esély (Biztonsági)",
-                 confidence: 0,
-                 reason: "Automatikus fallback, mert az AI nem adott másodlagos tippet."
-             };
-        }
-
-        const confidenceDiff = Math.abs(safeModelConfidence - expertConfScore);
-        const disagreementThreshold = 3.0;
-        let confidencePenalty = 0;
-        let disagreementNote = "";
+        const p1AbsenteesHash = manual_absentees ?
+            `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
+            '';
         
-        if (expertConfScore < 1.5 && rec.primary.confidence > 5.0) {
-            confidencePenalty = Math.max(0, rec.primary.confidence - 3.0);
-            disagreementNote = " (KORREKCIÓ: A narratív elemzés negatív volt!)";
-        }
-        else if (confidenceDiff > disagreementThreshold) {
-            confidencePenalty = Math.min(2.0, confidenceDiff / 1.5);
-            disagreementNote = ` (KORREKCIÓ: Statisztikai ellentmondás miatt csökkentve.)`;
-        }
+        // v130.5 Cache kulcs
+        analysisCacheKey = `analysis_v130.5_sniper_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
         
-        rec.primary.confidence -= confidencePenalty;
-        rec.primary.confidence = Math.max(1.0, Math.min(10.0, rec.primary.confidence));
-        
-        if (rec.verdict) {
-            rec.primary.reason = (rec.primary.reason || "") + `\n\n💡 A LÉNYEG: ${rec.verdict}` + disagreementNote;
+        if (!forceNew) {
+            const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
+            if (cachedResult) {
+                console.log(`Cache találat (${analysisCacheKey})`);
+                return cachedResult;
+            } else {
+                console.log(`Nincs cache (${analysisCacheKey}), friss elemzés indul...`);
+            }
         } else {
-            rec.primary.reason = (rec.primary.reason || "") + disagreementNote;
+            console.log(`Újraelemzés kényszerítve (${analysisCacheKey})`);
         }
 
-        rec.recommended_bet = rec.primary.market;
-        rec.final_confidence = rec.primary.confidence;
-        rec.brief_reasoning = rec.primary.reason;
-
-        console.log(`[AI_Service v130.4 - Főnök] SNIPER MODE Tipp: ${rec.primary.market} | SPOTTER: ${rec.secondary.market}`);
+        // --- 1. Alapkonfiguráció ---
         
-        return rec;
+        console.log(`[Lánc 0/6] Stratégia Gyár: Elemzési stratégia kiválasztása a '${sport}' sportághoz...`);
+        const sportStrategy: ISportStrategy = getSportStrategy(sport);
+        const sportConfig = SPORT_CONFIG[sport];
+        if (!sportConfig) {
+            throw new Error(`Nincs konfiguráció a(z) '${sport}' sporthoz.`);
+        }
 
-    } catch (e: any) {
-        console.error(`[AI_Service v130.4 - Főnök] Hiba: ${e.message}`, e.stack);
-        return { 
-            recommended_bet: "Hiba", final_confidence: 1.0, brief_reasoning: `Hiba: ${e.message}`,
-            primary: { market: "Hiba", confidence: 1.0, reason: "Hiba" },
-            secondary: { market: "Hiba", confidence: 0.0, reason: "Hiba" }
+        // === 2. ÜGYNÖK (SCOUT): Kontextus, Piac és P1 Kezelése ===
+        console.log(`[Lánc 2/6] Scout Ügynök: Kontextus és Piac lekérése (AI-First)...`);
+        const dataFetchOptions: IDataFetchOptions = {
+            sport: sport,
+            homeTeamName: home,
+            awayTeamName: away,
+            leagueName: leagueName,
+            utcKickoff: utcKickoff,
+            forceNew: forceNew,
+            manual_H_xG: safeConvertToNumber(manual_H_xG),
+            manual_H_xGA: safeConvertToNumber(manual_H_xGA),
+            manual_A_xG: safeConvertToNumber(manual_A_xG),
+            manual_A_xGA: safeConvertToNumber(manual_A_xGA),
+            manual_absentees: manual_absentees 
         };
-    }
-}
-
-
-// --- FŐ ORCHESTRÁCIÓS LÉPÉS ---
-export async function runStep_FinalAnalysis(data: any): Promise<any> {
-    
-    const { rawDataJson, specialistReport, simulatorReport, psyReport, valueBetsJson, richContext, matchData, sportStrategy, confidenceScores, bestSafeBet } = data;
-    const sim = simulatorReport || {};
-    const home = matchData.home || 'Hazai';
-    const away = matchData.away || 'Vendég';
-    const sport = matchData.sport || 'soccer';
-    
-    let expertConfidence = "Hiba";
-    let riskAssessment = "Hiba";
-    let tacticalBriefing = "Hiba";
-    let generalAnalysis = "Hiba";
-    let propheticTimeline = "N/A";
-    let strategic_synthesis = "Hiba";
-    let masterRecommendation = { recommended_bet: "Hiba", final_confidence: 1.0, brief_reasoning: "Hiba" };
-    let microAnalyses: { [key: string]: string } = {};
-    
-    try {
-        const expertConfidencePromise = getExpertConfidence(confidenceScores, richContext, rawDataJson, psyReport, specialistReport);
-        const riskAssessmentPromise = getRiskAssessment(sim, rawDataJson, sport, confidenceScores);
-        const playerMarketsPromise = getPlayerMarkets(rawDataJson.key_players, richContext);
-
-        let sportSpecificPromises: Promise<any>[] = [];
         
-        if (sport === 'soccer') {
-            sportSpecificPromises = [
-                getBTTSAnalysis(sim, rawDataJson),
-                getSoccerGoalsOUAnalysis(sim, rawDataJson, sim.mainTotalsLine || 2.5),
-                getCornerAnalysis(sim, rawDataJson),
-                getCardAnalysis(sim, rawDataJson)
-            ];
-        } else if (sport === 'hockey') {
-            sportSpecificPromises = [
-                getHockeyGoalsOUAnalysis(sim, rawDataJson, sim.mainTotalsLine || 6.5),
-                getHockeyWinnerAnalysis(sim, rawDataJson)
-            ];
-        } else if (sport === 'basketball') {
-             sportSpecificPromises = [
-                getBasketballPointsOUAnalysis(sim, rawDataJson, sim.mainTotalsLine || 220.5)
-             ];
-        }
-
-        const results = await Promise.allSettled([
-            expertConfidencePromise, 
-            riskAssessmentPromise, 
-            playerMarketsPromise, 
-            ...sportSpecificPromises
-        ]);
-
-        expertConfidence = (results[0].status === 'fulfilled') ? (results[0].value as string) : "Hiba";
-        riskAssessment = (results[1].status === 'fulfilled') ? (results[1].value as string) : "Hiba";
-        microAnalyses['player_market_analysis'] = (results[2].status === 'fulfilled') ? (results[2].value as string) : "Hiba";
-
-        if (sport === 'soccer') {
-            microAnalyses['btts_analysis'] = (results[3].status === 'fulfilled') ? (results[3].value as string) : "Hiba";
-            microAnalyses['goals_ou_analysis'] = (results[4].status === 'fulfilled') ? (results[4].value as string) : "Hiba";
-            microAnalyses['corner_analysis'] = (results[5].status === 'fulfilled') ? (results[5].value as string) : "Hiba";
-            microAnalyses['card_analysis'] = (results[6].status === 'fulfilled') ? (results[6].value as string) : "Hiba";
-        } else if (sport === 'hockey') {
-            microAnalyses['hockey_goals_ou_analysis'] = (results[3].status === 'fulfilled') ? (results[3].value as string) : "Hiba";
-            microAnalyses['hockey_winner_analysis'] = (results[4].status === 'fulfilled') ? (results[4].value as string) : "Hiba";
-        }
-
-        try { tacticalBriefing = await getTacticalBriefing(rawDataJson, sport, home, away, riskAssessment); } catch (e) {}
-        try { generalAnalysis = await getFinalGeneralAnalysis(sim, tacticalBriefing, rawDataJson, confidenceScores, psyReport); } catch (e) {}
+        const { 
+            rawStats, 
+            richContext,
+            advancedData,
+            form, 
+            rawData, 
+            leagueAverages = {}, 
+            oddsData,
+            xgSource,
+            availableRosters
+        }: IDataFetchResponse = await getRichContextualData(dataFetchOptions);
+        // === Scout Végzett ===
         
-        if (sport === 'soccer') {
-            try { propheticTimeline = await getPropheticTimeline(rawDataJson, home, away, sport, tacticalBriefing); } catch (e) {}
+        console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
+        if (rawData && rawData.apiFootballData && rawData.apiFootballData.fixtureId) {
+            fixtureIdForSaving = rawData.apiFootballData.fixtureId;
         }
 
-        try { strategic_synthesis = await getStrategicClosingThoughts(sim, rawDataJson, richContext, microAnalyses, riskAssessment, tacticalBriefing, valueBetsJson, confidenceScores, expertConfidence, psyReport, specialistReport, sport); } catch (e) {}
+        // --- 3. Piaci adatok előkészítése ---
+        let mutableOddsData: ICanonicalOdds | null = oddsData;
+        if (!mutableOddsData) {
+            console.warn(`Figyelmeztetés: Nem sikerült szorzó adatokat lekérni ${home} vs ${away} meccshez.`);
+            mutableOddsData = { 
+                current: [], 
+                allMarkets: [], 
+                fromCache: false, 
+                fullApiData: null 
+            };
+        }
 
-        // 4. A "FŐNÖK" HÍVÁSA (SNIPER MODE)
-        masterRecommendation = await getMasterRecommendation(
-            valueBetsJson, 
-            sim, 
-            confidenceScores, 
-            expertConfidence, 
-            riskAssessment, 
-            microAnalyses, 
-            generalAnalysis, 
-            strategic_synthesis, 
-            "N/A", 
-            psyReport, 
-            specialistReport, 
-            sport,
-            bestSafeBet // <--- ÚJ: ÁTADÁS
+        // === PIACI HÍRSZERZÉS (MARKET INTEL) GENERÁLÁSA ===
+        const marketIntel = analyzeLineMovement(mutableOddsData, openingOdds, sport, home);
+        const mainTotalsLine = findMainTotalsLine(mutableOddsData, sport) || sportConfig.totals_line;
+        console.log(`Meghatározott fő gól/pont vonal: ${mainTotalsLine}`);
+        console.log(`Piaci Hírszerzés: ${marketIntel}`);
+
+        // === KRITIKUS LÉPÉS: A Piaci Infó Injektálása a Kontextusba ===
+        const enhancedRichContext = `${richContext}\n\n[PIACI HÍRSZERZÉS (MARKET WISDOM)]:\n${marketIntel}`;
+        
+        // === 2.5 ÜGYNÖK (PSZICHOLÓGUS) ===
+        console.log(`[Lánc 2.5/6] Pszichológus Ügynök: Narratív profilalkotás...`);
+        const psychologistReport = await runStep_Psychologist({
+            rawDataJson: rawData,
+            homeTeamName: home,
+            awayTeamName: away
+        });
+        const { psy_profile_home, psy_profile_away } = psychologistReport;
+        console.log(`[Lánc 2.5/6] Pszichológus végzett.`);
+        
+        // === 2.6 LÉPÉS (ÖNJAVÍTÓ HUROK BEOLVASÁSA) ===
+        console.log(`[Lánc 2.6/6] Önjavító Hurok: 7. Ügynök (Revizor) múltbeli tanulságainak beolvasása...`);
+        const narrativeRatings = getNarrativeRatings();
+        const homeNarrativeRating = narrativeRatings[home.toLowerCase()] || {};
+        const awayNarrativeRating = narrativeRatings[away.toLowerCase()] || {};
+        if (Object.keys(homeNarrativeRating).length > 0 || Object.keys(awayNarrativeRating).length > 0) {
+            console.log(`[Lánc 2.6/6] Tanulságok betöltve. H: ${JSON.stringify(homeNarrativeRating)}, A: ${JSON.stringify(awayNarrativeRating)}`);
+        } else {
+            console.log(`[Lánc 2.6/6] Nincsenek múltbeli tanulságok a Narratív Cache-ben ehhez a párosításhoz.`);
+        }
+
+        // === 1. ÜGYNÖK (QUANT): "Tiszta xG" számítása ===
+        console.log(`[Lánc 1/6] Quant Ügynök: Tiszta xG számítása...`);
+        const { pure_mu_h, pure_mu_a, source: quantSource } = estimatePureXG(
+            home, 
+            away, 
+            rawStats, 
+            sport, 
+            form, 
+            leagueAverages, 
+            advancedData,
+            sportStrategy
         );
+        console.log(`Quant (Tiszta xG) [${quantSource}]: H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)}`);
+        
+        // === 3. ÜGYNÖK (SPECIALISTA) ===
+        console.log(`[Lánc 3/6] Specialista Ügynök (AI): Kontextuális módosítók alkalmazása...`);
+        
+        const specialistInput = {
+            pure_mu_h: pure_mu_h,
+            pure_mu_a: pure_mu_a,
+            quant_source: quantSource,
+            rawDataJson: rawData, 
+            sport: sport,
+            psy_profile_home: psy_profile_home, 
+            psy_profile_away: psy_profile_away,
+            homeNarrativeRating: homeNarrativeRating,
+            awayNarrativeRating: awayNarrativeRating
+        };
+        const specialistReport = await runStep_Specialist(specialistInput);
 
-    } catch (e: any) {
-        console.error(`[AI_Service v130.4] KRITIKUS HIBA: ${e.message}`);
-        masterRecommendation.brief_reasoning = `KRITIKUS HIBA: ${e.message}`;
+        // === BIZTONSÁGI SANITIZÁLÁS ===
+        const { modified_mu_h: raw_mu_h, modified_mu_a: raw_mu_a } = specialistReport;
+        
+        const mu_h = (typeof raw_mu_h === 'number' && !isNaN(raw_mu_h)) ? raw_mu_h : pure_mu_h;
+        const mu_a = (typeof raw_mu_a === 'number' && !isNaN(raw_mu_a)) ? raw_mu_a : pure_mu_a;
+        
+        if (mu_h !== raw_mu_h || mu_a !== raw_mu_a) {
+            console.warn(`[AnalysisFlow] FIGYELEM: A Specialista hibás adatot küldött. Visszaváltás Quant értékekre.`);
+        }
+        
+        console.log(`Specialista (AI) (Súlyozott xG - Végleges): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
+        
+        const finalXgSource = xgSource;
+
+        // === 4. ÜGYNÖK (SZIMULÁTOR): Meccs szimulálása ===
+        console.log(`[Lánc 4/6] Szimulátor Ügynök: 25000 szimuláció futtatása...`);
+        const { mu_corners, mu_cards } = estimateAdvancedMetrics(
+            rawData, 
+            sport, 
+            leagueAverages,
+            sportStrategy 
+        );
+        
+        // === BIZALOM SZÁMÍTÁS ===
+        const confidenceScores = calculateConfidenceScores(
+            sport, 
+            home, 
+            away, 
+            rawData, 
+            form, 
+            mu_h, 
+            mu_a, 
+            mainTotalsLine,
+            marketIntel
+        );
+        console.log(`Szimulátor (Bizalom): Győztes=${confidenceScores.winner.toFixed(1)}, Pontok=${confidenceScores.totals.toFixed(1)}, Átlag=${confidenceScores.overall.toFixed(1)}`);
+
+        const sim = simulateMatchProgress(
+            mu_h, mu_a, 
+            mu_corners, mu_cards, 25000, sport, null, mainTotalsLine, rawData
+        );
+        
+        sim.stat_confidence_winner = confidenceScores.winner; 
+        sim.stat_confidence_totals = confidenceScores.totals;
+        sim.stat_confidence_overall = confidenceScores.overall;
+        
+        sim.mu_h_sim = mu_h; sim.mu_a_sim = mu_a;
+        sim.mu_corners_sim = mu_corners; sim.mu_cards_sim = mu_cards; sim.mainTotalsLine = mainTotalsLine;
+        
+        const valueBets = calculateValue(sim, mutableOddsData, sport, home, away);
+        console.log(`Szimulátor végzett.`);
+
+        // === ÚJ (v130.0): BIZTONSÁGI TIPP LEKÉRÉSE (SNIPER) ===
+        const bestSafeBet = getBestBetByProbability(sim, sport, mutableOddsData);
+        console.log(`SNIPER CHOICE: ${bestSafeBet.market} (${bestSafeBet.probability.toFixed(1)}%, Odds: ${bestSafeBet.odds})`);
+        // =======================================================
+
+        // === 5/6. ÜGYNÖK (HIBRID FŐNÖK - SNIPER EDITION) ===
+        console.log(`[Lánc 5/6] "Hibrid Főnök" hívása (Sniper Logic)...`);
+        
+        const finalAnalysisInput = {
+            matchData: { home, away, sport, leagueName },
+            rawDataJson: rawData,
+            specialistReport: specialistReport, 
+            simulatorReport: sim,              
+            psyReport: psychologistReport,     
+            valueBetsJson: valueBets,
+            richContext: enhancedRichContext,
+            sportStrategy: sportStrategy,
+            confidenceScores: confidenceScores,
+            bestSafeBet: bestSafeBet // <--- SNIPER ADAT ÁTADVA
+        };
+
+        const finalReport: any = await runStep_FinalAnalysis(finalAnalysisInput);
+
+        if (finalReport.error) {
+            console.error("A Hibrid Főnök hibát adott vissza:", finalReport.error);
+            throw new Error(finalReport.error);
+        }
+        
+        const masterRecommendation = finalReport?.master_recommendation;
+        let finalConfidenceScore = 1.0; 
+        
+        if (masterRecommendation && typeof masterRecommendation.final_confidence === 'number') {
+            finalConfidenceScore = masterRecommendation.final_confidence;
+        } else {
+            console.error("KRITIKUS HIBA: A Hibrid Főnök nem adott vissza érvényes 'final_confidence' számot! 1.0-ra állítva.");
+        }
+        // === Hibrid Főnök Végzett ===
+
+        console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterRecommendation)} (Végső bizalom: ${finalConfidenceScore})`);
+
+        // --- 7. Válasz Elküldése és Naplózás ---
+        const debugInfo = {
+            playerDataSource: rawData?.detailedPlayerStats?.home_absentees?.length > 0 ?
+                (manual_absentees ? 'P1 (Manuális)' : 'P2/P4 (Automatikus)') : 
+                'Nincs adat',
+            realXgUsed: finalXgSource,
+            fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen',
+            // === CRITICAL FIX: Átalakítás stringgé a frontend számára ===
+            sniperChoice: `${bestSafeBet.market} (${bestSafeBet.probability.toFixed(1)}%, Odds: ${bestSafeBet.odds})` 
+            // ===========================================================
+        };
+        
+        const auditData = {
+            analysisData: {
+                committee: {
+                    quant: { mu_h: pure_mu_h, mu_a: pure_mu_a, source: quantSource },
+                    specialist_mu: { mu_h: mu_h, mu_a: mu_a },
+                    scout: { 
+                        summary: richContext || "Nincs részletes kontextus.",
+                        key_insights: [] 
+                    },
+                    critic: {
+                        tactical_summary: finalReport?.risk_assessment || "Nincs kockázati elemzés.",
+                        key_risks: [],
+                        contradiction_score: 0.0
+                    },
+                    strategist: {
+                        final_confidence_report: finalReport?.final_confidence_report,
+                        prophetic_timeline: finalReport?.prophetic_timeline,
+                        strategic_synthesis: finalReport?.strategic_synthesis,
+                        micromodels: finalReport?.micromodels
+                    }
+                },
+                matchData: {
+                    home, 
+                    away, 
+                    sport, 
+                    mainTotalsLine: sim.mainTotalsLine,
+                    mu_h: sim.mu_h_sim,
+                    mu_a: sim.mu_a_sim
+                },
+                valueBets: valueBets, 
+                bestSafeBet: bestSafeBet, // <--- Itt maradhat objektum, mert ez csak a logba megy
+                confidenceScores: {
+                    winner: parseFloat(confidenceScores.winner.toFixed(1)),
+                    totals: parseFloat(confidenceScores.totals.toFixed(1)),
+                    overall: parseFloat(confidenceScores.overall.toFixed(1))
+                },
+                finalConfidenceScore: parseFloat(finalConfidenceScore.toFixed(1)),
+                sim: {
+                    pHome: sim.pHome, pDraw: sim.pDraw, pAway: sim.pAway,
+                    pOver: sim.pOver, pUnder: sim.pUnder, pBTTS: sim.pBTTS,
+                    topScore: sim.topScore
+                },
+                recommendation: masterRecommendation,
+                narrativeRatingsUsed: {
+                    home: homeNarrativeRating,
+                    away: awayNarrativeRating
+                }
+            }
+        };
+        
+        const jsonResponse: IAnalysisResponse = { 
+            analysisData: {
+                committee: {
+                    quant: auditData.analysisData.committee.quant,
+                    psychologist: psychologistReport, 
+                    specialist: { 
+                        mu_h: mu_h, 
+                        mu_a: mu_a, 
+                        log: specialistReport.reasoning,  
+                        report: specialistReport   
+                    },
+                    strategist: finalReport 
+                },
+                matchData: auditData.analysisData.matchData,
+                oddsData: mutableOddsData,
+                valueBets: valueBets,
+                confidenceScores: auditData.analysisData.confidenceScores, 
+                finalConfidenceScore: auditData.analysisData.finalConfidenceScore,
+                sim: sim,
+                recommendation: masterRecommendation,
+                xgSource: finalXgSource, 
+                availableRosters: availableRosters
+            },
+            debugInfo: debugInfo 
+        };
+
+        scriptCache.set(analysisCacheKey, jsonResponse);
+        console.log(`Elemzés befejezve és cache mentve (${analysisCacheKey})`);
+        
+        saveAnalysisToSheet({
+            sport, 
+            home, 
+            away, 
+            date: new Date(), 
+            html: `<pre style="white-space: pre-wrap;">${JSON.stringify(auditData, null, 2)}</pre>`, 
+            JSON_Data: JSON.stringify(auditData),
+            id: analysisCacheKey,
+            fixtureId: fixtureIdForSaving,
+            recommendation: masterRecommendation
+        })
+            .then(() => console.log(`Elemzés (JSON) mentve a Google Sheet-be (${analysisCacheKey})`))
+            .catch(sheetError => console.error(`Hiba az elemzés Google Sheet-be mentésekor (${analysisCacheKey}): ${sheetError.message}`));
+
+        return jsonResponse;
+    } catch (error: any) {
+        const homeParam = params?.home || 'N-A';
+        const awayParam = params?.away || 'N-A';
+        const sportParam = sport || params?.sport || 'N-A';
+        console.error(`Súlyos hiba az elemzési folyamatban (${sportParam} - ${homeParam} vs ${awayParam}): ${error.message}`, error.stack);
+        return { error: `Elemzési hiba: ${error.message}` };
     }
-    
-    return {
-        risk_assessment: riskAssessment,
-        tactical_briefing: tacticalBriefing,
-        general_analysis: generalAnalysis,
-        strategic_synthesis: strategic_synthesis,
-        prophetic_timeline: propheticTimeline,
-        final_confidence_report: expertConfidence,
-        micromodels: microAnalyses,
-        master_recommendation: masterRecommendation, 
-        agent_reports: { psychologist: psyReport, specialist: specialistReport }
-    };
-}
-
-// --- CHAT FUNKCIÓ (Változatlan) ---
-export async function getChatResponse(context: string, history: any[], question: string): Promise<{ answer?: string; error?: string }> {
-    if (!context || !question) return { error: "Hiányzó adatok." };
-    try {
-        const historyString = (history || []).map(msg => `${msg.role === 'user' ? 'Felhasználó' : 'AI'}: ${msg.parts?.[0]?.text || ''}`).join('\n');
-        const prompt = `You are an elite sports analyst AI. Context:\n${context}\nHistory:\n${historyString}\nUser Question: ${question}\nAnswer concisely in Hungarian.`;
-        const rawAnswer = await _callGemini(prompt, false); 
-        return rawAnswer ? { answer: rawAnswer } : { error: "Hiba." };
-    } catch (e: any) { return { error: e.message }; }
 }
