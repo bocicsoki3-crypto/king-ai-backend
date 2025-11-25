@@ -1,5 +1,7 @@
 // FÁJL: AnalysisFlow.ts
-// VERZIÓ: v130.0 (SNIPER INTEGRATION - FULL)
+// VERZIÓ: v130.5 (CRITICAL FIX: Stringify Sniper Choice for UI)
+// JAVÍTÁS: A 'debugInfo.sniperChoice' objektumot stringgé alakítjuk,
+//          hogy a frontend 'text.includes' hívása ne omoljon össze.
 
 import NodeCache from 'node-cache';
 import { SPORT_CONFIG } from './config.js';
@@ -29,22 +31,17 @@ import {
     analyzeLineMovement,
     getBestBetByProbability // <--- SNIPER FÜGGVÉNY
 } from './Model.js';
-// AI Szolgáltatás Importok - JAVÍTOTT IMPORT
+// AI Szolgáltatás Importok
 import {
     runStep_Psychologist, 
     runStep_Specialist,   
     runStep_FinalAnalysis 
 } from './AI_Service.js';
 import { saveAnalysisToSheet } from './sheets.js'; 
-// Önjavító Hurok importálása
 import { getNarrativeRatings } from './LearningService.js';
-
-// === ÚJ IMPORT A STRATÉGIÁHOZ ===
 import { getSportStrategy } from './strategies/StrategyFactory.js';
 import type { ISportStrategy } from './strategies/ISportStrategy.js';
-// === IMPORT VÉGE ===
 
-// Gyorsítótár inicializálása
 const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 
 // Az új, strukturált JSON válasz
@@ -119,11 +116,11 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             force: forceNewStr, 
             sheetUrl, 
             utcKickoff, 
-            leagueName,
+            leagueName, 
             manual_H_xG, 
-            manual_H_xGA,
+            manual_H_xGA, 
             manual_A_xG, 
-            manual_A_xGA,
+            manual_A_xGA, 
             manual_absentees
         } = params;
 
@@ -141,8 +138,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             `_P1A_${manual_absentees.home.length}_${manual_absentees.away.length}` : 
             '';
         
-        // v130.0 Cache kulcs
-        analysisCacheKey = `analysis_v130.0_sniper_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
+        // v130.5 Cache kulcs
+        analysisCacheKey = `analysis_v130.5_sniper_${sport}_${safeHome}_vs_${safeAway}${p1AbsenteesHash}`;
         
         if (!forceNew) {
             const cachedResult = scriptCache.get<IAnalysisResponse>(analysisCacheKey);
@@ -331,20 +328,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         // === 5/6. ÜGYNÖK (HIBRID FŐNÖK - SNIPER EDITION) ===
         console.log(`[Lánc 5/6] "Hibrid Főnök" hívása (Sniper Logic)...`);
         
-        interface FinalAnalysisInput {
-            matchData: { home: string; away: string; sport: string; leagueName: string; };
-            rawDataJson: ICanonicalRawData; 
-            specialistReport: any; 
-            simulatorReport: any;  
-            psyReport: any;        
-            valueBetsJson: any[];
-            richContext: string;
-            sportStrategy: ISportStrategy;
-            confidenceScores: { winner: number; totals: number; overall: number }; 
-            bestSafeBet: any; // <--- ÚJ MEZŐ
-        }
-
-        const finalAnalysisInput: FinalAnalysisInput = {
+        const finalAnalysisInput = {
             matchData: { home, away, sport, leagueName },
             rawDataJson: rawData,
             specialistReport: specialistReport, 
@@ -383,7 +367,9 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 'Nincs adat',
             realXgUsed: finalXgSource,
             fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen',
-            sniperChoice: bestSafeBet
+            // === CRITICAL FIX: Átalakítás stringgé a frontend számára ===
+            sniperChoice: `${bestSafeBet.market} (${bestSafeBet.probability.toFixed(1)}%, Odds: ${bestSafeBet.odds})` 
+            // ===========================================================
         };
         
         const auditData = {
@@ -416,7 +402,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                     mu_a: sim.mu_a_sim
                 },
                 valueBets: valueBets, 
-                bestSafeBet: bestSafeBet, // <--- NAPLÓZZUK IS
+                bestSafeBet: bestSafeBet, // <--- Itt maradhat objektum, mert ez csak a logba megy
                 confidenceScores: {
                     winner: parseFloat(confidenceScores.winner.toFixed(1)),
                     totals: parseFloat(confidenceScores.totals.toFixed(1)),
