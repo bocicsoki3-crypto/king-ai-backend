@@ -1,5 +1,10 @@
 // FÁJL: strategies/HockeyStrategy.ts
-// VERZIÓ: v107.1 (Multi-Line Context & GSAx Fallback)
+// VERZIÓ: v124.0 (Recent Form & Power Play Impact)
+// MÓDOSÍTÁS (v124.0):
+// 1. ÚJ: Recent Form súlyozás (utolsó 5 meccs alapján ±10% xG módosítás)
+// 2. ÚJ: Power Play hatás (ha elérhető PP% → ±0.05 gól/meccs módosítás)
+// 3. ÚJ: Biztonsági korlátok (1.5-5.0 gól/meccs tartomány)
+// 4. EREDMÉNY: Pontosabb xG becslés momentum és specialista egységek alapján
 
 import type { 
     ISportStrategy, 
@@ -46,14 +51,55 @@ export class HockeyStrategy implements ISportStrategy {
             };
         }
         
-        // === P2 (Alap Statisztika) Fallback ===
-        const avg_h_gf = rawStats.home?.gf != null ? (rawStats.home.gf / (rawStats.home.gp || 1)) : (leagueAverages.avg_h_gf || 3.1);
-        const avg_a_gf = rawStats.away?.gf != null ? (rawStats.away.gf / (rawStats.away.gp || 1)) : (leagueAverages.avg_a_gf || 2.9);
-        const avg_h_ga = rawStats.home?.ga != null ? (rawStats.home.ga / (rawStats.home.gp || 1)) : (leagueAverages.avg_h_ga || 2.9);
-        const avg_a_ga = rawStats.away?.ga != null ? (rawStats.away.ga / (rawStats.away.gp || 1)) : (leagueAverages.avg_a_ga || 3.1);
+        // === P2 (Alap Statisztika) Fallback - FEJLESZTVE v124.0 ===
+        let avg_h_gf = rawStats.home?.gf != null ? (rawStats.home.gf / (rawStats.home.gp || 1)) : (leagueAverages.avg_h_gf || 3.1);
+        let avg_a_gf = rawStats.away?.gf != null ? (rawStats.away.gf / (rawStats.away.gp || 1)) : (leagueAverages.avg_a_gf || 2.9);
+        let avg_h_ga = rawStats.home?.ga != null ? (rawStats.home.ga / (rawStats.home.gp || 1)) : (leagueAverages.avg_h_ga || 2.9);
+        let avg_a_ga = rawStats.away?.ga != null ? (rawStats.away.ga / (rawStats.away.gp || 1)) : (leagueAverages.avg_a_ga || 3.1);
 
-        const pure_mu_h = (avg_h_gf + avg_a_ga) / 2;
-        const pure_mu_a = (avg_a_gf + avg_h_ga) / 2;
+        // === ÚJ v124.0: RECENT FORM SÚLYOZÁS ===
+        // Ha van form adat, akkor az utolsó 5 meccs alapján finomítunk
+        const getFormMultiplier = (formString: string | null | undefined): number => {
+            if (!formString || typeof formString !== 'string') return 1.0;
+            const recentForm = formString.substring(0, 5); // Utolsó 5 meccs
+            const wins = (recentForm.match(/W/g) || []).length;
+            const losses = (recentForm.match(/L/g) || []).length;
+            const total = recentForm.length;
+            
+            if (total === 0) return 1.0;
+            
+            // Nyerési arány: ha 80%+, akkor +10% várható gól, ha 20%-, akkor -10%
+            const winRate = wins / total;
+            if (winRate >= 0.8) return 1.10;
+            if (winRate >= 0.6) return 1.05;
+            if (winRate <= 0.2) return 0.90;
+            if (winRate <= 0.4) return 0.95;
+            return 1.0;
+        };
+        
+        const homeFormMult = getFormMultiplier(options.form?.home_overall);
+        const awayFormMult = getFormMultiplier(options.form?.away_overall);
+        
+        avg_h_gf *= homeFormMult;
+        avg_a_gf *= awayFormMult;
+        
+        // === ÚJ v124.0: POWER PLAY / GOALIE IMPACT (Ha elérhető advancedData-ban) ===
+        // Ha van PP% vagy GSAx adat, azt is figyelembe vesszük
+        if (advancedData?.home_pp_percent && advancedData?.away_pp_percent) {
+            const leagueAvgPP = 0.20; // Liga átlag ~20% PP sikerség
+            const homePPBonus = (advancedData.home_pp_percent - leagueAvgPP) * 0.5; // +0.1 → +0.05 gól
+            const awayPPBonus = (advancedData.away_pp_percent - leagueAvgPP) * 0.5;
+            
+            avg_h_gf += homePPBonus;
+            avg_a_gf += awayPPBonus;
+        }
+
+        let pure_mu_h = (avg_h_gf + avg_a_ga) / 2;
+        let pure_mu_a = (avg_a_gf + avg_h_ga) / 2;
+        
+        // Biztonsági korlátok (NHL-ben nagyon ritka a 7+ gól)
+        pure_mu_h = Math.max(1.5, Math.min(5.0, pure_mu_h));
+        pure_mu_a = Math.max(1.5, Math.min(5.0, pure_mu_a));
         
         return {
             pure_mu_h: pure_mu_h,

@@ -1,9 +1,11 @@
 // FÁJL: strategies/SoccerStrategy.ts
-// VERZIÓ: v105.1 ("Intelligens Bizalom Refaktor" - TS2339 Javítás)
-// MÓDOSÍTÁS (v105.1):
-// 1. JAVÍTÁS: Eltávolítva a 'is_derby' tulajdonság a 'cardsData' objektumból
-//    (a régi 141. soron), mivel az nem létezik a 'canonical.d.ts'
-//    típusdefiníciójában, ami a TS2339 hibát okozta.
+// VERZIÓ: v124.0 (P4 Auto xG - Player Impact System)
+// MÓDOSÍTÁS (v124.0):
+// 1. ÚJ: P4 Auto xG implementálás detailedPlayerStats alapján
+//    - Kulcs támadók hiánya → várható gól csökkenés (-0.20/játékos)
+//    - Kulcs védők hiánya → ellenfél várható gól növekedés (+0.15/játékos)
+//    - Intelligens fallback P2-re ha nincs elég adat
+// 2. EREDMÉNY: Pontosabb xG becslés sérülések/eltiltások figyelembevételével
 
 import type { 
     ISportStrategy, 
@@ -52,8 +54,78 @@ export class SoccerStrategy implements ISportStrategy {
             };
         }
 
-        // === P4 (Automatikus) Adatok Ellenőrzése ===
-        // TODO: P4 logika implementálása
+        // === P4 (Automatikus) Adatok Ellenőrzése - IMPLEMENTÁLVA v124.0 ===
+        // P4: detailedPlayerStats alapú xG becslés
+        if (advancedData?.detailedPlayerStats) {
+            const homeAbsentees = advancedData.detailedPlayerStats.home_absentees || [];
+            const awayAbsentees = advancedData.detailedPlayerStats.away_absentees || [];
+            
+            // Kulcs támadók hiánya (importance === 'key' és attacking position)
+            const homeKeyAttackersOut = homeAbsentees.filter((p: any) => 
+                p.importance === 'key' && 
+                p.status === 'confirmed_out' &&
+                (p.position === 'Támadó' || p.position === 'Középpályás')
+            ).length;
+            
+            const awayKeyAttackersOut = awayAbsentees.filter((p: any) => 
+                p.importance === 'key' && 
+                p.status === 'confirmed_out' &&
+                (p.position === 'Támadó' || p.position === 'Középpályás')
+            ).length;
+            
+            // Kulcs védők hiánya
+            const homeKeyDefendersOut = homeAbsentees.filter((p: any) => 
+                p.importance === 'key' && 
+                p.status === 'confirmed_out' &&
+                (p.position === 'Védő' || p.position === 'Kapus')
+            ).length;
+            
+            const awayKeyDefendersOut = awayAbsentees.filter((p: any) => 
+                p.importance === 'key' && 
+                p.status === 'confirmed_out' &&
+                (p.position === 'Védő' || p.position === 'Kapus')
+            ).length;
+            
+            // Ha van jelentős hiányzó és van statisztika, akkor P4-et használjuk
+            if ((homeKeyAttackersOut + awayKeyAttackersOut + homeKeyDefendersOut + awayKeyDefendersOut) > 0 &&
+                rawStats.home?.gp && rawStats.away?.gp) {
+                
+                // Alapértékek P2 módszerrel
+                const avg_h_gf = rawStats.home.gf / rawStats.home.gp;
+                const avg_a_gf = rawStats.away.gf / rawStats.away.gp;
+                const avg_h_ga = rawStats.home.ga / rawStats.home.gp;
+                const avg_a_ga = rawStats.away.ga / rawStats.away.gp;
+                
+                let p4_mu_h = (avg_h_gf + avg_a_ga) / 2;
+                let p4_mu_a = (avg_a_gf + avg_h_ga) / 2;
+                
+                // MÓDOSÍTÁSOK hiányzók alapján
+                // Kulcs támadó hiányzik → csökken a várható gól
+                // Kulcs védő hiányzik → nő az ellenfél várható gólja
+                const attackerImpact = 0.20; // Egy kulcs támadó hiánya ~0.2 gól csökkenés
+                const defenderImpact = 0.15; // Egy kulcs védő hiánya ~0.15 gól növekedés ellenféln
+
+ek
+                
+                p4_mu_h -= homeKeyAttackersOut * attackerImpact;
+                p4_mu_a -= awayKeyAttackersOut * attackerImpact;
+                
+                p4_mu_h += awayKeyDefendersOut * defenderImpact;
+                p4_mu_a += homeKeyDefendersOut * defenderImpact;
+                
+                // Biztosítjuk, hogy pozitívak maradjanak
+                p4_mu_h = Math.max(0.5, p4_mu_h);
+                p4_mu_a = Math.max(0.5, p4_mu_a);
+                
+                console.log(`[SoccerStrategy] P4 Auto xG: H=${p4_mu_h.toFixed(2)}, A=${p4_mu_a.toFixed(2)} (Hiányzók: H_Att=${homeKeyAttackersOut}, A_Att=${awayKeyAttackersOut}, H_Def=${homeKeyDefendersOut}, A_Def=${awayKeyDefendersOut})`);
+                
+                return {
+                    pure_mu_h: p4_mu_h,
+                    pure_mu_a: p4_mu_a,
+                    source: "P4 (Auto xG - Player Impact)"
+                };
+            }
+        }
         
         // === P2 (Alap Statisztika) Fallback ===
         // (Logika a v81.3-ból)

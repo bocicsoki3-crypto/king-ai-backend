@@ -1,5 +1,9 @@
 // FÁJL: strategies/BasketballStrategy.ts
-// VERZIÓ: v107.0 (Valós P4 Becslés Javítás)
+// VERZIÓ: v124.0 (Pace Factor Integration)
+// MÓDOSÍTÁS (v124.0):
+// 1. ÚJ: Pace Factor beépítés (possessions/game alapján ±20% pontszám módosítás)
+// 2. ÚJ: Style-based fallback ('Fast'/'Slow' taktikák ±5% hatással)
+// 3. EREDMÉNY: Pontosabb total points becslés gyors/lassú játékstílusok esetén
 
 import type { 
     ISportStrategy, 
@@ -46,19 +50,59 @@ export class BasketballStrategy implements ISportStrategy {
             };
         }
         
-        // === P4 (Automatikus) Becslés (v107.0 JAVÍTÁS) ===
+        // === P4 (Automatikus) Becslés - FEJLESZTVE v124.0 ===
         // Ha nincsenek P1 adatok, a csapatok átlagos pontszámaiból számolunk.
         // Formula: (Hazai Támadás + Vendég Védekezés) / 2  és fordítva.
         
         // Alapértelmezett liga átlag (ha minden adat hiányzik)
         const leagueAvgPoints = 112.0; // NBA átlag közelebb van a 112-115-höz manapság
+        const leagueAvgPossessions = 98.0; // NBA átlag possessions/game
 
         // Biztonságos adatkinyerés (ha 0 vagy null, akkor liga átlag)
-        const h_scored = (rawStats.home.gf && rawStats.home.gp) ? (rawStats.home.gf / rawStats.home.gp) : leagueAvgPoints;
-        const h_conceded = (rawStats.home.ga && rawStats.home.gp) ? (rawStats.home.ga / rawStats.home.gp) : leagueAvgPoints;
+        let h_scored = (rawStats.home.gf && rawStats.home.gp) ? (rawStats.home.gf / rawStats.home.gp) : leagueAvgPoints;
+        let h_conceded = (rawStats.home.ga && rawStats.home.gp) ? (rawStats.home.ga / rawStats.home.gp) : leagueAvgPoints;
         
-        const a_scored = (rawStats.away.gf && rawStats.away.gp) ? (rawStats.away.gf / rawStats.away.gp) : leagueAvgPoints;
-        const a_conceded = (rawStats.away.ga && rawStats.away.gp) ? (rawStats.away.ga / rawStats.away.gp) : leagueAvgPoints;
+        let a_scored = (rawStats.away.gf && rawStats.away.gp) ? (rawStats.away.gf / rawStats.away.gp) : leagueAvgPoints;
+        let a_conceded = (rawStats.away.ga && rawStats.away.gp) ? (rawStats.away.ga / rawStats.away.gp) : leagueAvgPoints;
+
+        // === ÚJ v124.0: PACE FACTOR BEÉPÍTÉS ===
+        // Ha van advancedData-ban pace (possessions/game), azt figyelembe vesszük
+        // Gyorsabb pace → több pontszám, lassabb pace → kevesebb
+        let homePaceFactor = 1.0;
+        let awayPaceFactor = 1.0;
+        
+        if (advancedData?.home_pace && advancedData?.away_pace) {
+            const homePace = advancedData.home_pace;
+            const awayPace = advancedData.away_pace;
+            
+            // Várható meccs pace = átlaga a két csapat pace-ének
+            const expectedMatchPace = (homePace + awayPace) / 2;
+            const paceDeviation = (expectedMatchPace / leagueAvgPossessions) - 1.0;
+            
+            // Ha +10% pace → ~+8-10% pontszám
+            homePaceFactor = 1.0 + (paceDeviation * 0.8);
+            awayPaceFactor = 1.0 + (paceDeviation * 0.8);
+            
+            console.log(`[BasketballStrategy] Pace Factor: H_Pace=${homePace}, A_Pace=${awayPace}, Match_Pace=${expectedMatchPace.toFixed(1)}, Multiplier=${homePaceFactor.toFixed(3)}`);
+        } else if (advancedData?.tactics?.home?.style || advancedData?.tactics?.away?.style) {
+            // Fallback: ha nincs pontos pace, de van style (pl. "Fast", "Slow")
+            const homeStyle = (advancedData?.tactics?.home?.style || "").toLowerCase();
+            const awayStyle = (advancedData?.tactics?.away?.style || "").toLowerCase();
+            
+            if (homeStyle.includes('fast') || awayStyle.includes('fast')) {
+                homePaceFactor = 1.05;
+                awayPaceFactor = 1.05;
+            } else if (homeStyle.includes('slow') || awayStyle.includes('slow')) {
+                homePaceFactor = 0.95;
+                awayPaceFactor = 0.95;
+            }
+        }
+        
+        h_scored *= homePaceFactor;
+        a_scored *= awayPaceFactor;
+        h_conceded *= homePaceFactor;
+        a_conceded *= awayPaceFactor;
+        // === PACE FACTOR VÉGE ===
 
         // Súlyozott számítás
         // Hazai várható pont = (Hazai szerzett átlag + Vendég kapott átlag) / 2

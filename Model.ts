@@ -1,13 +1,13 @@
 // FÁJL: Model.ts
-// VERZIÓ: v106.0 (Team Totals Value Calculation)
-// MÓDOSÍTÁS (v106.0):
-// 1. ÚJ FUNKCIÓ: 'calculateProbabilityFromScores'. Ez egy segédfüggvény,
-//    ami a szimulációs eredményekből (scores map) kiszámolja egy adott
-//    feltétel (pl. Hazai > 2.5) valószínűségét.
-// 2. BŐVÍTÉS: A 'calculateValue' funkció most már feldolgozza a
-//    'home_total' és 'away_total' piacokat is.
-// 3. EREDMÉNY: A rendszer képes 'Value Bet'-et találni a csapat-specifikus
-//    Over/Under piacokon is (pl. "Warriors Over 115.5").
+// VERZIÓ: v124.0 (Dynamic Confidence Thresholds)
+// MÓDOSÍTÁS (v124.0):
+// 1. ÚJ: Dinamikus százalékos thresholds a confidence score-okhoz
+//    - Basketball: 5% (high), 1.5% (low) különbség az összpontszámhoz képest
+//    - Hockey: 12% (high), 3.5% (low) különbség
+//    - Soccer: 15% (high), 4% (low) különbség
+// 2. ÚJ: Totals confidence is dinamikus (Basketball: 2.5%/0.9%, Hockey: 10%/3%, Soccer: 16%/4%)
+// 3. EREDMÉNY: Sportág-arányos confidence scoring, pontosabb értékelés
+// 4. DEBUG: Console log hozzáadva a thresholdokhoz
 
 import { SPORT_CONFIG } from './config.js';
 import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
@@ -307,15 +307,33 @@ export function calculateConfidenceScores(
         generalPenalty += (homeKeyAbsentees + awayKeyAbsentees) * 0.5;
 
         
-        // --- A. GYŐZTES (WINNER) PIACOK BIZALMA ---
+        // --- A. GYŐZTES (WINNER) PIACOK BIZALMA - FEJLESZTVE v124.0 ---
         const xgDiff = Math.abs(mu_h - mu_a);
-        const thresholdHigh = sport === 'basketball' ? 10 : sport === 'hockey' ? 0.7 : 0.35;
-        const thresholdLow = sport === 'basketball' ? 3 : sport === 'hockey' ? 0.2 : 0.1;
         
-        if (xgDiff > thresholdHigh) winnerScore += 2.0;
-        else if (xgDiff > thresholdHigh * 0.6) winnerScore += 1.0;
-        if (xgDiff < thresholdLow) winnerScore -= 2.0;
-        else if (xgDiff < thresholdLow * 1.5) winnerScore -= 1.0;
+        // === ÚJ v124.0: DINAMIKUS SZÁZALÉKOS THRESHOLDS ===
+        // Kosárnál a különbséget az összpontszámhoz viszonyítjuk
+        const totalExpected = mu_h + mu_a;
+        const xgDiffPercent = (xgDiff / totalExpected) * 100;
+        
+        // Sport-specifikus százalékos küszöbök
+        let thresholdHighPct: number, thresholdLowPct: number;
+        if (sport === 'basketball') {
+            thresholdHighPct = 5.0;  // 5% különbség (pl. 11 pont 220-ból)
+            thresholdLowPct = 1.5;   // 1.5% különbség (pl. 3.3 pont)
+        } else if (sport === 'hockey') {
+            thresholdHighPct = 12.0; // 12% különbség (pl. 0.72 gól 6-ból)
+            thresholdLowPct = 3.5;   // 3.5% különbség (pl. 0.21 gól)
+        } else { // soccer
+            thresholdHighPct = 15.0; // 15% különbség (pl. 0.4 gól 2.7-ből)
+            thresholdLowPct = 4.0;   // 4% különbség (pl. 0.11 gól)
+        }
+        
+        if (xgDiffPercent > thresholdHighPct) winnerScore += 2.0;
+        else if (xgDiffPercent > thresholdHighPct * 0.6) winnerScore += 1.0;
+        if (xgDiffPercent < thresholdLowPct) winnerScore -= 2.0;
+        else if (xgDiffPercent < thresholdLowPct * 1.5) winnerScore -= 1.0;
+        
+        console.log(`[Confidence] xG Diff: ${xgDiff.toFixed(2)} (${xgDiffPercent.toFixed(1)}%) | Thresholds: High=${thresholdHighPct}%, Low=${thresholdLowPct}%`);
 
         const getFormPointsPerc = (formString: string | null | undefined): number | null => {
              if (!formString || typeof formString !== 'string' || formString === "N/A") return null;
@@ -339,18 +357,32 @@ export function calculateConfidenceScores(
             }
         }
         
-        // --- B. PONTOK (TOTALS) PIACOK BIZALMA ---
+        // --- B. PONTOK (TOTALS) PIACOK BIZALMA - FEJLESZTVE v124.0 ---
         const modelTotal = mu_h + mu_a;
         const marketTotal = mainTotalsLine;
         const totalsDiff = Math.abs(modelTotal - marketTotal);
         
-        // (v105.1 Bátrabb küszöbök)
-        const totalsThresholdHigh = sport === 'basketball' ? 5 : sport === 'hockey' ? 0.6 : 0.4;
-        const totalsThresholdLow = sport === 'basketball' ? 2 : sport === 'hockey' ? 0.2 : 0.1;
+        // === ÚJ v124.0: DINAMIKUS SZÁZALÉKOS THRESHOLDS (TOTALS) ===
+        const totalsDiffPercent = (totalsDiff / marketTotal) * 100;
         
-        if (totalsDiff > totalsThresholdHigh) totalsScore += 4.0;
-        else if (totalsDiff > totalsThresholdHigh * 0.6) totalsScore += 2.5;
-        if (totalsDiff < totalsThresholdLow) totalsScore -= 2.0;
+        // Sport-specifikus százalékos küszöbök
+        let totalsThresholdHighPct: number, totalsThresholdLowPct: number;
+        if (sport === 'basketball') {
+            totalsThresholdHighPct = 2.5;  // 2.5% különbség (pl. 5.5 pont 220-ból)
+            totalsThresholdLowPct = 0.9;   // 0.9% különbség (pl. 2 pont)
+        } else if (sport === 'hockey') {
+            totalsThresholdHighPct = 10.0; // 10% különbség (pl. 0.65 gól 6.5-ből)
+            totalsThresholdLowPct = 3.0;   // 3% különbség (pl. 0.2 gól)
+        } else { // soccer
+            totalsThresholdHighPct = 16.0; // 16% különbség (pl. 0.4 gól 2.5-ből)
+            totalsThresholdLowPct = 4.0;   // 4% különbség (pl. 0.1 gól)
+        }
+        
+        if (totalsDiffPercent > totalsThresholdHighPct) totalsScore += 4.0;
+        else if (totalsDiffPercent > totalsThresholdHighPct * 0.6) totalsScore += 2.5;
+        if (totalsDiffPercent < totalsThresholdLowPct) totalsScore -= 2.0;
+        
+        console.log(`[Confidence] Totals Diff: ${totalsDiff.toFixed(2)} (${totalsDiffPercent.toFixed(1)}%) | Thresholds: High=${totalsThresholdHighPct}%, Low=${totalsThresholdLowPct}%`);
         
         winnerScore = winnerScore + generalBonus - generalPenalty;
         totalsScore = totalsScore + generalBonus - generalPenalty;
