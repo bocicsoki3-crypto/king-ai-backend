@@ -1,6 +1,6 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v130.1 (THE SNIPER - FULL + JSON FIX)
-// CÉL: Visszahozni a v103.6 "brutálisan jó" döntési logikáját.
+// VERZIÓ: v130.2 (HOTFIX: Team Name Resolver Restored)
+// CÉL: Visszahozni a v103.6 "brutálisan jó" döntési logikáját + TS2305 Javítás.
 
 import { 
     _callGemini, 
@@ -30,10 +30,10 @@ export async function getAndParse(
         const foundKey = Object.keys(result || {}).find(k => k.toLowerCase() === lowerKey);
         if (foundKey) return result[foundKey];
 
-        console.warn(`[AI_Service v130.1] AI Figyelem: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot. Helyette ezeket: ${Object.keys(result || {}).join(', ')}`);
+        console.warn(`[AI_Service v130.2] AI Figyelem: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot. Helyette ezeket: ${Object.keys(result || {}).join(', ')}`);
         return "N/A";
     } catch (e: any) {
-        console.error(`[AI_Service v130.1] Végleges AI Hiba (${stepName}): ${e.message}`);
+        console.error(`[AI_Service v130.2] Végleges AI Hiba (${stepName}): ${e.message}`);
         return `AI Hiba (${keyToExtract}): ${e.message}`;
     }
 }
@@ -41,10 +41,24 @@ export async function getAndParse(
 // === ÜGYNÖK PROMPTOK ===
 
 const PROMPT_DEEP_SCOUT_V3 = `TASK: Investigate {home} vs {away} ({sport}). OUTPUT JSON: { "narrative_summary": "...", "key_news": [] }`;
+
+// === JAVÍTÁS: VISSZAKERÜLT A HIÁNYZÓ PROMPT ===
+const PROMPT_TEAM_RESOLVER_V1 = `
+TASK: You are 'The Mapper', an expert sports data mapping assistant.
+Your goal is to find the correct team ID for a misspelled or alternative team name.
+[CONTEXT]:
+- Input Name: "{inputName}"
+- Search Term: "{searchTerm}"
+- Roster: {rosterJson}
+[OUTPUT STRUCTURE]:
+Your response MUST be ONLY a single, valid JSON object: { "matched_id": <Number | null> }
+`;
+// ===============================================
+
 const PROMPT_PSYCHOLOGIST_V93 = `TASK: Analyze psychology for {homeTeamName} vs {awayTeamName}. OUTPUT JSON: { "psy_profile_home": "...", "psy_profile_away": "..." }`;
 const PROMPT_SPECIALIST_V94 = `TASK: Adjust xG ({pure_mu_h}-{pure_mu_a}) based on context. OUTPUT JSON: { "modified_mu_h": number, "modified_mu_a": number, "reasoning": "..." }`;
 
-// === A RÉGI, NYERŐ FŐNÖK PROMPT (Visszaállítva v103.6-ból) ===
+// === A RÉGI, NYERŐ FŐNÖK PROMPT (SNIPER MODE) ===
 const MASTER_AI_PROMPT_TEMPLATE_SNIPER = `
 CRITICAL TASK: You are the Head Analyst.
 Your task is to analyze ALL reports and determine the SINGLE most compelling betting recommendation.
@@ -72,6 +86,20 @@ OUTPUT FORMAT (Exact JSON):
 // --- ÜGYNÖK FUTTATÓK ---
 
 export async function runStep_DeepScout(data: any) { return _callGeminiWithJsonRetry(fillPromptTemplate(PROMPT_DEEP_SCOUT_V3, data), "DeepScout", 1, true); }
+
+// === JAVÍTÁS: VISSZAKERÜLT A HIÁNYZÓ FÜGGVÉNY (TS2305 FIX) ===
+export async function runStep_TeamNameResolver(data: { inputName: string; searchTerm: string; rosterJson: any[]; }): Promise<number | null> {
+    try {
+        const filledPrompt = fillPromptTemplate(PROMPT_TEAM_RESOLVER_V1, data);
+        const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_TeamNameResolver");
+        return result && result.matched_id ? Number(result.matched_id) : null;
+    } catch (e: any) {
+        console.error(`[AI_Service v130.2] Térképész Hiba: ${e.message}`);
+        return null;
+    }
+}
+// ==============================================================
+
 export async function runStep_Psychologist(data: any) { return _callGeminiWithJsonRetry(fillPromptTemplate(PROMPT_PSYCHOLOGIST_V93, data), "Psychologist"); }
 export async function runStep_Specialist(data: any) { return _callGeminiWithJsonRetry(fillPromptTemplate(PROMPT_SPECIALIST_V94, data), "Specialist"); }
 
@@ -315,12 +343,12 @@ async function getMasterRecommendation(
         rec.final_confidence = rec.primary.confidence;
         rec.brief_reasoning = rec.primary.reason;
 
-        console.log(`[AI_Service v130.1 - Főnök] SNIPER MODE Tipp. Fő: ${rec.primary.market} (${rec.primary.confidence}/10).`);
+        console.log(`[AI_Service v130.2 - Főnök] SNIPER MODE Tipp. Fő: ${rec.primary.market} (${rec.primary.confidence}/10).`);
         
         return rec;
 
     } catch (e: any) {
-        console.error(`[AI_Service v130.1 - Főnök] Hiba: ${e.message}`, e.stack);
+        console.error(`[AI_Service v130.2 - Főnök] Hiba: ${e.message}`, e.stack);
         return { 
             recommended_bet: "Hiba", final_confidence: 1.0, brief_reasoning: `Hiba: ${e.message}`,
             primary: { market: "Hiba", confidence: 1.0, reason: "Hiba" },
@@ -369,9 +397,8 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
             ];
         } else if (sport === 'basketball') {
              sportSpecificPromises = [
-                // Mivel getAndParse már nincs direktben exportálva, használjuk a saját burkolónkat vagy a specifikus függvényt ha van
-                // Itt most egyszerűsítettem, feltételezve hogy ezek a függvények már nem a régi promptokat hívják direktben
-                getBasketballPointsOUAnalysis(sim, rawDataJson, sim.mainTotalsLine || 220.5)
+                getAndParse(BASKETBALL_WINNER_PROMPT, { sim_pHome: sim.pHome, sim_pAway: sim.pAway }, "basketball_winner_analysis", "Bask.Winner"),
+                getAndParse(BASKETBALL_TOTAL_POINTS_PROMPT, { line: sim.mainTotalsLine, sim_pOver: sim.pOver, sim_mu_sum: (sim.mu_h_sim+sim.mu_a_sim) }, "basketball_total_points_analysis", "Bask.Totals")
              ];
         }
 
@@ -423,7 +450,7 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
         );
 
     } catch (e: any) {
-        console.error(`[AI_Service v130.1] KRITIKUS HIBA: ${e.message}`);
+        console.error(`[AI_Service v130.2] KRITIKUS HIBA: ${e.message}`);
         masterRecommendation.brief_reasoning = `KRITIKUS HIBA: ${e.message}`;
     }
     
