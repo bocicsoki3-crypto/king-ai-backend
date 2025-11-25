@@ -324,7 +324,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         console.log(`Szimulátor végzett.`);
 
         // === ÚJ (v130.0): BIZTONSÁGI TIPP LEKÉRÉSE (SNIPER) ===
-        // Ezt adjuk át az AI-nak, mint "B-tervet", ha nincs value bet.
         const bestSafeBet = getBestBetByProbability(sim, sport, mutableOddsData);
         console.log(`SNIPER CHOICE: ${bestSafeBet.market} (${bestSafeBet.probability.toFixed(1)}%, Odds: ${bestSafeBet.odds})`);
         // =======================================================
@@ -384,7 +383,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 'Nincs adat',
             realXgUsed: finalXgSource,
             fromCache_RichContext: rawData?.fromCache ?? 'Ismeretlen',
-            sniperChoice: bestSafeBet // Debug info bővítése
+            sniperChoice: bestSafeBet
         };
         
         const auditData = {
@@ -417,6 +416,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                     mu_a: sim.mu_a_sim
                 },
                 valueBets: valueBets, 
+                bestSafeBet: bestSafeBet, // <--- NAPLÓZZUK IS
                 confidenceScores: {
                     winner: parseFloat(confidenceScores.winner.toFixed(1)),
                     totals: parseFloat(confidenceScores.totals.toFixed(1)),
