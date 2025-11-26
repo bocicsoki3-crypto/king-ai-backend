@@ -1,9 +1,14 @@
 // FÁJL: DataFetch.ts
-// VERZIÓ: v117.1 (TS1117 Fix)
-// MÓDOSÍTÁS (v117.1):
-// 1. JAVÍTVA: A 'providerOptions' objektumban a duplikált kulcsok
-//    (countryContext, homeTeamId, awayTeamId) törölve.
-//    Ez okozta a TS1117 hibát ("An object literal cannot have multiple properties with the same name").
+// VERZIÓ: v125.0 (Manuális xG Prioritás + Optimalizáció)
+// MÓDOSÍTÁS (v125.0):
+// 1. ÚJ: Manuális xG prioritás biztosítása - részleges ellenőrzés
+// 2. ÚJ: Logok hozzáadása minden kritikus pontnál (látható, mi történik)
+// 3. ÚJ: Részleges manuális xG esetén P2+ fallback (nem Deep Scout xG!)
+// 4. OPTIMALIZÁCIÓ: Deep Scout xG keresés csak akkor, ha nincs manuális xG
+// 5. EREDMÉNY: Manuális xG mindig prioritás, tökéletes adatfolyam
+//
+// Korábbi módosítások (v117.1):
+// - TS1117 Fix: Duplikált kulcsok törlése
 
 import NodeCache from 'node-cache';
 import { fileURLToPath } from 'url';
@@ -250,7 +255,16 @@ export async function getRichContextualData(
 
     console.log(`Nincs cache (vagy kényszerítve) (${ck}), friss adatok lekérése...`);
     
-    // === LÉPÉS 1: AI DEEP SCOUT (v117.0 - MARKET SPY) ===
+    // === LÉPÉS 1: AI DEEP SCOUT (v125.0 - OPTIMALIZÁLVA) ===
+    // Ha van manuális xG, akkor Deep Scout-ot ne keresse xG-t (gyorsabb!)
+    const hasManualXG = manual_H_xG != null && manual_H_xGA != null && manual_A_xG != null && manual_A_xGA != null;
+    
+    if (hasManualXG) {
+        console.log(`[DataFetch v125.0] ✅ Manuális xG megadva → Deep Scout xG keresés kihagyva (optimalizáció)`);
+    } else {
+        console.log(`[DataFetch v125.0] ⚠️ Manuális xG nincs → Deep Scout xG keresés aktiválva`);
+    }
+    
     const deepScoutResult = await runStep_DeepScout({
         home: decodedHomeTeam,
         away: decodedAwayTeam,
@@ -313,11 +327,16 @@ export async function getRichContextualData(
             }
         }
 
-        // === JAVÍTÁS (v117.1): TS1117 Hiba javítása (Duplikált kulcsok törlése) ===
+        // === JAVÍTÁS (v125.0): Manuális xG értékek továbbítása a providernek ===
         const providerOptions = {
             sport, homeTeamName: decodedHomeTeam, awayTeamName: decodedAwayTeam,
             leagueName: decodedLeagueName, utcKickoff: decodedUtcKickoff,
-            countryContext, homeTeamId, awayTeamId, leagueId, foundSeason, apiConfig
+            countryContext, homeTeamId, awayTeamId, leagueId, foundSeason, apiConfig,
+            // === ÚJ v125.0: Manuális xG értékek továbbítása ===
+            manual_H_xG: manual_H_xG ?? null,
+            manual_H_xGA: manual_H_xGA ?? null,
+            manual_A_xG: manual_A_xG ?? null,
+            manual_A_xGA: manual_A_xGA ?? null
         };
         // ==========================================================================
         
@@ -427,21 +446,42 @@ export async function getRichContextualData(
         }
     }
 
-    // 3. xG Adatok
-    if (manual_H_xG != null) {
+    // 3. xG Adatok - FEJLESZTVE v125.0 (Manuális xG Prioritás Biztosítása)
+    console.log(`[DataFetch v125.0] xG forrás ellenőrzés: manual_H_xG=${manual_H_xG}, manual_H_xGA=${manual_H_xGA}, manual_A_xG=${manual_A_xG}, manual_A_xGA=${manual_A_xGA}`);
+    
+    if (manual_H_xG != null && manual_H_xGA != null && manual_A_xG != null && manual_A_xGA != null) {
+        // ✅ MANUÁLIS xG HASZNÁLATA (PRIORITÁS!)
         finalResult.advancedData.manual_H_xG = manual_H_xG;
         finalResult.advancedData.manual_H_xGA = manual_H_xGA;
         finalResult.advancedData.manual_A_xG = manual_A_xG;
         finalResult.advancedData.manual_A_xGA = manual_A_xGA;
         xgSource = "Manual (Components)";
+        console.log(`[DataFetch v125.0] ✅ MANUÁLIS xG HASZNÁLVA: H_xG=${manual_H_xG}, H_xGA=${manual_H_xGA}, A_xG=${manual_A_xG}, A_xGA=${manual_A_xGA}`);
+    }
+    else if (manual_H_xG != null || manual_H_xGA != null || manual_A_xG != null || manual_A_xGA != null) {
+        // ⚠️ RÉSZLEGES manuális xG (pl. csak 1-2 érték)
+        console.warn(`[DataFetch v125.0] ⚠️ RÉSZLEGES manuális xG! Csak néhány érték megadva. Fallback P2+ használata.`);
+        // Ne használjuk a Deep Scout xG-t, ha van bármi manuális adat!
+        // Csak azokat az értékeket állítjuk be, amik megvannak
+        if (manual_H_xG != null) finalResult.advancedData.manual_H_xG = manual_H_xG;
+        if (manual_H_xGA != null) finalResult.advancedData.manual_H_xGA = manual_H_xGA;
+        if (manual_A_xG != null) finalResult.advancedData.manual_A_xG = manual_A_xG;
+        if (manual_A_xGA != null) finalResult.advancedData.manual_A_xGA = manual_A_xGA;
+        xgSource = "Partial Manual (Fallback to P2+)";
     }
     else if (deepScoutResult?.xg_stats && deepScoutResult.xg_stats.home_xg != null) {
-        console.log(`[DataFetch] AI Deep Scout talált xG adatokat!`);
+        // Fallback: Deep Scout xG (csak ha NINCS manuális xG)
+        console.log(`[DataFetch v125.0] ⚠️ Manuális xG nincs → AI Deep Scout xG használata`);
         finalResult.advancedData.manual_H_xG = deepScoutResult.xg_stats.home_xg;
         finalResult.advancedData.manual_H_xGA = deepScoutResult.xg_stats.home_xga;
         finalResult.advancedData.manual_A_xG = deepScoutResult.xg_stats.away_xg;
         finalResult.advancedData.manual_A_xGA = deepScoutResult.xg_stats.away_xga;
         xgSource = `AI Deep Scout (${deepScoutResult.xg_stats.source || 'Web'})`;
+    }
+    else {
+        // Nincs semmi xG adat → P2+ fallback
+        console.warn(`[DataFetch v125.0] ⚠️ Nincs manuális xG és Deep Scout xG sem → P2+ (Form-Weighted) fallback`);
+        xgSource = "Calculated (P2+ Fallback)";
     }
     
     finalResult.xgSource = xgSource;

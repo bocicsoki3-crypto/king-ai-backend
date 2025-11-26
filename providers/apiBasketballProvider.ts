@@ -164,7 +164,16 @@ function generateEmptyStubContext(options: any): IDataFetchResponse {
 /**
  * 3. LÉPÉS: Feldolgozza a "The Rundown" eseményt kanonikus formátumra
  */
-function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: string): IDataFetchResponse {
+function parseTheRundownEvent(
+    event: any, 
+    homeTeamName: string, 
+    awayTeamName: string,
+    // === ÚJ v125.0: Manuális xG értékek paraméterként ===
+    manual_H_xG?: number | null,
+    manual_H_xGA?: number | null,
+    manual_A_xG?: number | null,
+    manual_A_xGA?: number | null
+): IDataFetchResponse {
     
     const homeTeamData = event.teams_normalized.find((t: any) => t.is_home);
     const awayTeamData = event.teams_normalized.find((t: any) => t.is_away);
@@ -362,14 +371,25 @@ function parseTheRundownEvent(event: any, homeTeamName: string, awayTeamName: st
         availableRosters: { home: [], away: [] }
     };
     
+    // === FEJLESZTVE v125.0: Manuális xG értékek beépítése ===
+    const advancedData = { 
+        home: { xg: null },
+        away: { xg: null },
+        manual_H_xG: manual_H_xG ?? null,
+        manual_H_xGA: manual_H_xGA ?? null,
+        manual_A_xG: manual_A_xG ?? null,
+        manual_A_xGA: manual_A_xGA ?? null
+    };
+    
+    if (manual_H_xG != null || manual_H_xGA != null || manual_A_xG != null || manual_A_xGA != null) {
+        console.log(`[apiBasketballProvider v125.0] ✅ Manuális xG értékek beépítve: H_xG=${manual_H_xG}, H_xGA=${manual_H_xGA}, A_xG=${manual_A_xG}, A_xGA=${manual_A_xGA}`);
+    }
+    
     const result: ICanonicalRichContext = {
          rawStats: finalData.stats,
          leagueAverages: {},
          richContext: `Kosárlabda elemzés (v2.0 - TheRundown). Szezon: ${event.schedule?.season_year || 'N/A'}`,
-         advancedData: { 
-            home: { xg: null },
-            away: { xg: null }
-         },
+         advancedData: advancedData,
          form: finalData.form,
          rawData: finalData,
          oddsData: oddsData,
@@ -392,7 +412,12 @@ export async function fetchMatchData(options: any): Promise<IDataFetchResponse> 
         awayTeamName, 
         leagueName, 
         utcKickoff, 
-        apiConfig 
+        apiConfig,
+        // === ÚJ v125.0: Manuális xG értékek fogadása ===
+        manual_H_xG,
+        manual_H_xGA,
+        manual_A_xG,
+        manual_A_xGA
     } = options;
     
     console.log(`Adatgyűjtés indul (v2.0 - TheRundown - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
@@ -456,7 +481,16 @@ export async function fetchMatchData(options: any): Promise<IDataFetchResponse> 
             const awayFound = bestMatch.event.teams_normalized.find((t:any) => t.is_away).name;
             console.log(`[apiBasketballProvider] SIKERES NÉVEGYEZTETÉS (Score: ${bestMatch.score.toFixed(2)}): ${homeTeamName} vs ${awayTeamName} -> ${homeFound} vs ${awayFound}`);
             
-            return parseTheRundownEvent(bestMatch.event, homeTeamName, awayTeamName);
+            // === ÚJ v125.0: Manuális xG értékek átadása ===
+            return parseTheRundownEvent(
+                bestMatch.event, 
+                homeTeamName, 
+                awayTeamName,
+                manual_H_xG,
+                manual_H_xGA,
+                manual_A_xG,
+                manual_A_xGA
+            );
             
         } else {
             console.error(`[apiBasketballProvider] KRITIKUS HIBA: A névfeloldás sikertelen. Nem található a(z) '${homeTeamName}' vs '${awayTeamName}' meccs a ${matchDate} napon.`);
