@@ -324,8 +324,8 @@ export function calculateConfidenceScores(
             thresholdHighPct = 12.0; // 12% különbség (pl. 0.72 gól 6-ból)
             thresholdLowPct = 3.5;   // 3.5% különbség (pl. 0.21 gól)
         } else { // soccer
-            thresholdHighPct = 15.0; // 15% különbség (pl. 0.4 gól 2.7-ből)
-            thresholdLowPct = 4.0;   // 4% különbség (pl. 0.11 gól)
+            thresholdHighPct = 10.0; // 10% különbség (pl. 0.27 gól 2.7-ből) - CSÖKKENTVE a döntetlen bias csökkentésére
+            thresholdLowPct = 2.5;   // 2.5% különbség (pl. 0.07 gól) - CSÖKKENTVE érzékenyebb confidence-ért
         }
         
         if (xgDiffPercent > thresholdHighPct) winnerScore += 2.0;
