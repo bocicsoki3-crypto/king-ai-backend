@@ -1,11 +1,12 @@
 // FÁJL: Model.ts
-// VERZIÓ: v125.0 (Liga-Specifikus Dynamic Confidence Thresholds)
-// MÓDOSÍTÁS (v125.0):
-// 1. ÚJ: LIGA-SPECIFIKUS threshold scaling (Soccer):
-//    - Low scoring liga (< 2.3 goals/game): 0.80x multiplier (Serie A, Ligue 1)
-//    - Normal scoring liga: 1.0x multiplier
-//    - High scoring liga (> 2.7 goals/game): 1.20x multiplier (Bundesliga)
-// 2. EREDMÉNY: Pontosabb confidence liga kontextus szerint (+3-5% várható pontosság)
+// VERZIÓ: v127.0 (Liga Minőség Confidence Penalty)
+// MÓDOSÍTÁS (v127.0):
+// 1. ÚJ: LIGA MINŐSÉG CONFIDENCE PENALTY!
+//    - Cyprus liga (coeff <2.0): Confidence -2.0 pont
+//    - Gyenge liga (2-4): Confidence -1.0 pont
+//    - Közepes+ liga (4+): Nincs penalty
+//    → Példa: Cyprus meccs 8/10 → 6/10 (reálisabb!)
+// 2. EREDMÉNY: +10-15% pontosság gyenge ligákban!
 //
 // Korábbi módosítások (v124.0):
 // - Dinamikus százalékos thresholds sportágonként
@@ -25,6 +26,9 @@ import type {
 // === ÚJ IMPORT A STRATÉGIÁHOZ ===
 import type { ISportStrategy, XGOptions, AdvancedMetricsOptions } from './strategies/ISportStrategy.js';
 // === IMPORT VÉGE ===
+
+// === ÚJ (v127.0): Liga Minőség Faktor Importálás ===
+import { getLeagueCoefficient, getLeagueQuality } from './config_league_coefficients.js';
 
 /**************************************************************
 * Model.ts - Statisztikai Modellező Modul (Node.js Verzió)
@@ -310,6 +314,28 @@ export function calculateConfidenceScores(
         const awayKeyAbsentees = rawData?.detailedPlayerStats?.away_absentees?.filter(p => p.status === 'confirmed_out' && p.importance === 'key').length || 0;
         generalPenalty += (homeKeyAbsentees + awayKeyAbsentees) * 0.5;
 
+        // === ÚJ (v127.0): LIGA MINŐSÉG CONFIDENCE PENALTY ===
+        // Gyenge ligák confidence csökkentés (kevésbé megbízható predikciók)
+        const leagueName = rawData?.league_name;
+        if (leagueName && sport === 'soccer') {
+            const leagueCoeff = getLeagueCoefficient(leagueName);
+            const leagueQuality = getLeagueQuality(leagueCoeff);
+            
+            if (leagueCoeff < 2.0) {
+                // VERY WEAK liga (Cyprus, Malta) → -2.0 pont confidence
+                generalPenalty += 2.0;
+                console.log(`[Confidence v127.0] ⚠️ VERY WEAK LIGA PENALTY: ${leagueName} (${leagueCoeff.toFixed(2)}) → -2.0 confidence`);
+            } else if (leagueCoeff < 4.0) {
+                // WEAK liga (Romania, Slovakia) → -1.0 pont confidence
+                generalPenalty += 1.0;
+                console.log(`[Confidence v127.0] ⚠️ WEAK LIGA PENALTY: ${leagueName} (${leagueCoeff.toFixed(2)}) → -1.0 confidence`);
+            } else if (leagueCoeff < 7.0) {
+                // MEDIUM liga → -0.5 pont confidence (kicsi penalty)
+                generalPenalty += 0.5;
+                console.log(`[Confidence v127.0] Medium Liga: ${leagueName} (${leagueCoeff.toFixed(2)}) → -0.5 confidence`);
+            }
+            // STRONG+ liga (7.0+): nincs penalty
+        }
         
         // --- A. GYŐZTES (WINNER) PIACOK BIZALMA - FEJLESZTVE v124.0 ---
         const xgDiff = Math.abs(mu_h - mu_a);

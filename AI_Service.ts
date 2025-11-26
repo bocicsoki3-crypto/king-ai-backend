@@ -1144,15 +1144,25 @@ export async function runStep_Specialist(data: any): Promise<any> {
             result.modified_mu_a = data.pure_mu_a;
         }
         
-        // === v126.0 SAFEGUARD: Extrém eltérések ellenőrzése ===
+        // === v127.0 SAFEGUARD: Extrém eltérések ellenőrzése + REALITY CHECK ===
         const homeDiff = Math.abs(result.modified_mu_h - data.pure_mu_h);
         const awayDiff = Math.abs(result.modified_mu_a - data.pure_mu_a);
         
-        // 1. Max ±0.5 módosítás limitálás
+        // 1. Max ±0.5 módosítás limitálás (SZIGORÚ!)
         if (homeDiff > 0.5 || awayDiff > 0.5) {
-            console.warn(`[AI_Service v126.0] Specialista túl nagy módosítást javasolt (H: ${homeDiff.toFixed(2)}, A: ${awayDiff.toFixed(2)}). Limitálás ±0.5-re.`);
+            console.warn(`[AI_Service v127.0] Specialista túl nagy módosítást javasolt (H: ${homeDiff.toFixed(2)}, A: ${awayDiff.toFixed(2)}). Limitálás ±0.5-re.`);
             result.modified_mu_h = data.pure_mu_h + Math.max(-0.5, Math.min(0.5, result.modified_mu_h - data.pure_mu_h));
             result.modified_mu_a = data.pure_mu_a + Math.max(-0.5, Math.min(0.5, result.modified_mu_a - data.pure_mu_a));
+        }
+        
+        // === v127.0 NEW: REALITY CHECK - Ha Total Adjustment >0.5, csökkentés! ===
+        const totalAdjustment = homeDiff + awayDiff;
+        if (totalAdjustment > 0.5) {
+            const scaleFactor = 0.5 / totalAdjustment;
+            console.warn(`[AI_Service v127.0] ⚠️ REALITY CHECK! Total adjustment túl magas (${totalAdjustment.toFixed(2)}). Scaling: ${scaleFactor.toFixed(2)}x`);
+            
+            result.modified_mu_h = data.pure_mu_h + (result.modified_mu_h - data.pure_mu_h) * scaleFactor;
+            result.modified_mu_a = data.pure_mu_a + (result.modified_mu_a - data.pure_mu_a) * scaleFactor;
         }
         
         // 2. Amplification check: Ha Quant már >50% különbséget mutatott, ne növeld tovább!

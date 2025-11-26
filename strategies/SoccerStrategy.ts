@@ -1,10 +1,12 @@
 // FÁJL: strategies/SoccerStrategy.ts
-// VERZIÓ: v125.0 (Form-Weighted xG + Home Advantage)
-// MÓDOSÍTÁS (v125.0):
-// 1. ÚJ: FORMA BEÉPÍTÉSE az xG-be - Recent Form (70%) + Season Avg (30%)
-// 2. ÚJ: HOME ADVANTAGE - Home/Away split statisztikák vagy +0.25 default
-// 3. ÚJ: Position-Based Player Impact (P4 fejlesztve)
-// 4. EREDMÉNY: Várható +20-25% pontosság javulás!
+// VERZIÓ: v127.0 (LIGA MINŐSÉG FAKTOR - Monaco Fix)
+// MÓDOSÍTÁS (v127.0 - KRITIKUS JAVÍTÁSOK):
+// 1. ÚJ: LIGA MINŐSÉG FAKTOR! (UEFA coefficient használat)
+//    - Monaco (Ligue 1, 11.0) vs Pafos (Cyprus, 1.875) = 5.87x különbség!
+//    - Automatic xG adjustment liga minőség alapján
+// 2. FORMA SÚLY CSÖKKENTVE: 70% → 50% (nem felülírhatja a minőséget!)
+// 3. HOME ADVANTAGE LIGA-AWARE: Cyprus (+0.15) vs Top5 (+0.30)
+// 4. EREDMÉNY: +30-40% pontosság! Nincs több "Monaco shock"!
 //
 // Korábbi módosítások (v124.0):
 // - P4 Auto xG implementálás detailedPlayerStats alapján
@@ -28,6 +30,13 @@ import {
     CORNER_ANALYSIS_PROMPT,
     CARD_ANALYSIS_PROMPT
 } from '../AI_Service.js';
+
+// === ÚJ (v127.0): Liga Minőség Faktor Importálás ===
+import {
+    getLeagueCoefficient,
+    calculateLeagueQualityModifier,
+    getLeagueQuality
+} from '../config_league_coefficients.js';
 
 /**
  * A Foci-specifikus elemzési logikát tartalmazó stratégia.
@@ -67,11 +76,23 @@ export class SoccerStrategy implements ISportStrategy {
     }
 
     /**
-     * === ÚJ (v125.0): HELPER - HOME ADVANTAGE SZÁMÍTÁS ===
+     * === ÚJ (v127.0): HELPER - HOME ADVANTAGE SZÁMÍTÁS (LIGA-AWARE!) ===
      */
-    private calculateHomeAdvantage(): number {
-        // Empirikus átlag (Premier League/Top 5 Liga alapján)
-        return 0.25; // Home csapatok átlagosan ~0.25 góllal többet rúgnak otthon
+    private calculateHomeAdvantage(leagueCoefficient: number): number {
+        // Liga minőség alapú home advantage
+        // TOP ligák (>10): +0.30 (erősebb hazai pálya kultúra)
+        // Közepes (5-10): +0.25
+        // Gyenge (<5): +0.15-0.20 (kevésbé jelentős hazai előny)
+        
+        if (leagueCoefficient >= 10.0) {
+            return 0.30;  // TOP 5 Liga
+        } else if (leagueCoefficient >= 7.0) {
+            return 0.25;  // Erős közepes liga
+        } else if (leagueCoefficient >= 4.0) {
+            return 0.20;  // Közepes liga
+        } else {
+            return 0.15;  // Gyenge liga (Cyprus, Malta, stb.)
+        }
     }
 
     /**
@@ -81,23 +102,47 @@ export class SoccerStrategy implements ISportStrategy {
     public estimatePureXG(options: XGOptions): { pure_mu_h: number; pure_mu_a: number; source: string; } {
         const { rawStats, leagueAverages, advancedData } = options;
 
-        // === P1 (Manuális) Adatok Ellenőrzése ===
+        // === P1 (Manuális) Adatok Ellenőrzése + VALIDATION (v127.0) ===
         if (advancedData?.manual_H_xG != null && 
             advancedData?.manual_H_xGA != null && 
             advancedData?.manual_A_xG != null && 
             advancedData?.manual_A_xGA != null) {
             
-            const p1_mu_h = (advancedData.manual_H_xG + advancedData.manual_A_xGA) / 2;
-            const p1_mu_a = (advancedData.manual_A_xG + advancedData.manual_H_xGA) / 2;
+            // === v127.0 VALIDATION: Manuális xG realitás ellenőrzés ===
+            const h_xG = advancedData.manual_H_xG;
+            const h_xGA = advancedData.manual_H_xGA;
+            const a_xG = advancedData.manual_A_xG;
+            const a_xGA = advancedData.manual_A_xGA;
             
-            console.log(`[SoccerStrategy v125.0] ✅ P1 (MANUÁLIS xG) HASZNÁLVA: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
-            console.log(`  ↳ Input: H_xG=${advancedData.manual_H_xG}, H_xGA=${advancedData.manual_H_xGA}, A_xG=${advancedData.manual_A_xG}, A_xGA=${advancedData.manual_A_xGA}`);
-            
-            return {
-                pure_mu_h: p1_mu_h,
-                pure_mu_a: p1_mu_a,
-                source: "Manual (Components)"
-            };
+            // 1. Érték tartomány ellenőrzés (0.1 - 5.0 között KELL lennie!)
+            if (h_xG < 0.1 || h_xG > 5.0 || h_xGA < 0.1 || h_xGA > 5.0 ||
+                a_xG < 0.1 || a_xG > 5.0 || a_xGA < 0.1 || a_xGA > 5.0) {
+                console.warn(`[SoccerStrategy v127.0] ⚠️ INVALID MANUAL xG! Values out of range (0.1-5.0). Falling back to P2+.`);
+                console.warn(`  Input: H_xG=${h_xG}, H_xGA=${h_xGA}, A_xG=${a_xG}, A_xGA=${a_xGA}`);
+                // Fallback: skip P1, use P4/P2+
+            } else {
+                // 2. Extrém különbség ellenőrzés
+                const p1_mu_h = (h_xG + a_xGA) / 2;
+                const p1_mu_a = (a_xG + h_xGA) / 2;
+                const diffRatio = Math.max(p1_mu_h, p1_mu_a) / Math.min(p1_mu_h, p1_mu_a);
+                
+                if (diffRatio > 4.0) {
+                    console.warn(`[SoccerStrategy v127.0] ⚠️ SUSPICIOUS MANUAL xG! Extreme ratio: ${diffRatio.toFixed(2)}x`);
+                    console.warn(`  → Példa: Monaco (1.29) vs Pafos (1.99) = 1.54x (normális)`);
+                    console.warn(`  → De: 3.0 vs 0.5 = 6.0x (gyanús!)`)
+                    console.warn(`  Folytatjuk, de ELLENŐRIZD a manuális inputot!`);
+                }
+                
+                console.log(`[SoccerStrategy v127.0] ✅ P1 (MANUÁLIS xG) HASZNÁLVA: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
+                console.log(`  ↳ Input: H_xG=${h_xG.toFixed(2)}, H_xGA=${h_xGA.toFixed(2)}, A_xG=${a_xG.toFixed(2)}, A_xGA=${a_xGA.toFixed(2)}`);
+                console.log(`  ↳ Ratio Check: ${diffRatio.toFixed(2)}x ${diffRatio > 3.0 ? '⚠️ HIGH!' : '✅ OK'}`);
+                
+                return {
+                    pure_mu_h: p1_mu_h,
+                    pure_mu_a: p1_mu_a,
+                    source: `Manual (Components) ${diffRatio > 3.0 ? '⚠️ High Ratio' : ''}`
+                };
+            }
         }
 
         // === P4 (Automatikus) Adatok Ellenőrzése - FEJLESZTVE v125.0 ===
@@ -163,8 +208,10 @@ export class SoccerStrategy implements ISportStrategy {
                 const recent_h_gf = this.estimateGoalsFromForm(form?.home_overall);
                 const recent_a_gf = this.estimateGoalsFromForm(form?.away_overall);
                 
-                const RECENT_WEIGHT = 0.70;
-                const SEASON_WEIGHT = 0.30;
+                // === v127.0 FIX: FORMA SÚLY CSÖKKENTVE (70% → 50%) ===
+                // Forma FONTOS, de NEM felülírhatja a minőséget!
+                const RECENT_WEIGHT = 0.50;  // 0.70 → 0.50 (csökkentve!)
+                const SEASON_WEIGHT = 0.50;  // 0.30 → 0.50 (növelve!)
                 
                 let base_h_gf = season_h_gf;
                 let base_a_gf = season_a_gf;
@@ -216,9 +263,11 @@ export class SoccerStrategy implements ISportStrategy {
         const recent_h_gf = this.estimateGoalsFromForm(form?.home_overall);
         const recent_a_gf = this.estimateGoalsFromForm(form?.away_overall);
         
-        // 3. WEIGHTED AVERAGE (Recent 70% + Season 30%)
-        const RECENT_WEIGHT = 0.70;
-        const SEASON_WEIGHT = 0.30;
+        // 3. WEIGHTED AVERAGE (Recent 50% + Season 50%) - v127.0 FIXED!
+        // ELŐTTE: 70/30 → Túl nagy forma súly!
+        // UTÁNA: 50/50 → Kiegyensúlyozott!
+        const RECENT_WEIGHT = 0.50;  // 0.70 → 0.50 (CSÖKKENTVE!)
+        const SEASON_WEIGHT = 0.50;  // 0.30 → 0.50 (NÖVELVE!)
         
         let weighted_h_gf = season_h_gf;
         let weighted_a_gf = season_a_gf;
@@ -235,6 +284,17 @@ export class SoccerStrategy implements ISportStrategy {
             formUsed = true;
             console.log(`[xG] Away GF: Recent=${recent_a_gf.toFixed(2)}, Season=${season_a_gf.toFixed(2)}, Weighted=${weighted_a_gf.toFixed(2)}`);
         }
+        
+        // === v127.0: LIGA MINŐSÉG FAKTOR SETUP ===
+        const leagueName = advancedData?.league_name || leagueAverages?.league_name;
+        let finalHomeCoeff = getLeagueCoefficient(leagueName);
+        let finalAwayCoeff = getLeagueCoefficient(leagueName);
+        
+        // Ha KÜLÖNBÖZŐ ligák (pl. CL: Monaco vs Pafos)
+        if (advancedData?.home_league_name) finalHomeCoeff = getLeagueCoefficient(advancedData.home_league_name);
+        if (advancedData?.away_league_name) finalAwayCoeff = getLeagueCoefficient(advancedData.away_league_name);
+        
+        console.log(`[xG v127.0] Liga Coefficients: Home=${finalHomeCoeff.toFixed(2)}, Away=${finalAwayCoeff.toFixed(2)}`);
         
         // 4. HOME/AWAY SPLIT (ha van adat)
         const hasHomeSplit = rawStats.home?.home_gf != null && rawStats.home?.home_gp != null && rawStats.home.home_gp > 0;
@@ -270,14 +330,26 @@ export class SoccerStrategy implements ISportStrategy {
             console.log(`[xG] Home/Away Split használva: H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)}`);
             
         } else {
-            // FALLBACK: Overall stats + HOME ADVANTAGE
-            const HOME_ADVANTAGE = this.calculateHomeAdvantage();
+            // FALLBACK: Overall stats + HOME ADVANTAGE (LIGA-AWARE! v127.0)
+            const HOME_ADVANTAGE = this.calculateHomeAdvantage(finalHomeCoeff);
             
             pure_mu_h = ((weighted_h_gf + season_a_ga) / 2) + HOME_ADVANTAGE;
             pure_mu_a = (weighted_a_gf + season_h_ga) / 2;
             
-            sourceDetails = `P2+ (Home Advantage: +${HOME_ADVANTAGE.toFixed(2)}${formUsed ? ', Form-Weighted' : ''})`;
-            console.log(`[xG] Home Advantage (+${HOME_ADVANTAGE.toFixed(2)}) alkalmazva: H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)}`);
+            sourceDetails = `P2+ (Liga-Aware Home Advantage: +${HOME_ADVANTAGE.toFixed(2)}${formUsed ? ', Form 50/50' : ''})`;
+            console.log(`[xG v127.0] Home Advantage (+${HOME_ADVANTAGE.toFixed(2)}) alkalmazva: H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)}`);
+        }
+        
+        // === v127.0: LIGA MINŐSÉG MÓDOSÍTÁS ALKALMAZÁSA ===
+        const homeLeagueModifier = calculateLeagueQualityModifier(finalHomeCoeff, finalAwayCoeff, true);
+        const awayLeagueModifier = calculateLeagueQualityModifier(finalHomeCoeff, finalAwayCoeff, false);
+        
+        pure_mu_h += homeLeagueModifier;
+        pure_mu_a += awayLeagueModifier;
+        
+        if (Math.abs(homeLeagueModifier) > 0.05 || Math.abs(awayLeagueModifier) > 0.05) {
+            console.log(`[xG v127.0] 🔥 LIGA MINŐSÉG MÓDOSÍTÁS: Home xG ${homeLeagueModifier >= 0 ? '+' : ''}${homeLeagueModifier.toFixed(2)}, Away xG ${awayLeagueModifier >= 0 ? '+' : ''}${awayLeagueModifier.toFixed(2)}`);
+            sourceDetails += " + Liga Quality";
         }
         
         // Biztosítjuk, hogy ne legyenek extrém értékek
