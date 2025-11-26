@@ -1,6 +1,11 @@
 // FÁJL: strategies/ISportStrategy.ts
-// VERZIÓ: v105.0 ("Intelligens Bizalom Refaktor")
-// MÓDOSÍTÁS (v105.0):
+// VERZIÓ: v128.0 (REALITY CHECK MODE - Multi-Sport)
+// MÓDOSÍTÁS (v128.0):
+// 1. HOZZÁADVA: Az 'XGOptions' interfész bővítve az 'absentees' property-vel.
+//    Ez javítja a TS2339 hibát, amit a BasketballStrategy.ts és HockeyStrategy.ts
+//    (v128.0) hívása okozott.
+// 
+// KORÁBBI MÓDOSÍTÁS (v105.0):
 // 1. HOZZÁADVA: A 'MicroModelOptions' interfész bővítve a
 //    'confidenceScores' objektummal. Ez javítja a TS2353 hibát,
 //    amit az AI_Service.ts (v105.0) hívása okozott.
@@ -18,6 +23,7 @@ export interface XGOptions {
     form: ICanonicalRawData['form'];
     leagueAverages: any;
     advancedData: any; // Tartalmazza a P1 adatokat
+    absentees?: ICanonicalRawData['absentees']; // ÚJ v128.0: Kulcsjátékos hiányok
 }
 
 // Opciók az estimateAdvancedMetrics számára

@@ -197,6 +197,10 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         }: IDataFetchResponse = await getRichContextualData(dataFetchOptions);
         // === Scout Végzett ===
         
+        // === ÚJ v128.0: Absentees kinyerése a rawData-ból ===
+        const absentees = rawData?.absentees || undefined;
+        // ================================================
+        
         console.log(`Adatgyűjtés kész: ${home} vs ${away}.`);
         if (rawData && rawData.apiFootballData && rawData.apiFootballData.fixtureId) {
             fixtureIdForSaving = rawData.apiFootballData.fixtureId;
@@ -245,7 +249,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             console.log(`[Lánc 2.6/6] Nincsenek múltbeli tanulságok a Narratív Cache-ben ehhez a párosításhoz.`);
         }
 
-        // === 1. ÜGYNÖK (QUANT): "Tiszta xG" számítása ===
+        // === 1. ÜGYNÖK (QUANT): "Tiszta xG" számítása - v128.0 JAVÍTVA ===
         console.log(`[Lánc 1/6] Quant Ügynök: Tiszta xG számítása...`);
         const { pure_mu_h, pure_mu_a, source: quantSource } = estimatePureXG(
             home, 
@@ -255,7 +259,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             form, 
             leagueAverages, 
             advancedData,
-            sportStrategy
+            sportStrategy,
+            absentees // ÚJ v128.0: átadjuk az absentees-t is
         );
         console.log(`Quant (Tiszta xG) [${quantSource}]: H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)}`);
         

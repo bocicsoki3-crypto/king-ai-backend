@@ -76,7 +76,7 @@ function calculateProbabilityFromScores(
 }
 
 
-// === 1. ÜGYNÖK (QUANT): Tiszta xG Számítása (Változatlan) ===
+// === 1. ÜGYNÖK (QUANT): Tiszta xG Számítása - v128.0 JAVÍTVA ===
 export function estimatePureXG(
     homeTeam: string, 
     awayTeam: string, 
@@ -85,7 +85,8 @@ export function estimatePureXG(
     form: ICanonicalRawData['form'], 
     leagueAverages: any, 
     advancedData: any,
-    strategy: ISportStrategy
+    strategy: ISportStrategy,
+    absentees?: ICanonicalRawData['absentees'] // ÚJ v128.0: Kulcsjátékos hiányok
 ): { pure_mu_h: number, pure_mu_a: number, source: string } {
     
     const options: XGOptions = {
@@ -94,7 +95,8 @@ export function estimatePureXG(
         rawStats,
         form,
         leagueAverages,
-        advancedData
+        advancedData,
+        absentees // ÚJ v128.0: átadjuk az absentees-t is
     };
     const result = strategy.estimatePureXG(options);
     console.log(`[Model.ts - 1. Ügynök] Tiszta xG (${sport}): H=${result.pure_mu_h.toFixed(2)}, A=${result.pure_mu_a.toFixed(2)} (Forrás: ${result.source})`);
