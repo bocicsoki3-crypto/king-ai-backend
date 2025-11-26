@@ -90,6 +90,9 @@ export class SoccerStrategy implements ISportStrategy {
             const p1_mu_h = (advancedData.manual_H_xG + advancedData.manual_A_xGA) / 2;
             const p1_mu_a = (advancedData.manual_A_xG + advancedData.manual_H_xGA) / 2;
             
+            console.log(`[SoccerStrategy v125.0] ✅ P1 (MANUÁLIS xG) HASZNÁLVA: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
+            console.log(`  ↳ Input: H_xG=${advancedData.manual_H_xG}, H_xGA=${advancedData.manual_H_xGA}, A_xG=${advancedData.manual_A_xG}, A_xGA=${advancedData.manual_A_xGA}`);
+            
             return {
                 pure_mu_h: p1_mu_h,
                 pure_mu_a: p1_mu_a,
