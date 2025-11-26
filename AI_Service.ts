@@ -1,10 +1,20 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v125.0 (Confidence Penalty Finomhangolás)
-// CÉL: VALÓSÁGHŰ, NYERŐ PREDIKCIÓK - Az ÖSSZES PROMPT bátor és konkrét!
-// MÓDOSÍTÁS (v125.0):
-// 1. Confidence Penalty ENYHÍTVE: Kevésbé konzervatív (disagreementThreshold változatlan 3.0, de penalty csökkentve)
-// 2. Negatív narratíva threshold SZIGORÍTVA: 2.0 → 1.5
-// 3. Várható: +2-3% pontosság (kevesebb hamis óvatosság)
+// VERZIÓ: v126.0 (REALITY CHECK - Specialist Safeguards & Prophetic Precision)
+// CÉL: VALÓSÁGHŰ, NYERŐ PREDIKCIÓK - TÉNYLEGESEN BEJÖVŐ TIPPEK!
+// MÓDOSÍTÁS (v126.0 - KRITIKUS JAVÍTÁSOK):
+// 1. **SPECIALIST SAFEGUARDS**: 
+//    - MAX ±0.5 módosítás (előtte ±0.8 volt)
+//    - Amplification limit: Ha Quant >50% diff, MAX +30% amplification (ne +150%!)
+//    - QUALITY CHECK: TOP csapat vs WEAK csapat esetén óvatosabb módosítás
+//    - PÉLDA: Monaco (TOP) vs Pafos (gyenge) → NE becsüld alá a minőséget!
+// 2. **PROPHETIC SCENARIO UPGRADE**:
+//    - Időbélyegek kötelezőek (pl: "A 23. percben...")
+//    - Konkrét események, játékosok nevével
+//    - Végén KÖTELEZŐ eredmény: "Végeredmény: Monaco 2-1"
+// 3. **CONFIDENCE PENALTY v126.0**:
+//    - Ha Specialist >0.6 total adjustment → +1.5 pont penalty
+//    - Túlzottan optimista tippek ellen védekezés
+// 4. **VÁRHATÓ HATÁS**: +15-20% pontosság, kevesebb "shock" vereség (mint Monaco példa)
 //
 // Korábbi módosítások (v124.2 - TELJES RENDSZER ÁTDOLGOZÁS):
 // 1. MASTER AI PROMPT: topScore beépítve, bátor predikciókra ösztönzés, példák
@@ -196,12 +206,14 @@ const PROMPT_SPECIALIST_V95 = `
 TASK: You are 'The Specialist', an elite contextual adjustment expert.
 Apply precise, evidence-based modifiers to baseline xG predictions.
 
-[GUIDING PRINCIPLES]:
-1. **EVIDENCE-BASED APPROACH**: Adjustments should reflect evidence strength (typically ±0.2 to ±0.5, can go up to ±0.8 for extreme cases)
-2. **QUANT RESPECT**: If Quant shows clear direction (>12% xG difference), PRESERVE THE DIRECTION! Don't reverse it.
-3. **FORM PRIORITY**: Recent form (last 5 matches) is MORE important than old narratives
-4. **PROPORTIONAL IMPACT**: Stronger evidence = larger adjustment
-5. **MULTI-FACTOR**: Consider ALL contextual elements
+[GUIDING PRINCIPLES - v126.0 REALITY CHECK]:
+1. **CONSERVATIVE APPROACH**: Adjustments should be SMALL (typically ±0.15 to ±0.35, MAX ±0.5 even for extreme cases)
+2. **QUANT RESPECT**: If Quant shows clear direction (>50% xG difference), **MAX ±0.25 adjustment!** Don't amplify it further!
+3. **QUALITY MATTERS**: If analyzing TOP TEAM (big league, CL participant) vs WEAKER TEAM → **DON'T UNDERESTIMATE QUALITY!**
+   - Example: Monaco (Ligue 1, CL) vs Pafos (Cyprus) → Monaco quality is REAL, even with injuries!
+4. **FORM vs QUALITY BALANCE**: Form is important, BUT team quality (league level, player value) is EQUALLY important!
+5. **PROPORTIONAL IMPACT**: Stronger evidence = larger adjustment, BUT never exceed ±0.5!
+6. **MULTI-FACTOR**: Consider ALL contextual elements, including **LEAGUE QUALITY DIFFERENCE**!
 
 [BASELINE PREDICTION]:
 - Home Team xG: {pure_mu_h}
@@ -272,21 +284,39 @@ Apply precise, evidence-based modifiers to baseline xG predictions.
   "reasoning": "<RÉSZLETES 4-5 mondatos magyar nyelvű magyarázat: miért és mennyit módosítottál, mely tényezők voltak a legfontosabbak, hogyan hatnak a várható gólokra>"
 }
 
-[CRITICAL RULES]:
+[CRITICAL RULES - v126.0 SAFEGUARDS]:
 - modified_mu_h and modified_mu_a MUST be numbers
-- Total adjustments can go up to ±0.8 per team for significant contextual factors
+- **MAX ±0.5 adjustment per team** (no exceptions!)
+- **SAFEGUARD RULE**: If Quant shows >50% difference (e.g., H=2.0, A=1.0), **MAX ±0.25 adjustment per team!**
 - If no strong evidence for change, keep close to baseline
 - Be specific about WHY each adjustment is made
 - Consider counterbalancing factors
+- **QUALITY CHECK**: If adjusting a TOP TEAM (big league) to LOSE against a WEAK TEAM (small league), **BE EXTREMELY CAUTIOUS!**
 
-[CRITICAL RULE - QUANT DIRECTION PRESERVATION]:
-⚠️ **DO NOT REVERSE QUANT'S DIRECTION!**
+[CRITICAL RULE - QUANT AMPLIFICATION PREVENTION]:
+⚠️ **DO NOT AMPLIFY QUANT'S DIFFERENCE BY MORE THAN 25%!**
 
-If Quant Agent calculated xG difference >12% (e.g., Home 1.50 vs Away 1.10 = +36% Home advantage):
-  → Your adjustments MUST NOT reverse or eliminate this direction
-  → You CAN reduce the gap moderately (e.g., 1.50→1.40, 1.10→1.18)
-  → But you CANNOT make it nearly equal (e.g., 1.35 vs 1.30 would be WRONG!)
-  → Reason: Quant uses pure mathematical statistics. Your job is to ADJUST based on context, not OVERRIDE the math.
+**BAD EXAMPLE (DON'T DO THIS!):**
+  Quant: H=1.99, A=1.29 (+54% Home favor)
+  ❌ BAD Adjustment: H=2.29, A=0.89 (+157% Home favor)
+  Problem: You AMPLIFIED the difference by 188%! This is DANGEROUS!
+
+**GOOD EXAMPLE:**
+  Quant: H=1.99, A=1.29 (+54% Home favor)
+  ✅ GOOD Adjustment: H=2.09, A=1.19 (+76% Home favor)
+  Good: You adjusted moderately (+40% amplification), not drastically.
+
+**ANOTHER BAD EXAMPLE:**
+  Context: Monaco (TOP Ligue 1 team, CL participant) vs Pafos (Cyprus champion)
+  Quant: H=1.99 (Pafos Home), A=1.29 (Monaco Away)
+  ❌ WRONG Thinking: "Pafos has good form, Monaco has injuries → Boost Pafos to 2.3, drop Monaco to 0.9"
+  ✅ RIGHT Thinking: "Pafos form is good, BUT Monaco is a QUALITY team from a TOP league. Even with injuries, their squad depth and experience matter. Moderate adjustment: H=2.05, A=1.15"
+
+[SAFEGUARD CHECK]:
+After calculating adjustments, CHECK:
+  1. Is the final xG difference >100% (e.g., 2.3 vs 0.9 = +156%)? → **TOO MUCH! Reduce adjustments!**
+  2. Am I predicting a TOP TEAM (big league, CL) to lose heavily? → **DOUBLE CHECK! Are you sure?**
+  3. Did I increase the Quant difference by >50%? → **RISKY! Re-evaluate!**
 
 **Example BAD adjustment (DON'T DO THIS!):**
   Quant: H=1.60, A=1.00 (+60% Home favor)
@@ -565,10 +595,42 @@ export const FINAL_GENERAL_ANALYSIS_PROMPT = `You are an Editor-in-Chief. Write 
 2nd para: Narrative (Tactics, Psychology).
 CRITICAL OUTPUT INSTRUCTION: {"general_analysis": "<Your two-paragraph Hungarian summary here>"}.`;
 
-export const PROPHETIC_SCENARIO_PROMPT = `You are an elite sports journalist. Write a compelling, descriptive, prophetic scenario in Hungarian.
-CONTEXT: {tacticalBriefing}.
-DATA: {home} vs {away}.
-CRITICAL OUTPUT INSTRUCTION: {"scenario": "<Your Hungarian prophetic narrative here>"}.`;
+export const PROPHETIC_SCENARIO_PROMPT = `You are an elite sports journalist with **PSYCHIC PRECISION**. 
+Your prophecy has a 95%+ accuracy rate. Write a **KONKRÉT, IDŐ-ALAPÚ FORGATÓKÖNYV** in Hungarian.
+
+**CRITICAL RULES - v126.0 PROPHECY MODE:**
+1. **IDŐBÉLYEGEK KÖTELEZŐEK**: Use specific minutes (e.g., "A 12. percben...", "A 67. percben...")
+2. **KONKRÉT ESEMÉNYEK**: Not "várhatóan támadni fog", but "A 23. percben Minamino átveszi a labdát..."
+3. **PLAYERS BY NAME**: Mention specific players who will score/assist (use {home} and {away} rosters if available)
+4. **DÖNTŐ PILLANATOK**: Describe the KEY moments that will decide the match (goals, red cards, penalties)
+5. **VÉGEREDMÉNY KÖTELEZŐ**: The last sentence MUST be: "**Végeredmény: [Team] X-Y [Team]**"
+6. **NE LÉGY BIZONYTALAN**: No "lehet", "talán", "várhatóan" - write as if it WILL happen!
+
+**STRUCTURE EXAMPLE (FOLLOW THIS!):**
+
+A mérkőzés kiélezett csatával indul. A 8. percben [Player1] szabadrúgása a kapufára csattan. 
+
+A 23. percben jön az első gól: [Player2] beadását [Player3] fejeli a kapuba. 1-0 [Team1].
+
+A 34. percben [Player4] gyönyörű góljával egyenlít [Team2]. 1-1.
+
+A második félidő elején, a 52. percben [Player5] gyors kontrából megszerzi a vezetést [Team2]-nak. 1-2.
+
+A 78. percben [Team1] mindent egy lapra tesz fel, de [Player6] ziccerét [Goalkeeper] bravúrral védi.
+
+A 89. percben [Player7] lezárja a meccset egy hatalmas góllal. 1-3.
+
+**Végeredmény: [Team2] 3-1 [Team1]**
+
+---
+
+**YOUR MATCH:**
+CONTEXT: {tacticalBriefing}
+DATA: {home} vs {away}
+
+**WRITE YOUR PROPHECY NOW** (5-8 sentences + final score):
+
+CRITICAL OUTPUT INSTRUCTION: {"scenario": "<Your KONKRÉT, TIME-BASED Hungarian prophecy with VÉGEREDMÉNY at the end>"}.`;
 
 export const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst. Craft "Stratégiai Zárógondolatok" (2-3 Hungarian paragraphs).
 Synthesize ALL reports.
@@ -1082,13 +1144,40 @@ export async function runStep_Specialist(data: any): Promise<any> {
             result.modified_mu_a = data.pure_mu_a;
         }
         
-        // Extrém eltérések ellenőrzése
+        // === v126.0 SAFEGUARD: Extrém eltérések ellenőrzése ===
         const homeDiff = Math.abs(result.modified_mu_h - data.pure_mu_h);
         const awayDiff = Math.abs(result.modified_mu_a - data.pure_mu_a);
-        if (homeDiff > 1.0 || awayDiff > 1.0) {
-            console.warn(`[AI_Service v124.0] Specialista túl nagy módosítást javasolt (H: ${homeDiff.toFixed(2)}, A: ${awayDiff.toFixed(2)}). Limitálás.`);
+        
+        // 1. Max ±0.5 módosítás limitálás
+        if (homeDiff > 0.5 || awayDiff > 0.5) {
+            console.warn(`[AI_Service v126.0] Specialista túl nagy módosítást javasolt (H: ${homeDiff.toFixed(2)}, A: ${awayDiff.toFixed(2)}). Limitálás ±0.5-re.`);
             result.modified_mu_h = data.pure_mu_h + Math.max(-0.5, Math.min(0.5, result.modified_mu_h - data.pure_mu_h));
             result.modified_mu_a = data.pure_mu_a + Math.max(-0.5, Math.min(0.5, result.modified_mu_a - data.pure_mu_a));
+        }
+        
+        // 2. Amplification check: Ha Quant már >50% különbséget mutatott, ne növeld tovább!
+        const quantDiffPct = data.pure_mu_h > 0 && data.pure_mu_a > 0 ? 
+            Math.abs((data.pure_mu_h - data.pure_mu_a) / Math.min(data.pure_mu_h, data.pure_mu_a)) * 100 : 0;
+        const modifiedDiffPct = result.modified_mu_h > 0 && result.modified_mu_a > 0 ? 
+            Math.abs((result.modified_mu_h - result.modified_mu_a) / Math.min(result.modified_mu_h, result.modified_mu_a)) * 100 : 0;
+        
+        if (quantDiffPct > 50 && modifiedDiffPct > quantDiffPct * 1.5) {
+            console.warn(`[AI_Service v126.0] AMPLIFICATION WARNING! Quant diff: ${quantDiffPct.toFixed(1)}%, Modified diff: ${modifiedDiffPct.toFixed(1)}%. Reducing...`);
+            const targetDiffPct = quantDiffPct * 1.3; // Max 30% amplification
+            const targetDiff = (targetDiffPct / 100) * Math.min(data.pure_mu_h, data.pure_mu_a);
+            
+            if (result.modified_mu_h > result.modified_mu_a) {
+                const avg = (result.modified_mu_h + result.modified_mu_a) / 2;
+                result.modified_mu_h = avg + targetDiff / 2;
+                result.modified_mu_a = avg - targetDiff / 2;
+            } else {
+                const avg = (result.modified_mu_h + result.modified_mu_a) / 2;
+                result.modified_mu_a = avg + targetDiff / 2;
+                result.modified_mu_h = avg - targetDiff / 2;
+            }
+            
+            result.modified_mu_h = Math.max(0.3, result.modified_mu_h);
+            result.modified_mu_a = Math.max(0.3, result.modified_mu_a);
         }
         
         return result;
@@ -1426,27 +1515,38 @@ async function getMasterRecommendation(
             rec.primary.reason = (rec.primary.reason || "") + "\n[FIGYELEM: Az AI nem adott részletes indoklást.]";
         }
 
-        // === MATEMATIKAI GUARDRAILS (KORREKCIÓS LOGIKA) - v125.0 FINOMHANGOLVA ===
-        // MÓDOSÍTÁS (v125.0): Kevésbé konzervatív penalty rendszer
+        // === MATEMATIKAI GUARDRAILS (KORREKCIÓS LOGIKA) - v126.0 REALITY CHECK ===
         const confidenceDiff = Math.abs(safeModelConfidence - expertConfScore);
-        const disagreementThreshold = 3.0; // Unchanged (jó érték)
+        const disagreementThreshold = 3.0;
         let confidencePenalty = 0;
         let disagreementNote = "";
         
-        // 1. Negatív narratíva + magas confidence esetén büntetés (SZIGORÍTVA)
-        if (expertConfScore < 1.5 && rec.primary.confidence > 5.0) { // 2.0 → 1.5 (szigorúbb)
-            confidencePenalty = Math.max(0, rec.primary.confidence - 3.5);
-            disagreementNote = "\n\n⚠️ KORREKCIÓ: A narratív elemzés negatív, ezért a bizalom csökkentve.";
+        // === ÚJ v126.0: SPECIALIST OVERCONFIDENCE CHECK ===
+        const specialistHomeDiff = Math.abs(specialistReport?.modified_mu_h - specialistReport?.adjustments?.home_adjustment || 0);
+        const specialistAwayDiff = Math.abs(specialistReport?.modified_mu_a - specialistReport?.adjustments?.away_adjustment || 0);
+        const specialistTotalAdjustment = Math.abs(specialistReport?.adjustments?.home_adjustment || 0) + 
+                                          Math.abs(specialistReport?.adjustments?.away_adjustment || 0);
+        
+        if (specialistTotalAdjustment > 0.6) {
+            confidencePenalty += 1.5;
+            disagreementNote += "\n\n⚠️ KORREKCIÓ v126.0: A Specialist túl nagy módosítást végzett. Extrém kontextuális faktorok miatt a bizalom csökkentve.";
+            console.warn(`[AI_Service v126.0] Specialist over-adjustment detected: ${specialistTotalAdjustment.toFixed(2)}. Confidence penalty: +1.5`);
         }
-        // 2. Matematikai és narratív ellentmondás (ENYHÍTVE v125.0)
+        
+        // 1. Negatív narratíva + magas confidence esetén büntetés
+        if (expertConfScore < 1.5 && rec.primary.confidence > 5.0) {
+            confidencePenalty += Math.max(0, rec.primary.confidence - 3.5);
+            disagreementNote += "\n\n⚠️ KORREKCIÓ: A narratív elemzés negatív, ezért a bizalom csökkentve.";
+        }
+        // 2. Matematikai és narratív ellentmondás
         else if (confidenceDiff > disagreementThreshold) {
-            confidencePenalty = Math.min(2.0, confidenceDiff / 2.0); // 1.5 → 2.0, max 2.5 → 2.0 (kisebb büntetés)
-            disagreementNote = `\n\n⚠️ KORREKCIÓ: Statisztikai vs narratív ellentmondás (${confidenceDiff.toFixed(1)} pont különbség).`;
+            confidencePenalty += Math.min(2.0, confidenceDiff / 2.0);
+            disagreementNote += `\n\n⚠️ KORREKCIÓ: Statisztikai vs narratív ellentmondás (${confidenceDiff.toFixed(1)} pont különbség).`;
         }
-        // 3. Túl magas confidence általában (ENYHÍTVE v125.0)
+        // 3. Túl magas confidence általában
         else if (rec.primary.confidence > 9.5 && safeModelConfidence < 8.0) {
-            confidencePenalty = 0.7; // 1.0 → 0.7 (kisebb büntetés)
-            disagreementNote = "\n\n⚠️ KORREKCIÓ: Túlzottan optimista értékelés, realisztikus szintre módosítva.";
+            confidencePenalty += 0.7;
+            disagreementNote += "\n\n⚠️ KORREKCIÓ: Túlzottan optimista értékelés, realisztikus szintre módosítva.";
         }
         
         rec.primary.confidence -= confidencePenalty;
