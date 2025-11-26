@@ -1055,7 +1055,12 @@ export async function fetchMatchData(options: any): Promise<IDataFetchResponse> 
         homeTeamId, 
         awayTeamId, 
         leagueId,   
-        foundSeason 
+        foundSeason,
+        // === ÚJ v125.0: Manuális xG értékek fogadása ===
+        manual_H_xG,
+        manual_H_xGA,
+        manual_A_xG,
+        manual_A_xGA
     } = options;
     
     console.log(`Adatgyűjtés indul (v95.3 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
@@ -1192,9 +1197,30 @@ null
     ].filter(Boolean);
     const richContext = richContextParts.length > 0 ? richContextParts.join('\n') : "N/A";
     
+    // === FEJLESZTVE v125.0: Manuális xG értékek beépítése ===
     const advancedData = realXgData ?
-    { home: { xg: realXgData.home }, away: { xg: realXgData.away } } :
-        { home: { xG: null }, away: { xG: null } };
+    { 
+        home: { xg: realXgData.home }, 
+        away: { xg: realXgData.away },
+        // Manuális xG értékek (ha megvannak)
+        manual_H_xG: manual_H_xG ?? null,
+        manual_H_xGA: manual_H_xGA ?? null,
+        manual_A_xG: manual_A_xG ?? null,
+        manual_A_xGA: manual_A_xGA ?? null
+    } :
+        { 
+            home: { xG: null }, 
+            away: { xG: null },
+            // Manuális xG értékek (ha megvannak)
+            manual_H_xG: manual_H_xG ?? null,
+            manual_H_xGA: manual_H_xGA ?? null,
+            manual_A_xG: manual_A_xG ?? null,
+            manual_A_xGA: manual_A_xGA ?? null
+        };
+    
+    if (manual_H_xG != null || manual_H_xGA != null || manual_A_xG != null || manual_A_xGA != null) {
+        console.log(`[apiSportsProvider v125.0] ✅ Manuális xG értékek beépítve: H_xG=${manual_H_xG}, H_xGA=${manual_H_xGA}, A_xG=${manual_A_xG}, A_xGA=${manual_A_xGA}`);
+    }
         
     const result: ICanonicalRichContext = {
          rawStats: finalData.stats,
