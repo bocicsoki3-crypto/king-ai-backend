@@ -349,3 +349,4 @@ Ajánlás: UNDER 2.5 az értékesebb, DE csak kis előnnyel."
 
 
 
+
