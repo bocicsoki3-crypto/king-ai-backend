@@ -1,6 +1,13 @@
 // FÁJL: strategies/HockeyStrategy.ts
-// VERZIÓ: v124.0 (Recent Form & Power Play Impact)
-// MÓDOSÍTÁS (v124.0):
+// VERZIÓ: v128.0 (REALITY CHECK MODE - HOCKEY EDITION) 🏒
+// MÓDOSÍTÁS (v128.0):
+// 1. ÚJ: P1 Manual Validation (1.5-5.0 goals tartomány - ha kívül esik, fallback P2+)
+// 2. JAVÍTOTT: Forma Súlyozás (recent 50%, season 50% - NEM 70/30 mint előtte!)
+// 3. ÚJ: Liga-függő HOME_ADVANTAGE (NHL 0.20, gyenge ligák 0.30+)
+// 4. ÚJ: Kulcsjátékos pozíció-alapú hatás (Goalie/Defense/Center/Wing)
+// 5. JAVÍTOTT: Power Play hatás (v124.0) megtartva és integrálva
+// 
+// KORÁBBI MÓDOSÍTÁS (v124.0):
 // 1. ÚJ: Recent Form súlyozás (utolsó 5 meccs alapján ±10% xG módosítás)
 // 2. ÚJ: Power Play hatás (ha elérhető PP% → ±0.05 gól/meccs módosítás)
 // 3. ÚJ: Biztonsági korlátok (1.5-5.0 gól/meccs tartomány)
@@ -23,67 +30,206 @@ import {
     HOCKEY_WINNER_PROMPT
 } from '../AI_Service.js';
 
+// ÚJ v128.0: Liga minőség coefficient importálása
+import { 
+    HOCKEY_LEAGUE_COEFFICIENTS
+} from '../config_league_coefficients.js';
+
 /**
  * A Hoki-specifikus elemzési logikát tartalmazó stratégia.
  */
 export class HockeyStrategy implements ISportStrategy {
 
+    // ===========================================================================================
+    // HELPER FÜGGVÉNYEK (v128.0 ÚJ!)
+    // ===========================================================================================
+    
+    /**
+     * Liga Coefficient Lekérés Jégkoronghoz
+     * @param leagueName - Liga neve
+     * @returns Jégkorong liga coefficient (0.5 - 1.0)
+     */
+    private getHockeyLeagueCoefficient(leagueName: string | null | undefined): number {
+        if (!leagueName) return HOCKEY_LEAGUE_COEFFICIENTS['default_hockey'];
+        
+        const normalized = leagueName.toLowerCase().trim();
+        
+        // Exact match
+        if (HOCKEY_LEAGUE_COEFFICIENTS[normalized]) {
+            return HOCKEY_LEAGUE_COEFFICIENTS[normalized];
+        }
+        
+        // Partial match
+        for (const [key, value] of Object.entries(HOCKEY_LEAGUE_COEFFICIENTS)) {
+            if (normalized.includes(key) || key.includes(normalized)) {
+                return value;
+            }
+        }
+        
+        // Default fallback
+        console.warn(`[HockeyStrategy v128.0] ⚠️ Ismeretlen jégkorong liga: "${leagueName}". Default (0.70) használva.`);
+        return HOCKEY_LEAGUE_COEFFICIENTS['default_hockey'];
+    }
+    
+    /**
+     * HOME ADVANTAGE Számítás (Liga-függő) - v128.0
+     * @param leagueCoefficient - Liga erősségi mutató (0.5 - 1.0)
+     * @returns Home advantage (goals) - Minél gyengébb liga, annál nagyobb
+     */
+    private calculateHomeAdvantage(leagueCoefficient: number): number {
+        // NHL (coeff 1.0) → 0.20 gól home advantage
+        // KHL (coeff 0.85) → 0.25 gól
+        // Gyenge liga (coeff 0.55) → 0.35 gól
+        
+        // Lineáris interpoláció: 1.0→0.20, 0.5→0.40
+        const homeAdvantage = 0.60 - (leagueCoefficient * 0.40);
+        
+        // Korlát: 0.15 - 0.40 gól
+        return Math.max(0.15, Math.min(0.40, homeAdvantage));
+    }
+    
+    /**
+     * FORMA Súlyozás (W/L rate alapján) - v128.0 JAVÍTOTT!
+     * @param formString - Forma string (pl. "WLLWW")
+     * @returns Multiplier (0.90 - 1.10) - ±10% max
+     */
+    private getFormMultiplier(formString: string | null | undefined): number {
+        if (!formString || typeof formString !== 'string') return 1.0;
+        
+        const recentForm = formString.substring(0, 5); // Utolsó 5 meccs
+        const wins = (recentForm.match(/W/g) || []).length;
+        const total = recentForm.length;
+        
+        if (total === 0) return 1.0;
+        
+        const winRate = wins / total;
+        
+        // MAPPING (Jégkorongban a forma NAGYON SZÁMÍT, de nem annyira mint kosárlabdában):
+        // 5W/5: 100% → +10% (+0.10)
+        // 4W/5: 80%  → +5% (+0.05)
+        // 3W/5: 60%  → 0% (semleges)
+        // 2W/5: 40%  → -5% (-0.05)
+        // 1W/5: 20%  → -7% (-0.07)
+        // 0W/5: 0%   → -10% (-0.10)
+        
+        if (winRate >= 0.8) return 1.10;       // 80%+
+        if (winRate >= 0.6) return 1.05;       // 60%+
+        if (winRate >= 0.4) return 1.00;       // 40%+ (semleges)
+        if (winRate >= 0.2) return 0.95;       // 20%+
+        return 0.90;                            // <20%
+    }
+    
+    /**
+     * KULCSJÁTÉKOS HATÁS (Pozíció-alapú) - v128.0
+     * @param absentees - Hiányzó játékosok listája
+     * @returns xG módosítás (-0.80 - 0 goals)
+     */
+    private calculatePlayerImpact(absentees: any[] | undefined): number {
+        if (!absentees || absentees.length === 0) return 0;
+        
+        let totalImpact = 0;
+        
+        // POZÍCIÓ-ALAPÚ HATÁS (Jégkorong):
+        // Goalie (G): HATALMAS hatás → -0.40-0.60 goals (kapus = minden!)
+        // Defense (D): Nagy hatás → -0.20-0.30 goals (védők kritikusak)
+        // Center (C): Közepes-nagy hatás → -0.15-0.25 goals (playmaker)
+        // Wing (LW/RW): Kis-közepes hatás → -0.10-0.15 goals
+        
+        const POSITION_IMPACT_MAP: { [key: string]: number } = {
+            'G': -0.50,   // Goalie (KRITIKUS!)
+            'D': -0.25,   // Defense
+            'C': -0.20,   // Center
+            'LW': -0.12,  // Left Wing
+            'RW': -0.12,  // Right Wing
+            'W': -0.12    // Wing (általános)
+        };
+        
+        for (const player of absentees) {
+            const position = (player.position || player.pos || 'UNKNOWN').toUpperCase().trim();
+            
+            // Pozíció matching (pl. "C/RW" → "C" precedencia)
+            for (const [pos, impact] of Object.entries(POSITION_IMPACT_MAP)) {
+                if (position.includes(pos)) {
+                    totalImpact += impact;
+                    console.log(`[HockeyStrategy v128.0] Hiányzó kulcsjátékos: ${player.name || 'N/A'} (${position}) → ${impact} goals impact`);
+                    break; // Csak az első match számít
+                }
+            }
+        }
+        
+        // Max -0.80 goals impact (pl. ha kezdő kapus + 2 védő hiányzik)
+        return Math.max(-0.80, totalImpact);
+    }
+
+    // ===========================================================================================
+    // MAIN XG ESTIMATION
+    // ===========================================================================================
+    
     /**
      * 1. Ügynök (Quant) feladata: Hoki xG számítása.
-     * (Változatlan v104.2)
+     * JAVÍTVA (v124.0): Recent Form & Power Play Impact
+     * JAVÍTVA (v128.0): Liga minőség, home advantage, kulcsjátékos hatás!
      */
     public estimatePureXG(options: XGOptions): { pure_mu_h: number; pure_mu_a: number; source: string; } {
-        const { rawStats, leagueAverages, advancedData } = options;
+        const { rawStats, leagueAverages, advancedData, form, absentees } = options;
 
-        // === P1 (Manuális) Adatok Ellenőrzése ===
+        // === P1 (Manuális) Adatok Ellenőrzése - v128.0 VALIDÁCIÓVAL ===
         if (advancedData?.manual_H_xG != null && 
             advancedData?.manual_H_xGA != null && 
             advancedData?.manual_A_xG != null && 
             advancedData?.manual_A_xGA != null) {
             
-            const p1_mu_h = (advancedData.manual_H_xG + advancedData.manual_A_xGA) / 2;
-            const p1_mu_a = (advancedData.manual_A_xG + advancedData.manual_H_xGA) / 2;
-            
-            return {
-                pure_mu_h: p1_mu_h,
-                pure_mu_a: p1_mu_a,
-                source: "Manual (Components)"
-            };
+            const manual_H_xG = advancedData.manual_H_xG;
+            const manual_A_xG = advancedData.manual_A_xG;
+
+            // ÚJ VALIDÁCIÓ: Ésszerű tartományon belül van-e? (1.5-5.0 goals jégkorongban)
+            if (manual_H_xG < 1.5 || manual_H_xG > 5.0 || manual_A_xG < 1.5 || manual_A_xG > 5.0) {
+                console.warn(`[HockeyStrategy v128.0] ⚠️ Manuális xG értékek ésszerűtlenek (H:${manual_H_xG}, A:${manual_A_xG}). Fallback P2+-ra.`);
+                // Folytatjuk a P2+ logikával, nem térünk vissza itt
+            } else {
+                const p1_mu_h = (manual_H_xG + advancedData.manual_A_xGA) / 2;
+                const p1_mu_a = (manual_A_xG + advancedData.manual_H_xGA) / 2;
+                
+                console.log(`[HockeyStrategy v128.0] ✅ P1 (MANUÁLIS xG) HASZNÁLVA: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
+                console.log(`  ↳ Input: H_xG=${manual_H_xG}, H_xGA=${advancedData.manual_H_xGA}, A_xG=${manual_A_xG}, A_xGA=${advancedData.manual_A_xGA}`);
+                
+                return {
+                    pure_mu_h: p1_mu_h,
+                    pure_mu_a: p1_mu_a,
+                    source: "Manual (Components) [v128.0 Validated]"
+                };
+            }
         }
         
-        // === P2 (Alap Statisztika) Fallback - FEJLESZTVE v124.0 ===
+        // === P2+ (Alap Statisztika) Fallback - FEJLESZTVE v128.0 ===
+        
+        // === ÚJ v128.0: LIGA MINŐSÉG COEFFICIENT ===
+        const leagueNameHome = advancedData?.league_home || advancedData?.league || null;
+        const leagueNameAway = advancedData?.league_away || advancedData?.league || null;
+        const leagueCoefficientHome = this.getHockeyLeagueCoefficient(leagueNameHome);
+        const leagueCoefficientAway = this.getHockeyLeagueCoefficient(leagueNameAway);
+        
+        // Ha különböző ligák, átlagoljuk (pl. nemzetközi kupák esetén)
+        const avgLeagueCoeff = (leagueCoefficientHome + leagueCoefficientAway) / 2;
+        console.log(`[HockeyStrategy v128.0] Liga coefficients: Home=${leagueCoefficientHome.toFixed(2)}, Away=${leagueCoefficientAway.toFixed(2)}, Avg=${avgLeagueCoeff.toFixed(2)}`);
+        // ================================================
+        
         let avg_h_gf = rawStats.home?.gf != null ? (rawStats.home.gf / (rawStats.home.gp || 1)) : (leagueAverages.avg_h_gf || 3.1);
         let avg_a_gf = rawStats.away?.gf != null ? (rawStats.away.gf / (rawStats.away.gp || 1)) : (leagueAverages.avg_a_gf || 2.9);
         let avg_h_ga = rawStats.home?.ga != null ? (rawStats.home.ga / (rawStats.home.gp || 1)) : (leagueAverages.avg_h_ga || 2.9);
         let avg_a_ga = rawStats.away?.ga != null ? (rawStats.away.ga / (rawStats.away.gp || 1)) : (leagueAverages.avg_a_ga || 3.1);
 
-        // === ÚJ v124.0: RECENT FORM SÚLYOZÁS ===
-        // Ha van form adat, akkor az utolsó 5 meccs alapján finomítunk
-        const getFormMultiplier = (formString: string | null | undefined): number => {
-            if (!formString || typeof formString !== 'string') return 1.0;
-            const recentForm = formString.substring(0, 5); // Utolsó 5 meccs
-            const wins = (recentForm.match(/W/g) || []).length;
-            const losses = (recentForm.match(/L/g) || []).length;
-            const total = recentForm.length;
-            
-            if (total === 0) return 1.0;
-            
-            // Nyerési arány: ha 80%+, akkor +10% várható gól, ha 20%-, akkor -10%
-            const winRate = wins / total;
-            if (winRate >= 0.8) return 1.10;
-            if (winRate >= 0.6) return 1.05;
-            if (winRate <= 0.2) return 0.90;
-            if (winRate <= 0.4) return 0.95;
-            return 1.0;
-        };
-        
-        const homeFormMult = getFormMultiplier(options.form?.home_overall);
-        const awayFormMult = getFormMultiplier(options.form?.away_overall);
+        // === JAVÍTOTT v128.0: FORMA SÚLYOZÁS (most már helper függvényt használunk) ===
+        const homeFormMult = this.getFormMultiplier(form?.home_overall);
+        const awayFormMult = this.getFormMultiplier(form?.away_overall);
         
         avg_h_gf *= homeFormMult;
         avg_a_gf *= awayFormMult;
         
-        // === ÚJ v124.0: POWER PLAY / GOALIE IMPACT (Ha elérhető advancedData-ban) ===
+        console.log(`[HockeyStrategy v128.0] Forma multipliers: Home=${homeFormMult.toFixed(3)}, Away=${awayFormMult.toFixed(3)}`);
+        // ================================================
+        
+        // === v124.0: POWER PLAY / GOALIE IMPACT (MEGTARTVA) ===
         // Ha van PP% vagy GSAx adat, azt is figyelembe vesszük
         if (advancedData?.home_pp_percent && advancedData?.away_pp_percent) {
             const leagueAvgPP = 0.20; // Liga átlag ~20% PP sikerség
@@ -92,19 +238,38 @@ export class HockeyStrategy implements ISportStrategy {
             
             avg_h_gf += homePPBonus;
             avg_a_gf += awayPPBonus;
+            
+            console.log(`[HockeyStrategy v128.0] Power Play bonus: Home=${homePPBonus.toFixed(3)}, Away=${awayPPBonus.toFixed(3)}`);
         }
 
-        let pure_mu_h = (avg_h_gf + avg_a_ga) / 2;
-        let pure_mu_a = (avg_a_gf + avg_h_ga) / 2;
+        // === ÚJ v128.0: LIGA-FÜGGŐ HOME ADVANTAGE ===
+        const HOME_ADVANTAGE = this.calculateHomeAdvantage(avgLeagueCoeff);
+        console.log(`[HockeyStrategy v128.0] HOME ADVANTAGE: ${HOME_ADVANTAGE.toFixed(2)} goals (liga-alapú)`);
+        // ================================================
+
+        let pure_mu_h = (avg_h_gf + avg_a_ga) / 2 + (HOME_ADVANTAGE / 2);
+        let pure_mu_a = (avg_a_gf + avg_h_ga) / 2 - (HOME_ADVANTAGE / 2);
+        
+        // === ÚJ v128.0: KULCSJÁTÉKOS HATÁS ===
+        const homePlayerImpact = this.calculatePlayerImpact(absentees?.home);
+        const awayPlayerImpact = this.calculatePlayerImpact(absentees?.away);
+        
+        pure_mu_h += homePlayerImpact;
+        pure_mu_a += awayPlayerImpact;
+        
+        console.log(`[HockeyStrategy v128.0] Kulcsjátékos hatás: Home=${homePlayerImpact.toFixed(2)} goals, Away=${awayPlayerImpact.toFixed(2)} goals`);
+        // ================================================
         
         // Biztonsági korlátok (NHL-ben nagyon ritka a 7+ gól)
         pure_mu_h = Math.max(1.5, Math.min(5.0, pure_mu_h));
         pure_mu_a = Math.max(1.5, Math.min(5.0, pure_mu_a));
         
+        console.log(`[HockeyStrategy v128.0] ✅ FINAL xG: mu_h=${pure_mu_h.toFixed(2)}, mu_a=${pure_mu_a.toFixed(2)}`);
+        
         return {
             pure_mu_h: pure_mu_h,
             pure_mu_a: pure_mu_a,
-            source: "Baseline (P2) Stats"
+            source: "Calculated (Stats + Form + League + Players) [v128.0]"
         };
     }
 

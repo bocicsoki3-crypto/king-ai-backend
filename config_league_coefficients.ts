@@ -99,6 +99,121 @@ export const UEFA_LEAGUE_COEFFICIENTS: { [key: string]: number } = {
     'default': 5.000  // Közepes liga feltételezés
 };
 
+// ===========================================================================================
+// KOSÁRLABDA LIGA COEFFICIENTS (v128.0 ÚJ!)
+// ===========================================================================================
+/**
+ * Kosárlabda Liga Erősségi Mutatók
+ * Skála: 0.5 - 1.0
+ * - 1.0 = NBA (legerősebb)
+ * - 0.85-0.95 = TOP Európai ligák (Euroleague, ACB, Bundesliga)
+ * - 0.70-0.80 = Közepes ligák (francia, olasz, török)
+ * - 0.50-0.65 = Gyenge ligák (kelet-európai, balkán)
+ */
+export const BASKETBALL_LEAGUE_COEFFICIENTS: { [key: string]: number } = {
+    // === TIER 1: VILÁGSZÍNVONAL ===
+    'nba': 1.00,
+    'usa': 1.00,
+    'united states': 1.00,
+    
+    // === TIER 2: TOP EURÓPAI LIGÁK ===
+    'euroleague': 0.92,
+    'acb': 0.90,  // Spanyol liga (Liga ACB)
+    'spain': 0.90,
+    'bbl': 0.88,  // Német liga (Basketball Bundesliga)
+    'germany': 0.88,
+    'lega basket serie a': 0.85,  // Olasz liga
+    'italy': 0.85,
+    'vtb united league': 0.82,  // Orosz/Baltikum liga
+    'russia': 0.82,
+    
+    // === TIER 3: ERŐS EURÓPAI LIGÁK ===
+    'turkish super league': 0.78,
+    'turkey': 0.78,
+    'betclic elite': 0.75,  // Francia liga (LNB Pro A)
+    'france': 0.75,
+    'greek basket league': 0.72,
+    'greece': 0.72,
+    'adriatic league': 0.70,  // ABA Liga (Balkán)
+    'israel': 0.68,
+    'poland': 0.65,
+    
+    // === TIER 4: KÖZEPES LIGÁK ===
+    'lithuania': 0.63,
+    'czech republic': 0.60,
+    'hungary': 0.58,
+    'romania': 0.55,
+    'bulgaria': 0.52,
+    
+    // === TIER 5: EGYÉB NAGY LIGÁK (nem EU) ===
+    'cba': 0.80,  // Kínai liga (Chinese Basketball Association)
+    'china': 0.80,
+    'b.league': 0.75,  // Japán liga
+    'japan': 0.75,
+    'kbl': 0.72,  // Koreai liga (Korean Basketball League)
+    'south korea': 0.72,
+    'australia': 0.70,  // NBL (National Basketball League)
+    'argentina': 0.68,
+    'brazil': 0.65,
+    
+    // === DEFAULT ===
+    'default_basketball': 0.70  // Közepes liga feltételezés
+};
+
+// ===========================================================================================
+// JÉGKORONG LIGA COEFFICIENTS (v128.0 ÚJ!)
+// ===========================================================================================
+/**
+ * Jégkorong Liga Erősségi Mutatók
+ * Skála: 0.5 - 1.0
+ * - 1.0 = NHL (legerősebb)
+ * - 0.80-0.90 = TOP Európai ligák (KHL, SHL, Liiga)
+ * - 0.65-0.75 = Közepes ligák (DEL, Swiss, Osztrák)
+ * - 0.50-0.60 = Gyenge ligák (kelet-európai)
+ */
+export const HOCKEY_LEAGUE_COEFFICIENTS: { [key: string]: number } = {
+    // === TIER 1: VILÁGSZÍNVONAL ===
+    'nhl': 1.00,
+    'usa': 1.00,
+    'canada': 1.00,
+    
+    // === TIER 2: TOP EURÓPAI LIGÁK ===
+    'khl': 0.85,  // Kontinentális Hokiliiga (Oroszország)
+    'russia': 0.85,
+    'shl': 0.80,  // Svenska Hockeyligan (Svédország)
+    'sweden': 0.80,
+    'liiga': 0.78,  // Finn liga
+    'finland': 0.78,
+    'nla': 0.75,  // Svájci National League A
+    'switzerland': 0.75,
+    
+    // === TIER 3: ERŐS EURÓPAI LIGÁK ===
+    'del': 0.72,  // Deutsche Eishockey Liga (Németország)
+    'germany': 0.72,
+    'extraliga': 0.70,  // Cseh Extraliga
+    'czech republic': 0.70,
+    'ebel': 0.68,  // Osztrák liga (Erste Bank Eishockey Liga)
+    'austria': 0.68,
+    'norway': 0.65,
+    'denmark': 0.63,
+    
+    // === TIER 4: KÖZEPES LIGÁK ===
+    'slovakia': 0.60,
+    'poland': 0.58,
+    'france': 0.55,
+    'italy': 0.55,
+    'united kingdom': 0.55,  // EIHL (Elite Ice Hockey League)
+    'hungary': 0.52,
+    
+    // === TIER 5: EGYÉB LIGÁK ===
+    'ahl': 0.88,  // American Hockey League (NHL farm system)
+    'japan': 0.60,
+    'south korea': 0.55,
+    
+    // === DEFAULT ===
+    'default_hockey': 0.70  // Közepes liga feltételezés
+};
+
 /**
  * Liga Minőség Kategóriák
  * Használat: UI-ban vagy logikai döntésekben
