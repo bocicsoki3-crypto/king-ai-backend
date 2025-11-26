@@ -226,3 +226,5 @@ data.sim_topScoreProb = topScoreProb;
 **Build dátum:** 2025-11-25  
 **"Nincs több 'safe play' - csak GYŐZELEM!"** 👑🔥
 
+
+

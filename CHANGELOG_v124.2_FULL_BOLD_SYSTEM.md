@@ -347,3 +347,5 @@ Ajánlás: UNDER 2.5 az értékesebb, DE csak kis előnnyel."
 **Build dátum:** 2025-11-25  
 **"Nincs több 'safe play' - TELJES RENDSZER UPGRADE!"** 👑
 
+
+

@@ -187,3 +187,5 @@ A rendszer:
 **Build dátum:** 2025-11-25  
 **Build by:** KING AI Development Team 👑
 
+
+
