@@ -298,9 +298,14 @@ export async function fetchMatchData(options: {
     homeTeamId: number | null;
     awayTeamId: number | null;
     leagueId: number | null;
+    // === ÚJ v125.0: Manuális xG értékek ===
+    manual_H_xG?: number | null;
+    manual_H_xGA?: number | null;
+    manual_A_xG?: number | null;
+    manual_A_xGA?: number | null;
 }): Promise<IDataFetchResponse> {
 
-    const { homeTeamName, awayTeamName, utcKickoff } = options;
+    const { homeTeamName, awayTeamName, utcKickoff, manual_H_xG, manual_H_xGA, manual_A_xG, manual_A_xGA } = options;
     console.log(`Adatgyűjtés indul (v2.1 - IceHockeyApi - Stratégia: Config Import + Map): ${homeTeamName} vs ${awayTeamName}...`);
 
     if (!ICEHOCKEYAPI_KEY) {
@@ -432,11 +437,25 @@ export async function fetchMatchData(options: {
                 }
             };
             
+            // === FEJLESZTVE v125.0: Manuális xG értékek beépítése ===
+            const advancedData = {
+                home: { xg: null },
+                away: { xg: null },
+                manual_H_xG: manual_H_xG ?? null,
+                manual_H_xGA: manual_H_xGA ?? null,
+                manual_A_xG: manual_A_xG ?? null,
+                manual_A_xGA: manual_A_xGA ?? null
+            };
+            
+            if (manual_H_xG != null || manual_H_xGA != null || manual_A_xG != null || manual_A_xGA != null) {
+                console.log(`[iceHockeyApiProvider v125.0] ✅ Manuális xG értékek beépítve: H_xG=${manual_H_xG}, H_xGA=${manual_H_xGA}, A_xG=${manual_A_xG}, A_xGA=${manual_A_xGA}`);
+            }
+            
             const result: ICanonicalRichContext = {
                 rawStats: successfulRawData.stats,
                 leagueAverages: {},
                 richContext: `Sikeres adatgyűjtés (v2.1) ${matchId} ID-val.`,
-                advancedData: { home: { xg: null }, away: { xg: null } },
+                advancedData: advancedData,
                 form: successfulRawData.form,
                 rawData: successfulRawData,
                 // === JAVÍTÁS (v105.1): 'null' cserélve 'fetchedOddsData'-ra ===
