@@ -1,7 +1,12 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v124.2 (BOLD PREDICTION MODE - FULL SYSTEM UPGRADE)
+// VERZIÓ: v125.0 (Confidence Penalty Finomhangolás)
 // CÉL: VALÓSÁGHŰ, NYERŐ PREDIKCIÓK - Az ÖSSZES PROMPT bátor és konkrét!
-// MÓDOSÍTÁS (v124.2 - TELJES RENDSZER ÁTDOLGOZÁS):
+// MÓDOSÍTÁS (v125.0):
+// 1. Confidence Penalty ENYHÍTVE: Kevésbé konzervatív (disagreementThreshold változatlan 3.0, de penalty csökkentve)
+// 2. Negatív narratíva threshold SZIGORÍTVA: 2.0 → 1.5
+// 3. Várható: +2-3% pontosság (kevesebb hamis óvatosság)
+//
+// Korábbi módosítások (v124.2 - TELJES RENDSZER ÁTDOLGOZÁS):
 // 1. MASTER AI PROMPT: topScore beépítve, bátor predikciókra ösztönzés, példák
 // 2. EXPERT CONFIDENCE: Bátor, konkrét indoklások, nincs több "safe" válasz
 // 3. RISK ASSESSMENT: Kiegyensúlyozott megközelítés, nem ijesztgető
@@ -1421,25 +1426,26 @@ async function getMasterRecommendation(
             rec.primary.reason = (rec.primary.reason || "") + "\n[FIGYELEM: Az AI nem adott részletes indoklást.]";
         }
 
-        // === MATEMATIKAI GUARDRAILS (KORREKCIÓS LOGIKA) ===
+        // === MATEMATIKAI GUARDRAILS (KORREKCIÓS LOGIKA) - v125.0 FINOMHANGOLVA ===
+        // MÓDOSÍTÁS (v125.0): Kevésbé konzervatív penalty rendszer
         const confidenceDiff = Math.abs(safeModelConfidence - expertConfScore);
-        const disagreementThreshold = 3.0;
+        const disagreementThreshold = 3.0; // Unchanged (jó érték)
         let confidencePenalty = 0;
         let disagreementNote = "";
         
-        // 1. Negatív narratíva + magas confidence esetén büntetés
-        if (expertConfScore < 2.0 && rec.primary.confidence > 5.0) {
+        // 1. Negatív narratíva + magas confidence esetén büntetés (SZIGORÍTVA)
+        if (expertConfScore < 1.5 && rec.primary.confidence > 5.0) { // 2.0 → 1.5 (szigorúbb)
             confidencePenalty = Math.max(0, rec.primary.confidence - 3.5);
             disagreementNote = "\n\n⚠️ KORREKCIÓ: A narratív elemzés negatív, ezért a bizalom csökkentve.";
         }
-        // 2. Matematikai és narratív ellentmondás
+        // 2. Matematikai és narratív ellentmondás (ENYHÍTVE v125.0)
         else if (confidenceDiff > disagreementThreshold) {
-            confidencePenalty = Math.min(2.5, confidenceDiff / 1.5);
+            confidencePenalty = Math.min(2.0, confidenceDiff / 2.0); // 1.5 → 2.0, max 2.5 → 2.0 (kisebb büntetés)
             disagreementNote = `\n\n⚠️ KORREKCIÓ: Statisztikai vs narratív ellentmondás (${confidenceDiff.toFixed(1)} pont különbség).`;
         }
-        // 3. Túl magas confidence általában
+        // 3. Túl magas confidence általában (ENYHÍTVE v125.0)
         else if (rec.primary.confidence > 9.5 && safeModelConfidence < 8.0) {
-            confidencePenalty = 1.0;
+            confidencePenalty = 0.7; // 1.0 → 0.7 (kisebb büntetés)
             disagreementNote = "\n\n⚠️ KORREKCIÓ: Túlzottan optimista értékelés, realisztikus szintre módosítva.";
         }
         
