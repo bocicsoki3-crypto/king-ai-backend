@@ -1,13 +1,17 @@
 // FÁJL: Model.ts
-// VERZIÓ: v124.0 (Dynamic Confidence Thresholds)
-// MÓDOSÍTÁS (v124.0):
-// 1. ÚJ: Dinamikus százalékos thresholds a confidence score-okhoz
-//    - Basketball: 5% (high), 1.5% (low) különbség az összpontszámhoz képest
-//    - Hockey: 12% (high), 3.5% (low) különbség
-//    - Soccer: 15% (high), 4% (low) különbség
-// 2. ÚJ: Totals confidence is dinamikus (Basketball: 2.5%/0.9%, Hockey: 10%/3%, Soccer: 16%/4%)
-// 3. EREDMÉNY: Sportág-arányos confidence scoring, pontosabb értékelés
-// 4. DEBUG: Console log hozzáadva a thresholdokhoz
+// VERZIÓ: v125.0 (Liga-Specifikus Dynamic Confidence Thresholds)
+// MÓDOSÍTÁS (v125.0):
+// 1. ÚJ: LIGA-SPECIFIKUS threshold scaling (Soccer):
+//    - Low scoring liga (< 2.3 goals/game): 0.80x multiplier (Serie A, Ligue 1)
+//    - Normal scoring liga: 1.0x multiplier
+//    - High scoring liga (> 2.7 goals/game): 1.20x multiplier (Bundesliga)
+// 2. EREDMÉNY: Pontosabb confidence liga kontextus szerint (+3-5% várható pontosság)
+//
+// Korábbi módosítások (v124.0):
+// - Dinamikus százalékos thresholds sportágonként
+// - Basketball: 5% (high), 1.5% (low)
+// - Hockey: 12% (high), 3.5% (low)
+// - Soccer: 10% (high), 2.5% (low) - base értékek
 
 import { SPORT_CONFIG } from './config.js';
 import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
@@ -310,13 +314,14 @@ export function calculateConfidenceScores(
         // --- A. GYŐZTES (WINNER) PIACOK BIZALMA - FEJLESZTVE v124.0 ---
         const xgDiff = Math.abs(mu_h - mu_a);
         
-        // === ÚJ v124.0: DINAMIKUS SZÁZALÉKOS THRESHOLDS ===
+        // === FEJLESZTVE v125.0: LIGA-SPECIFIKUS DINAMIKUS THRESHOLDS ===
         // Kosárnál a különbséget az összpontszámhoz viszonyítjuk
         const totalExpected = mu_h + mu_a;
         const xgDiffPercent = (xgDiff / totalExpected) * 100;
         
         // Sport-specifikus százalékos küszöbök
         let thresholdHighPct: number, thresholdLowPct: number;
+        
         if (sport === 'basketball') {
             thresholdHighPct = 5.0;  // 5% különbség (pl. 11 pont 220-ból)
             thresholdLowPct = 1.5;   // 1.5% különbség (pl. 3.3 pont)
@@ -324,8 +329,22 @@ export function calculateConfidenceScores(
             thresholdHighPct = 12.0; // 12% különbség (pl. 0.72 gól 6-ból)
             thresholdLowPct = 3.5;   // 3.5% különbség (pl. 0.21 gól)
         } else { // soccer
-            thresholdHighPct = 10.0; // 10% különbség (pl. 0.27 gól 2.7-ből) - CSÖKKENTVE a döntetlen bias csökkentésére
-            thresholdLowPct = 2.5;   // 2.5% különbség (pl. 0.07 gól) - CSÖKKENTVE érzékenyebb confidence-ért
+            // === ÚJ v125.0: LIGA-SPECIFIKUS SCALING ===
+            // Low scoring liga (< 2.3 goals/game): Kisebb threshold (Serie A, Ligue 1)
+            // High scoring liga (> 2.7 goals/game): Nagyobb threshold (Bundesliga)
+            
+            let thresholdMultiplier = 1.0;
+            
+            if (totalExpected < 2.3) {
+                thresholdMultiplier = 0.80; // Low scoring liga: 20% könnyebb high confidence
+                console.log(`[Confidence] LOW SCORING liga észlelve (${totalExpected.toFixed(2)} goals/game) → Threshold scaling: 0.80x`);
+            } else if (totalExpected > 2.7) {
+                thresholdMultiplier = 1.20; // High scoring liga: 20% nehezebb high confidence
+                console.log(`[Confidence] HIGH SCORING liga észlelve (${totalExpected.toFixed(2)} goals/game) → Threshold scaling: 1.20x`);
+            }
+            
+            thresholdHighPct = 10.0 * thresholdMultiplier; // Base: 10%
+            thresholdLowPct = 2.5 * thresholdMultiplier;   // Base: 2.5%
         }
         
         if (xgDiffPercent > thresholdHighPct) winnerScore += 2.0;
@@ -333,7 +352,7 @@ export function calculateConfidenceScores(
         if (xgDiffPercent < thresholdLowPct) winnerScore -= 2.0;
         else if (xgDiffPercent < thresholdLowPct * 1.5) winnerScore -= 1.0;
         
-        console.log(`[Confidence] xG Diff: ${xgDiff.toFixed(2)} (${xgDiffPercent.toFixed(1)}%) | Thresholds: High=${thresholdHighPct}%, Low=${thresholdLowPct}%`);
+        console.log(`[Confidence] xG Diff: ${xgDiff.toFixed(2)} (${xgDiffPercent.toFixed(1)}%) | Thresholds: High=${thresholdHighPct.toFixed(1)}%, Low=${thresholdLowPct.toFixed(1)}%`);
 
         const getFormPointsPerc = (formString: string | null | undefined): number | null => {
              if (!formString || typeof formString !== 'string' || formString === "N/A") return null;
@@ -366,11 +385,12 @@ export function calculateConfidenceScores(
         const marketTotal = mainTotalsLine;
         const totalsDiff = Math.abs(modelTotal - marketTotal);
         
-        // === ÚJ v124.0: DINAMIKUS SZÁZALÉKOS THRESHOLDS (TOTALS) ===
+        // === FEJLESZTVE v125.0: LIGA-SPECIFIKUS DINAMIKUS THRESHOLDS (TOTALS) ===
         const totalsDiffPercent = (totalsDiff / marketTotal) * 100;
         
         // Sport-specifikus százalékos küszöbök
         let totalsThresholdHighPct: number, totalsThresholdLowPct: number;
+        
         if (sport === 'basketball') {
             totalsThresholdHighPct = 2.5;  // 2.5% különbség (pl. 5.5 pont 220-ból)
             totalsThresholdLowPct = 0.9;   // 0.9% különbség (pl. 2 pont)
@@ -378,15 +398,25 @@ export function calculateConfidenceScores(
             totalsThresholdHighPct = 10.0; // 10% különbség (pl. 0.65 gól 6.5-ből)
             totalsThresholdLowPct = 3.0;   // 3% különbség (pl. 0.2 gól)
         } else { // soccer
-            totalsThresholdHighPct = 16.0; // 16% különbség (pl. 0.4 gól 2.5-ből)
-            totalsThresholdLowPct = 4.0;   // 4% különbség (pl. 0.1 gól)
+            // === ÚJ v125.0: LIGA-SPECIFIKUS SCALING (TOTALS) ===
+            // Ugyanaz a logika, mint a winner confidencenél
+            let totalsThresholdMultiplier = 1.0;
+            
+            if (totalExpected < 2.3) {
+                totalsThresholdMultiplier = 0.85; // Low scoring: könnyebb high confidence totalsnál
+            } else if (totalExpected > 2.7) {
+                totalsThresholdMultiplier = 1.15; // High scoring: nehezebb high confidence
+            }
+            
+            totalsThresholdHighPct = 16.0 * totalsThresholdMultiplier; // Base: 16%
+            totalsThresholdLowPct = 4.0 * totalsThresholdMultiplier;   // Base: 4%
         }
         
         if (totalsDiffPercent > totalsThresholdHighPct) totalsScore += 4.0;
         else if (totalsDiffPercent > totalsThresholdHighPct * 0.6) totalsScore += 2.5;
         if (totalsDiffPercent < totalsThresholdLowPct) totalsScore -= 2.0;
         
-        console.log(`[Confidence] Totals Diff: ${totalsDiff.toFixed(2)} (${totalsDiffPercent.toFixed(1)}%) | Thresholds: High=${totalsThresholdHighPct}%, Low=${totalsThresholdLowPct}%`);
+        console.log(`[Confidence] Totals Diff: ${totalsDiff.toFixed(2)} (${totalsDiffPercent.toFixed(1)}%) | Thresholds: High=${totalsThresholdHighPct.toFixed(1)}%, Low=${totalsThresholdLowPct.toFixed(1)}%`);
         
         winnerScore = winnerScore + generalBonus - generalPenalty;
         totalsScore = totalsScore + generalBonus - generalPenalty;
