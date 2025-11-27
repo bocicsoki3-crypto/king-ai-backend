@@ -404,6 +404,18 @@ export async function getRichContextualData(
                 if (finalResult.rawData.key_players.away) finalResult.rawData.key_players.away = filterRoster(finalResult.rawData.key_players.away);
             }
         }
+        
+        // === ÚJ v129.0: TEMPORAL FRESHNESS FILTER FOR INJURIES ===
+        if (deepScoutResult.squad_news) {
+            const sourceFreshness = deepScoutResult.squad_news.source_freshness || {};
+            const homeAge = sourceFreshness.home_latest_source_age_hours;
+            const awayAge = sourceFreshness.away_latest_source_age_hours;
+            
+            if ((homeAge != null && homeAge > 6) || (awayAge != null && awayAge > 6)) {
+                console.warn(`[DataFetch v129.0] ⚠️ STALE INJURY SOURCES DETECTED: Home=${homeAge}h, Away=${awayAge}h. Injuries marked as DOUBTFUL.`);
+                // A rendszer már a Deep Scout-ban jelölte, de itt is logoljuk
+            }
+        }
     }
     
     // 2. Statisztikai Fallback
