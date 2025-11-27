@@ -61,6 +61,77 @@ export async function getAndParse(
     }
 }
 
+interface ITopOutcomeSnapshot {
+    score: string;
+    probability: number;
+}
+
+interface IProbabilitySnapshot {
+    summaryText: string;
+    topOutcomes: ITopOutcomeSnapshot[];
+    topOutcomesText: string;
+    highestMarket: 'home' | 'away' | 'draw';
+}
+
+function formatTopOutcomes(outcomes: ITopOutcomeSnapshot[]): string {
+    if (!outcomes.length) return 'Nincs releváns top eredmény.';
+    return outcomes
+        .map(outcome => `${outcome.score} (${outcome.probability.toFixed(1)}%)`)
+        .join(', ');
+}
+
+function buildProbabilitySnapshot(sim: any, limit = 3): IProbabilitySnapshot {
+    const safeSim = sim || {};
+    const scores = safeSim.scores || {};
+    const totalSimulated = Object.values(scores).reduce((sum: number, value: number) => sum + value, 0) || 1;
+    const entries = Object.entries(scores)
+        .sort((a, b) => (b[1] as number) - (a[1] as number))
+        .slice(0, limit)
+        .map(([score, freq]) => ({
+            score,
+            probability: (Number(freq) / totalSimulated) * 100
+        }));
+    
+    const pHome = typeof safeSim.pHome === 'number' ? safeSim.pHome : 0;
+    const pDraw = typeof safeSim.pDraw === 'number' ? safeSim.pDraw : 0;
+    const pAway = typeof safeSim.pAway === 'number' ? safeSim.pAway : 0;
+    
+    let highestMarket: 'home' | 'away' | 'draw' = 'home';
+    if (pAway >= pHome && pAway >= pDraw) highestMarket = 'away';
+    else if (pDraw >= pHome && pDraw >= pAway) highestMarket = 'draw';
+    
+    const summaryText = `Győzelmi megoszlás: Hazai ${pHome.toFixed(1)}% | Döntetlen ${pDraw.toFixed(1)}% | Vendég ${pAway.toFixed(1)}%. ${entries.length ? `Top eredmények: ${formatTopOutcomes(entries)}.` : 'Top eredmények: nincs elérhető adat.'}`;
+    
+    return {
+        summaryText,
+        topOutcomes: entries,
+        topOutcomesText: entries.length ? formatTopOutcomes(entries) : 'Nincs elérhető top eredmény.',
+        highestMarket
+    };
+}
+
+function inferPrimaryMarketLabel(label?: string): 'home' | 'away' | 'draw' | null {
+    if (!label) return null;
+    const normalized = label.toLowerCase();
+    if (normalized.includes('hazai') || normalized.includes('home')) return 'home';
+    if (normalized.includes('vendég') || normalized.includes('away')) return 'away';
+    if (normalized.includes('döntetlen') || normalized.includes('draw') || /\bx\b/.test(normalized)) return 'draw';
+    return null;
+}
+
+function getMarketProbability(sim: any, market: 'home' | 'away' | 'draw'): number {
+    if (!sim) return 0;
+    if (market === 'home') return typeof sim.pHome === 'number' ? sim.pHome : 0;
+    if (market === 'away') return typeof sim.pAway === 'number' ? sim.pAway : 0;
+    return typeof sim.pDraw === 'number' ? sim.pDraw : 0;
+}
+
+function getMarketLabel(market: 'home' | 'away' | 'draw'): string {
+    if (market === 'home') return 'hazai győzelem';
+    if (market === 'away') return 'vendég győzelem';
+    return 'döntetlen';
+}
+
 // === 0. ÜGYNÖK (DEEP SCOUT - Csak Adatgyűjtő) ===
 const PROMPT_DEEP_SCOUT_V4 = `
 TASK: You are 'Deep Scout', the elite investigative unit of King AI.
@@ -850,6 +921,10 @@ Your mission: Identify the **ABSOLUTE BEST BET** based on mathematical convergen
 - Away Win: {sim_pAway}%
 - Over/Under {sim_mainTotalsLine}: Over {sim_pOver}%
 
+**📈 VALÓSZÍNŰSÉGI PILLANATKÉP:**
+- {probability_summary}
+- Top 3 konkrét eredmény: {sim_topOutcomesText}
+
 **🎯 LEGVALÓSZÍNŰBB EREDMÉNY (25,000 SZIMULÁCIÓ ALAPJÁN):**
 - **Leggyakoribb eredmény:** {sim_topScore} ({sim_topScoreProb}% eséllyel)
 - **Várható xG:** Hazai {sim_mu_h} vs Vendég {sim_mu_a}
@@ -984,19 +1059,20 @@ You MUST provide a valid JSON with this EXACT structure:
 8. **HUNGARIAN LANGUAGE**: All reasoning must be in clear, professional Hungarian
 9. **NE LÉGY "SAFE"**: A felhasználó nyerni akar, nem bizonytalan válaszokat olvasni!
 10. **KONKRÉT SZÁMOK**: Ha mondasz eredményt, mondd: "2-1", "1-0", stb. - NE "1-2 gól várható"
-11. **ANTI-DRAW BIAS RULE**: 
+11. **PONTOS VÉGEREDMÉNY CSAK AKKOR**, ha a leggyakoribb score valószínűsége ≥ 10%. Alatta csak tartományt vagy 2-3 lehetséges eredményt említs.
+12. **ANTI-DRAW BIAS RULE**: 
     - If simulation shows Home >45% OR Away >42%, DON'T default to Draw unless there's overwhelming narrative evidence
     - Draw should only win if it's genuinely >30% AND clearly the best option (not just "safe")
     - When in doubt between Home/Away/Draw, pick the one with: HIGHEST probability (≥4% gap) + BEST current form
-12. **FORM PRIORITY RULE**:
+13. **FORM PRIORITY RULE**:
     - Last 5 matches form is MORE important than H2H history >6 months old
     - If one team has 4-5 good results and opponent has 0-2, this is MASSIVE (±0.4-0.6 xG impact)
     - Don't let old narratives ("mumus-komplexus", old H2H) override current momentum
-13. **QUANT RESPECT RULE**:
+14. **QUANT RESPECT RULE**:
     - If Quant (pure stats) shows >12% xG difference, it found something REAL in the data
     - If Specialist reduced it too much (>50% reduction), you can note: "Pure stats showed stronger advantage, possibly underweighted by contextual adjustments"
     - Example: Quant H=1.60 vs A=1.00 (+60%), Specialist reduced to H=1.35 vs A=1.15 (+17%) → You can say "The baseline statistical model showed stronger Home dominance"
-14. **CONFIDENCE-PROBABILITY ALIGNMENT**:
+15. **CONFIDENCE-PROBABILITY ALIGNMENT**:
     - If win probability is 60%+ → Confidence should be 7-10
     - If win probability is 50-60% → Confidence should be 6-7.5
     - If win probability is 45-50% → Confidence should be 5-6.5
@@ -1143,6 +1219,39 @@ export async function runStep_Specialist(data: any): Promise<any> {
             console.warn("[AI_Service v124.0] Specialista érvénytelen modified_mu_a-t adott. Fallback alapértékre.");
             result.modified_mu_a = data.pure_mu_a;
         }
+        
+        const limitAdjustmentForUnverified = (team: 'home' | 'away', names: string[]) => {
+            if (!names || names.length === 0) return false;
+            const pureValue = team === 'home' ? data.pure_mu_h : data.pure_mu_a;
+            const currentValue = team === 'home' ? result.modified_mu_h : result.modified_mu_a;
+            const delta = currentValue - pureValue;
+            if (Math.abs(delta) <= 0.1) return false;
+            const limitedValue = pureValue + Math.sign(delta) * 0.1;
+            if (team === 'home') {
+                result.modified_mu_h = limitedValue;
+            } else {
+                result.modified_mu_a = limitedValue;
+            }
+            result.adjustments = result.adjustments || {};
+            const key = team === 'home' ? 'home_factors' : 'away_factors';
+            const adjustmentKey = team === 'home' ? 'home_adjustment' : 'away_adjustment';
+            const factors = (result.adjustments[key] || []) as any[];
+            const newDelta = limitedValue - pureValue;
+            factors.push({
+                factor: 'Unverified absentees',
+                impact: parseFloat(newDelta.toFixed(2)),
+                reasoning: `A manuálisan megadott (${names.join(', ')}) hiányzók nem kaptak külső megerősítést, ezért legfeljebb ±0.10 xG módosítást engedélyezünk.`
+            });
+            result.adjustments[key] = factors;
+            result.adjustments[adjustmentKey] = newDelta;
+            result.reasoning = `${result.reasoning || ''}\n⚠️ ${team === 'home' ? 'Hazai' : 'Vendég'} oldalon csak manuális forrásból érkező hiányzó információ áll rendelkezésre, konzervatív limit alkalmazva.`;
+            return true;
+        };
+        
+        const unverifiedHome = data?.injuryConfidence?.home?.unverified || [];
+        const unverifiedAway = data?.injuryConfidence?.away?.unverified || [];
+        limitAdjustmentForUnverified('home', unverifiedHome);
+        limitAdjustmentForUnverified('away', unverifiedAway);
         
         // === v127.0 SAFEGUARD: Extrém eltérések ellenőrzése + REALITY CHECK ===
         const homeDiff = Math.abs(result.modified_mu_h - data.pure_mu_h);
@@ -1430,6 +1539,12 @@ async function getMasterRecommendation(
 ) {
     try {
         const safeSim = sim || {};
+        const snapshotFromSim: IProbabilitySnapshot = safeSim.probability_summary ? {
+            summaryText: safeSim.probability_summary,
+            topOutcomes: safeSim.top_outcomes || [],
+            topOutcomesText: safeSim.top_outcomes_text || formatTopOutcomes(safeSim.top_outcomes || []),
+            highestMarket: safeSim.highest_prob_market || 'home'
+        } : buildProbabilitySnapshot(safeSim);
         const microSummary = Object.entries(microAnalyses || {}).map(([key, val]) => `${key}: ${val || 'N/A'}`).join('; ');
 
         // Expert confidence score kinyerése
@@ -1464,6 +1579,8 @@ async function getMasterRecommendation(
             sim_mu_h: safeSim.mu_h_sim?.toFixed(2) || "N/A",
             sim_mu_a: safeSim.mu_a_sim?.toFixed(2) || "N/A",
             // ====================================
+            probability_summary: snapshotFromSim.summaryText,
+            sim_topOutcomesText: snapshotFromSim.topOutcomesText,
             modelConfidence: safeModelConfidence.toFixed(1), 
             expertConfidence: expertConfidence || "N/A",
             riskAssessment: riskAssessment || "N/A",
@@ -1525,6 +1642,18 @@ async function getMasterRecommendation(
             rec.primary.reason = (rec.primary.reason || "") + "\n[FIGYELEM: Az AI nem adott részletes indoklást.]";
         }
 
+        // === PROBABILITY ALIGNMENT CHECK ===
+        const highestProbMarket = snapshotFromSim.highestMarket;
+        const detectedPrimaryMarket = inferPrimaryMarketLabel(rec.primary?.market);
+        if (detectedPrimaryMarket && highestProbMarket && detectedPrimaryMarket !== highestProbMarket) {
+            const chosenProb = getMarketProbability(safeSim, detectedPrimaryMarket);
+            const bestProb = getMarketProbability(safeSim, highestProbMarket);
+            if ((bestProb - chosenProb) >= 4) {
+                rec.primary.confidence = Math.max(1.0, rec.primary.confidence - 1.0);
+                rec.primary.reason = `${rec.primary.reason}\n⚠️ Szimulációs jelzés: a ${getMarketLabel(highestProbMarket)} kimenetel ${bestProb.toFixed(1)}%-kal a legerősebb, míg a választott opció csak ${chosenProb.toFixed(1)}%.`;
+            }
+        }
+
         // === MATEMATIKAI GUARDRAILS (KORREKCIÓS LOGIKA) - v126.0 REALITY CHECK ===
         const confidenceDiff = Math.abs(safeModelConfidence - expertConfScore);
         const disagreementThreshold = 3.0;
@@ -1579,6 +1708,8 @@ async function getMasterRecommendation(
         rec.recommended_bet = rec.primary.market;
         rec.final_confidence = rec.primary.confidence;
         rec.brief_reasoning = rec.primary.reason;
+        rec.probability_summary = snapshotFromSim.summaryText;
+        rec.top_outcomes = snapshotFromSim.topOutcomes;
 
         console.log(`[AI_Service v124.0 - Főnök] GOD MODE V2 Tipp generálva.`);
         console.log(`  - Elsődleges: ${rec.primary.market} (Bizalom: ${rec.primary.confidence.toFixed(1)}/10)`);
@@ -1603,6 +1734,13 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
     
     const { rawDataJson, specialistReport, simulatorReport, psyReport, valueBetsJson, richContext, matchData, sportStrategy, confidenceScores } = data;
     const sim = simulatorReport || {};
+    const probabilitySnapshot = buildProbabilitySnapshot(sim);
+    if (!sim.probability_summary) {
+        sim.probability_summary = probabilitySnapshot.summaryText;
+        sim.top_outcomes = probabilitySnapshot.topOutcomes;
+        sim.top_outcomes_text = probabilitySnapshot.topOutcomesText;
+        sim.highest_prob_market = probabilitySnapshot.highestMarket;
+    }
     const home = matchData.home || 'Hazai';
     const away = matchData.away || 'Vendég';
     const sport = matchData.sport || 'soccer';
