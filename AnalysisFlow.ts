@@ -12,7 +12,9 @@ import type {
     ICanonicalRawData,
     ICanonicalStats,
     ICanonicalOdds,
-    IPlayerStub 
+    IPlayerStub,
+    ICanonicalPlayer,
+    IAbsenceConfidenceMeta
 } from './src/types/canonical.d.ts';
 // A 'findMainTotalsLine'-t a központi 'utils' fájlból importáljuk
 import { findMainTotalsLine } from './providers/common/utils.js';
@@ -88,6 +90,10 @@ interface IAnalysisResponse {
             home: IPlayerStub[];
             away: IPlayerStub[];
         };
+        absenceConfidence?: {
+            home: IAbsenceConfidenceMeta;
+            away: IAbsenceConfidenceMeta;
+        };
     };
     debugInfo: any;
 }
@@ -109,6 +115,135 @@ function safeConvertToNumber(value: any): number | null {
         return null;
     }
     return num;
+}
+
+type ManualAbsenteesInput = IDataFetchOptions['manual_absentees'];
+
+interface AbsenceValidationResult {
+    mergedAbsentees: ICanonicalRawData['absentees'];
+    meta: {
+        home: IAbsenceConfidenceMeta;
+        away: IAbsenceConfidenceMeta;
+    };
+    summary: string;
+}
+
+const ROLE_MAP: Record<string, ICanonicalPlayer['role']> = {
+    g: 'Kapus',
+    gk: 'Kapus',
+    goalkeeper: 'Kapus',
+    d: 'Védő',
+    def: 'Védő',
+    defender: 'Védő',
+    m: 'Középpályás',
+    mid: 'Középpályás',
+    midfielder: 'Középpályás',
+    f: 'Támadó',
+    fw: 'Támadó',
+    st: 'Támadó',
+    forward: 'Támadó'
+};
+
+function normalizePlayerName(name?: string): string {
+    return (name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function mapPosToRole(pos?: string): ICanonicalPlayer['role'] {
+    if (!pos) return 'Ismeretlen';
+    const key = normalizePlayerName(pos).replace(/[^a-z]/g, '');
+    return ROLE_MAP[key] || 'Ismeretlen';
+}
+
+function ensurePlayerConfidence(player: ICanonicalPlayer, fallbackSource: 'manual' | 'provider'): ICanonicalPlayer {
+    return {
+        ...player,
+        confidence: player.confidence || 'confirmed',
+        source: player.source || fallbackSource
+    };
+}
+
+function buildAbsenceValidation(rawData: ICanonicalRawData, manualAbsentees?: ManualAbsenteesInput | null): AbsenceValidationResult | null {
+    if (!rawData) return null;
+    
+    const mergedAbsentees: ICanonicalRawData['absentees'] = {
+        home: (rawData.absentees?.home || []).map(player => ensurePlayerConfidence(player, 'provider')),
+        away: (rawData.absentees?.away || []).map(player => ensurePlayerConfidence(player, 'provider'))
+    };
+    
+    const meta = {
+        home: { confirmed: [] as string[], unverified: [] as string[] },
+        away: { confirmed: [] as string[], unverified: [] as string[] }
+    };
+    
+    if (!manualAbsentees?.home?.length && !manualAbsentees?.away?.length) {
+        return {
+            mergedAbsentees,
+            meta,
+            summary: 'Nincs manuális hiányzó hozzáadva.'
+        };
+    }
+    
+    const providerHomeNames = new Set<string>([
+        ...mergedAbsentees.home.map(player => normalizePlayerName(player.name)),
+        ...((rawData.detailedPlayerStats?.home_absentees || []).map(player => normalizePlayerName(player.name)))
+    ]);
+    const providerAwayNames = new Set<string>([
+        ...mergedAbsentees.away.map(player => normalizePlayerName(player.name)),
+        ...((rawData.detailedPlayerStats?.away_absentees || []).map(player => normalizePlayerName(player.name)))
+    ]);
+    
+    const mergeManualList = (team: 'home' | 'away', entries: { name: string; pos?: string }[] = []) => {
+        const target = mergedAbsentees[team];
+        const providerNames = team === 'home' ? providerHomeNames : providerAwayNames;
+        const indexMap = new Map<string, number>();
+        target.forEach((player, idx) => indexMap.set(normalizePlayerName(player.name), idx));
+        
+        entries.forEach(entry => {
+            if (!entry.name) return;
+            const normalized = normalizePlayerName(entry.name);
+            const existingIndex = indexMap.get(normalized);
+            const isConfirmed = providerNames.has(normalized);
+            const confidenceLabel: 'confirmed' | 'unverified' = isConfirmed ? 'confirmed' : 'unverified';
+            
+            if (existingIndex != null) {
+                const existing = target[existingIndex];
+                target[existingIndex] = ensurePlayerConfidence({
+                    ...existing,
+                    confidence: confidenceLabel,
+                    source: isConfirmed ? 'manual+provider' : existing.source || 'manual'
+                }, 'provider');
+            } else {
+                const newPlayer = ensurePlayerConfidence({
+                    name: entry.name,
+                    role: mapPosToRole(entry.pos),
+                    importance: 'key',
+                    status: 'confirmed_out',
+                    confidence: confidenceLabel,
+                    source: isConfirmed ? 'manual+provider' : 'manual'
+                }, 'manual');
+                target.push(newPlayer);
+            }
+            
+            meta[team][confidenceLabel].push(entry.name);
+        });
+    };
+    
+    mergeManualList('home', manualAbsentees?.home);
+    mergeManualList('away', manualAbsentees?.away);
+    
+    const formatTeamSummary = (label: string, data: IAbsenceConfidenceMeta) => {
+        const parts: string[] = [];
+        if (data.confirmed.length) parts.push(`✅ ${data.confirmed.join(', ')}`);
+        if (data.unverified.length) parts.push(`⚠️ ${data.unverified.join(', ')}`);
+        return `${label}: ${parts.length ? parts.join(' | ') : 'Nincs manuális eltérés'}`;
+    };
+    
+    const summary = [
+        formatTeamSummary('Hazai', meta.home),
+        formatTeamSummary('Vendég', meta.away)
+    ].join('\n');
+    
+    return { mergedAbsentees, meta, summary };
 }
 
 export async function runFullAnalysis(params: any, sport: string, openingOdds: any): Promise<IAnalysisResponse | IAnalysisError> {
@@ -196,6 +331,29 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             availableRosters
         }: IDataFetchResponse = await getRichContextualData(dataFetchOptions);
         // === Scout Végzett ===
+
+        const absenceValidation = buildAbsenceValidation(rawData, manual_absentees);
+        const absenceConfidenceMeta = absenceValidation?.meta;
+        let absenceSummaryText = '';
+        if (absenceValidation) {
+            rawData.absentees = absenceValidation.mergedAbsentees;
+            rawData.contextual_factors = rawData.contextual_factors || {
+                stadium_location: null,
+                pitch_condition: null,
+                weather: null,
+                match_tension_index: null,
+                structured_weather: {
+                    description: 'N/A',
+                    temperature_celsius: null,
+                    wind_speed_kmh: null,
+                    precipitation_mm: null,
+                    source: 'N/A'
+                },
+                coach: { home_name: null, away_name: null }
+            };
+            rawData.contextual_factors.absence_confidence = absenceValidation.meta;
+            absenceSummaryText = `\n\n[HIÁNYZÓK MEGERŐSÍTÉSE]:\n${absenceValidation.summary}`;
+        }
         
         // === ÚJ v128.0: Absentees kinyerése a rawData-ból ===
         const absentees = rawData?.absentees || undefined;
@@ -226,7 +384,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
 
         // === KRITIKUS LÉPÉS (v109.0): A Piaci Infó Injektálása a Kontextusba ===
         // Így minden AI ügynök (Pszichológus, Specialista, Főnök) látni fogja az oddsok mozgását.
-        const enhancedRichContext = `${richContext}\n\n[PIACI HÍRSZERZÉS (MARKET WISDOM)]:\n${marketIntel}`;
+        const enhancedRichContext = `${richContext}\n\n[PIACI HÍRSZERZÉS (MARKET WISDOM)]:\n${marketIntel}${absenceSummaryText}`;
         
         // === 2.5 ÜGYNÖK (PSZICHOLÓGUS) ===
         console.log(`[Lánc 2.5/6] Pszichológus Ügynök: Narratív profilalkotás...`);
@@ -276,7 +434,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             psy_profile_home: psy_profile_home, 
             psy_profile_away: psy_profile_away,
             homeNarrativeRating: homeNarrativeRating,
-            awayNarrativeRating: awayNarrativeRating
+            awayNarrativeRating: awayNarrativeRating,
+            injuryConfidence: absenceConfidenceMeta
         };
         const specialistReport = await runStep_Specialist(specialistInput);
 
@@ -363,6 +522,12 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         };
 
         const finalReport: any = await runStep_FinalAnalysis(finalAnalysisInput);
+        if (absenceConfidenceMeta) {
+            finalReport.agent_reports = {
+                ...(finalReport.agent_reports || {}),
+                absence_confidence: absenceConfidenceMeta
+            };
+        }
 
         if (finalReport.error) {
             console.error("A Hibrid Főnök hibát adott vissza:", finalReport.error);
@@ -460,7 +625,8 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
                 sim: sim,
                 recommendation: masterRecommendation,
                 xgSource: finalXgSource, 
-                availableRosters: availableRosters
+                availableRosters: availableRosters,
+                absenceConfidence: absenceConfidenceMeta
             },
             debugInfo: debugInfo 
         };
