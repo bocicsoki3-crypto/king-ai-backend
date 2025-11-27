@@ -133,15 +133,21 @@ function getMarketLabel(market: 'home' | 'away' | 'draw'): string {
 }
 
 // === 0. ÜGYNÖK (DEEP SCOUT - Csak Adatgyűjtő) ===
+// VERZIÓ: v129.0 (TEMPORAL PRIORITY - Only Fresh Sources)
 const PROMPT_DEEP_SCOUT_V4 = `
 TASK: You are 'Deep Scout', the elite investigative unit of King AI.
 Your goal is to perform a COMPREHENSIVE LIVE GOOGLE SEARCH investigation for: {home} vs {away} ({sport}).
 
 [CRITICAL INVESTIGATION AREAS]:
 
-1. **SQUAD VALIDATION** (Highest Priority):
-   - SEARCH: "{home} top scorers current season", "{home} injuries suspensions latest"
-   - SEARCH: "{away} top scorers current season", "{away} injuries suspensions latest"
+1. **SQUAD VALIDATION** (Highest Priority - TEMPORAL FILTERING v129.0):
+   - SEARCH: "{home} injuries suspensions TODAY latest confirmed"
+   - SEARCH: "{away} injuries suspensions TODAY latest confirmed"
+   - **⚠️ CRITICAL TEMPORAL RULE**: 
+     * ONLY use sources published in the last 6 hours for injury/availability status
+     * If conflicting reports exist, ALWAYS choose the most recent timestamp
+     * If no <6h confirmation exists, mark player as "doubtful" NOT "confirmed_out"
+     * Explicitly note source timestamp in your response (e.g. "Source: ESPN, 2h ago")
    - VERIFY: Are key players available? Any late changes?
    - CHECK: Recent transfers (departures/arrivals in last 2 months)
 
@@ -172,10 +178,14 @@ Your goal is to perform a COMPREHENSIVE LIVE GOOGLE SEARCH investigation for: {h
   "narrative_summary": "<4-5 magyar mondatos összefoglaló, amely tartalmazza a legfontosabb megállapításokat>",
   "transferred_players": ["<Név - csapat, pozíció>"],
   "squad_news": {
-    "home_injuries": ["<Játékos - sérülés típusa>"],
-    "away_injuries": ["<Játékos - sérülés típusa>"],
+    "home_injuries": ["<Játékos - sérülés típusa - Forrás (timestamp)>"],
+    "away_injuries": ["<Játékos - sérülés típusa - Forrás (timestamp)>"],
     "home_suspensions": [],
-    "away_suspensions": []
+    "away_suspensions": [],
+    "source_freshness": {
+      "home_latest_source_age_hours": <number vagy null>,
+      "away_latest_source_age_hours": <number vagy null>
+    }
   },
   "tactical_intel": {
     "home_formation": "<Alapfelállás>",
@@ -696,8 +706,14 @@ A 89. percben [Player7] lezárja a meccset egy hatalmas góllal. 1-3.
 ---
 
 **YOUR MATCH:**
+SPORT: {sport}
 CONTEXT: {tacticalBriefing}
 DATA: {home} vs {away}
+
+**SPORT-SPECIFIC RULES (v129.0):**
+- **Soccer**: Use minute timestamps (e.g., "A 23. percben..."), describe goals/cards, final score format "2-1"
+- **Basketball**: Use quarter/time references (e.g., "Az első negyed végén...", "A harmadik negyed közepén..."), describe scoring runs, final score format "115-108"
+- **Hockey**: Use period/time references (e.g., "Az első harmad 12. percében...", "A második harmadban..."), describe goals/penalties, final score format "3-2"
 
 **WRITE YOUR PROPHECY NOW** (5-8 sentences + final score):
 
@@ -1819,8 +1835,12 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
         try { tacticalBriefing = await getTacticalBriefing(rawDataJson, sport, home, away, riskAssessment); } catch (e) {}
         try { generalAnalysis = await getFinalGeneralAnalysis(sim, tacticalBriefing, rawDataJson, confidenceScores, psyReport); } catch (e) {}
         
-        if (sport === 'soccer') {
-            try { propheticTimeline = await getPropheticTimeline(rawDataJson, home, away, sport, tacticalBriefing); } catch (e) {}
+        // === v129.0: PROPHETIC TIMELINE UNIVERZÁLIS (MINDEN SPORTÁG) ===
+        try { 
+            propheticTimeline = await getPropheticTimeline(rawDataJson, home, away, sport, tacticalBriefing); 
+        } catch (e: any) {
+            console.warn(`[AI_Service v129.0] Prophetic Timeline hiba (${sport}): ${e.message}`);
+            propheticTimeline = "N/A";
         }
 
         try { strategic_synthesis = await getStrategicClosingThoughts(sim, rawDataJson, richContext, microAnalyses, riskAssessment, tacticalBriefing, valueBetsJson, confidenceScores, expertConfidence, psyReport, specialistReport, sport); } catch (e) {}
