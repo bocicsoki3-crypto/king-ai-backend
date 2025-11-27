@@ -287,14 +287,25 @@ const PROMPT_SPECIALIST_V95 = `
 TASK: You are 'The Specialist', an elite contextual adjustment expert.
 Apply precise, evidence-based modifiers to baseline xG predictions.
 
-[GUIDING PRINCIPLES - v126.0 REALITY CHECK]:
-1. **CONSERVATIVE APPROACH**: Adjustments should be SMALL (typically ±0.15 to ±0.35, MAX ±0.5 even for extreme cases)
-2. **QUANT RESPECT**: If Quant shows clear direction (>50% xG difference), **MAX ±0.25 adjustment!** Don't amplify it further!
+[GUIDING PRINCIPLES - v129.0 ULTRA-STRICT REALITY CHECK]:
+1. **CONSERVATIVE APPROACH**: Adjustments should be SMALL (typically ±0.15 to ±0.25, MAX ±0.35 for extreme cases)
+2. **QUANT RESPECT**: If Quant shows clear direction (>50% xG difference), **MAX ±0.20 adjustment!** Don't amplify it further!
 3. **QUALITY MATTERS**: If analyzing TOP TEAM (big league, CL participant) vs WEAKER TEAM → **DON'T UNDERESTIMATE QUALITY!**
    - Example: Monaco (Ligue 1, CL) vs Pafos (Cyprus) → Monaco quality is REAL, even with injuries!
 4. **FORM vs QUALITY BALANCE**: Form is important, BUT team quality (league level, player value) is EQUALLY important!
-5. **PROPORTIONAL IMPACT**: Stronger evidence = larger adjustment, BUT never exceed ±0.5!
+5. **PROPORTIONAL IMPACT**: Stronger evidence = larger adjustment, BUT never exceed ±0.35!
 6. **MULTI-FACTOR**: Consider ALL contextual elements, including **LEAGUE QUALITY DIFFERENCE**!
+
+7. **🚨 NEW v129.0 - DEFENSIVE MATCH MODE:**
+   - **IF TOTAL QUANT xG < 3.2** (Low Scoring Match Expected):
+     * This is a DEFENSIVE match! Both teams are expected to play cautiously.
+     * **MAXIMUM ADJUSTMENT: ±0.20 per team** (stricter limit!)
+     * **DO NOT BOOST an away team's xG by more than +0.15 in a low-scoring match!**
+     * **DO NOT increase total xG by more than +0.25 combined!**
+     * Example: If Quant says H=2.0, A=1.3 (Total: 3.3) → Don't adjust to H=1.8, A=1.6 (Total: 3.4)!
+   - **IF TOTAL QUANT xG < 2.8** (VERY Low Scoring):
+     * **ULTRA-CONSERVATIVE! MAX ±0.15 adjustment per team!**
+     * These matches are unpredictable and defenses dominate. BE CAUTIOUS!
 
 [BASELINE PREDICTION]:
 - Home Team xG: {pure_mu_h}
@@ -365,10 +376,12 @@ Apply precise, evidence-based modifiers to baseline xG predictions.
   "reasoning": "<RÉSZLETES 4-5 mondatos magyar nyelvű magyarázat: miért és mennyit módosítottál, mely tényezők voltak a legfontosabbak, hogyan hatnak a várható gólokra>"
 }
 
-[CRITICAL RULES - v126.0 SAFEGUARDS]:
+[CRITICAL RULES - v129.0 ULTRA-STRICT SAFEGUARDS]:
 - modified_mu_h and modified_mu_a MUST be numbers
-- **MAX ±0.5 adjustment per team** (no exceptions!)
-- **SAFEGUARD RULE**: If Quant shows >50% difference (e.g., H=2.0, A=1.0), **MAX ±0.25 adjustment per team!**
+- **MAX ±0.35 adjustment per team** (v129.0 - CSÖKKENTVE!)
+- **SAFEGUARD RULE**: If Quant shows >50% difference (e.g., H=2.0, A=1.0), **MAX ±0.20 adjustment per team!**
+- **DEFENSIVE MATCH RULE**: If Total Quant xG < 3.2, **MAX ±0.20 adjustment per team!**
+- **VERY DEFENSIVE MATCH RULE**: If Total Quant xG < 2.8, **MAX ±0.15 adjustment per team!**
 - If no strong evidence for change, keep close to baseline
 - Be specific about WHY each adjustment is made
 - Consider counterbalancing factors
@@ -1280,14 +1293,34 @@ export async function runStep_Specialist(data: any): Promise<any> {
             result.modified_mu_a = data.pure_mu_a + Math.max(-0.5, Math.min(0.5, result.modified_mu_a - data.pure_mu_a));
         }
         
-        // === v127.0 NEW: REALITY CHECK - Ha Total Adjustment >0.5, csökkentés! ===
+        // === v129.0 ULTRA-STRICT: REALITY CHECK - Ha Total Adjustment >0.35, csökkentés! ===
         const totalAdjustment = homeDiff + awayDiff;
-        if (totalAdjustment > 0.5) {
-            const scaleFactor = 0.5 / totalAdjustment;
-            console.warn(`[AI_Service v127.0] ⚠️ REALITY CHECK! Total adjustment túl magas (${totalAdjustment.toFixed(2)}). Scaling: ${scaleFactor.toFixed(2)}x`);
+        let adjustmentLimit = 0.35; // v129.0: CSÖKKENTVE 0.5-ről 0.35-re (30% szigorítás)
+        
+        // === ÚJ v129.0: LOW SCORING MODE - Ha alacsony xG, még szigorúbb limit! ===
+        const totalExpectedGoals = data.pure_mu_h + data.pure_mu_a;
+        if (totalExpectedGoals < 3.2) {
+            adjustmentLimit = 0.25; // EXTRA SZIGORÚ defenzív meccsekhez
+            console.warn(`[AI_Service v129.0] 🛡️ LOW SCORING MODE aktiválva (Total xG: ${totalExpectedGoals.toFixed(2)}). Limit: 0.25`);
+        }
+        
+        if (totalAdjustment > adjustmentLimit) {
+            const scaleFactor = adjustmentLimit / totalAdjustment;
+            console.warn(`[AI_Service v129.0] ⚠️ REALITY CHECK! Total adjustment túl magas (${totalAdjustment.toFixed(2)}). Limit: ${adjustmentLimit}, Scaling: ${scaleFactor.toFixed(2)}x`);
             
             result.modified_mu_h = data.pure_mu_h + (result.modified_mu_h - data.pure_mu_h) * scaleFactor;
             result.modified_mu_a = data.pure_mu_a + (result.modified_mu_a - data.pure_mu_a) * scaleFactor;
+        }
+        
+        // === ÚJ v129.0: DEFENSIVE MATCH PROTECTION - Ne boostolj túl agresszíven! ===
+        const finalTotalXG = result.modified_mu_h + result.modified_mu_a;
+        if (totalExpectedGoals < 3.0 && finalTotalXG > totalExpectedGoals + 0.3) {
+            console.warn(`[AI_Service v129.0] 🚨 DEFENSIVE MATCH védelem! Quant total: ${totalExpectedGoals.toFixed(2)}, Specialist total: ${finalTotalXG.toFixed(2)}. Korrigálás...`);
+            const reduction = (finalTotalXG - totalExpectedGoals - 0.3) / 2;
+            result.modified_mu_h -= reduction;
+            result.modified_mu_a -= reduction;
+            result.modified_mu_h = Math.max(0.5, result.modified_mu_h);
+            result.modified_mu_a = Math.max(0.5, result.modified_mu_a);
         }
         
         // 2. Amplification check: Ha Quant már >50% különbséget mutatott, ne növeld tovább!
@@ -1686,6 +1719,25 @@ async function getMasterRecommendation(
             confidencePenalty += 1.5;
             disagreementNote += "\n\n⚠️ KORREKCIÓ v126.0: A Specialist túl nagy módosítást végzett. Extrém kontextuális faktorok miatt a bizalom csökkentve.";
             console.warn(`[AI_Service v126.0] Specialist over-adjustment detected: ${specialistTotalAdjustment.toFixed(2)}. Confidence penalty: +1.5`);
+        }
+        
+        // === ÚJ v129.0: OVER/UNDER REALITY CHECK - Ha defenzív meccs, de Over-t ajánl ===
+        const totalExpectedGoals = safeSim.mu_h_sim + safeSim.mu_a_sim;
+        const primaryMarketLower = (rec.primary?.market || "").toLowerCase();
+        
+        // Ha Over 2.5-öt ajánl, de a total xG <3.5 (defenzív meccs)
+        if ((primaryMarketLower.includes("over") || primaryMarketLower.includes("több")) && totalExpectedGoals < 3.5) {
+            const overPenalty = totalExpectedGoals < 3.0 ? 2.5 : 1.5;
+            confidencePenalty += overPenalty;
+            disagreementNote += `\n\n🚨 DEFENZÍV MECCS WARNING (v129.0): Total várható gól csak ${totalExpectedGoals.toFixed(2)}, de Over tippet választottál. Bizalom csökkentve -${overPenalty} ponttal!`;
+            console.warn(`[AI_Service v129.0] 🚨 Over tipp defenzív meccsen! Total xG: ${totalExpectedGoals.toFixed(2)}, Penalty: -${overPenalty}`);
+        }
+        
+        // Ha Under-t ajánl, de a total xG >4.0 (támadó meccs)
+        if ((primaryMarketLower.includes("under") || primaryMarketLower.includes("kevesebb")) && totalExpectedGoals > 4.0) {
+            confidencePenalty += 1.5;
+            disagreementNote += `\n\n⚠️ TÁMADÓ MECCS WARNING (v129.0): Total várható gól ${totalExpectedGoals.toFixed(2)}, de Under tippet választottál. Ellenőrizd!`;
+            console.warn(`[AI_Service v129.0] ⚠️ Under tipp támadó meccsen! Total xG: ${totalExpectedGoals.toFixed(2)}`);
         }
         
         // 1. Negatív narratíva + magas confidence esetén büntetés

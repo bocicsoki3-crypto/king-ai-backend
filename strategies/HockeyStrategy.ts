@@ -164,7 +164,7 @@ export class HockeyStrategy implements ISportStrategy {
     // ===========================================================================================
     // MAIN XG ESTIMATION
     // ===========================================================================================
-    
+
     /**
      * 1. Ügynök (Quant) feladata: Hoki xG számítása.
      * JAVÍTVA (v124.0): Recent Form & Power Play Impact
@@ -192,12 +192,12 @@ export class HockeyStrategy implements ISportStrategy {
                 
                 console.log(`[HockeyStrategy v128.0] ✅ P1 (MANUÁLIS xG) HASZNÁLVA: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
                 console.log(`  ↳ Input: H_xG=${manual_H_xG}, H_xGA=${advancedData.manual_H_xGA}, A_xG=${manual_A_xG}, A_xGA=${advancedData.manual_A_xGA}`);
-                
-                return {
-                    pure_mu_h: p1_mu_h,
-                    pure_mu_a: p1_mu_a,
+            
+            return {
+                pure_mu_h: p1_mu_h,
+                pure_mu_a: p1_mu_a,
                     source: "Manual (Components) [v128.0 Validated]"
-                };
+            };
             }
         }
         
