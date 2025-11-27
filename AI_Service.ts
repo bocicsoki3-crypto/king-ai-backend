@@ -82,8 +82,8 @@ function formatTopOutcomes(outcomes: ITopOutcomeSnapshot[]): string {
 
 function buildProbabilitySnapshot(sim: any, limit = 3): IProbabilitySnapshot {
     const safeSim = sim || {};
-    const scores = safeSim.scores || {};
-    const totalSimulated = Object.values(scores).reduce((sum: number, value: number) => sum + value, 0) || 1;
+    const scores: Record<string, number> = safeSim.scores || {};
+    const totalSimulated = Object.values(scores).reduce((sum, value) => sum + value, 0) || 1;
     const entries = Object.entries(scores)
         .sort((a, b) => (b[1] as number) - (a[1] as number))
         .slice(0, limit)
