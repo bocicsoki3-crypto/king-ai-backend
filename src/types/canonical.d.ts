@@ -26,6 +26,8 @@ export interface ICanonicalPlayer {
   importance: 'key' | 'regular' | 'substitute';
   status: 'confirmed_out' | 'doubtful' | 'active';
   rating_last_5?: number;    // Opcionális, de javasolt
+  confidence?: 'confirmed' | 'unverified';
+  source?: 'manual' | 'provider' | 'manual+provider' | string;
 }
 
 /**
@@ -49,6 +51,11 @@ export interface ICanonicalPlayerStats {
     home: { [key: string]: number };
     away: { [key: string]: number };
   };
+}
+
+export interface IAbsenceConfidenceMeta {
+  confirmed: string[];
+  unverified: string[];
 }
 
 /**
@@ -188,6 +195,10 @@ export interface ICanonicalRawData {
     coach: {
         home_name: string | null;
         away_name: string | null;
+    };
+    absence_confidence?: {
+        home: IAbsenceConfidenceMeta;
+        away: IAbsenceConfidenceMeta;
     };
   };
   
