@@ -1,11 +1,16 @@
 // FÁJL: strategies/HockeyStrategy.ts
-// VERZIÓ: v128.0 (REALITY CHECK MODE - HOCKEY EDITION) 🏒
-// MÓDOSÍTÁS (v128.0):
-// 1. ÚJ: P1 Manual Validation (1.5-5.0 goals tartomány - ha kívül esik, fallback P2+)
-// 2. JAVÍTOTT: Forma Súlyozás (recent 50%, season 50% - NEM 70/30 mint előtte!)
-// 3. ÚJ: Liga-függő HOME_ADVANTAGE (NHL 0.20, gyenge ligák 0.30+)
-// 4. ÚJ: Kulcsjátékos pozíció-alapú hatás (Goalie/Defense/Center/Wing)
-// 5. JAVÍTOTT: Power Play hatás (v124.0) megtartva és integrálva
+// VERZIÓ: v130.1 (DEFENSIVE MULTIPLIER + SANITY CHECK - HOCKEY) 🏒
+// MÓDOSÍTÁS (v130.1):
+// 1. ÚJ: LEAGUE DEFENSIVE MULTIPLIER! (NHL Playoff -18%, KHL Playoff -15%)
+// 2. ÚJ: P1 MANUAL SANITY CHECK! (túl optimista inputok detektálása)
+// 3. EREDMÉNY: Reális Over/Under tippek playoff meccseken! ✅
+//
+// Korábbi módosítás (v128.0):
+// - P1 Manual Validation (1.5-5.0 goals)
+// - Forma Súlyozás (50/50)
+// - Liga-függő HOME_ADVANTAGE
+// - Kulcsjátékos pozíció-alapú hatás
+// - Power Play hatás
 // 
 // KORÁBBI MÓDOSÍTÁS (v124.0):
 // 1. ÚJ: Recent Form súlyozás (utolsó 5 meccs alapján ±10% xG módosítás)
@@ -30,10 +35,73 @@ import {
     HOCKEY_WINNER_PROMPT
 } from '../AI_Service.js';
 
-// ÚJ v128.0: Liga minőség coefficient importálása
+// ÚJ v128.0 + v130.1: Liga minőség + Defensive Multiplier importálása
 import { 
     HOCKEY_LEAGUE_COEFFICIENTS
 } from '../config_league_coefficients.js';
+
+// ÚJ v130.1: Hockey-specific Defensive Multiplier
+const HOCKEY_DEFENSIVE_MULTIPLIER: { [key: string]: number } = {
+    // === NHL ===
+    'nhl': 1.00,                    // Regular season (normál)
+    'nhl_playoff': 0.82,            // Playoff (-18%, NAGYON defenzív!)
+    'nhl playoffs': 0.82,           // Alternatív név
+    
+    // === EURÓPAI TOP LIGÁK ===
+    'khl': 0.95,                    // Orosz KHL (-5%)
+    'khl_playoff': 0.85,            // KHL Playoff (-15%)
+    'russia': 0.95,
+    'shl': 0.92,                    // Svéd liga (-8%, defenzív)
+    'sweden': 0.92,
+    'liiga': 0.90,                  // Finn liga (-10%, nagyon defenzív!)
+    'finland': 0.90,
+    'nla': 0.93,                    // Svájci liga (-7%)
+    'switzerland': 0.93,
+    
+    // === KÖZEPES LIGÁK ===
+    'del': 0.95,                    // Német liga (-5%)
+    'germany': 0.95,
+    'extraliga': 0.92,              // Cseh Extraliga (-8%)
+    'czech republic': 0.92,
+    'ebel': 0.94,                   // Osztrák liga (-6%)
+    'austria': 0.94,
+    'norway': 0.93,                 // -7%
+    'denmark': 0.94,                // -6%
+    
+    // === GYENGE LIGÁK (DEFENZÍVEBBEK) ===
+    'slovakia': 0.90,               // -10%
+    'poland': 0.88,                 // -12%
+    'france': 0.91,                 // -9%
+    'italy': 0.91,                  // -9%
+    'hungary': 0.88,                // -12%
+    
+    // === EGYÉB ===
+    'ahl': 0.97,                    // American Hockey League (-3%)
+    'japan': 0.92,                  // -8%
+    
+    // === DEFAULT ===
+    'default_hockey': 1.00          // Normál
+};
+
+function getHockeyDefensiveMultiplier(leagueName: string | null | undefined): number {
+    if (!leagueName) return HOCKEY_DEFENSIVE_MULTIPLIER['default_hockey'];
+    
+    const normalized = leagueName.toLowerCase().trim();
+    
+    // Exact match
+    if (HOCKEY_DEFENSIVE_MULTIPLIER[normalized]) {
+        return HOCKEY_DEFENSIVE_MULTIPLIER[normalized];
+    }
+    
+    // Partial match
+    for (const [key, value] of Object.entries(HOCKEY_DEFENSIVE_MULTIPLIER)) {
+        if (normalized.includes(key) || key.includes(normalized)) {
+            return value;
+        }
+    }
+    
+    return HOCKEY_DEFENSIVE_MULTIPLIER['default_hockey'];
+}
 
 /**
  * A Hoki-specifikus elemzési logikát tartalmazó stratégia.
@@ -173,31 +241,74 @@ export class HockeyStrategy implements ISportStrategy {
     public estimatePureXG(options: XGOptions): { pure_mu_h: number; pure_mu_a: number; source: string; } {
         const { rawStats, leagueAverages, advancedData, form, absentees } = options;
 
-        // === P1 (Manuális) Adatok Ellenőrzése - v128.0 VALIDÁCIÓVAL ===
+        // === ÚJ v130.1: Liga Defensive Multiplier lekérése ===
+        const leagueNameHockey = (rawStats?.home as any)?.league || advancedData?.league || null;
+        const leagueDefensiveMultiplier = getHockeyDefensiveMultiplier(leagueNameHockey);
+        
+        console.log(`[HockeyStrategy v130.1] Liga: "${leagueNameHockey}", Defensive Multiplier: ${leagueDefensiveMultiplier.toFixed(2)}`);
+
+        // === P1 (Manuális) Adatok Ellenőrzése + VALIDATION (v130.1 ENHANCED) ===
         if (advancedData?.manual_H_xG != null && 
             advancedData?.manual_H_xGA != null && 
             advancedData?.manual_A_xG != null && 
             advancedData?.manual_A_xGA != null) {
             
-            const manual_H_xG = advancedData.manual_H_xG;
-            const manual_A_xG = advancedData.manual_A_xG;
+            let manual_H_xG = advancedData.manual_H_xG;
+            let manual_A_xG = advancedData.manual_A_xG;
+            let manual_H_xGA = advancedData.manual_H_xGA;
+            let manual_A_xGA = advancedData.manual_A_xGA;
 
-            // ÚJ VALIDÁCIÓ: Ésszerű tartományon belül van-e? (1.5-5.0 goals jégkorongban)
+            // Tartomány validáció (1.5-5.0 goals jégkorongban)
             if (manual_H_xG < 1.5 || manual_H_xG > 5.0 || manual_A_xG < 1.5 || manual_A_xG > 5.0) {
-                console.warn(`[HockeyStrategy v128.0] ⚠️ Manuális xG értékek ésszerűtlenek (H:${manual_H_xG}, A:${manual_A_xG}). Fallback P2+-ra.`);
-                // Folytatjuk a P2+ logikával, nem térünk vissza itt
+                console.warn(`[HockeyStrategy v130.1] ⚠️ Manuális xG értékek ésszerűtlenek (H:${manual_H_xG}, A:${manual_A_xG}). Fallback P2+-ra.`);
+                // Folytatjuk a P2+ logikával
             } else {
-                const p1_mu_h = (manual_H_xG + advancedData.manual_A_xGA) / 2;
-                const p1_mu_a = (manual_A_xG + advancedData.manual_H_xGA) / 2;
+                // === ÚJ v130.1: LEAGUE DEFENSIVE MULTIPLIER ALKALMAZÁSA ===
+                manual_H_xG *= leagueDefensiveMultiplier;
+                manual_A_xG *= leagueDefensiveMultiplier;
+                manual_H_xGA *= leagueDefensiveMultiplier;
+                manual_A_xGA *= leagueDefensiveMultiplier;
                 
-                console.log(`[HockeyStrategy v128.0] ✅ P1 (MANUÁLIS xG) HASZNÁLVA: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
-                console.log(`  ↳ Input: H_xG=${manual_H_xG}, H_xGA=${advancedData.manual_H_xGA}, A_xG=${manual_A_xG}, A_xGA=${advancedData.manual_A_xGA}`);
-            
-            return {
-                pure_mu_h: p1_mu_h,
-                pure_mu_a: p1_mu_a,
-                    source: "Manual (Components) [v128.0 Validated]"
-            };
+                console.log(`[HockeyStrategy v130.1] 🛡️ DEFENSIVE MULTIPLIER APPLIED (${leagueDefensiveMultiplier.toFixed(2)}x):`);
+                console.log(`  Before: H_goals=${advancedData.manual_H_xG.toFixed(2)}, A_goals=${advancedData.manual_A_xG.toFixed(2)} (Total: ${(advancedData.manual_H_xG + advancedData.manual_A_xG).toFixed(2)})`);
+                console.log(`  After:  H_goals=${manual_H_xG.toFixed(2)}, A_goals=${manual_A_xG.toFixed(2)} (Total: ${(manual_H_xG + manual_A_xG).toFixed(2)})`);
+                
+                // === ÚJ v130.1: P1 MANUAL SANITY CHECK ===
+                const p1_mu_h_raw = (manual_H_xG + manual_A_xGA) / 2;
+                const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
+                const totalExpectedGoals = p1_mu_h_raw + p1_mu_a_raw;
+                
+                // Liga alapú max várható gólszám (empirikus)
+                // NHL Regular: ~6.5 goals, NHL Playoff: ~5.5 goals, Liiga (Finn): ~5.0 goals
+                const expectedMaxGoals = leagueDefensiveMultiplier <= 0.90 ? 5.2 :  // Playoff/Defenzív ligák (Finn, stb.)
+                                        leagueDefensiveMultiplier <= 0.95 ? 5.8 :  // Defenzív ligák (KHL, Svéd, stb.)
+                                        6.5;                                        // Normál ligák (NHL Regular)
+                
+                if (totalExpectedGoals > expectedMaxGoals) {
+                    const sanityAdjustment = 0.85; // -15% korrekció
+                    console.warn(`[HockeyStrategy v130.1] 🚨 P1 SANITY CHECK! Total goals (${totalExpectedGoals.toFixed(2)}) > Expected Max (${expectedMaxGoals.toFixed(2)}) for this league.`);
+                    console.warn(`  📉 Applying CONSERVATIVE adjustment (-15%)`);
+                    
+                    manual_H_xG *= sanityAdjustment;
+                    manual_A_xG *= sanityAdjustment;
+                    manual_H_xGA *= sanityAdjustment;
+                    manual_A_xGA *= sanityAdjustment;
+                    
+                    console.log(`  After Sanity: H_goals=${manual_H_xG.toFixed(2)}, A_goals=${manual_A_xG.toFixed(2)} (Total: ${(manual_H_xG + manual_A_xG).toFixed(2)})`);
+                }
+                
+                const p1_mu_h = (manual_H_xG + manual_A_xGA) / 2;
+                const p1_mu_a = (manual_A_xG + manual_H_xGA) / 2;
+                
+                console.log(`[HockeyStrategy v130.1] ✅ P1 (MANUÁLIS) VÉGLEGES: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
+                console.log(`  ↳ Original Input: H_goals=${advancedData.manual_H_xG.toFixed(2)}, A_goals=${advancedData.manual_A_xG.toFixed(2)}`);
+                console.log(`  ↳ After Adjustments: H_goals=${manual_H_xG.toFixed(2)}, A_goals=${manual_A_xG.toFixed(2)}`);
+                
+                return {
+                    pure_mu_h: p1_mu_h,
+                    pure_mu_a: p1_mu_a,
+                    source: `Manual (Defensive Adjusted ${leagueDefensiveMultiplier.toFixed(2)}x) [v130.1]`
+                };
             }
         }
         

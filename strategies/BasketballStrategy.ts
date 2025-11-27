@@ -1,11 +1,16 @@
 // FÁJL: strategies/BasketballStrategy.ts
-// VERZIÓ: v128.0 (REALITY CHECK MODE - BASKETBALL EDITION) 🏀
-// MÓDOSÍTÁS (v128.0):
-// 1. ÚJ: P1 Manual Validation (80-140 pts tartomány - ha kívül esik, fallback P2+)
-// 2. ÚJ: Forma Súlyozás (W/L rate alapján ±5-8% pontszám módosítás)
-// 3. ÚJ: Liga-függő HOME_ADVANTAGE (NBA 2.0, gyenge ligák 3.5+)
-// 4. ÚJ: Kulcsjátékos pozíció-alapú hatás (Center/Guard/Forward)
-// 5. JAVÍTOTT: Pace Factor (v124.0) megtartva és integrálva
+// VERZIÓ: v130.1 (DEFENSIVE MULTIPLIER + SANITY CHECK - BASKETBALL) 🏀
+// MÓDOSÍTÁS (v130.1):
+// 1. ÚJ: LEAGUE DEFENSIVE MULTIPLIER! (NBA Playoff -8%, Euroleague -10%)
+// 2. ÚJ: P1 MANUAL SANITY CHECK! (túl optimista inputok detektálása)
+// 3. EREDMÉNY: Reális Over/Under tippek playoff meccseken! ✅
+//
+// Korábbi módosítás (v128.0):
+// - P1 Manual Validation (80-140 pts)
+// - Forma Súlyozás
+// - Liga-függő HOME_ADVANTAGE
+// - Kulcsjátékos pozíció-alapú hatás
+// - Pace Factor
 // 
 // KORÁBBI MÓDOSÍTÁS (v124.0):
 // 1. ÚJ: Pace Factor beépítés (possessions/game alapján ±20% pontszám módosítás)
@@ -29,11 +34,75 @@ import {
     BASKETBALL_TOTAL_POINTS_PROMPT
 } from '../AI_Service.js';
 
-// ÚJ v128.0: Liga minőség coefficient importálása
+// ÚJ v128.0 + v130.1: Liga minőség + Defensive Multiplier importálása
 import { 
     BASKETBALL_LEAGUE_COEFFICIENTS, 
     getLeagueCoefficient as getSoccerLeagueCoeff // átnevezés, hogy ne ütközzön
 } from '../config_league_coefficients.js';
+
+// ÚJ v130.1: Basketball-specific Defensive Multiplier
+const BASKETBALL_DEFENSIVE_MULTIPLIER: { [key: string]: number } = {
+    // === NBA ===
+    'nba': 1.00,                    // Regular season (normál)
+    'nba_playoff': 0.92,            // Playoff (-8%, defenzívebb!)
+    'nba playoffs': 0.92,           // Alternatív név
+    
+    // === EURÓPAI TOP LIGÁK ===
+    'euroleague': 0.90,             // -10% (nagyon defenzív!)
+    'euroleague_playoff': 0.85,     // -15% (ultra defenzív!)
+    'acb': 0.93,                    // Spanyol liga (-7%, defenzív kultúra)
+    'spain': 0.93,
+    'bbl': 0.95,                    // Német liga (-5%)
+    'germany': 0.95,
+    'lega basket': 0.92,            // Olasz liga (-8%)
+    'italy': 0.92,
+    
+    // === KÖZEPES LIGÁK ===
+    'turkish super league': 0.94,   // Török liga (-6%)
+    'turkey': 0.94,
+    'france': 0.95,                 // Francia liga (-5%)
+    'greece': 0.93,                 // Görög liga (-7%, defenzív)
+    'israel': 0.96,                 // -4%
+    'poland': 0.96,                 // -4%
+    
+    // === GYENGE LIGÁK (DEFENZÍVEBBEK) ===
+    'czech republic': 0.92,         // -8%
+    'hungary': 0.90,                // -10%
+    'romania': 0.88,                // -12%
+    'bulgaria': 0.88,               // -12%
+    
+    // === EGYÉB NAGY LIGÁK (TÁMADÓBBAK!) ===
+    'cba': 1.05,                    // Kínai liga (+5%, sok pont!)
+    'china': 1.05,
+    'b.league': 1.03,               // Japán (+3%)
+    'japan': 1.03,
+    'kbl': 1.02,                    // Koreai liga (+2%)
+    'south korea': 1.02,
+    'australia': 1.04,              // NBL (+4%, támadó)
+    
+    // === DEFAULT ===
+    'default_basketball': 1.00      // Normál
+};
+
+function getBasketballDefensiveMultiplier(leagueName: string | null | undefined): number {
+    if (!leagueName) return BASKETBALL_DEFENSIVE_MULTIPLIER['default_basketball'];
+    
+    const normalized = leagueName.toLowerCase().trim();
+    
+    // Exact match
+    if (BASKETBALL_DEFENSIVE_MULTIPLIER[normalized]) {
+        return BASKETBALL_DEFENSIVE_MULTIPLIER[normalized];
+    }
+    
+    // Partial match
+    for (const [key, value] of Object.entries(BASKETBALL_DEFENSIVE_MULTIPLIER)) {
+        if (normalized.includes(key) || key.includes(normalized)) {
+            return value;
+        }
+    }
+    
+    return BASKETBALL_DEFENSIVE_MULTIPLIER['default_basketball'];
+}
 
 /**
  * A Kosárlabda-specifikus elemzési logikát tartalmazó stratégia.
@@ -170,36 +239,78 @@ export class BasketballStrategy implements ISportStrategy {
     
     /**
      * 1. Ügynök (Quant) feladata: Pontok becslése kosárlabdához.
-     * JAVÍTVA (v107.0): Valós statisztikai becslés a "hardcoded" 107.8 helyett.
-     * JAVÍTVA (v128.0): Liga minőség, forma, home advantage, kulcsjátékos hatás!
+     * FEJLESZTVE (v130.1): League Defensive Multiplier + Sanity Check!
      */
     public estimatePureXG(options: XGOptions): { pure_mu_h: number; pure_mu_a: number; source: string; } {
         const { rawStats, leagueAverages, advancedData, form, absentees } = options;
 
-        // === P1 (Manuális) Adatok Ellenőrzése - v128.0 VALIDÁCIÓVAL ===
+        // === ÚJ v130.1: Liga Defensive Multiplier lekérése ===
+        const leagueNameBasket = (rawStats?.home as any)?.league || advancedData?.league || null;
+        const leagueDefensiveMultiplier = getBasketballDefensiveMultiplier(leagueNameBasket);
+        
+        console.log(`[BasketballStrategy v130.1] Liga: "${leagueNameBasket}", Defensive Multiplier: ${leagueDefensiveMultiplier.toFixed(2)}`);
+
+        // === P1 (Manuális) Adatok Ellenőrzése + VALIDATION (v130.1 ENHANCED) ===
         if (advancedData?.manual_H_xG != null && 
             advancedData?.manual_H_xGA != null && 
             advancedData?.manual_A_xG != null && 
             advancedData?.manual_A_xGA != null) {
             
-            const manual_H_xG = advancedData.manual_H_xG;
-            const manual_A_xG = advancedData.manual_A_xG;
+            let manual_H_xG = advancedData.manual_H_xG;
+            let manual_A_xG = advancedData.manual_A_xG;
+            let manual_H_xGA = advancedData.manual_H_xGA;
+            let manual_A_xGA = advancedData.manual_A_xGA;
 
-            // ÚJ VALIDÁCIÓ: Ésszerű tartományon belül van-e? (80-140 pts kosárlabdában)
+            // Tartomány validáció (80-140 pts kosárlabdában)
             if (manual_H_xG < 80 || manual_H_xG > 140 || manual_A_xG < 80 || manual_A_xG > 140) {
-                console.warn(`[BasketballStrategy v128.0] ⚠️ Manuális xG értékek ésszerűtlenek (H:${manual_H_xG}, A:${manual_A_xG}). Fallback P2+-ra.`);
-                // Folytatjuk a P2+ logikával, nem térünk vissza itt
+                console.warn(`[BasketballStrategy v130.1] ⚠️ Manuális xG értékek ésszerűtlenek (H:${manual_H_xG}, A:${manual_A_xG}). Fallback P2+-ra.`);
+                // Folytatjuk a P2+ logikával
             } else {
-                const p1_mu_h = (manual_H_xG + advancedData.manual_A_xGA) / 2;
-                const p1_mu_a = (manual_A_xG + advancedData.manual_H_xGA) / 2;
+                // === ÚJ v130.1: LEAGUE DEFENSIVE MULTIPLIER ALKALMAZÁSA ===
+                manual_H_xG *= leagueDefensiveMultiplier;
+                manual_A_xG *= leagueDefensiveMultiplier;
+                manual_H_xGA *= leagueDefensiveMultiplier;
+                manual_A_xGA *= leagueDefensiveMultiplier;
                 
-                console.log(`[BasketballStrategy v128.0] ✅ P1 (MANUÁLIS xG) HASZNÁLVA: mu_h=${p1_mu_h.toFixed(1)}, mu_a=${p1_mu_a.toFixed(1)}`);
-                console.log(`  ↳ Input: H_xG=${manual_H_xG}, H_xGA=${advancedData.manual_H_xGA}, A_xG=${manual_A_xG}, A_xGA=${advancedData.manual_A_xGA}`);
+                console.log(`[BasketballStrategy v130.1] 🛡️ DEFENSIVE MULTIPLIER APPLIED (${leagueDefensiveMultiplier.toFixed(2)}x):`);
+                console.log(`  Before: H_pts=${advancedData.manual_H_xG.toFixed(1)}, A_pts=${advancedData.manual_A_xG.toFixed(1)} (Total: ${(advancedData.manual_H_xG + advancedData.manual_A_xG).toFixed(1)})`);
+                console.log(`  After:  H_pts=${manual_H_xG.toFixed(1)}, A_pts=${manual_A_xG.toFixed(1)} (Total: ${(manual_H_xG + manual_A_xG).toFixed(1)})`);
+                
+                // === ÚJ v130.1: P1 MANUAL SANITY CHECK ===
+                const p1_mu_h_raw = (manual_H_xG + manual_A_xGA) / 2;
+                const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
+                const totalExpectedPoints = p1_mu_h_raw + p1_mu_a_raw;
+                
+                // Liga alapú max várható pontszám (empirikus)
+                // NBA Regular: ~225 pts, NBA Playoff: ~210 pts, Euroleague: ~165 pts
+                const expectedMaxPoints = leagueDefensiveMultiplier <= 0.92 ? 210 :  // Playoff/Defenzív ligák
+                                         leagueDefensiveMultiplier >= 1.03 ? 235 :  // Támadó ligák (Kína, Ausztrália)
+                                         225;                                         // Normál ligák
+                
+                if (totalExpectedPoints > expectedMaxPoints) {
+                    const sanityAdjustment = 0.85; // -15% korrekció
+                    console.warn(`[BasketballStrategy v130.1] 🚨 P1 SANITY CHECK! Total pts (${totalExpectedPoints.toFixed(1)}) > Expected Max (${expectedMaxPoints.toFixed(1)}) for this league.`);
+                    console.warn(`  📉 Applying CONSERVATIVE adjustment (-15%)`);
+                    
+                    manual_H_xG *= sanityAdjustment;
+                    manual_A_xG *= sanityAdjustment;
+                    manual_H_xGA *= sanityAdjustment;
+                    manual_A_xGA *= sanityAdjustment;
+                    
+                    console.log(`  After Sanity: H_pts=${manual_H_xG.toFixed(1)}, A_pts=${manual_A_xG.toFixed(1)} (Total: ${(manual_H_xG + manual_A_xG).toFixed(1)})`);
+                }
+                
+                const p1_mu_h = (manual_H_xG + manual_A_xGA) / 2;
+                const p1_mu_a = (manual_A_xG + manual_H_xGA) / 2;
+                
+                console.log(`[BasketballStrategy v130.1] ✅ P1 (MANUÁLIS) VÉGLEGES: mu_h=${p1_mu_h.toFixed(1)}, mu_a=${p1_mu_a.toFixed(1)}`);
+                console.log(`  ↳ Original Input: H_pts=${advancedData.manual_H_xG.toFixed(1)}, A_pts=${advancedData.manual_A_xG.toFixed(1)}`);
+                console.log(`  ↳ After Adjustments: H_pts=${manual_H_xG.toFixed(1)}, A_pts=${manual_A_xG.toFixed(1)}`);
                 
                 return {
                     pure_mu_h: p1_mu_h,
                     pure_mu_a: p1_mu_a,
-                    source: "Manual (Components) [v128.0 Validated]"
+                    source: `Manual (Defensive Adjusted ${leagueDefensiveMultiplier.toFixed(2)}x) [v130.1]`
                 };
             }
         }

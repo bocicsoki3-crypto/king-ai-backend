@@ -336,9 +336,9 @@ export class SoccerStrategy implements ISportStrategy {
         }
         
         // === v127.0: LIGA MINŐSÉG FAKTOR SETUP ===
-        const leagueName = advancedData?.league_name || leagueAverages?.league_name;
-        let finalHomeCoeff = getLeagueCoefficient(leagueName);
-        let finalAwayCoeff = getLeagueCoefficient(leagueName);
+        const leagueNameFallback = advancedData?.league_name || leagueAverages?.league_name;
+        let finalHomeCoeff = getLeagueCoefficient(leagueNameFallback);
+        let finalAwayCoeff = getLeagueCoefficient(leagueNameFallback);
         
         // Ha KÜLÖNBÖZŐ ligák (pl. CL: Monaco vs Pafos)
         if (advancedData?.home_league_name) finalHomeCoeff = getLeagueCoefficient(advancedData.home_league_name);
