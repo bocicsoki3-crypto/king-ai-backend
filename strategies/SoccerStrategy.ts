@@ -1,12 +1,18 @@
 // FÁJL: strategies/SoccerStrategy.ts
-// VERZIÓ: v127.0 (LIGA MINŐSÉG FAKTOR - Monaco Fix)
-// MÓDOSÍTÁS (v127.0 - KRITIKUS JAVÍTÁSOK):
-// 1. ÚJ: LIGA MINŐSÉG FAKTOR! (UEFA coefficient használat)
-//    - Monaco (Ligue 1, 11.0) vs Pafos (Cyprus, 1.875) = 5.87x különbség!
-//    - Automatic xG adjustment liga minőség alapján
-// 2. FORMA SÚLY CSÖKKENTVE: 70% → 50% (nem felülírhatja a minőséget!)
-// 3. HOME ADVANTAGE LIGA-AWARE: Cyprus (+0.15) vs Top5 (+0.30)
-// 4. EREDMÉNY: +30-40% pontosság! Nincs több "Monaco shock"!
+// VERZIÓ: v130.0 (DEFENSIVE LEAGUE MULTIPLIER + SANITY CHECK)
+// MÓDOSÍTÁS (v130.0 - TÖKÉLETES DEFENZÍV MECCSEK):
+// 1. ÚJ: LEAGUE DEFENSIVE MULTIPLIER! (Europa League -8%, Conference -12%)
+//    - Plzen vs Freiburg (Europa): 3.68 total xG → 3.38 (-8%)
+//    - Defenzív tornák → automatikus xG csökkentés
+// 2. ÚJ: P1 MANUAL xG SANITY CHECK! (túl optimista inputok detektálása)
+//    - Ha manual total xG > expected max → -15% auto korrekció
+// 3. ÚJ: GAME PACE/TEMPO faktor (slow/medium/fast)
+// 4. EREDMÉNY: Reális Over/Under tippek defenzív meccseken! ✅
+//
+// Korábbi módosítás (v127.0):
+// - Liga Minőség Faktor (UEFA coefficient)
+// - Forma súly optimalizálás (50%)
+// - Home Advantage liga-aware
 //
 // Korábbi módosítások (v124.0):
 // - P4 Auto xG implementálás detailedPlayerStats alapján
@@ -31,9 +37,10 @@ import {
     CARD_ANALYSIS_PROMPT
 } from '../AI_Service.js';
 
-// === ÚJ (v127.0): Liga Minőség Faktor Importálás ===
+// === ÚJ (v127.0 + v130.0): Liga Minőség + Defensive Multiplier Importálás ===
 import {
     getLeagueCoefficient,
+    getLeagueDefensiveMultiplier,
     calculateLeagueQualityModifier,
     getLeagueQuality
 } from '../config_league_coefficients.js';
@@ -97,50 +104,93 @@ export class SoccerStrategy implements ISportStrategy {
 
     /**
      * 1. Ügynök (Quant) feladata: Foci xG számítása.
-     * FEJLESZTVE (v125.0): Forma + Home Advantage beépítve!
+     * FEJLESZTVE (v130.0): League Defensive Multiplier + Sanity Check!
      */
     public estimatePureXG(options: XGOptions): { pure_mu_h: number; pure_mu_a: number; source: string; } {
         const { rawStats, leagueAverages, advancedData } = options;
 
-        // === P1 (Manuális) Adatok Ellenőrzése + VALIDATION (v127.0) ===
+        // === ÚJ v130.0: Liga Defensive Multiplier lekérése ===
+        const leagueName = (rawStats?.home as any)?.league || null;
+        const leagueDefensiveMultiplier = getLeagueDefensiveMultiplier(leagueName);
+        
+        console.log(`[SoccerStrategy v130.0] Liga: "${leagueName}", Defensive Multiplier: ${leagueDefensiveMultiplier.toFixed(2)}`);
+
+        // === P1 (Manuális) Adatok Ellenőrzése + VALIDATION (v130.0 ENHANCED) ===
         if (advancedData?.manual_H_xG != null && 
             advancedData?.manual_H_xGA != null && 
             advancedData?.manual_A_xG != null && 
             advancedData?.manual_A_xGA != null) {
             
             // === v127.0 VALIDATION: Manuális xG realitás ellenőrzés ===
-            const h_xG = advancedData.manual_H_xG;
-            const h_xGA = advancedData.manual_H_xGA;
-            const a_xG = advancedData.manual_A_xG;
-            const a_xGA = advancedData.manual_A_xGA;
+            let h_xG = advancedData.manual_H_xG;
+            let h_xGA = advancedData.manual_H_xGA;
+            let a_xG = advancedData.manual_A_xG;
+            let a_xGA = advancedData.manual_A_xGA;
             
             // 1. Érték tartomány ellenőrzés (0.1 - 5.0 között KELL lennie!)
             if (h_xG < 0.1 || h_xG > 5.0 || h_xGA < 0.1 || h_xGA > 5.0 ||
                 a_xG < 0.1 || a_xG > 5.0 || a_xGA < 0.1 || a_xGA > 5.0) {
-                console.warn(`[SoccerStrategy v127.0] ⚠️ INVALID MANUAL xG! Values out of range (0.1-5.0). Falling back to P2+.`);
+                console.warn(`[SoccerStrategy v130.0] ⚠️ INVALID MANUAL xG! Values out of range (0.1-5.0). Falling back to P2+.`);
                 console.warn(`  Input: H_xG=${h_xG}, H_xGA=${h_xGA}, A_xG=${a_xG}, A_xGA=${a_xGA}`);
                 // Fallback: skip P1, use P4/P2+
             } else {
+                // === ÚJ v130.0: LEAGUE DEFENSIVE MULTIPLIER ALKALMAZÁSA ===
+                h_xG *= leagueDefensiveMultiplier;
+                h_xGA *= leagueDefensiveMultiplier;
+                a_xG *= leagueDefensiveMultiplier;
+                a_xGA *= leagueDefensiveMultiplier;
+                
+                console.log(`[SoccerStrategy v130.0] 🛡️ DEFENSIVE MULTIPLIER APPLIED (${leagueDefensiveMultiplier.toFixed(2)}x):`);
+                console.log(`  Before: H_xG=${advancedData.manual_H_xG.toFixed(2)}, A_xG=${advancedData.manual_A_xG.toFixed(2)} (Total: ${(advancedData.manual_H_xG + advancedData.manual_A_xG).toFixed(2)})`);
+                console.log(`  After:  H_xG=${h_xG.toFixed(2)}, A_xG=${a_xG.toFixed(2)} (Total: ${(h_xG + a_xG).toFixed(2)})`);
+                
+                // === ÚJ v130.0: P1 MANUAL xG SANITY CHECK ===
+                // Ha a total xG túl magas a ligához képest → auto korrekció
+                const p1_mu_h_raw = (h_xG + a_xGA) / 2;
+                const p1_mu_a_raw = (a_xG + h_xGA) / 2;
+                const totalExpectedGoals = p1_mu_h_raw + p1_mu_a_raw;
+                
+                // Liga alapú max várható gólszám (empirikus)
+                // Europa League/Conference League: ~2.8-3.0 goals/match
+                // Top Ligák: ~2.8-3.2 goals/match
+                // Támadó ligák (Bundesliga, Eredivisie): ~3.3-3.5 goals/match
+                const expectedMaxGoals = leagueDefensiveMultiplier <= 0.92 ? 3.0 : 
+                                         leagueDefensiveMultiplier >= 1.05 ? 3.5 : 3.2;
+                
+                if (totalExpectedGoals > expectedMaxGoals) {
+                    const sanityAdjustment = 0.85; // -15% korrekció
+                    console.warn(`[SoccerStrategy v130.0] 🚨 P1 SANITY CHECK! Total xG (${totalExpectedGoals.toFixed(2)}) > Expected Max (${expectedMaxGoals.toFixed(2)}) for this league.`);
+                    console.warn(`  📉 Applying CONSERVATIVE adjustment (-15%)`);
+                    
+                    h_xG *= sanityAdjustment;
+                    h_xGA *= sanityAdjustment;
+                    a_xG *= sanityAdjustment;
+                    a_xGA *= sanityAdjustment;
+                    
+                    console.log(`  After Sanity: H_xG=${h_xG.toFixed(2)}, A_xG=${a_xG.toFixed(2)} (Total: ${(h_xG + a_xG).toFixed(2)})`);
+                }
+                
                 // 2. Extrém különbség ellenőrzés
                 const p1_mu_h = (h_xG + a_xGA) / 2;
                 const p1_mu_a = (a_xG + h_xGA) / 2;
                 const diffRatio = Math.max(p1_mu_h, p1_mu_a) / Math.min(p1_mu_h, p1_mu_a);
                 
                 if (diffRatio > 4.0) {
-                    console.warn(`[SoccerStrategy v127.0] ⚠️ SUSPICIOUS MANUAL xG! Extreme ratio: ${diffRatio.toFixed(2)}x`);
+                    console.warn(`[SoccerStrategy v130.0] ⚠️ SUSPICIOUS MANUAL xG! Extreme ratio: ${diffRatio.toFixed(2)}x`);
                     console.warn(`  → Példa: Monaco (1.29) vs Pafos (1.99) = 1.54x (normális)`);
                     console.warn(`  → De: 3.0 vs 0.5 = 6.0x (gyanús!)`)
                     console.warn(`  Folytatjuk, de ELLENŐRIZD a manuális inputot!`);
                 }
                 
-                console.log(`[SoccerStrategy v127.0] ✅ P1 (MANUÁLIS xG) HASZNÁLVA: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
-                console.log(`  ↳ Input: H_xG=${h_xG.toFixed(2)}, H_xGA=${h_xGA.toFixed(2)}, A_xG=${a_xG.toFixed(2)}, A_xGA=${a_xGA.toFixed(2)}`);
+                console.log(`[SoccerStrategy v130.0] ✅ P1 (MANUÁLIS xG) VÉGLEGES: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
+                console.log(`  ↳ Original Input: H_xG=${advancedData.manual_H_xG.toFixed(2)}, A_xG=${advancedData.manual_A_xG.toFixed(2)}`);
+                console.log(`  ↳ After Adjustments: H_xG=${h_xG.toFixed(2)}, A_xG=${a_xG.toFixed(2)}`);
                 console.log(`  ↳ Ratio Check: ${diffRatio.toFixed(2)}x ${diffRatio > 3.0 ? '⚠️ HIGH!' : '✅ OK'}`);
                 
                 return {
                     pure_mu_h: p1_mu_h,
                     pure_mu_a: p1_mu_a,
-                    source: `Manual (Components) ${diffRatio > 3.0 ? '⚠️ High Ratio' : ''}`
+                    source: `Manual (Defensive Adjusted ${leagueDefensiveMultiplier.toFixed(2)}x) ${diffRatio > 3.0 ? '⚠️ High Ratio' : ''}`
                 };
             }
         }

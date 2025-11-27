@@ -1,6 +1,6 @@
 // FÁJL: config_league_coefficients.ts
-// VERZIÓ: v127.0 (Liga Minőség Faktor Rendszer)
-// CÉL: UEFA coefficient + Liga erősség → Valósághű xG módosítás!
+// VERZIÓ: v130.0 (Liga Minőség + Defensive Multiplier Rendszer)
+// CÉL: UEFA coefficient + Liga erősség + Defensive Nature → TÖKÉLETES xG módosítás!
 // 
 // PÉLDA PROBLÉMA:
 // Monaco (Ligue 1, UEFA coeff: 11.000) vs Pafos (Cyprus, UEFA coeff: 1.875)
@@ -214,6 +214,136 @@ export const HOCKEY_LEAGUE_COEFFICIENTS: { [key: string]: number } = {
     'default_hockey': 0.70  // Közepes liga feltételezés
 };
 
+// ===========================================================================================
+// LEAGUE DEFENSIVE MULTIPLIER (v130.0 ÚJ!) ⚽🛡️
+// ===========================================================================================
+/**
+ * Liga Defensive Nature Szorzó
+ * 
+ * CÉL: Egyes ligák/tornák alapvetően DEFENZÍVEBBEK, mint mások.
+ * - Europa League/Conference League: Kevesebb motiváció, rotáció, óvatos taktika → Kevesebb gól
+ * - Bundesliga: Magas presszió, gyors játék → Több gól
+ * - Serie A: Taktikai, defenzív kultúra → Kevesebb gól
+ * 
+ * HASZNÁLAT:
+ * adjusted_xG = base_xG * LEAGUE_DEFENSIVE_MULTIPLIER
+ * 
+ * SKÁLA:
+ * - 1.0 = Normál (átlagos gólszám)
+ * - >1.0 = Támadóbb liga (több gól várható)
+ * - <1.0 = Defenzívebb liga (kevesebb gól várható)
+ * 
+ * PÉLDA (Plzen vs Freiburg):
+ * - Europa League Defensive Multiplier: 0.92 (-8%)
+ * - Base xG: H=2.1, A=1.58 (Total: 3.68)
+ * - Adjusted: H=1.93, A=1.45 (Total: 3.38) ✅ Reálisabb!
+ */
+export const LEAGUE_DEFENSIVE_MULTIPLIER: { [key: string]: number } = {
+    // === UEFA TORNÁK (DEFENZÍVEBBEK!) ===
+    'uefa europa league': 0.92,        // -8% (rotáció, kevesebb motiváció, óvatos)
+    'europa league': 0.92,
+    'uefa conference league': 0.88,    // -12% (még óvatosabb, gyengébb csapatok)
+    'conference league': 0.88,
+    'uefa champions league': 0.95,     // -5% (magas szintű, de gyakran taktikai)
+    'champions league': 0.95,
+    
+    // === TOP LIGÁK ===
+    'bundesliga': 1.08,                // +8% (leginkább támadó liga Európában!)
+    'germany': 1.08,
+    'premier league': 1.05,            // +5% (gyors, intenzív, sok gól)
+    'england': 1.05,
+    'la liga': 1.00,                   // Normál (kiegyensúlyozott)
+    'spain': 1.00,
+    'ligue 1': 0.98,                   // -2% (kicsit defenzívebb)
+    'france': 0.98,
+    'serie a': 0.92,                   // -8% (taktikai, defenzív kultúra!)
+    'italy': 0.92,
+    
+    // === KÖZEPES LIGÁK ===
+    'eredivisie': 1.12,                // +12% (NAGYON támadó holland liga!)
+    'netherlands': 1.12,
+    'primeira liga': 1.02,             // +2% (támadó játék)
+    'portugal': 1.02,
+    'pro league': 0.95,                // -5% (defenzívebb)
+    'belgium': 0.95,
+    'scottish premiership': 1.00,      // Normál
+    'scotland': 1.00,
+    'süper lig': 1.03,                 // +3% (támadó, kaotikus)
+    'turkey': 1.03,
+    'austrian bundesliga': 1.05,       // +5% (támadó stílus)
+    'austria': 1.05,
+    
+    // === KELET-EURÓPAI LIGÁK (DEFENZÍVEBBEK) ===
+    'czech liga': 0.94,                // -6%
+    'czech republic': 0.94,
+    'switzerland': 0.96,               // -4%
+    'denmark': 0.98,                   // -2%
+    'greece': 0.93,                    // -7% (nagyon defenzív)
+    'croatia': 0.94,                   // -6%
+    'serbia': 0.92,                    // -8%
+    'norway': 0.96,                    // -4%
+    'sweden': 0.97,                    // -3%
+    'poland': 0.93,                    // -7%
+    'ukraine': 0.91,                   // -9%
+    'romania': 0.90,                   // -10%
+    
+    // === GYENGE LIGÁK (NAGYON DEFENZÍVEBBEK) ===
+    'israel': 0.95,                    // -5%
+    'slovakia': 0.92,                  // -8%
+    'hungary': 0.90,                   // -10%
+    'bulgaria': 0.88,                  // -12%
+    'slovenia': 0.90,                  // -10%
+    'cyprus': 0.85,                    // -15% (nagyon defenzív!)
+    'luxembourg': 0.83,                // -17%
+    'malta': 0.80,                     // -20%
+    
+    // === EGYÉB NAGY LIGÁK ===
+    'mls': 1.08,                       // +8% (sok gól az MLS-ben)
+    'usa': 1.08,
+    'canada': 1.08,
+    'liga mx': 1.05,                   // +5% (támadó)
+    'mexico': 1.05,
+    'brazilian serie a': 1.10,         // +10% (NAGYON támadó!)
+    'brazil': 1.10,
+    'argentina': 1.07,                 // +7% (támadó)
+    'j-league': 1.04,                  // +4% (támadó)
+    'japan': 1.04,
+    'k-league': 1.02,                  // +2%
+    'south korea': 1.02,
+    'chinese super league': 0.95,      // -5%
+    'china': 0.95,
+    
+    // === DEFAULT ===
+    'default_defensive': 1.00          // Normál (ha ismeretlen)
+};
+
+/**
+ * Liga Defensive Multiplier Lekérdezés
+ * @param leagueName - Liga neve (case-insensitive)
+ * @returns Defensive multiplier érték (0.80 - 1.12)
+ */
+export function getLeagueDefensiveMultiplier(leagueName: string | null | undefined): number {
+    if (!leagueName) return LEAGUE_DEFENSIVE_MULTIPLIER['default_defensive'];
+    
+    const normalized = leagueName.toLowerCase().trim();
+    
+    // Exact match
+    if (LEAGUE_DEFENSIVE_MULTIPLIER[normalized]) {
+        return LEAGUE_DEFENSIVE_MULTIPLIER[normalized];
+    }
+    
+    // Partial match
+    for (const [key, value] of Object.entries(LEAGUE_DEFENSIVE_MULTIPLIER)) {
+        if (normalized.includes(key) || key.includes(normalized)) {
+            return value;
+        }
+    }
+    
+    // Default fallback
+    console.warn(`[LeagueDefensiveMultiplier] Ismeretlen liga: "${leagueName}". Default (1.00) használva.`);
+    return LEAGUE_DEFENSIVE_MULTIPLIER['default_defensive'];
+}
+
 /**
  * Liga Minőség Kategóriák
  * Használat: UI-ban vagy logikai döntésekben
@@ -342,8 +472,12 @@ export function calculateLeagueQualityModifier(
 
 export default {
     UEFA_LEAGUE_COEFFICIENTS,
+    LEAGUE_DEFENSIVE_MULTIPLIER,
+    BASKETBALL_LEAGUE_COEFFICIENTS,
+    HOCKEY_LEAGUE_COEFFICIENTS,
     LeagueQuality,
     getLeagueCoefficient,
+    getLeagueDefensiveMultiplier,
     getLeagueQuality,
     calculateLeagueQualityModifier
 };
