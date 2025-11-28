@@ -1107,6 +1107,21 @@ You MUST provide a valid JSON with this EXACT structure:
     - If win probability is 45-50% → Confidence should be 5-6.5
     - If win probability is 40-45% → Confidence should be 4-5.5
     - If probability is <40% → Don't recommend it as primary unless extremely high value odds!
+16. 🚫 **TILTOTT PIACOK (v131.0 - ABSOLUTE BAN!):**
+    ❌ **SOHA NE AJÁNLJ:**
+    - "Dupla-Esély" / "Double Chance" / "1X" / "X2" / "12" (TILOS!)
+    - "Tét Vissza" / "Draw No Bet" / "DNB" (TILOS!)
+    
+    ✅ **ENGEDÉLYEZETT MAGAS ÉRTÉKŰ PIACOK:**
+    - Hazai Győzelem / Döntetlen / Vendég Győzelem (1X2/Moneyline - beleértve a sima Döntetlent is!)
+    - Over/Under Goals/Points
+    - BTTS (Both Teams To Score)
+    - Asian Handicap (ha van nagy különbség)
+    - Gólok száma (Team Totals)
+    
+    **INDOK:** A kis odds "biztonságos" piacok (Double Chance, DNB) NEM TERMELNEK PROFITOT!
+    A felhasználó NYERNI akar, nem "biztonságos" 1.3-1.5 oddsokat fogadni!
+    **A SIMA DÖNTETLEN (X) TIPP ENGEDÉLYEZETT** ha a valószínűsége magas (>30%) és jó oddsot kínál!
 
 ═══════════════════════════════════════════════════════════════
 💡 PÉLDÁK HELYES VÁLASZRA (v2.0 - ANTI-DRAW BIAS)
@@ -1653,6 +1668,95 @@ async function getMasterRecommendation(
         if (!rec || (!rec.primary && !rec.recommended_bet)) {
             throw new Error("Master AI hiba: Érvénytelen válasz struktúra.");
         }
+        
+        // === ÚJ v131.0: TILTOTT PIACOK SZŰRÉSE (DOUBLE CHANCE, DNB) - DÖNTETLEN MEGENGEDETT! ===
+        const bannedKeywords = [
+            'dupla', 'double chance', '1x', 'x2', '12',
+            'tét vissza', 'draw no bet', 'dnb'
+        ];
+        
+        function isBannedMarket(market: string): boolean {
+            if (!market) return false;
+            const lower = market.toLowerCase().trim();
+            
+            // FONTOS: A sima "Döntetlen" / "Draw" / "X" NEM tiltott!
+            // Csak a Double Chance és DNB tiltott!
+            
+            return bannedKeywords.some(keyword => {
+                // Exact match vagy contains check (space-aware)
+                return lower === keyword || 
+                       lower.includes(` ${keyword} `) || 
+                       lower.startsWith(keyword + ' ') ||
+                       lower.endsWith(' ' + keyword);
+            });
+        }
+        
+        // Primary market ellenőrzése
+        if (rec.primary && isBannedMarket(rec.primary.market)) {
+            console.warn(`[AI_Service v131.0] 🚫 BANNED MARKET DETECTED (Primary): "${rec.primary.market}". Replacing with fallback (Double Chance/DNB not allowed).`);
+            
+            // FALLBACK LOGIC: Válasszunk értékesebb tippet
+            const pHome = safeSim.pHome || 0;
+            const pDraw = safeSim.pDraw || 0;
+            const pAway = safeSim.pAway || 0;
+            const pOver = safeSim.pOver || 0;
+            const pUnder = safeSim.pUnder || 0;
+            
+            // Legjobb opció kiválasztása (ami NEM döntetlen!)
+            let bestMarket = "Over 2.5";
+            let bestConfidence = 5.0;
+            
+            if (pHome > pAway && pHome > pDraw && pHome >= 40) {
+                bestMarket = "Hazai Győzelem";
+                bestConfidence = pHome >= 50 ? 7.0 : 6.0;
+            } else if (pAway > pHome && pAway > pDraw && pAway >= 40) {
+                bestMarket = "Vendég Győzelem";
+                bestConfidence = pAway >= 50 ? 7.0 : 6.0;
+            } else if (pOver > pUnder && pOver >= 50) {
+                bestMarket = `Over ${safeSim.mainTotalsLine || '2.5'}`;
+                bestConfidence = pOver >= 60 ? 6.5 : 5.5;
+            } else if (pUnder > pOver && pUnder >= 50) {
+                bestMarket = `Under ${safeSim.mainTotalsLine || '2.5'}`;
+                bestConfidence = pUnder >= 60 ? 6.5 : 5.5;
+            } else {
+                // Ha minden bizonytalan, válasszuk az Over/Under-t
+                bestMarket = pOver > pUnder ? `Over ${safeSim.mainTotalsLine || '2.5'}` : `Under ${safeSim.mainTotalsLine || '2.5'}`;
+                bestConfidence = 5.0;
+            }
+            
+            rec.primary.market = bestMarket;
+            rec.primary.confidence = bestConfidence;
+            rec.primary.reason = `🚫 [v131.0 AUTO-CORRECTION] Az eredeti AI tipp tiltott kis odds piacot (Dupla-Esély/DNB) tartalmazott, ezért felülírtuk profitábilisabb opcióval.\n\n**Új Tipp Indoklása:** ${bestMarket} választása a szimulációs adatok alapján a legjövedelmezőbb opció. ${rec.primary.reason || ''}`;
+            
+            console.log(`[AI_Service v131.0] ✅ Primary market replaced: "${bestMarket}" (Confidence: ${bestConfidence.toFixed(1)})`);
+        }
+        
+        // Secondary market ellenőrzése
+        if (rec.secondary && isBannedMarket(rec.secondary.market)) {
+            console.warn(`[AI_Service v131.0] 🚫 BANNED MARKET DETECTED (Secondary): "${rec.secondary.market}". Replacing with fallback.`);
+            
+            // Másodlagos tipp: válasszunk BTTS vagy másik Over/Under opciót
+            const pBTTS = safeSim.pBTTS || 0;
+            const pOver = safeSim.pOver || 0;
+            const pUnder = safeSim.pUnder || 0;
+            
+            if (sport === 'soccer' && pBTTS >= 45) {
+                rec.secondary.market = "BTTS: Igen";
+                rec.secondary.confidence = pBTTS >= 55 ? 6.0 : 5.0;
+                rec.secondary.reason = `Mindkét csapat várhatóan gólt szerez (${pBTTS.toFixed(1)}% esély). Jó alternatív opció.`;
+            } else if (pOver > pUnder && pOver >= 45) {
+                rec.secondary.market = `Over ${safeSim.mainTotalsLine || '2.5'}`;
+                rec.secondary.confidence = 5.5;
+                rec.secondary.reason = `Az Over ${safeSim.mainTotalsLine || '2.5'} biztonságos másodlagos tipp (${pOver.toFixed(1)}% esély).`;
+            } else {
+                rec.secondary.market = "Nincs másodlagos tipp";
+                rec.secondary.confidence = 0;
+                rec.secondary.reason = "A rendszer nem talált megfelelő másodlagos opciót.";
+            }
+            
+            console.log(`[AI_Service v131.0] ✅ Secondary market replaced: "${rec.secondary.market}"`);
+        }
+        // === VÉGE v131.0 SZŰRÉS ===
         
         // Struktúra normalizálás (régi formátum támogatása)
         if (!rec.primary) {
