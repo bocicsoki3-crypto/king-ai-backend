@@ -140,6 +140,13 @@ export async function _callGemini(
         let cleanText = responseText;
         if (forceJson) {
             cleanText = cleanText.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+            
+            // === FIX v134.1: POZITÍV SZÁMOK ELŐTTI + JEL ELTÁVOLÍTÁSA ===
+            // A Gemini néha "+0.10" formátumot használ, ami nem valid JSON
+            // Cseréljük le ": +szám" formátumot ": szám" formátumra
+            cleanText = cleanText.replace(/:\s*\+(\d)/g, ': $1');
+            console.log(`[Gemini JSON Clean] + jelek eltávolítva a pozitív számok elől.`);
+            
             // Gyors ellenőrzés
             try {
                 JSON.parse(cleanText);
