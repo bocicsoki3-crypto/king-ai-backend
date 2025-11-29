@@ -55,11 +55,14 @@ export interface ISportStrategy {
     /**
      * 1. Ügynök (Quant) feladata:
      * Kiszámítja a "tiszta" statisztikai xG-t (vagy pontokat) a sportág szabályai szerint.
+     * v134.0: Derby detection (csak soccer esetén, opcionális)
      */
     estimatePureXG(options: XGOptions): {
         pure_mu_h: number;
         pure_mu_a: number;
         source: string;
+        isDerby?: boolean;  // v134.0: Derby detection (csak soccer-nál)
+        derbyName?: string; // v134.0: Derby név (pl. "Manchester Derby")
     };
 
     /**
