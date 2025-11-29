@@ -278,16 +278,16 @@ export class HockeyStrategy implements ISportStrategy {
                 const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
                 const totalExpectedGoals = p1_mu_h_raw + p1_mu_a_raw;
                 
-                // Liga alapú max várható gólszám (empirikus)
-                // NHL Regular: ~6.5 goals, NHL Playoff: ~5.5 goals, Liiga (Finn): ~5.0 goals
-                const expectedMaxGoals = leagueDefensiveMultiplier <= 0.90 ? 5.2 :  // Playoff/Defenzív ligák (Finn, stb.)
-                                        leagueDefensiveMultiplier <= 0.95 ? 5.8 :  // Defenzív ligák (KHL, Svéd, stb.)
-                                        6.5;                                        // Normál ligák (NHL Regular)
+                // Liga alapú max várható gólszám (empirikus) - v132.0 LAZÍTVA!
+                // v132.0: NHL meccsek gyakran 6-7 gól között vannak! Lazítva: 5.2→5.8, 5.8→6.2, 6.5→7.0
+                const expectedMaxGoals = leagueDefensiveMultiplier <= 0.90 ? 5.8 :  // Playoff/Defenzív ligák (Finn, stb.) (+0.6)
+                                        leagueDefensiveMultiplier <= 0.95 ? 6.2 :  // Defenzív ligák (KHL, Svéd, stb.) (+0.4)
+                                        7.0;                                        // Normál ligák (NHL Regular) (+0.5)
                 
                 if (totalExpectedGoals > expectedMaxGoals) {
-                    const sanityAdjustment = 0.85; // -15% korrekció
-                    console.warn(`[HockeyStrategy v130.1] 🚨 P1 SANITY CHECK! Total goals (${totalExpectedGoals.toFixed(2)}) > Expected Max (${expectedMaxGoals.toFixed(2)}) for this league.`);
-                    console.warn(`  📉 Applying CONSERVATIVE adjustment (-15%)`);
+                    const sanityAdjustment = 0.88; // v132.0: -12% korrekció (előtte -15% volt, túl durva!)
+                    console.warn(`[HockeyStrategy v132.0] 🚨 P1 SANITY CHECK! Total goals (${totalExpectedGoals.toFixed(2)}) > Expected Max (${expectedMaxGoals.toFixed(2)}) for this league.`);
+                    console.warn(`  📉 Applying MODERATE adjustment (-12%, volt -15%)`);
                     
                     manual_H_xG *= sanityAdjustment;
                     manual_A_xG *= sanityAdjustment;
@@ -300,7 +300,7 @@ export class HockeyStrategy implements ISportStrategy {
                 const p1_mu_h = (manual_H_xG + manual_A_xGA) / 2;
                 const p1_mu_a = (manual_A_xG + manual_H_xGA) / 2;
                 
-                console.log(`[HockeyStrategy v130.1] ✅ P1 (MANUÁLIS) VÉGLEGES: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
+                console.log(`[HockeyStrategy v132.0] ✅ P1 (MANUÁLIS) VÉGLEGES: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
                 console.log(`  ↳ Original Input: H_goals=${advancedData.manual_H_xG.toFixed(2)}, A_goals=${advancedData.manual_A_xG.toFixed(2)}`);
                 console.log(`  ↳ After Adjustments: H_goals=${manual_H_xG.toFixed(2)}, A_goals=${manual_A_xG.toFixed(2)}`);
                 

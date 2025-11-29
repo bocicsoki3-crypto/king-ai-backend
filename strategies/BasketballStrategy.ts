@@ -281,16 +281,16 @@ export class BasketballStrategy implements ISportStrategy {
                 const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
                 const totalExpectedPoints = p1_mu_h_raw + p1_mu_a_raw;
                 
-                // Liga alapú max várható pontszám (empirikus)
-                // NBA Regular: ~225 pts, NBA Playoff: ~210 pts, Euroleague: ~165 pts
-                const expectedMaxPoints = leagueDefensiveMultiplier <= 0.92 ? 210 :  // Playoff/Defenzív ligák
-                                         leagueDefensiveMultiplier >= 1.03 ? 235 :  // Támadó ligák (Kína, Ausztrália)
-                                         225;                                         // Normál ligák
+                // Liga alapú max várható pontszám (empirikus) - v132.0 LAZÍTVA!
+                // v132.0: NBA meccsek gyakran 230-250 pts között vannak! Lazítva: 210→220, 225→240, 235→250
+                const expectedMaxPoints = leagueDefensiveMultiplier <= 0.92 ? 220 :  // Playoff/Defenzív ligák (+10)
+                                         leagueDefensiveMultiplier >= 1.03 ? 250 :  // Támadó ligák (Kína, Ausztrália) (+15)
+                                         240;                                         // Normál ligák (NBA Regular) (+15)
                 
                 if (totalExpectedPoints > expectedMaxPoints) {
-                    const sanityAdjustment = 0.85; // -15% korrekció
-                    console.warn(`[BasketballStrategy v130.1] 🚨 P1 SANITY CHECK! Total pts (${totalExpectedPoints.toFixed(1)}) > Expected Max (${expectedMaxPoints.toFixed(1)}) for this league.`);
-                    console.warn(`  📉 Applying CONSERVATIVE adjustment (-15%)`);
+                    const sanityAdjustment = 0.92; // v132.0: -8% korrekció (előtte -15% volt, túl durva!)
+                    console.warn(`[BasketballStrategy v132.0] 🚨 P1 SANITY CHECK! Total pts (${totalExpectedPoints.toFixed(1)}) > Expected Max (${expectedMaxPoints.toFixed(1)}) for this league.`);
+                    console.warn(`  📉 Applying MODERATE adjustment (-8%, volt -15%)`);
                     
                     manual_H_xG *= sanityAdjustment;
                     manual_A_xG *= sanityAdjustment;
@@ -303,7 +303,7 @@ export class BasketballStrategy implements ISportStrategy {
                 const p1_mu_h = (manual_H_xG + manual_A_xGA) / 2;
                 const p1_mu_a = (manual_A_xG + manual_H_xGA) / 2;
                 
-                console.log(`[BasketballStrategy v130.1] ✅ P1 (MANUÁLIS) VÉGLEGES: mu_h=${p1_mu_h.toFixed(1)}, mu_a=${p1_mu_a.toFixed(1)}`);
+                console.log(`[BasketballStrategy v132.0] ✅ P1 (MANUÁLIS) VÉGLEGES: mu_h=${p1_mu_h.toFixed(1)}, mu_a=${p1_mu_a.toFixed(1)}`);
                 console.log(`  ↳ Original Input: H_pts=${advancedData.manual_H_xG.toFixed(1)}, A_pts=${advancedData.manual_A_xG.toFixed(1)}`);
                 console.log(`  ↳ After Adjustments: H_pts=${manual_H_xG.toFixed(1)}, A_pts=${manual_A_xG.toFixed(1)}`);
                 

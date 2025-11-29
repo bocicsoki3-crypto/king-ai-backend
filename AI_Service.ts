@@ -1308,30 +1308,30 @@ export async function runStep_Specialist(data: any): Promise<any> {
             result.modified_mu_a = data.pure_mu_a + Math.max(-0.5, Math.min(0.5, result.modified_mu_a - data.pure_mu_a));
         }
         
-        // === v129.0 ULTRA-STRICT: REALITY CHECK - Ha Total Adjustment >0.35, csökkentés! ===
+        // === v132.0 MODERATE: REALITY CHECK LAZÍTVA - Az előző verzió túl konzervatív volt! ===
         const totalAdjustment = homeDiff + awayDiff;
-        let adjustmentLimit = 0.35; // v129.0: CSÖKKENTVE 0.5-ről 0.35-re (30% szigorítás)
+        let adjustmentLimit = 0.45; // v132.0: LAZÍTVA 0.35-ről 0.45-re (+29% lazítás)
         
-        // === ÚJ v129.0: LOW SCORING MODE - Ha alacsony xG, még szigorúbb limit! ===
+        // === v132.0: LOW SCORING MODE - Lazítva! Az előző 0.25 túl szigorú volt! ===
         const totalExpectedGoals = data.pure_mu_h + data.pure_mu_a;
-        if (totalExpectedGoals < 3.2) {
-            adjustmentLimit = 0.25; // EXTRA SZIGORÚ defenzív meccsekhez
-            console.warn(`[AI_Service v129.0] 🛡️ LOW SCORING MODE aktiválva (Total xG: ${totalExpectedGoals.toFixed(2)}). Limit: 0.25`);
+        if (totalExpectedGoals < 2.8) { // v132.0: 3.2 → 2.8 (csak NAGYON defenzív meccsekhez)
+            adjustmentLimit = 0.35; // v132.0: 0.25 → 0.35 (LAZÍTVA!)
+            console.warn(`[AI_Service v132.0] 🛡️ LOW SCORING MODE aktiválva (Total xG: ${totalExpectedGoals.toFixed(2)}). Limit: 0.35 (lazítva 0.25-ről)`);
         }
         
         if (totalAdjustment > adjustmentLimit) {
             const scaleFactor = adjustmentLimit / totalAdjustment;
-            console.warn(`[AI_Service v129.0] ⚠️ REALITY CHECK! Total adjustment túl magas (${totalAdjustment.toFixed(2)}). Limit: ${adjustmentLimit}, Scaling: ${scaleFactor.toFixed(2)}x`);
+            console.warn(`[AI_Service v132.0] ⚠️ REALITY CHECK! Total adjustment túl magas (${totalAdjustment.toFixed(2)}). Limit: ${adjustmentLimit.toFixed(2)}, Scaling: ${scaleFactor.toFixed(2)}x`);
             
             result.modified_mu_h = data.pure_mu_h + (result.modified_mu_h - data.pure_mu_h) * scaleFactor;
             result.modified_mu_a = data.pure_mu_a + (result.modified_mu_a - data.pure_mu_a) * scaleFactor;
         }
         
-        // === ÚJ v129.0: DEFENSIVE MATCH PROTECTION - Ne boostolj túl agresszíven! ===
+        // === v132.0: DEFENSIVE MATCH PROTECTION LAZÍTVA - Az előző verzió túl durva volt! ===
         const finalTotalXG = result.modified_mu_h + result.modified_mu_a;
-        if (totalExpectedGoals < 3.0 && finalTotalXG > totalExpectedGoals + 0.3) {
-            console.warn(`[AI_Service v129.0] 🚨 DEFENSIVE MATCH védelem! Quant total: ${totalExpectedGoals.toFixed(2)}, Specialist total: ${finalTotalXG.toFixed(2)}. Korrigálás...`);
-            const reduction = (finalTotalXG - totalExpectedGoals - 0.3) / 2;
+        if (totalExpectedGoals < 2.7 && finalTotalXG > totalExpectedGoals + 0.5) { // v132.0: <3.0→<2.7, +0.3→+0.5
+            console.warn(`[AI_Service v132.0] 🚨 DEFENSIVE MATCH védelem! Quant total: ${totalExpectedGoals.toFixed(2)}, Specialist total: ${finalTotalXG.toFixed(2)}. Korrigálás...`);
+            const reduction = (finalTotalXG - totalExpectedGoals - 0.5) / 2; // v132.0: +0.3 → +0.5
             result.modified_mu_h -= reduction;
             result.modified_mu_a -= reduction;
             result.modified_mu_h = Math.max(0.5, result.modified_mu_h);

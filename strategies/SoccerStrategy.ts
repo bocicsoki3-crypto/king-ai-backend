@@ -150,17 +150,22 @@ export class SoccerStrategy implements ISportStrategy {
                 const p1_mu_a_raw = (a_xG + h_xGA) / 2;
                 const totalExpectedGoals = p1_mu_h_raw + p1_mu_a_raw;
                 
-                // Liga alapú max várható gólszám (empirikus)
+                // Liga alapú max várható gólszám (empirikus) - v132.0 LAZÍTVA + BUNDESLIGA KIVÉTEL!
                 // Europa League/Conference League: ~2.8-3.0 goals/match
                 // Top Ligák: ~2.8-3.2 goals/match
-                // Támadó ligák (Bundesliga, Eredivisie): ~3.3-3.5 goals/match
-                const expectedMaxGoals = leagueDefensiveMultiplier <= 0.92 ? 3.0 : 
-                                         leagueDefensiveMultiplier >= 1.05 ? 3.5 : 3.2;
+                // Támadó ligák (Bundesliga, Eredivisie): ~3.3-3.8 goals/match (BUNDESLIGA: 3.5+!)
+                
+                // v132.0: BUNDESLIGA SPECIÁLIS KEZELÉS (átlag 3.2-3.5 gól/meccs!)
+                const isBundesliga = leagueName?.toLowerCase().includes('bundesliga') || false;
+                const expectedMaxGoals = isBundesliga ? 3.8 :                        // Bundesliga: NAGYON támadó! (+0.6)
+                                         leagueDefensiveMultiplier <= 0.92 ? 3.0 :   // Europa/Conference
+                                         leagueDefensiveMultiplier >= 1.05 ? 3.6 :   // Eredivisie (+0.1)
+                                         3.3;                                         // Normál ligák (+0.1)
                 
                 if (totalExpectedGoals > expectedMaxGoals) {
-                    const sanityAdjustment = 0.85; // -15% korrekció
-                    console.warn(`[SoccerStrategy v130.0] 🚨 P1 SANITY CHECK! Total xG (${totalExpectedGoals.toFixed(2)}) > Expected Max (${expectedMaxGoals.toFixed(2)}) for this league.`);
-                    console.warn(`  📉 Applying CONSERVATIVE adjustment (-15%)`);
+                    const sanityAdjustment = 0.90; // v132.0: -10% korrekció (előtte -15% volt, túl durva!)
+                    console.warn(`[SoccerStrategy v132.0] 🚨 P1 SANITY CHECK! Total xG (${totalExpectedGoals.toFixed(2)}) > Expected Max (${expectedMaxGoals.toFixed(2)}) for this league${isBundesliga ? ' (Bundesliga)' : ''}.`);
+                    console.warn(`  📉 Applying MODERATE adjustment (-10%, volt -15%)`);
                     
                     h_xG *= sanityAdjustment;
                     h_xGA *= sanityAdjustment;
@@ -182,7 +187,7 @@ export class SoccerStrategy implements ISportStrategy {
                     console.warn(`  Folytatjuk, de ELLENŐRIZD a manuális inputot!`);
                 }
                 
-                console.log(`[SoccerStrategy v130.0] ✅ P1 (MANUÁLIS xG) VÉGLEGES: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
+                console.log(`[SoccerStrategy v132.0] ✅ P1 (MANUÁLIS xG) VÉGLEGES: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
                 console.log(`  ↳ Original Input: H_xG=${advancedData.manual_H_xG.toFixed(2)}, A_xG=${advancedData.manual_A_xG.toFixed(2)}`);
                 console.log(`  ↳ After Adjustments: H_xG=${h_xG.toFixed(2)}, A_xG=${a_xG.toFixed(2)}`);
                 console.log(`  ↳ Ratio Check: ${diffRatio.toFixed(2)}x ${diffRatio > 3.0 ? '⚠️ HIGH!' : '✅ OK'}`);
