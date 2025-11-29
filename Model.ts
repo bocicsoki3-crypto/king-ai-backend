@@ -87,7 +87,7 @@ export function estimatePureXG(
     advancedData: any,
     strategy: ISportStrategy,
     absentees?: ICanonicalRawData['absentees'] // ÚJ v128.0: Kulcsjátékos hiányok
-): { pure_mu_h: number, pure_mu_a: number, source: string } {
+): { pure_mu_h: number, pure_mu_a: number, source: string, isDerby?: boolean, derbyName?: string } {
     
     const options: XGOptions = {
         homeTeam,
@@ -99,6 +99,12 @@ export function estimatePureXG(
         absentees // ÚJ v128.0: átadjuk az absentees-t is
     };
     const result = strategy.estimatePureXG(options);
+    
+    // v134.0: Derby információk logolása
+    if (result.isDerby) {
+        console.log(`[Model.ts - 1. Ügynök] 🔥 DERBY MECCS ÉSZLELVE: ${result.derbyName}`);
+    }
+    
     console.log(`[Model.ts - 1. Ügynök] Tiszta xG (${sport}): H=${result.pure_mu_h.toFixed(2)}, A=${result.pure_mu_a.toFixed(2)} (Forrás: ${result.source})`);
     return result;
 }

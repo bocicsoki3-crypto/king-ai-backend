@@ -1631,7 +1631,7 @@ async function getMasterRecommendation(
         const topScoreAway = safeSim.topScore?.ga ?? Math.round(safeSim.mu_a_sim || 1);
         const topScoreString = `${topScoreHome}-${topScoreAway}`;
         const topScoreProb = safeSim.scores?.[topScoreString] ? ((safeSim.scores[topScoreString] / 25000) * 100).toFixed(1) : "N/A";
-        
+
         const data = {
             valueBetsJson: JSON.stringify(valueBets, null, 2),
             sim_pHome: safeSim.pHome?.toFixed(1) || "N/A", 

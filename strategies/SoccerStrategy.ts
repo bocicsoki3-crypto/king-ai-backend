@@ -1,22 +1,21 @@
 // FÁJL: strategies/SoccerStrategy.ts
-// VERZIÓ: v130.0 (DEFENSIVE LEAGUE MULTIPLIER + SANITY CHECK)
-// MÓDOSÍTÁS (v130.0 - TÖKÉLETES DEFENZÍV MECCSEK):
-// 1. ÚJ: LEAGUE DEFENSIVE MULTIPLIER! (Europa League -8%, Conference -12%)
-//    - Plzen vs Freiburg (Europa): 3.68 total xG → 3.38 (-8%)
-//    - Defenzív tornák → automatikus xG csökkentés
-// 2. ÚJ: P1 MANUAL xG SANITY CHECK! (túl optimista inputok detektálása)
-//    - Ha manual total xG > expected max → -15% auto korrekció
-// 3. ÚJ: GAME PACE/TEMPO faktor (slow/medium/fast)
-// 4. EREDMÉNY: Reális Over/Under tippek defenzív meccseken! ✅
+// VERZIÓ: v134.0 (DERBY DETECTION + DEFENSIVE MULTIPLIER FIX!)
+// MÓDOSÍTÁS (v134.0 - DERBY MECCSEK DETEKTÁLÁSA):
+// 1. ÚJ: DERBY DETECTION! (Sydney Derby, Manchester Derby, Old Firm, stb.)
+//    - Sydney FC vs Western Sydney Wanderers → DERBY → -20% xG, -2.5 confidence!
+//    - A forma NEM számít derby-nél! Pszichológia > Statisztika!
+// 2. FIX: Liga név most már MEGVAN (stats.home.league beállítva az API-ban)
+//    - Ezzel működik a Defensive Multiplier! (Europa -8%, Bundesliga +8%)
+// 3. EREDMÉNY: Nincs több false positive "Over 2.5" 0-0-s derbiken! ✅
+//
+// Korábbi módosítás (v130.0):
+// - LEAGUE DEFENSIVE MULTIPLIER! (Europa League -8%, Conference -12%)
+// - P1 MANUAL xG SANITY CHECK! (túl optimista inputok detektálása)
 //
 // Korábbi módosítás (v127.0):
 // - Liga Minőség Faktor (UEFA coefficient)
 // - Forma súly optimalizálás (50%)
 // - Home Advantage liga-aware
-//
-// Korábbi módosítások (v124.0):
-// - P4 Auto xG implementálás detailedPlayerStats alapján
-// - Kulcs játékosok hiányának kezelése
 
 import type { 
     ISportStrategy, 
@@ -44,6 +43,9 @@ import {
     calculateLeagueQualityModifier,
     getLeagueQuality
 } from '../config_league_coefficients.js';
+
+// === ÚJ (v134.0): Derby Detection Importálás ===
+import { detectDerby, DERBY_MODIFIERS } from '../utils/derbyDetection.js';
 
 /**
  * A Foci-specifikus elemzési logikát tartalmazó stratégia.
@@ -104,16 +106,22 @@ export class SoccerStrategy implements ISportStrategy {
 
     /**
      * 1. Ügynök (Quant) feladata: Foci xG számítása.
-     * FEJLESZTVE (v130.0): League Defensive Multiplier + Sanity Check!
+     * FEJLESZTVE (v134.0): Derby Detection + Defensive Multiplier!
      */
-    public estimatePureXG(options: XGOptions): { pure_mu_h: number; pure_mu_a: number; source: string; } {
-        const { rawStats, leagueAverages, advancedData } = options;
+    public estimatePureXG(options: XGOptions): { pure_mu_h: number; pure_mu_a: number; source: string; isDerby?: boolean; derbyName?: string; } {
+        const { homeTeam, awayTeam, rawStats, leagueAverages, advancedData } = options;
+
+        // === ÚJ v134.0: DERBY DETECTION ===
+        const derbyInfo = detectDerby(homeTeam, awayTeam);
+        if (derbyInfo.isDerby) {
+            console.log(`[SoccerStrategy v134.0] 🔥 DERBY ÉSZLELVE: ${derbyInfo.derbyName} (${homeTeam} vs ${awayTeam})`);
+        }
 
         // === ÚJ v130.0: Liga Defensive Multiplier lekérése ===
         const leagueName = (rawStats?.home as any)?.league || null;
         const leagueDefensiveMultiplier = getLeagueDefensiveMultiplier(leagueName);
         
-        console.log(`[SoccerStrategy v130.0] Liga: "${leagueName}", Defensive Multiplier: ${leagueDefensiveMultiplier.toFixed(2)}`);
+        console.log(`[SoccerStrategy v134.0] Liga: "${leagueName}", Defensive Multiplier: ${leagueDefensiveMultiplier.toFixed(2)}`);
 
         // === P1 (Manuális) Adatok Ellenőrzése + VALIDATION (v130.0 ENHANCED) ===
         if (advancedData?.manual_H_xG != null && 
@@ -411,10 +419,28 @@ export class SoccerStrategy implements ISportStrategy {
         pure_mu_h = Math.max(0.3, Math.min(4.0, pure_mu_h));
         pure_mu_a = Math.max(0.3, Math.min(4.0, pure_mu_a));
         
+        // === ÚJ v134.0: DERBY REDUCTION ===
+        // Ha derby meccs → -20% várható gólok (psziché > statisztika!)
+        if (derbyInfo.isDerby) {
+            const beforeReduction = pure_mu_h + pure_mu_a;
+            pure_mu_h *= DERBY_MODIFIERS.XG_REDUCTION;
+            pure_mu_a *= DERBY_MODIFIERS.XG_REDUCTION;
+            const afterReduction = pure_mu_h + pure_mu_a;
+            
+            console.log(`[SoccerStrategy v134.0] 🔥 DERBY REDUCTION APPLIED:`);
+            console.log(`  Before: H=${(pure_mu_h / DERBY_MODIFIERS.XG_REDUCTION).toFixed(2)}, A=${(pure_mu_a / DERBY_MODIFIERS.XG_REDUCTION).toFixed(2)} (Total: ${beforeReduction.toFixed(2)})`);
+            console.log(`  After:  H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)} (Total: ${afterReduction.toFixed(2)})`);
+            console.log(`  ⚠️ Derby impact: ${derbyInfo.derbyName} - PSZICHOLÓGIA > STATISZTIKA!`);
+            
+            sourceDetails += ` [DERBY: ${derbyInfo.derbyName}]`;
+        }
+        
         return {
             pure_mu_h: pure_mu_h,
             pure_mu_a: pure_mu_a,
-            source: sourceDetails
+            source: sourceDetails,
+            isDerby: derbyInfo.isDerby,
+            derbyName: derbyInfo.derbyName || undefined
         };
     }
 

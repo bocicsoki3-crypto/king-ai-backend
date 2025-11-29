@@ -55,7 +55,7 @@ const scriptCache = new NodeCache({ stdTTL: 3600 * 4, checkperiod: 3600 });
 interface IAnalysisResponse {
     analysisData: {
         committee: {
-            quant: { mu_h: number, mu_a: number, source: string };
+            quant: { mu_h: number, mu_a: number, source: string, isDerby?: boolean, derbyName?: string }; // v134.0: Derby info
             psychologist: any; 
             specialist: { 
                 mu_h: number, 
@@ -407,9 +407,9 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             console.log(`[Lánc 2.6/6] Nincsenek múltbeli tanulságok a Narratív Cache-ben ehhez a párosításhoz.`);
         }
 
-        // === 1. ÜGYNÖK (QUANT): "Tiszta xG" számítása - v128.0 JAVÍTVA ===
+        // === 1. ÜGYNÖK (QUANT): "Tiszta xG" számítása - v134.0 JAVÍTVA (DERBY DETECTION) ===
         console.log(`[Lánc 1/6] Quant Ügynök: Tiszta xG számítása...`);
-        const { pure_mu_h, pure_mu_a, source: quantSource } = estimatePureXG(
+        const { pure_mu_h, pure_mu_a, source: quantSource, isDerby, derbyName } = estimatePureXG(
             home, 
             away, 
             rawStats, 
@@ -421,6 +421,11 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             absentees // ÚJ v128.0: átadjuk az absentees-t is
         );
         console.log(`Quant (Tiszta xG) [${quantSource}]: H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)}`);
+        
+        // v134.0: Derby figyelmeztetés
+        if (isDerby) {
+            console.log(`[AnalysisFlow v134.0] 🔥 DERBY FIGYELMEZTETÉS: ${derbyName} - KISZÁMÍTHATATLAN MECCS!`);
+        }
         
         // === 3. ÜGYNÖK (SPECIALISTA) ===
         console.log(`[Lánc 3/6] Specialista Ügynök (AI): Kontextuális módosítók alkalmazása...`);
@@ -542,6 +547,25 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         } else {
             console.error("KRITIKUS HIBA: A Hibrid Főnök nem adott vissza érvényes 'final_confidence' számot! 1.0-ra állítva.");
         }
+        
+        // === ÚJ v134.0: DERBY CONFIDENCE PENALTY ===
+        if (isDerby) {
+            const originalConfidence = finalConfidenceScore;
+            finalConfidenceScore = Math.max(1.0, Math.min(4.5, finalConfidenceScore - 2.5)); // -2.5 penalty, MAX 4.5/10
+            
+            console.log(`[AnalysisFlow v134.0] 🔥 DERBY PENALTY APPLIED:`);
+            console.log(`  Original Confidence: ${originalConfidence.toFixed(1)}/10`);
+            console.log(`  After Derby Penalty: ${finalConfidenceScore.toFixed(1)}/10 (MAX 4.5 - KISZÁMÍTHATATLAN!)`);
+            console.log(`  Derby: ${derbyName}`);
+            
+            // Figyelmeztetés hozzáadása a key_risks-hez
+            if (masterRecommendation && masterRecommendation.key_risks) {
+                masterRecommendation.key_risks.unshift({
+                    risk: `⚠️ DERBY MECCS (${derbyName})! A forma és statisztikák kevésbé relevánsak! Pszichológia > Matematika!`,
+                    probability: 40 // Derby hatás 40% esély a meglepetésre
+                });
+            }
+        }
         // === Hibrid Főnök Végzett ===
 
         console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterRecommendation)} (Végső bizalom: ${finalConfidenceScore})`);
@@ -558,7 +582,7 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const auditData = {
             analysisData: {
                 committee: {
-                    quant: { mu_h: pure_mu_h, mu_a: pure_mu_a, source: quantSource },
+                    quant: { mu_h: pure_mu_h, mu_a: pure_mu_a, source: quantSource, isDerby, derbyName }, // v134.0: Derby info
                     specialist_mu: { mu_h: mu_h, mu_a: mu_a },
                     scout: { 
                         summary: richContext || "Nincs részletes kontextus.",

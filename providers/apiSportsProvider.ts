@@ -1174,7 +1174,8 @@ null
 0,
         ga: apiSportsHomeSeasonStats?.goalsAgainst ||
 0,
-        form: apiSportsHomeSeasonStats?.form || null
+        form: apiSportsHomeSeasonStats?.form || null,
+        league: leagueName || null // v134.0: Liga név hozzáadása (DERBY DETECTION + DEFENSIVE MULTIPLIER FIX!)
     };
     const awayGP = apiSportsAwaySeasonStats?.gamesPlayed || 1;
     finalData.stats.away = {
@@ -1183,7 +1184,8 @@ null
 0,
         ga: apiSportsAwaySeasonStats?.goalsAgainst ||
 0,
-        form: apiSportsAwaySeasonStats?.form || null
+        form: apiSportsAwaySeasonStats?.form || null,
+        league: leagueName || null // v134.0: Liga név hozzáadása
     };
     console.log(`Végleges stats használatban: Home(GP:${homeGP}), Away(GP:${awayGP})`);
     
