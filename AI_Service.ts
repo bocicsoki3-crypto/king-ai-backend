@@ -1062,14 +1062,16 @@ You MUST provide a valid JSON with this EXACT structure:
     "confidence": <Szám 1.0-10.0>,
     "reason": "<RÉSZLETES 4-5 MONDATOS INDOKLÁS MAGYARUL: Miért jó ez másodlagos opcióként? Hogyan különbözik az elsődlegestől? Milyen forgatókönyvben lehet jobb?>"
   },
-  "verdict": "<A LÉNYEG - 2-3 MONDATOS ÖSSZEFOGLALÓ MAGYARUL: Miért ez a 'BIZTOS' tipp? KÖTELEZŐ konkrét eredményt említeni (pl: 'Norwich 2-1-re nyeri a meccset'). Mi az a 1-2 kulcsfontosságú tényező, ami miatt ez valószínűleg bejön? Legyen magabiztos és BÁTOR! Használd a {sim_topScore} eredményt ha releváns!>",
+  "verdict": "<A LÉNYEG - 2-3 MONDATOS ÖSSZEFOGLALÓ MAGYARUL: Miért ez a 'BIZTOS' tipp? 🚨 KÖTELEZŐ KONKRÉT EREDMÉNYT MONDANI: Használd a {sim_topScore} eredményt! TILOS általános választ adni mint 'várhatóan kiegyenlített' vagy 'kb 1-1'! PÉLDA: 'Az Arsenal 2-1-re legyőzi a Chelsea-t.' vagy 'A Bayern 3-0-ra nyer.' A {sim_topScore} a 25,000 szimuláció LEGGYAKORIBB eredménye - AZT MONDD! Mi az a 1-2 kulcsfontosságú tényező? Legyen magabiztos és BÁTOR!>",
   "betting_strategy": {
     "stake_recommendation": "<1-5 egység ajánlás, ahol 5 = maximális bizalom>",
     "market_timing": "<Fogadj most / Várj jobb oddsra / Nincs időzítési előny>",
     "hedge_suggestion": "<Opcionális fedezési stratégia, ha alkalmazható>"
   },
   "key_risks": [
-    "<3-4 fő kockázat ami meghiúsíthatja a tippet>"
+    {"risk": "<Első fő kockázat ami meghiúsíthatja a tippet>", "probability": <5-40 közötti szám %ban>},
+    {"risk": "<Második fő kockázat>", "probability": <5-40 közötti szám %ban>},
+    {"risk": "<Harmadik fő kockázat>", "probability": <5-40 közötti szám %ban>}
   ],
   "why_not_alternatives": "<Rövid magyarázat (2-3 mondat): Miért NEM a másik nyilvánvaló opciót választottuk? Pl: miért nem Away Win, ha az is jó oddsot kínál?>"
 }
@@ -1882,6 +1884,24 @@ async function getMasterRecommendation(
         rec.brief_reasoning = rec.primary.reason;
         rec.probability_summary = snapshotFromSim.summaryText;
         rec.top_outcomes = snapshotFromSim.topOutcomes;
+
+        // === ÚJ v133.0: BIZALMI HÍD (Quant vs. Specialist) ===
+        const quantConfidence = confidenceScores.winner || 5.0;
+        const specialistConfidence = expertConfScore || 5.0;
+        const confidenceGap = Math.abs(quantConfidence - specialistConfidence);
+        
+        rec.confidence_bridge = {
+            quant_confidence: quantConfidence,
+            specialist_confidence: specialistConfidence,
+            gap: confidenceGap,
+            explanation: confidenceGap > 2.5
+                ? `⚠️ Jelentős eltérés (${confidenceGap.toFixed(1)} pont) a matematikai modell és a kontextuális elemzés között. Ez szokatlan - további óvatosság ajánlott!`
+                : confidenceGap > 1.5
+                ? `📊 Közepes eltérés (${confidenceGap.toFixed(1)} pont) észlelhető. A két megközelítés kissé eltérő értékelést ad, de ez normális tartományon belül van.`
+                : `✅ A statisztikai modell (${quantConfidence.toFixed(1)}/10) és a szakértői elemzés (${specialistConfidence.toFixed(1)}/10) összhangban van. Ez növeli a tipp megbízhatóságát.`
+        };
+        console.log(`[AI_Service v133.0] 🌉 Bizalmi Híd: Quant ${quantConfidence.toFixed(1)} vs Specialist ${specialistConfidence.toFixed(1)} (Gap: ${confidenceGap.toFixed(1)})`);
+        // ======================================================
 
         console.log(`[AI_Service v124.0 - Főnök] GOD MODE V2 Tipp generálva.`);
         console.log(`  - Elsődleges: ${rec.primary.market} (Bizalom: ${rec.primary.confidence.toFixed(1)}/10)`);
