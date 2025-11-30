@@ -85,6 +85,36 @@ export class SoccerStrategy implements ISportStrategy {
     }
 
     /**
+     * === ÚJ: Venue-specifikus + összesített forma súlyozása (70/30) ===
+     */
+    private getWeightedFormGoals(
+        overallForm: string | null | undefined,
+        venueForm: string | null | undefined,
+        venueWeight: number
+    ): { value: number | null; used: boolean } {
+        const venueGoals = this.estimateGoalsFromForm(venueForm);
+        const overallGoals = this.estimateGoalsFromForm(overallForm);
+        
+        if (venueGoals === null && overallGoals === null) {
+            return { value: null, used: false };
+        }
+        
+        if (venueGoals === null) {
+            return { value: overallGoals, used: overallGoals !== null };
+        }
+        
+        if (overallGoals === null) {
+            return { value: venueGoals, used: true };
+        }
+        
+        const clampedVenueWeight = Math.min(Math.max(venueWeight, 0), 1);
+        const overallWeight = 1 - clampedVenueWeight;
+        const weightedValue = (venueGoals * clampedVenueWeight) + (overallGoals * overallWeight);
+        
+        return { value: weightedValue, used: true };
+    }
+
+    /**
      * === ÚJ (v127.0): HELPER - HOME ADVANTAGE SZÁMÍTÁS (LIGA-AWARE!) ===
      */
     private calculateHomeAdvantage(leagueCoefficient: number): number {
@@ -325,9 +355,18 @@ export class SoccerStrategy implements ISportStrategy {
         const season_a_ga = rawStats.away?.ga != null ? (rawStats.away.ga / (rawStats.away.gp || 1)) : (leagueAverages.avg_a_ga || 1.35);
 
         // 2. RECENT FORM (last 5 matches)
+                const { form } = options;
+                const VENUE_FORM_WEIGHT = 0.70;
+                const recentHomeForm = this.getWeightedFormGoals(form?.home_overall, form?.home_form, VENUE_FORM_WEIGHT);
+                const recentAwayForm = this.getWeightedFormGoals(form?.away_overall, form?.away_form, VENUE_FORM_WEIGHT);
+                const recent_h_gf = recentHomeForm.value;
+                const recent_a_gf = recentAwayForm.value;
         const { form } = options;
-        const recent_h_gf = this.estimateGoalsFromForm(form?.home_overall);
-        const recent_a_gf = this.estimateGoalsFromForm(form?.away_overall);
+        const VENUE_FORM_WEIGHT = 0.70;
+        const recentHomeForm = this.getWeightedFormGoals(form?.home_overall, form?.home_form, VENUE_FORM_WEIGHT);
+        const recentAwayForm = this.getWeightedFormGoals(form?.away_overall, form?.away_form, VENUE_FORM_WEIGHT);
+        const recent_h_gf = recentHomeForm.value;
+        const recent_a_gf = recentAwayForm.value;
         
         // 3. WEIGHTED AVERAGE - v137.0 FORMA SÚLY NÖVELVE!
         // ELŐTTE v127: 50/50 → Túl konzervatív!
@@ -337,18 +376,18 @@ export class SoccerStrategy implements ISportStrategy {
         
         let weighted_h_gf = season_h_gf;
         let weighted_a_gf = season_a_gf;
-        let formUsed = false;
+        let formUsed = recentHomeForm.used || recentAwayForm.used;
         
         if (recent_h_gf !== null) {
             weighted_h_gf = (recent_h_gf * RECENT_WEIGHT) + (season_h_gf * SEASON_WEIGHT);
             formUsed = true;
-            console.log(`[xG] Home GF: Recent=${recent_h_gf.toFixed(2)}, Season=${season_h_gf.toFixed(2)}, Weighted=${weighted_h_gf.toFixed(2)}`);
+            console.log(`[xG] Home GF (70/30 venue mix): Recent=${recent_h_gf.toFixed(2)}, Season=${season_h_gf.toFixed(2)}, Weighted=${weighted_h_gf.toFixed(2)}`);
         }
         
         if (recent_a_gf !== null) {
             weighted_a_gf = (recent_a_gf * RECENT_WEIGHT) + (season_a_gf * SEASON_WEIGHT);
             formUsed = true;
-            console.log(`[xG] Away GF: Recent=${recent_a_gf.toFixed(2)}, Season=${season_a_gf.toFixed(2)}, Weighted=${weighted_a_gf.toFixed(2)}`);
+            console.log(`[xG] Away GF (70/30 venue mix): Recent=${recent_a_gf.toFixed(2)}, Season=${season_a_gf.toFixed(2)}, Weighted=${weighted_a_gf.toFixed(2)}`);
         }
         
         // === v127.0: LIGA MINŐSÉG FAKTOR SETUP ===

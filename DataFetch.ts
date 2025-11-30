@@ -11,8 +11,6 @@
 // - TS1117 Fix: Duplikált kulcsok törlése
 
 import NodeCache from 'node-cache';
-import { fileURLToPath } from 'url';
-import path from 'path';
 // Kanonikus típusok importálása
 import type { ICanonicalRichContext, ICanonicalPlayerStats, IPlayerStub, ICanonicalPlayer, ICanonicalRawData, ICanonicalStats, IStructuredWeather, ICanonicalOdds } from './src/types/canonical.d.ts';
 
@@ -23,7 +21,8 @@ import {
     getApiSportsLineupsAndInjuries as getApiSportsLineupsAndInjuries, 
     _getLeagueRoster, 
     getApiSportsTeamId, 
-    getApiSportsLeagueId 
+    getApiSportsLeagueId,
+    getApiSportsTeamVenueForm
 } from './providers/apiSportsProvider.js';
 
 // Hoki provider
@@ -346,6 +345,29 @@ export async function getRichContextualData(
         ]);
         
         finalResult = baseResult;
+        
+        // === ÚJ: Hazai/idegen forma lekérése a pontosabb súlyozáshoz ===
+        if (sport === 'soccer') {
+            const seasonForVenueForms = foundSeason ?? originSeason ?? new Date(decodedUtcKickoff).getFullYear();
+            const [homeVenueForm, awayVenueForm] = await Promise.all([
+                homeTeamId ? getApiSportsTeamVenueForm(homeTeamId, seasonForVenueForms, sport, 'home') : Promise.resolve(null),
+                awayTeamId ? getApiSportsTeamVenueForm(awayTeamId, seasonForVenueForms, sport, 'away') : Promise.resolve(null)
+            ]);
+            
+            finalResult.form = finalResult.form || { home_overall: null, away_overall: null };
+            finalResult.rawData.form = finalResult.rawData.form || {};
+            
+            if (homeVenueForm) {
+                finalResult.form.home_form = homeVenueForm;
+                finalResult.rawData.form.home_form = homeVenueForm;
+                console.log(`[DataFetch] Hazai forma (venue-specific) betöltve: ${homeVenueForm}`);
+            }
+            if (awayVenueForm) {
+                finalResult.form.away_form = awayVenueForm;
+                finalResult.rawData.form.away_form = awayVenueForm;
+                console.log(`[DataFetch] Vendég forma (venue-specific) betöltve: ${awayVenueForm}`);
+            }
+        }
         
         if (sofascoreData?.advancedData) {
             finalResult.advancedData.home.xg = sofascoreData.advancedData.xg_home;

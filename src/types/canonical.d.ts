@@ -176,6 +176,8 @@ export interface ICanonicalRawData {
   form: {
     home_overall: string | null;
     away_overall: string | null;
+    home_form?: string | null;
+    away_form?: string | null;
     [key: string]: any;
   };
   absentees: {
@@ -233,6 +235,8 @@ export interface ICanonicalRichContext {
   form: {
     home_overall: string | null;
     away_overall: string | null;
+    home_form?: string | null;
+    away_form?: string | null;
     [key: string]: any;
   };
   rawData: ICanonicalRawData;

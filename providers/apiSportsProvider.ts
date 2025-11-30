@@ -160,6 +160,7 @@ const apiSportsSquadCache = new NodeCache({ stdTTL: 3600 * 24, checkperiod: 3600
 const apiSportsCountryLeagueCache = new NodeCache({ stdTTL: 3600 * 24, checkperiod: 3600 * 6 });
 const apiSportsLineupCache = new NodeCache({ stdTTL: 3600 * 6, checkperiod: 3600 });
 const apiSportsRefereeCache = new NodeCache({ stdTTL: 3600 * 24 * 7, checkperiod: 3600 * 12 });
+const apiSportsVenueFormCache = new NodeCache({ stdTTL: 3600, checkperiod: 600 });
 
 type LineupDataPayload = {
     playerStats: ICanonicalPlayerStats;
@@ -665,6 +666,76 @@ stats.games?.played,
         console.error(`API-SPORTS (${sport}): Végleg nem található szezon statisztika ehhez: T:${teamId}, L:${leagueId}`);
     }
     return stats;
+}
+
+/**
+ * Lekéri a csapat utolsó 5 hazai vagy idegenbeli meccsének formáját (WWDLW).
+ */
+export async function getApiSportsTeamVenueForm(
+    teamId: number | null,
+    season: number | null,
+    sport: string,
+    venue: 'home' | 'away'
+): Promise<string | null> {
+    if (!teamId || sport.toLowerCase() !== 'soccer') {
+        return null;
+    }
+    
+    const effectiveSeason = season ?? new Date().getFullYear();
+    const cacheKey = `apisports_venueform_v1_${sport}_${teamId}_${effectiveSeason}_${venue}`;
+    const cached = apiSportsVenueFormCache.get<string | null>(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+    
+    try {
+        const endpoint = `/v3/fixtures`;
+        const params: Record<string, string | number> = {
+            team: teamId,
+            season: effectiveSeason,
+            last: 5,
+            venue
+        };
+        
+        const response = await makeRequestWithRotation(sport, endpoint, { params });
+        const fixtures = response?.data?.response;
+        if (!Array.isArray(fixtures) || fixtures.length === 0) {
+            apiSportsVenueFormCache.set(cacheKey, null);
+            return null;
+        }
+        
+        const finishedStatuses = new Set(['FT', 'AET', 'PEN', 'AWD', 'WO']);
+        const formLetters: string[] = [];
+        
+        for (const fixture of fixtures) {
+            if (formLetters.length >= 5) break;
+            
+            const status = fixture?.fixture?.status?.short || fixture?.fixture?.status?.long;
+            if (!status || !finishedStatuses.has(status)) {
+                continue;
+            }
+            
+            const isHomeTeam = fixture?.teams?.home?.id === teamId;
+            const teamNode = isHomeTeam ? fixture?.teams?.home : fixture?.teams?.away;
+            if (!teamNode) continue;
+            
+            if (teamNode.winner === true) {
+                formLetters.push('W');
+            } else if (teamNode.winner === false) {
+                formLetters.push('L');
+            } else {
+                formLetters.push('D');
+            }
+        }
+        
+        const formStr = formLetters.join('').slice(0, 5) || null;
+        apiSportsVenueFormCache.set(cacheKey, formStr);
+        return formStr;
+    } catch (error: any) {
+        console.error(`[apiSportsProvider] Hiba a ${venue} form lekérésekor (teamId:${teamId}, season:${effectiveSeason}): ${error.message}`);
+        apiSportsVenueFormCache.set(cacheKey, null);
+        return null;
+    }
 }
 
 // --- getApiSportsOdds (Változatlan v95.1) ---
