@@ -391,7 +391,9 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const psychologistReport = await runStep_Psychologist({
             rawDataJson: rawData,
             homeTeamName: home,
-            awayTeamName: away
+            awayTeamName: away,
+            home_injuries: rawData.absentees?.home?.map(p => p.name).join(', ') || "N/A",
+            away_injuries: rawData.absentees?.away?.map(p => p.name).join(', ') || "N/A"
         });
         const { psy_profile_home, psy_profile_away } = psychologistReport;
         console.log(`[Lánc 2.5/6] Pszichológus végzett.`);

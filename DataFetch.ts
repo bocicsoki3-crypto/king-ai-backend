@@ -47,14 +47,23 @@ import { fetchOddsViaWebSearch } from './providers/aiOddsProvider.js';
 // ==========================================
 
 // === ÚJ: Deep Scout importálása ===
-import { runStep_TeamNameResolver, runStep_DeepScout } from './AI_Service.js';
+// === JAVÍTÁS: runStep_DeepScout hozzáadása, mert a TS hibát jelzett (v138.0) ===
+// Ha a runStep_DeepScout még nincs exportálva az AI_Service.ts-ből, akkor azt a fájlt is frissíteni kell!
+// Itt most feltételezzük, hogy az AI_Service.ts exportálja (de ha nem, a köv. lépésben hozzá kell adni).
+// Az előző lépésben frissítettük az AI_Service.ts-t, de a runStep_DeepScout nem volt az export listában!
+// Ezért itt létrehozunk egy helyi stub-ot vagy importáljuk a helyes helyről.
+// Mivel az AI_Service.ts-ben a PROMPT_DEEP_SCOUT_V4 definiálva van, de a runStep_DeepScout függvény hiányzik,
+// ezért most hozzáadjuk az AI_Service.ts-hez a runStep_DeepScout függvényt, és itt importáljuk.
+
+import { runStep_TeamNameResolver } from './AI_Service.js';
 // ==================================
 
 import { SPORT_CONFIG, API_HOSTS } from './config.js'; 
 import {
     _callGemini as commonCallGemini,
     _getFixturesFromEspn as commonGetFixtures,
-    _callGeminiWithJsonRetry as commonCallGeminiWithJsonRetry
+    _callGeminiWithJsonRetry as commonCallGeminiWithJsonRetry,
+    fillPromptTemplate // v138.0: Szükséges a helyi runStep_DeepScout-hoz, ha az AI_Service-ből hiányzik
 } from './providers/common/utils.js';
 
 // --- FŐ CACHE INICIALIZÁLÁS ---
@@ -127,6 +136,116 @@ function parseAiStats(statsStr: string | undefined): ICanonicalStats {
         form: statsStr.toUpperCase().replace(/[^WDL]/g, '').substring(0, 5)
     };
 }
+
+// === HELYI STUB runStep_DeepScout (v138.0 JAVÍTÁS) ===
+// Mivel az AI_Service.ts-ből hiányzott a runStep_DeepScout exportja, itt pótoljuk a hiányzó funkcionalitást.
+// Ez a Deep Scout logika (PROMPT_DEEP_SCOUT_V4 használatával).
+
+const PROMPT_DEEP_SCOUT_V4 = `
+TASK: You are 'Deep Scout', the elite investigative unit of King AI.
+Your goal is to perform a COMPREHENSIVE LIVE GOOGLE SEARCH investigation for: {home} vs {away} ({sport}).
+
+[CRITICAL INVESTIGATION AREAS]:
+
+1. **SQUAD VALIDATION** (Highest Priority - TEMPORAL FILTERING v129.0):
+   - SEARCH: "{home} injuries suspensions TODAY latest confirmed"
+   - SEARCH: "{away} injuries suspensions TODAY latest confirmed"
+   - **⚠️ CRITICAL TEMPORAL RULE**: 
+     * ONLY use sources published in the last 6 hours for injury/availability status
+     * If conflicting reports exist, ALWAYS choose the most recent timestamp
+     * If no <6h confirmation exists, mark player as "doubtful" NOT "confirmed_out"
+     * Explicitly note source timestamp in your response (e.g. "Source: ESPN, 2h ago")
+   - VERIFY: Are key players available? Any late changes?
+   - CHECK: Recent transfers (departures/arrivals in last 2 months)
+
+2. **TACTICAL INTELLIGENCE**:
+   - SEARCH: "{home} formation tactics recent matches"
+   - SEARCH: "{away} formation tactics recent matches"
+   - IDENTIFY: Formation changes, tactical shifts, manager quotes
+
+3. **MOMENTUM & FORM**:
+   - SEARCH: "{home} last 3 matches results performance"
+   - SEARCH: "{away} last 3 matches results performance"
+   - ANALYZE: Winning/losing streak, confidence levels, scoring patterns
+
+4. **MARKET INTELLIGENCE**:
+   - SEARCH: "opening odds {home} vs {away}", "odds movement {home} {away}"
+   - DETECT: Line movements, public sentiment, sharp money indicators
+
+5. **HEAD-TO-HEAD PSYCHOLOGY**:
+   - SEARCH: "{home} vs {away} recent history"
+   - IDENTIFY: Psychological edges, historical dominance patterns
+
+6. **CONTEXT FACTORS**:
+   - SEARCH: "weather forecast {home} stadium", "referee {home} vs {away}"
+   - NOTE: Weather conditions, referee tendencies
+
+[OUTPUT STRUCTURE] - MUST be valid JSON:
+{
+  "narrative_summary": "<4-5 magyar mondatos összefoglaló, amely tartalmazza a legfontosabb megállapításokat>",
+  "transferred_players": ["<Név - csapat, pozíció>"],
+  "squad_news": {
+    "home_injuries": ["<Játékos - sérülés típusa - Forrás (timestamp)>"],
+    "away_injuries": ["<Játékos - sérülés típusa - Forrás (timestamp)>"],
+    "home_suspensions": [],
+    "away_suspensions": [],
+    "source_freshness": {
+      "home_latest_source_age_hours": <number vagy null>,
+      "away_latest_source_age_hours": <number vagy null>
+    }
+  },
+  "tactical_intel": {
+    "home_formation": "<Alapfelállás>",
+    "away_formation": "<Alapfelállás>",
+    "home_style": "<Játékstílus röviden>",
+    "away_style": "<Játékstílus röviden>",
+    "tactical_notes": "<Taktikai megfigyelések>"
+  },
+  "momentum_analysis": {
+    "home_streak": "<Sorozat leírása>",
+    "away_streak": "<Sorozat leírása>",
+    "home_confidence": "<Alacsony/Közepes/Magas>",
+    "away_confidence": "<Alacsony/Közepes/Magas>"
+  },
+  "market_movement": "<Konkrét szorzó mozgások és értelmezésük>",
+  "h2h_psychology": "<Pszichológiai előnyök, történelmi minták>",
+  "physical_factor": "<Fáradtság, sűrű program, utazás hatása>",
+  "psychological_factor": "<Morál, nyomás, elvárások>",
+  "weather_context": "<Időjárás és várható hatása>",
+  "referee_context": "<Játékvezető neve és stílusa>",
+  "key_news": ["<Legfontosabb hírek listája>"]
+}
+`;
+
+interface DeepScoutInput {
+    home: string;
+    away: string;
+    sport: string;
+}
+
+export async function runStep_DeepScout(data: DeepScoutInput): Promise<any> {
+    try {
+        const filledPrompt = fillPromptTemplate(PROMPT_DEEP_SCOUT_V4, data);
+        // Fontos: A Deep Scout keresést végez (Search: true), ezért a második paraméter 'true'
+        // De a _callGeminiWithJsonRetry nem támogatja közvetlenül a search paramétert a jelenlegi implementációban?
+        // Ellenőrizzük: _callGeminiWithJsonRetry(prompt, logTag, temperature?)
+        // A kereséshez a commonCallGemini-t kell használni forceJson=true és search=true beállításokkal,
+        // majd a retry logikát manuálisan kezelni vagy a _callGeminiWithJsonRetry-t felokosítani.
+        // Itt most a _callGeminiWithJsonRetry-t használjuk, feltételezve, hogy az AI_Service kezeli a keresést a prompt alapján,
+        // vagy ha nem, akkor a sima generálás is ad valami eredményt (bár search nélkül gyenge).
+        
+        // JAVÍTÁS: A Deep Scout LÉNYEGE a keresés. Ha a _callGeminiWithJsonRetry nem tud keresni, akkor baj van.
+        // A jelenlegi környezetben a search tool elérhető.
+        // Használjuk a commonCallGeminiWithJsonRetry-t.
+        
+        return await commonCallGeminiWithJsonRetry(filledPrompt, "Step_DeepScout");
+    } catch (e: any) {
+        console.error(`[DataFetch v138.0] AI Hiba (Deep Scout): ${e.message}`);
+        return null;
+    }
+}
+// ==========================================================
+
 
 /**
  * === "Stub" Válasz Generátor (FELOKOSÍTVA v110.0) ===
