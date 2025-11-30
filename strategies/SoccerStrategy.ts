@@ -300,9 +300,12 @@ export class SoccerStrategy implements ISportStrategy {
                 const season_h_ga = rawStats.home.ga / rawStats.home.gp;
                 const season_a_ga = rawStats.away.ga / rawStats.away.gp;
                 
-                // Recent form (if available)
-                const recent_h_gf = this.estimateGoalsFromForm(form?.home_overall);
-                const recent_a_gf = this.estimateGoalsFromForm(form?.away_overall);
+                // Recent form (70% venue-specific, 30% overall)
+                const VENUE_FORM_WEIGHT = 0.70;
+                const recentHomeForm = this.getWeightedFormGoals(form?.home_overall, form?.home_form, VENUE_FORM_WEIGHT);
+                const recentAwayForm = this.getWeightedFormGoals(form?.away_overall, form?.away_form, VENUE_FORM_WEIGHT);
+                const recent_h_gf = recentHomeForm.value;
+                const recent_a_gf = recentAwayForm.value;
                 
                 // === v127.0 FIX: FORMA SÚLY CSÖKKENTVE (70% → 50%) ===
                 // Forma FONTOS, de NEM felülírhatja a minőséget!
@@ -355,12 +358,6 @@ export class SoccerStrategy implements ISportStrategy {
         const season_a_ga = rawStats.away?.ga != null ? (rawStats.away.ga / (rawStats.away.gp || 1)) : (leagueAverages.avg_a_ga || 1.35);
 
         // 2. RECENT FORM (last 5 matches)
-                const { form } = options;
-                const VENUE_FORM_WEIGHT = 0.70;
-                const recentHomeForm = this.getWeightedFormGoals(form?.home_overall, form?.home_form, VENUE_FORM_WEIGHT);
-                const recentAwayForm = this.getWeightedFormGoals(form?.away_overall, form?.away_form, VENUE_FORM_WEIGHT);
-                const recent_h_gf = recentHomeForm.value;
-                const recent_a_gf = recentAwayForm.value;
         const { form } = options;
         const VENUE_FORM_WEIGHT = 0.70;
         const recentHomeForm = this.getWeightedFormGoals(form?.home_overall, form?.home_form, VENUE_FORM_WEIGHT);
