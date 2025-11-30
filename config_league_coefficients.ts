@@ -238,80 +238,83 @@ export const HOCKEY_LEAGUE_COEFFICIENTS: { [key: string]: number } = {
  * - Base xG: H=2.1, A=1.58 (Total: 3.68)
  * - Adjusted: H=1.93, A=1.45 (Total: 3.38) ✅ Reálisabb!
  */
+// v135.0: DEFENSIVE MULTIPLIER RADIKÁLISAN CSÖKKENTVE!
+// PROBLÉMA: A liga módosítók túl agresszívak voltak → túl konzervatív tippek!
+// MEGOLDÁS: Minden különbséget FELÉRE csökkentettünk (pl. -8% → -4%, +8% → +4%)
 export const LEAGUE_DEFENSIVE_MULTIPLIER: { [key: string]: number } = {
-    // === UEFA TORNÁK (DEFENZÍVEBBEK!) ===
-    'uefa europa league': 0.92,        // -8% (rotáció, kevesebb motiváció, óvatos)
-    'europa league': 0.92,
-    'uefa conference league': 0.88,    // -12% (még óvatosabb, gyengébb csapatok)
-    'conference league': 0.88,
-    'uefa champions league': 0.95,     // -5% (magas szintű, de gyakran taktikai)
-    'champions league': 0.95,
+    // === UEFA TORNÁK (kissé defenzívebbek) ===
+    'uefa europa league': 0.96,        // -4% (volt: -8%)
+    'europa league': 0.96,
+    'uefa conference league': 0.94,    // -6% (volt: -12%)
+    'conference league': 0.94,
+    'uefa champions league': 0.975,    // -2.5% (volt: -5%)
+    'champions league': 0.975,
     
     // === TOP LIGÁK ===
-    'bundesliga': 1.08,                // +8% (leginkább támadó liga Európában!)
-    'germany': 1.08,
-    'premier league': 1.05,            // +5% (gyors, intenzív, sok gól)
-    'england': 1.05,
+    'bundesliga': 1.04,                // +4% (volt: +8%)
+    'germany': 1.04,
+    'premier league': 1.025,           // +2.5% (volt: +5%)
+    'england': 1.025,
     'la liga': 1.00,                   // Normál (kiegyensúlyozott)
     'spain': 1.00,
-    'ligue 1': 0.98,                   // -2% (kicsit defenzívebb)
-    'france': 0.98,
-    'serie a': 0.92,                   // -8% (taktikai, defenzív kultúra!)
-    'italy': 0.92,
+    'ligue 1': 0.99,                   // -1% (volt: -2%)
+    'france': 0.99,
+    'serie a': 0.96,                   // -4% (volt: -8%)
+    'italy': 0.96,
     
     // === KÖZEPES LIGÁK ===
-    'eredivisie': 1.12,                // +12% (NAGYON támadó holland liga!)
-    'netherlands': 1.12,
-    'primeira liga': 1.02,             // +2% (támadó játék)
-    'portugal': 1.02,
-    'pro league': 0.95,                // -5% (defenzívebb)
-    'belgium': 0.95,
+    'eredivisie': 1.06,                // +6% (volt: +12%)
+    'netherlands': 1.06,
+    'primeira liga': 1.01,             // +1% (volt: +2%)
+    'portugal': 1.01,
+    'pro league': 0.975,               // -2.5% (volt: -5%)
+    'belgium': 0.975,
     'scottish premiership': 1.00,      // Normál
     'scotland': 1.00,
-    'süper lig': 1.03,                 // +3% (támadó, kaotikus)
-    'turkey': 1.03,
-    'austrian bundesliga': 1.05,       // +5% (támadó stílus)
-    'austria': 1.05,
+    'süper lig': 1.015,                // +1.5% (volt: +3%)
+    'turkey': 1.015,
+    'austrian bundesliga': 1.025,      // +2.5% (volt: +5%)
+    'austria': 1.025,
     
-    // === KELET-EURÓPAI LIGÁK (DEFENZÍVEBBEK) ===
-    'czech liga': 0.94,                // -6%
-    'czech republic': 0.94,
-    'switzerland': 0.96,               // -4%
-    'denmark': 0.98,                   // -2%
-    'greece': 0.93,                    // -7% (nagyon defenzív)
-    'croatia': 0.94,                   // -6%
-    'serbia': 0.92,                    // -8%
-    'norway': 0.96,                    // -4%
-    'sweden': 0.97,                    // -3%
-    'poland': 0.93,                    // -7%
-    'ukraine': 0.91,                   // -9%
-    'romania': 0.90,                   // -10%
+    // === KELET-EURÓPAI LIGÁK (kissé defenzívebbek) ===
+    'czech liga': 0.97,                // -3% (volt: -6%)
+    'czech republic': 0.97,
+    'switzerland': 0.98,               // -2% (volt: -4%)
+    'denmark': 0.99,                   // -1% (volt: -2%)
+    'greece': 0.965,                   // -3.5% (volt: -7%)
+    'croatia': 0.97,                   // -3% (volt: -6%)
+    'serbia': 0.96,                    // -4% (volt: -8%)
+    'norway': 0.98,                    // -2% (volt: -4%)
+    'sweden': 0.985,                   // -1.5% (volt: -3%)
+    'poland': 0.965,                   // -3.5% (volt: -7%)
+    'ukraine': 0.955,                  // -4.5% (volt: -9%)
+    'romania': 0.95,                   // -5% (volt: -10%)
     
-    // === GYENGE LIGÁK (NAGYON DEFENZÍVEBBEK) ===
-    'israel': 0.95,                    // -5%
-    'slovakia': 0.92,                  // -8%
-    'hungary': 0.90,                   // -10%
-    'bulgaria': 0.88,                  // -12%
-    'slovenia': 0.90,                  // -10%
-    'cyprus': 0.85,                    // -15% (nagyon defenzív!)
-    'luxembourg': 0.83,                // -17%
-    'malta': 0.80,                     // -20%
+    // === GYENGE LIGÁK (kissé defenzívebbek) ===
+    'israel': 0.975,                   // -2.5% (volt: -5%)
+    'slovakia': 0.96,                  // -4% (volt: -8%)
+    'hungary': 0.95,                   // -5% (volt: -10%)
+    'bulgaria': 0.94,                  // -6% (volt: -12%)
+    'slovenia': 0.95,                  // -5% (volt: -10%)
+    'cyprus': 0.925,                   // -7.5% (volt: -15%)
+    'luxembourg': 0.915,               // -8.5% (volt: -17%)
+    'malta': 0.90,                     // -10% (volt: -20%)
     
     // === EGYÉB NAGY LIGÁK ===
-    'mls': 1.08,                       // +8% (sok gól az MLS-ben)
-    'usa': 1.08,
-    'canada': 1.08,
-    'liga mx': 1.05,                   // +5% (támadó)
-    'mexico': 1.05,
-    'brazilian serie a': 1.10,         // +10% (NAGYON támadó!)
-    'brazil': 1.10,
-    'argentina': 1.07,                 // +7% (támadó)
-    'j-league': 1.04,                  // +4% (támadó)
-    'japan': 1.04,
-    'k-league': 1.02,                  // +2%
-    'south korea': 1.02,
-    'chinese super league': 0.95,      // -5%
-    'china': 0.95,
+    'mls': 1.04,                       // +4% (volt: +8%)
+    'usa': 1.04,
+    'canada': 1.04,
+    'liga mx': 1.025,                  // +2.5% (volt: +5%)
+    'mexico': 1.025,
+    'brazilian serie a': 1.05,         // +5% (volt: +10%)
+    'brazil': 1.05,
+    'argentina': 1.035,                // +3.5% (volt: +7%)
+    'j-league': 1.02,                  // +2% (volt: +4%)
+    'japan': 1.02,
+    'k-league': 1.01,                  // +1% (volt: +2%)
+    'south korea': 1.01,
+    'chinese super league': 0.975,     // -2.5% (volt: -5%)
+    'china': 0.975,
     
     // === DEFAULT ===
     'default_defensive': 1.00          // Normál (ha ismeretlen)

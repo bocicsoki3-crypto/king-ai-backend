@@ -111,10 +111,13 @@ export class SoccerStrategy implements ISportStrategy {
     public estimatePureXG(options: XGOptions): { pure_mu_h: number; pure_mu_a: number; source: string; isDerby?: boolean; derbyName?: string; } {
         const { homeTeam, awayTeam, rawStats, leagueAverages, advancedData } = options;
 
-        // === ÚJ v134.0: DERBY DETECTION ===
-        const derbyInfo = detectDerby(homeTeam, awayTeam);
-        if (derbyInfo.isDerby) {
-            console.log(`[SoccerStrategy v134.0] 🔥 DERBY ÉSZLELVE: ${derbyInfo.derbyName} (${homeTeam} vs ${awayTeam})`);
+        // === v135.0: DERBY DETECTION **KIKAPCSOLVA** ===
+        // TOTTENHAM-FULHAM TANULSÁG: Derby detection túl konzervatívvá tette a rendszert!
+        // A -20% xG csökkentés túlzás volt. Az AI tudja, mit csinál derby nélkül is.
+        const derbyInfo = { isDerby: false, derbyName: null }; // KIKAPCSOLVA!
+        // const derbyInfo = detectDerby(homeTeam, awayTeam); // EREDETI
+        if (false && derbyInfo.isDerby) {
+            console.log(`[SoccerStrategy v135.0] 🔥 DERBY DETECTION KIKAPCSOLVA`);
         }
 
         // === ÚJ v130.0: Liga Defensive Multiplier lekérése ===
@@ -419,9 +422,9 @@ export class SoccerStrategy implements ISportStrategy {
         pure_mu_h = Math.max(0.3, Math.min(4.0, pure_mu_h));
         pure_mu_a = Math.max(0.3, Math.min(4.0, pure_mu_a));
         
-        // === ÚJ v134.0: DERBY REDUCTION ===
+        // === v135.0: DERBY REDUCTION **KIKAPCSOLVA** ===
         // Ha derby meccs → -20% várható gólok (psziché > statisztika!)
-        if (derbyInfo.isDerby) {
+        if (false && derbyInfo.isDerby) { // KIKAPCSOLVA v135.0
             const beforeReduction = pure_mu_h + pure_mu_a;
             pure_mu_h *= DERBY_MODIFIERS.XG_REDUCTION;
             pure_mu_a *= DERBY_MODIFIERS.XG_REDUCTION;

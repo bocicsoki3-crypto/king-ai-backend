@@ -1310,20 +1310,26 @@ export async function runStep_Specialist(data: any): Promise<any> {
             result.modified_mu_a = data.pure_mu_a + Math.max(-0.5, Math.min(0.5, result.modified_mu_a - data.pure_mu_a));
         }
         
-        // === v132.0 MODERATE: REALITY CHECK LAZÍTVA - Az előző verzió túl konzervatív volt! ===
+        // === v135.0 ULTRA-AGGRESSIVE: REALITY CHECK RADIKÁLISAN LAZÍTVA! ===
+        // PROBLÉMA: Pistons-Heat meccsben a Specialist helyesen érzékelt +13.5 pontot,
+        //           de a Reality Check levágta 0.03x-re (97% csökkentés!) → UNDER helyett OVER kellett volna!
+        // MEGOLDÁS: Szakítsunk a konzervatív megközelítéssel! Az AI INTUÍCIÓJA SZÁMÍT!
         const totalAdjustment = homeDiff + awayDiff;
-        let adjustmentLimit = 0.45; // v132.0: LAZÍTVA 0.35-ről 0.45-re (+29% lazítás)
+        let adjustmentLimit = 2.5; // v135.0: 0.45 → 2.5 (455% LAZÍTÁS! 🚀)
         
-        // === v132.0: LOW SCORING MODE - Lazítva! Az előző 0.25 túl szigorú volt! ===
+        // === v135.0: LOW SCORING MODE **KIKAPCSOLVA** - Túl konzervatív volt! ===
         const totalExpectedGoals = data.pure_mu_h + data.pure_mu_a;
-        if (totalExpectedGoals < 2.8) { // v132.0: 3.2 → 2.8 (csak NAGYON defenzív meccsekhez)
-            adjustmentLimit = 0.35; // v132.0: 0.25 → 0.35 (LAZÍTVA!)
-            console.warn(`[AI_Service v132.0] 🛡️ LOW SCORING MODE aktiválva (Total xG: ${totalExpectedGoals.toFixed(2)}). Limit: 0.35 (lazítva 0.25-ről)`);
-        }
+        // if (totalExpectedGoals < 2.8) {
+        //     // KIKAPCSOLVA v135.0 - A rendszer túl óvatos lett defenzív meccsekben
+        //     adjustmentLimit = 0.35;
+        //     console.warn(`[AI_Service v135.0] 🛡️ LOW SCORING MODE KIKAPCSOLVA`);
+        // }
         
         if (totalAdjustment > adjustmentLimit) {
-            const scaleFactor = adjustmentLimit / totalAdjustment;
-            console.warn(`[AI_Service v132.0] ⚠️ REALITY CHECK! Total adjustment túl magas (${totalAdjustment.toFixed(2)}). Limit: ${adjustmentLimit.toFixed(2)}, Scaling: ${scaleFactor.toFixed(2)}x`);
+            // v135.0: Minimum 70% scaling - Az AI intuíciója legalább 70%-ban megmarad!
+            const rawScaleFactor = adjustmentLimit / totalAdjustment;
+            const scaleFactor = Math.max(0.70, rawScaleFactor); // MIN 70%!
+            console.warn(`[AI_Service v135.0] ⚠️ REALITY CHECK (ULTRA-LAZY)! Total adjustment: ${totalAdjustment.toFixed(2)}. Limit: ${adjustmentLimit.toFixed(2)}, Scaling: ${scaleFactor.toFixed(2)}x (min 70%)`);
             
             result.modified_mu_h = data.pure_mu_h + (result.modified_mu_h - data.pure_mu_h) * scaleFactor;
             result.modified_mu_a = data.pure_mu_a + (result.modified_mu_a - data.pure_mu_a) * scaleFactor;
@@ -1818,29 +1824,44 @@ async function getMasterRecommendation(
         // === ÚJ v126.0: SPECIALIST OVERCONFIDENCE CHECK ===
         const specialistHomeDiff = Math.abs(specialistReport?.modified_mu_h - specialistReport?.adjustments?.home_adjustment || 0);
         const specialistAwayDiff = Math.abs(specialistReport?.modified_mu_a - specialistReport?.adjustments?.away_adjustment || 0);
-        const specialistTotalAdjustment = Math.abs(specialistReport?.adjustments?.home_adjustment || 0) + 
+        const specialistTotalAdjustment = Math.abs(specialistReport?.adjustments?.home_adjustment || 0) +
                                           Math.abs(specialistReport?.adjustments?.away_adjustment || 0);
         
-        if (specialistTotalAdjustment > 0.6) {
+        // v135.0: KIKAPCSOLVA - A Specialist nagyobb módosítása LEHET HELYES!
+        // MAGDEBURG-NÜRNBERG TANULSÁG: Az AI túl óvatos lett, pedig a Specialist látott valamit.
+        if (false && specialistTotalAdjustment > 0.6) {
             confidencePenalty += 1.5;
             disagreementNote += "\n\n⚠️ KORREKCIÓ v126.0: A Specialist túl nagy módosítást végzett. Extrém kontextuális faktorok miatt a bizalom csökkentve.";
             console.warn(`[AI_Service v126.0] Specialist over-adjustment detected: ${specialistTotalAdjustment.toFixed(2)}. Confidence penalty: +1.5`);
         }
         
-        // === ÚJ v129.0: OVER/UNDER REALITY CHECK - Ha defenzív meccs, de Over-t ajánl ===
+        // === v135.0 ÚJ: NARRATÍV TÚLSÚLYOZÁS BÜNTETÉS ===
+        // Ha a Specialist confidence 3+ ponttal magasabb mint a Quant, gyanús!
+        // PÉLDA: Magdeburg-Nürnberg: Quant 7.3, Specialist 8.0 (Gap: 0.8) → OK
+        //        Pistons-Heat: Quant 2.8, Specialist 8.0 (Gap: 5.3) → ROSSZ!
+        const narrativeGap = Math.abs(expertConfScore - safeModelConfidence);
+        if (narrativeGap > 4.0) {
+            confidencePenalty += 2.0; // Jelentős büntetés!
+            disagreementNote += `\n\n⚠️ NARRATÍV TÚLSÚLYOZÁS (v135.0): A kontextuális elemzés ${narrativeGap.toFixed(1)} ponttal eltér a statisztikától. Ez túl nagy szakadék - óvatosság!`;
+            console.warn(`[AI_Service v135.0] Narratív túlsúlyozás észlelve! Gap: ${narrativeGap.toFixed(1)}`);
+        }
+        
+        // === v135.0: OVER/UNDER REALITY CHECK **KIKAPCSOLVA** - Túl konzervatív! ===
         const totalExpectedGoals = safeSim.mu_h_sim + safeSim.mu_a_sim;
         const primaryMarketLower = (rec.primary?.market || "").toLowerCase();
         
-        // Ha Over 2.5-öt ajánl, de a total xG <3.5 (defenzív meccs)
-        if ((primaryMarketLower.includes("over") || primaryMarketLower.includes("több")) && totalExpectedGoals < 3.5) {
+        // KIKAPCSOLVA v135.0 - Az AI tudja, mit csinál! Ne korrigáljuk!
+        if (false && (primaryMarketLower.includes("over") || primaryMarketLower.includes("több")) && totalExpectedGoals < 3.5) {
             const overPenalty = totalExpectedGoals < 3.0 ? 2.5 : 1.5;
             confidencePenalty += overPenalty;
             disagreementNote += `\n\n🚨 DEFENZÍV MECCS WARNING (v129.0): Total várható gól csak ${totalExpectedGoals.toFixed(2)}, de Over tippet választottál. Bizalom csökkentve -${overPenalty} ponttal!`;
             console.warn(`[AI_Service v129.0] 🚨 Over tipp defenzív meccsen! Total xG: ${totalExpectedGoals.toFixed(2)}, Penalty: -${overPenalty}`);
         }
         
-        // Ha Under-t ajánl, de a total xG >4.0 (támadó meccs)
-        if ((primaryMarketLower.includes("under") || primaryMarketLower.includes("kevesebb")) && totalExpectedGoals > 4.0) {
+        // v135.0: KIKAPCSOLVA - Ha Under-t ajánl, de a total xG >4.0 (támadó meccs)
+        // PISTONS-HEAT TANULSÁG: Az AI helyesen érzékelte, hogy támadóbb lesz a meccs,
+        // de mi "WARNINGOT" adtunk neki, ami elbizonytalanította. NE ZAVARJUK AZ AI-T!
+        if (false && (primaryMarketLower.includes("under") || primaryMarketLower.includes("kevesebb")) && totalExpectedGoals > 4.0) {
             confidencePenalty += 1.5;
             disagreementNote += `\n\n⚠️ TÁMADÓ MECCS WARNING (v129.0): Total várható gól ${totalExpectedGoals.toFixed(2)}, de Under tippet választottál. Ellenőrizd!`;
             console.warn(`[AI_Service v129.0] ⚠️ Under tipp támadó meccsen! Total xG: ${totalExpectedGoals.toFixed(2)}`);
