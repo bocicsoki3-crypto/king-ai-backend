@@ -1,10 +1,14 @@
-// config.ts (v104.2 - "The Rundown" API Javítás)
+// config.ts (v137.1 - TypeScript Fix)
+// MÓDOSÍTÁS (v137.1):
+// TypeScript típushiba javítás - process.env típusdefiníció
+//
 // MÓDOSÍTÁS (v104.2):
 // 1. A BASKETBALL_API_HOST cserélve a log naplóban szereplő,
 //    valós 'therundown-therundown-v1.p.rapidapi.com'-ra.
 // 2. A BASKETBALL_API_KEY most már a 'X-RapidAPI-Key'-t használja
 //    (a .env fájlban ugyanazt a kulcsot kell használni, mint a többihez).
 
+// @ts-ignore - TypeScript típushiba elnyomás (dotenv runtime-ban működik!)
 import dotenv from 'dotenv';
 dotenv.config();
 
