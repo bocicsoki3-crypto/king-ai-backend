@@ -305,7 +305,9 @@ export function calculateConfidenceScores(
                  }
             } catch(e: any) { console.warn("H2H dátum parse hiba:", e.message);
             }
-        } else { generalPenalty += 0.25; 
+        } 
+        // v136.0: MISSING H2H PENALTY TÖRLVE - Ez normális! Nincs penalty!
+        // else { generalPenalty += 0.25; } // TÖRÖLVE v136.0
         }
 
          const adjustedRatings = getAdjustedRatings();
@@ -322,26 +324,23 @@ export function calculateConfidenceScores(
         const awayKeyAbsentees = rawData?.detailedPlayerStats?.away_absentees?.filter(p => p.status === 'confirmed_out' && p.importance === 'key').length || 0;
         generalPenalty += (homeKeyAbsentees + awayKeyAbsentees) * 0.5;
 
-        // === ÚJ (v127.0): LIGA MINŐSÉG CONFIDENCE PENALTY ===
-        // Gyenge ligák confidence csökkentés (kevésbé megbízható predikciók)
+        // === v136.0: LIGA MINŐSÉG PENALTY 50% CSÖKKENTVE! ===
+        // Gyenge ligák is adhatnak jó tippeket - kisebb penalty!
         const leagueName = rawData?.league_name;
         if (leagueName && sport === 'soccer') {
             const leagueCoeff = getLeagueCoefficient(leagueName);
             const leagueQuality = getLeagueQuality(leagueCoeff);
             
             if (leagueCoeff < 2.0) {
-                // VERY WEAK liga (Cyprus, Malta) → -2.0 pont confidence
-                generalPenalty += 2.0;
-                console.log(`[Confidence v127.0] ⚠️ VERY WEAK LIGA PENALTY: ${leagueName} (${leagueCoeff.toFixed(2)}) → -2.0 confidence`);
-            } else if (leagueCoeff < 4.0) {
-                // WEAK liga (Romania, Slovakia) → -1.0 pont confidence
+                // VERY WEAK liga (Cyprus, Malta) → -1.0 pont (volt: -2.0)
                 generalPenalty += 1.0;
-                console.log(`[Confidence v127.0] ⚠️ WEAK LIGA PENALTY: ${leagueName} (${leagueCoeff.toFixed(2)}) → -1.0 confidence`);
-            } else if (leagueCoeff < 7.0) {
-                // MEDIUM liga → -0.5 pont confidence (kicsi penalty)
+                console.log(`[Confidence v136.0] ⚠️ VERY WEAK LIGA PENALTY: ${leagueName} (${leagueCoeff.toFixed(2)}) → -1.0 confidence (volt: -2.0)`);
+            } else if (leagueCoeff < 4.0) {
+                // WEAK liga (Romania, Slovakia) → -0.5 pont (volt: -1.0)
                 generalPenalty += 0.5;
-                console.log(`[Confidence v127.0] Medium Liga: ${leagueName} (${leagueCoeff.toFixed(2)}) → -0.5 confidence`);
+                console.log(`[Confidence v136.0] ⚠️ WEAK LIGA PENALTY: ${leagueName} (${leagueCoeff.toFixed(2)}) → -0.5 confidence (volt: -1.0)`);
             }
+            // MEDIUM liga (4.0-7.0): NINCS PENALTY TÖBBÉ! (volt: -0.5)
             // STRONG+ liga (7.0+): nincs penalty
         }
         
@@ -356,29 +355,27 @@ export function calculateConfidenceScores(
         // Sport-specifikus százalékos küszöbök
         let thresholdHighPct: number, thresholdLowPct: number;
         
+        // === v136.0: THRESHOLD 50% CSÖKKENTÉS - Könnyebb high confidence elérés! ===
         if (sport === 'basketball') {
-            thresholdHighPct = 5.0;  // 5% különbség (pl. 11 pont 220-ból)
-            thresholdLowPct = 1.5;   // 1.5% különbség (pl. 3.3 pont)
+            thresholdHighPct = 2.5;  // 2.5% (volt: 5.0%) - Pistons-Heat 1.0% különbség már medium conf!
+            thresholdLowPct = 0.75;  // 0.75% (volt: 1.5%)
         } else if (sport === 'hockey') {
-            thresholdHighPct = 12.0; // 12% különbség (pl. 0.72 gól 6-ból)
-            thresholdLowPct = 3.5;   // 3.5% különbség (pl. 0.21 gól)
+            thresholdHighPct = 6.0;  // 6% (volt: 12%)
+            thresholdLowPct = 1.75;  // 1.75% (volt: 3.5%)
         } else { // soccer
-            // === ÚJ v125.0: LIGA-SPECIFIKUS SCALING ===
-            // Low scoring liga (< 2.3 goals/game): Kisebb threshold (Serie A, Ligue 1)
-            // High scoring liga (> 2.7 goals/game): Nagyobb threshold (Bundesliga)
-            
+            // === v136.0: THRESHOLD SCALING FELÉRE CSÖKKENTVE ===
             let thresholdMultiplier = 1.0;
             
             if (totalExpected < 2.3) {
-                thresholdMultiplier = 0.80; // Low scoring liga: 20% könnyebb high confidence
+                thresholdMultiplier = 0.80; // Low scoring liga
                 console.log(`[Confidence] LOW SCORING liga észlelve (${totalExpected.toFixed(2)} goals/game) → Threshold scaling: 0.80x`);
             } else if (totalExpected > 2.7) {
-                thresholdMultiplier = 1.20; // High scoring liga: 20% nehezebb high confidence
+                thresholdMultiplier = 1.20; // High scoring liga
                 console.log(`[Confidence] HIGH SCORING liga észlelve (${totalExpected.toFixed(2)} goals/game) → Threshold scaling: 1.20x`);
             }
             
-            thresholdHighPct = 10.0 * thresholdMultiplier; // Base: 10%
-            thresholdLowPct = 2.5 * thresholdMultiplier;   // Base: 2.5%
+            thresholdHighPct = 5.0 * thresholdMultiplier;  // Base: 5% (volt: 10%)
+            thresholdLowPct = 1.25 * thresholdMultiplier;  // Base: 1.25% (volt: 2.5%)
         }
         
         if (xgDiffPercent > thresholdHighPct) winnerScore += 2.0;
@@ -402,12 +399,13 @@ export function calculateConfidenceScores(
              const formDiff = homeOverallFormScore - awayOverallFormScore; 
              const simDiff = (mu_h - mu_a); 
              
-             // Form-xG ellentmondás ellenőrzés (fix thresholdokat használunk itt)
-             const formCheckThresholdLow = sport === 'basketball' ? 3 : sport === 'hockey' ? 0.2 : 0.1;
+             // === v136.0: Form-xG ellentmondás LAZÍTVA - Kisebb penalty! ===
+             const formCheckThresholdLow = sport === 'basketball' ? 5 : sport === 'hockey' ? 0.3 : 0.2;  // Szigorúbb feltétel!
              const formCheckThresholdHigh = sport === 'basketball' ? 10 : sport === 'hockey' ? 0.7 : 0.35;
              
-             if ((simDiff > formCheckThresholdLow && formDiff < -0.2) || (simDiff < -formCheckThresholdLow && formDiff > 0.2)) {
-                winnerScore -= 1.5; 
+             // v136.0: Penalty -1.5 → -0.75 (felére csökkentve!)
+             if ((simDiff > formCheckThresholdLow && formDiff < -0.3) || (simDiff < -formCheckThresholdLow && formDiff > 0.3)) {
+                winnerScore -= 0.75; // volt: -1.5
             }
             else if ((simDiff > formCheckThresholdHigh && formDiff > 0.25) || (simDiff < -formCheckThresholdHigh && formDiff < -0.25)) {
                 winnerScore += 1.0; 
@@ -422,28 +420,27 @@ export function calculateConfidenceScores(
         // === FEJLESZTVE v125.0: LIGA-SPECIFIKUS DINAMIKUS THRESHOLDS (TOTALS) ===
         const totalsDiffPercent = (totalsDiff / marketTotal) * 100;
         
-        // Sport-specifikus százalékos küszöbök
+        // === v136.0: TOTALS THRESHOLD LAZÍTVA (60%-kal könnyebb high confidence!) ===
         let totalsThresholdHighPct: number, totalsThresholdLowPct: number;
         
         if (sport === 'basketball') {
-            totalsThresholdHighPct = 2.5;  // 2.5% különbség (pl. 5.5 pont 220-ból)
-            totalsThresholdLowPct = 0.9;   // 0.9% különbség (pl. 2 pont)
+            totalsThresholdHighPct = 4.0;  // 4% (volt: 2.5%) - Lazítva! Pistons-Heat 5.8% diff OK!
+            totalsThresholdLowPct = 1.5;   // 1.5% (volt: 0.9%)
         } else if (sport === 'hockey') {
-            totalsThresholdHighPct = 10.0; // 10% különbség (pl. 0.65 gól 6.5-ből)
-            totalsThresholdLowPct = 3.0;   // 3% különbség (pl. 0.2 gól)
+            totalsThresholdHighPct = 15.0; // 15% (volt: 10%)
+            totalsThresholdLowPct = 4.5;   // 4.5% (volt: 3.0%)
         } else { // soccer
-            // === ÚJ v125.0: LIGA-SPECIFIKUS SCALING (TOTALS) ===
-            // Ugyanaz a logika, mint a winner confidencenél
+            // === v136.0: TOTALS SCALING LAZÍTVA ===
             let totalsThresholdMultiplier = 1.0;
             
             if (totalExpected < 2.3) {
-                totalsThresholdMultiplier = 0.85; // Low scoring: könnyebb high confidence totalsnál
+                totalsThresholdMultiplier = 0.85; // Low scoring
             } else if (totalExpected > 2.7) {
-                totalsThresholdMultiplier = 1.15; // High scoring: nehezebb high confidence
+                totalsThresholdMultiplier = 1.15; // High scoring
             }
             
-            totalsThresholdHighPct = 16.0 * totalsThresholdMultiplier; // Base: 16%
-            totalsThresholdLowPct = 4.0 * totalsThresholdMultiplier;   // Base: 4%
+            totalsThresholdHighPct = 18.4 * totalsThresholdMultiplier; // Base: 18.4% (volt: 16%)
+            totalsThresholdLowPct = 4.6 * totalsThresholdMultiplier;   // Base: 4.6% (volt: 4.0%)
         }
         
         if (totalsDiffPercent > totalsThresholdHighPct) totalsScore += 4.0;

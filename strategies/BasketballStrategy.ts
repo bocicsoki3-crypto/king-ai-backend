@@ -276,29 +276,20 @@ export class BasketballStrategy implements ISportStrategy {
                 console.log(`  Before: H_pts=${advancedData.manual_H_xG.toFixed(1)}, A_pts=${advancedData.manual_A_xG.toFixed(1)} (Total: ${(advancedData.manual_H_xG + advancedData.manual_A_xG).toFixed(1)})`);
                 console.log(`  After:  H_pts=${manual_H_xG.toFixed(1)}, A_pts=${manual_A_xG.toFixed(1)} (Total: ${(manual_H_xG + manual_A_xG).toFixed(1)})`);
                 
-                // === ÚJ v130.1: P1 MANUAL SANITY CHECK ===
-                const p1_mu_h_raw = (manual_H_xG + manual_A_xGA) / 2;
-                const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
-                const totalExpectedPoints = p1_mu_h_raw + p1_mu_a_raw;
+                // === v136.0: P1 MANUAL SANITY CHECK **KIKAPCSOLVA** ===
+                // PISTONS-HEAT TANULSÁG: Valós eredmény 273 pont volt, de a sanity check 240-re limitálta!
+                // Ez túl konzervatív - az AI/manuális xG-re BÍZUNK!
+                // KIKAPCSOLVA v136.0 - Nincs többé sanity cap!
                 
-                // Liga alapú max várható pontszám (empirikus) - v132.0 LAZÍTVA!
-                // v132.0: NBA meccsek gyakran 230-250 pts között vannak! Lazítva: 210→220, 225→240, 235→250
-                const expectedMaxPoints = leagueDefensiveMultiplier <= 0.92 ? 220 :  // Playoff/Defenzív ligák (+10)
-                                         leagueDefensiveMultiplier >= 1.03 ? 250 :  // Támadó ligák (Kína, Ausztrália) (+15)
-                                         240;                                         // Normál ligák (NBA Regular) (+15)
+                // const p1_mu_h_raw = (manual_H_xG + manual_A_xGA) / 2;
+                // const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
+                // const totalExpectedPoints = p1_mu_h_raw + p1_mu_a_raw;
+                // 
+                // if (false && totalExpectedPoints > 999) { // KIKAPCSOLVA!
+                //     // Sanity check eltávolítva - Trust the data!
+                // }
                 
-                if (totalExpectedPoints > expectedMaxPoints) {
-                    const sanityAdjustment = 0.92; // v132.0: -8% korrekció (előtte -15% volt, túl durva!)
-                    console.warn(`[BasketballStrategy v132.0] 🚨 P1 SANITY CHECK! Total pts (${totalExpectedPoints.toFixed(1)}) > Expected Max (${expectedMaxPoints.toFixed(1)}) for this league.`);
-                    console.warn(`  📉 Applying MODERATE adjustment (-8%, volt -15%)`);
-                    
-                    manual_H_xG *= sanityAdjustment;
-                    manual_A_xG *= sanityAdjustment;
-                    manual_H_xGA *= sanityAdjustment;
-                    manual_A_xGA *= sanityAdjustment;
-                    
-                    console.log(`  After Sanity: H_pts=${manual_H_xG.toFixed(1)}, A_pts=${manual_A_xG.toFixed(1)} (Total: ${(manual_H_xG + manual_A_xG).toFixed(1)})`);
-                }
+                console.log(`[BasketballStrategy v136.0] ✅ P1 SANITY CHECK KIKAPCSOLVA - Full trust in manual xG!`);
                 
                 const p1_mu_h = (manual_H_xG + manual_A_xGA) / 2;
                 const p1_mu_a = (manual_A_xG + manual_H_xGA) / 2;

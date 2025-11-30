@@ -254,8 +254,18 @@ Conduct a DEEP psychological profiling of both teams for: {homeTeamName} vs {awa
    - Experienced players' stabilizing effect
    - Youth vs experience balance
 
+6. **INJURIES & ABSENCES IMPACT** (v136.0 ÚJ!):
+   - Psychological impact of missing key players
+   - Team morale affected by injury crisis?
+   - Confidence boost if key opponent players missing?
+   - Mental resilience when dealing with adversity
+
 [DATA ANALYSIS]:
 {rawDataJson}
+
+[KEY INJURIES & ABSENCES] (v136.0 ÚJ!):
+- Home Team: {home_injuries}
+- Away Team: {away_injuries}
 
 [OUTPUT REQUIREMENTS] - MUST be valid JSON:
 {
@@ -287,25 +297,21 @@ const PROMPT_SPECIALIST_V95 = `
 TASK: You are 'The Specialist', an elite contextual adjustment expert.
 Apply precise, evidence-based modifiers to baseline xG predictions.
 
-[GUIDING PRINCIPLES - v129.0 ULTRA-STRICT REALITY CHECK]:
-1. **CONSERVATIVE APPROACH**: Adjustments should be SMALL (typically ±0.15 to ±0.25, MAX ±0.35 for extreme cases)
-2. **QUANT RESPECT**: If Quant shows clear direction (>50% xG difference), **MAX ±0.20 adjustment!** Don't amplify it further!
-3. **QUALITY MATTERS**: If analyzing TOP TEAM (big league, CL participant) vs WEAKER TEAM → **DON'T UNDERESTIMATE QUALITY!**
-   - Example: Monaco (Ligue 1, CL) vs Pafos (Cyprus) → Monaco quality is REAL, even with injuries!
-4. **FORM vs QUALITY BALANCE**: Form is important, BUT team quality (league level, player value) is EQUALLY important!
-5. **PROPORTIONAL IMPACT**: Stronger evidence = larger adjustment, BUT never exceed ±0.35!
-6. **MULTI-FACTOR**: Consider ALL contextual elements, including **LEAGUE QUALITY DIFFERENCE**!
+[GUIDING PRINCIPLES - v136.0 AGGRESSIVE FREEDOM MODE]:
+1. **FREEDOM APPROACH**: Adjustments can be SUBSTANTIAL if evidence supports it! (±0.5 to ±2.0+ for extreme cases)
+2. **TRUST YOUR JUDGMENT**: If you see CLEAR evidence (dominant form, key injuries, h2h patterns), APPLY IT BOLDLY!
+3. **QUALITY MATTERS**: TOP TEAM vs WEAK TEAM → Strong adjustments (±0.8 to ±1.5) are VALID and ENCOURAGED!
+   - Example: Bayern (Bundesliga champion) vs weak team → +1.2 home xG is REALISTIC!
+4. **FORM DOMINATES**: Recent form (last 5 matches) is MORE important than season averages! Heavy weight it!
+5. **NO ARTIFICIAL CAPS**: If evidence shows +1.5 adjustment, DO IT! Don't self-limit based on arbitrary numbers!
+6. **MULTI-FACTOR**: Consider ALL contextual elements and AMPLIFY when they align!
 
-7. **🚨 NEW v129.0 - DEFENSIVE MATCH MODE:**
-   - **IF TOTAL QUANT xG < 3.2** (Low Scoring Match Expected):
-     * This is a DEFENSIVE match! Both teams are expected to play cautiously.
-     * **MAXIMUM ADJUSTMENT: ±0.20 per team** (stricter limit!)
-     * **DO NOT BOOST an away team's xG by more than +0.15 in a low-scoring match!**
-     * **DO NOT increase total xG by more than +0.25 combined!**
-     * Example: If Quant says H=2.0, A=1.3 (Total: 3.3) → Don't adjust to H=1.8, A=1.6 (Total: 3.4)!
-   - **IF TOTAL QUANT xG < 2.8** (VERY Low Scoring):
-     * **ULTRA-CONSERVATIVE! MAX ±0.15 adjustment per team!**
-     * These matches are unpredictable and defenses dominate. BE CAUTIOUS!
+7. **🔥 v136.0 - CONSERVATIVE LIMITS REMOVED:**
+   - ❌ **NO MORE "DEFENSIVE MATCH MODE"** - Every match can have big swings! Trust the data!
+   - ❌ **NO MORE MAX CAPS** (±0.20, ±0.35) - Evidence-based adjustments ONLY!
+   - ❌ **NO MORE LOW SCORING PENALTIES** - Low scoring ≠ unpredictable!
+   - ✅ **NEW RULE:** If 5+ contextual factors align (form, injuries, h2h, tactics, psychology), ±2.0+ is OK!
+   - ✅ **AGGRESSIVE IS GOOD:** The backend Reality Check will scale if truly excessive (>2.5), but AIM HIGH!
 
 [BASELINE PREDICTION]:
 - Home Team xG: {pure_mu_h}
@@ -376,15 +382,17 @@ Apply precise, evidence-based modifiers to baseline xG predictions.
   "reasoning": "<RÉSZLETES 4-5 mondatos magyar nyelvű magyarázat: miért és mennyit módosítottál, mely tényezők voltak a legfontosabbak, hogyan hatnak a várható gólokra>"
 }
 
-[CRITICAL RULES - v129.0 ULTRA-STRICT SAFEGUARDS]:
+[CRITICAL RULES - v136.0 FREEDOM MODE]:
 - modified_mu_h and modified_mu_a MUST be numbers
-- **MAX ±0.35 adjustment per team** (v129.0 - CSÖKKENTVE!)
-- **SAFEGUARD RULE**: If Quant shows >50% difference (e.g., H=2.0, A=1.0), **MAX ±0.20 adjustment per team!**
-- **DEFENSIVE MATCH RULE**: If Total Quant xG < 3.2, **MAX ±0.20 adjustment per team!**
-- **VERY DEFENSIVE MATCH RULE**: If Total Quant xG < 2.8, **MAX ±0.15 adjustment per team!**
-- If no strong evidence for change, keep close to baseline
+- **NO ARTIFICIAL CAPS!** Adjust based on evidence strength, not arbitrary limits!
+- **EVIDENCE-BASED SCALING:**
+  * Weak evidence (1-2 factors): ±0.1 to ±0.3
+  * Moderate evidence (3 factors): ±0.3 to ±0.8
+  * Strong evidence (4-5 factors): ±0.8 to ±1.5
+  * Overwhelming evidence (5+ aligned factors): ±1.5 to ±2.5+ is VALID!
+- **TRUST YOUR INSTINCT:** You're the contextual expert - BE BOLD!
 - Be specific about WHY each adjustment is made
-- Consider counterbalancing factors
+- When factors align (e.g., bad form + key injuries + poor h2h), MULTIPLY their impact!
 - **QUALITY CHECK**: If adjusting a TOP TEAM (big league) to LOSE against a WEAK TEAM (small league), **BE EXTREMELY CAUTIOUS!**
 
 [CRITICAL RULE - QUANT AMPLIFICATION PREVENTION]:

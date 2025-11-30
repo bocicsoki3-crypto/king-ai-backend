@@ -88,19 +88,20 @@ export class SoccerStrategy implements ISportStrategy {
      * === ÚJ (v127.0): HELPER - HOME ADVANTAGE SZÁMÍTÁS (LIGA-AWARE!) ===
      */
     private calculateHomeAdvantage(leagueCoefficient: number): number {
-        // Liga minőség alapú home advantage
-        // TOP ligák (>10): +0.30 (erősebb hazai pálya kultúra)
-        // Közepes (5-10): +0.25
-        // Gyenge (<5): +0.15-0.20 (kevésbé jelentős hazai előny)
+        // === v136.0: HOME ADVANTAGE ERŐSÍTVE (~15-20%!) ===
+        // Liga minőség alapú home advantage - NÖVELVE!
+        // TOP ligák (>10): +0.35 (volt: +0.30) - Még erősebb hazai pálya!
+        // Közepes (5-10): +0.30 (volt: +0.25)
+        // Gyenge (<5): +0.20-0.25 (volt: +0.15-0.20)
         
         if (leagueCoefficient >= 10.0) {
-            return 0.30;  // TOP 5 Liga
+            return 0.35;  // TOP 5 Liga (+0.05, volt: 0.30)
         } else if (leagueCoefficient >= 7.0) {
-            return 0.25;  // Erős közepes liga
+            return 0.30;  // Erős közepes liga (+0.05, volt: 0.25)
         } else if (leagueCoefficient >= 4.0) {
-            return 0.20;  // Közepes liga
+            return 0.25;  // Közepes liga (+0.05, volt: 0.20)
         } else {
-            return 0.15;  // Gyenge liga (Cyprus, Malta, stb.)
+            return 0.20;  // Gyenge liga (+0.05, volt: 0.15)
         }
     }
 
@@ -161,22 +162,21 @@ export class SoccerStrategy implements ISportStrategy {
                 const p1_mu_a_raw = (a_xG + h_xGA) / 2;
                 const totalExpectedGoals = p1_mu_h_raw + p1_mu_a_raw;
                 
-                // Liga alapú max várható gólszám (empirikus) - v132.0 LAZÍTVA + BUNDESLIGA KIVÉTEL!
-                // Europa League/Conference League: ~2.8-3.0 goals/match
-                // Top Ligák: ~2.8-3.2 goals/match
-                // Támadó ligák (Bundesliga, Eredivisie): ~3.3-3.8 goals/match (BUNDESLIGA: 3.5+!)
+                // v136.0: ULTRA-LAZÍTVA! Maximumok +0.5-0.7 gól növelve!
+                // Europa League/Conference League: ~3.5 goals/match (volt: 3.0)
+                // Top Ligák: ~3.8 goals/match (volt: 3.3)
+                // Támadó ligák: ~4.2-4.5 goals/match (volt: 3.6-3.8)
                 
-                // v132.0: BUNDESLIGA SPECIÁLIS KEZELÉS (átlag 3.2-3.5 gól/meccs!)
                 const isBundesliga = leagueName?.toLowerCase().includes('bundesliga') || false;
-                const expectedMaxGoals = isBundesliga ? 3.8 :                        // Bundesliga: NAGYON támadó! (+0.6)
-                                         leagueDefensiveMultiplier <= 0.92 ? 3.0 :   // Europa/Conference
-                                         leagueDefensiveMultiplier >= 1.05 ? 3.6 :   // Eredivisie (+0.1)
-                                         3.3;                                         // Normál ligák (+0.1)
+                const expectedMaxGoals = isBundesliga ? 4.5 :                        // Bundesliga: +0.7 (volt: 3.8)
+                                         leagueDefensiveMultiplier <= 0.92 ? 3.5 :   // Europa/Conference +0.5 (volt: 3.0)
+                                         leagueDefensiveMultiplier >= 1.05 ? 4.2 :   // Eredivisie +0.6 (volt: 3.6)
+                                         3.8;                                         // Normál ligák +0.5 (volt: 3.3)
                 
                 if (totalExpectedGoals > expectedMaxGoals) {
-                    const sanityAdjustment = 0.90; // v132.0: -10% korrekció (előtte -15% volt, túl durva!)
-                    console.warn(`[SoccerStrategy v132.0] 🚨 P1 SANITY CHECK! Total xG (${totalExpectedGoals.toFixed(2)}) > Expected Max (${expectedMaxGoals.toFixed(2)}) for this league${isBundesliga ? ' (Bundesliga)' : ''}.`);
-                    console.warn(`  📉 Applying MODERATE adjustment (-10%, volt -15%)`);
+                    const sanityAdjustment = 0.95; // v136.0: -5% korrekció (volt: -10%!) ULTRA-LAX!
+                    console.warn(`[SoccerStrategy v136.0] 🚨 P1 SANITY CHECK (ULTRA-LAX)! Total xG (${totalExpectedGoals.toFixed(2)}) > Expected Max (${expectedMaxGoals.toFixed(2)}) for this league${isBundesliga ? ' (Bundesliga)' : ''}.`);
+                    console.warn(`  📉 Applying LIGHT adjustment (-5%, volt -10%)`);
                     
                     h_xG *= sanityAdjustment;
                     h_xGA *= sanityAdjustment;
