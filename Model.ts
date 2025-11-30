@@ -308,9 +308,8 @@ export function calculateConfidenceScores(
         } 
         // v136.0: MISSING H2H PENALTY TÖRLVE - Ez normális! Nincs penalty!
         // else { generalPenalty += 0.25; } // TÖRÖLVE v136.0
-        }
 
-         const adjustedRatings = getAdjustedRatings();
+        const adjustedRatings = getAdjustedRatings();
         const homeHistory = adjustedRatings[home.toLowerCase()];
         const awayHistory = adjustedRatings[away.toLowerCase()];
         let historyBonus = 0;
