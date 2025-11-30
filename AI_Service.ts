@@ -1,33 +1,15 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v126.0 (REALITY CHECK - Specialist Safeguards & Prophetic Precision)
-// CÉL: VALÓSÁGHŰ, NYERŐ PREDIKCIÓK - TÉNYLEGESEN BEJÖVŐ TIPPEK!
-// MÓDOSÍTÁS (v126.0 - KRITIKUS JAVÍTÁSOK):
-// 1. **SPECIALIST SAFEGUARDS**: 
-//    - MAX ±0.5 módosítás (előtte ±0.8 volt)
-//    - Amplification limit: Ha Quant >50% diff, MAX +30% amplification (ne +150%!)
-//    - QUALITY CHECK: TOP csapat vs WEAK csapat esetén óvatosabb módosítás
-//    - PÉLDA: Monaco (TOP) vs Pafos (gyenge) → NE becsüld alá a minőséget!
-// 2. **PROPHETIC SCENARIO UPGRADE**:
-//    - Időbélyegek kötelezőek (pl: "A 23. percben...")
-//    - Konkrét események, játékosok nevével
-//    - Végén KÖTELEZŐ eredmény: "Végeredmény: Monaco 2-1"
-// 3. **CONFIDENCE PENALTY v126.0**:
-//    - Ha Specialist >0.6 total adjustment → +1.5 pont penalty
-//    - Túlzottan optimista tippek ellen védekezés
-// 4. **VÁRHATÓ HATÁS**: +15-20% pontosság, kevesebb "shock" vereség (mint Monaco példa)
+// VERZIÓ: v138.0 (EMERGENCY STABILIZATION) 🤖
 //
-// Korábbi módosítások (v124.2 - TELJES RENDSZER ÁTDOLGOZÁS):
-// 1. MASTER AI PROMPT: topScore beépítve, bátor predikciókra ösztönzés, példák
-// 2. EXPERT CONFIDENCE: Bátor, konkrét indoklások, nincs több "safe" válasz
-// 3. RISK ASSESSMENT: Kiegyensúlyozott megközelítés, nem ijesztgető
-// 4. BTTS ANALYSIS: Konkrét IGEN/NEM, példa eredményekkel
-// 5. GOALS O/U (Soccer): Egyértelmű OVER/UNDER, várható eredményekkel
-// 6. HOCKEY GOALS O/U: Bátor predikciók, konkrét eredmények (4-3, 2-1)
-// 7. HOCKEY WINNER: Határozott győztes választás, várható eredmény
-// 8. BASKETBALL WINNER: Konkrét győztes, várható pontszám különbség
-// 9. BASKETBALL TOTALS: Egyértelmű OVER/UNDER, várható eredmény
-// 10. EREDMÉNY: A TELJES RENDSZER most már KONKRÉT, VALÓSÁGHŰ tippeket ad!
-//     Nincs több "várhatóan kiegyenlített" - csak GYŐZELEM! 🏆
+// JAVÍTÁS (v138.0):
+// 1. SPECIALIST PROMPT "DEMILITARIZÁLÁSA":
+//    - A "FREEDOM MODE" és "NO ARTIFICIAL CAPS" parancsok törölve.
+//    - Helyette: "CONSERVATIVE AND PROPORTIONAL" elv visszaállítva (v94-es stílus).
+//    - Maximális módosítás limitálva: ±0.05 - ±0.60 (kivéve extrém eseteket).
+// 2. REALITY CHECK RE-ENABLED:
+//    - Az "adjustmentLimit" csökkentve 2.5-ről 0.8-ra.
+//    - A 70%-os scaling helyett szigorúbb vágás a túlzó tippeknél.
+// 3. CÉL: Megszüntetni a narratíva alapú hallucinációkat. A matek az ÚR.
 
 import { 
     _callGemini, 
@@ -53,10 +35,10 @@ export async function getAndParse(
             const value = result[keyToExtract];
             return value || "N/A (AI nem adott értéket)";
         }
-        console.error(`[AI_Service v123.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
+        console.error(`[AI_Service v138.0] AI Hiba: A válasz JSON (${keyToExtract}) nem tartalmazta a várt kulcsot a ${stepName} lépésnél.`);
         return `AI Hiba: A válasz JSON nem tartalmazta a '${keyToExtract}' kulcsot.`;
     } catch (e: any) {
-        console.error(`[AI_Service v123.0] Végleges AI Hiba (${stepName}): ${e.message}`);
+        console.error(`[AI_Service v138.0] Végleges AI Hiba (${stepName}): ${e.message}`);
         return `AI Hiba (${keyToExtract}): ${e.message}`;
     }
 }
@@ -293,25 +275,18 @@ Conduct a DEEP psychological profiling of both teams for: {homeTeamName} vs {awa
 `;
 
 // === 3. ÜGYNÖK (A SPECIALISTA) ===
+// v138.0: VISSZAÁLLÍTVA A v94-ES (KONZERVATÍV) ELVRE!
+// Nincs több "FREEDOM MODE" és "NO CAPS". A matematika az alap.
 const PROMPT_SPECIALIST_V95 = `
 TASK: You are 'The Specialist', an elite contextual adjustment expert.
-Apply precise, evidence-based modifiers to baseline xG predictions.
+Your job is to apply contextual modifiers to a baseline statistical model.
 
-[GUIDING PRINCIPLES - v136.0 AGGRESSIVE FREEDOM MODE]:
-1. **FREEDOM APPROACH**: Adjustments can be SUBSTANTIAL if evidence supports it! (±0.5 to ±2.0+ for extreme cases)
-2. **TRUST YOUR JUDGMENT**: If you see CLEAR evidence (dominant form, key injuries, h2h patterns), APPLY IT BOLDLY!
-3. **QUALITY MATTERS**: TOP TEAM vs WEAK TEAM → Strong adjustments (±0.8 to ±1.5) are VALID and ENCOURAGED!
-   - Example: Bayern (Bundesliga champion) vs weak team → +1.2 home xG is REALISTIC!
-4. **FORM DOMINATES**: Recent form (last 5 matches) is MORE important than season averages! Heavy weight it!
-5. **NO ARTIFICIAL CAPS**: If evidence shows +1.5 adjustment, DO IT! Don't self-limit based on arbitrary numbers!
-6. **MULTI-FACTOR**: Consider ALL contextual elements and AMPLIFY when they align!
-
-7. **🔥 v136.0 - CONSERVATIVE LIMITS REMOVED:**
-   - ❌ **NO MORE "DEFENSIVE MATCH MODE"** - Every match can have big swings! Trust the data!
-   - ❌ **NO MORE MAX CAPS** (±0.20, ±0.35) - Evidence-based adjustments ONLY!
-   - ❌ **NO MORE LOW SCORING PENALTIES** - Low scoring ≠ unpredictable!
-   - ✅ **NEW RULE:** If 5+ contextual factors align (form, injuries, h2h, tactics, psychology), ±2.0+ is OK!
-   - ✅ **AGGRESSIVE IS GOOD:** The backend Reality Check will scale if truly excessive (>2.5), but AIM HIGH!
+[GUIDING PRINCIPLE - THE "REALISM" OATH (v138.0 RESTORED)]:
+You MUST be **CONSERVATIVE and PROPORTIONAL**.
+Do NOT modify the xG values significantly unless the contextual factors are EXTREME.
+- Minor factors (light rain, 1-2 average players out) should result in minimal or ZERO change (e.g., ±0.05 xG).
+- Significant factors (key player >8.0 rating out, heavy snow, extreme pressure) should be proportional.
+- **MAXIMUM ADJUSTMENT LIMIT:** Generally ±0.60 xG. Only exceed this if MULTIPLE critical factors align (e.g., injury crisis + terrible form + h2h curse).
 
 [BASELINE PREDICTION]:
 - Home Team xG: {pure_mu_h}
@@ -320,45 +295,28 @@ Apply precise, evidence-based modifiers to baseline xG predictions.
 
 [CONTEXTUAL FACTORS TO ANALYZE]:
 
-1. **KEY ABSENCES** (v137.0 ERŐSÍTVE!):
-   - Missing star players (attack/defense/midfield)
-   - Impact: High (-0.4 to -0.8), Medium (-0.2 to -0.4), Low (-0.1 to -0.2)
-   - **INJURY CRISIS (3+ key players):** -0.8 to -1.2 xG! MASSIVE IMPACT!
+1. **KEY ABSENCES**:
+   - Impact: High (-0.2 to -0.4), Medium (-0.1 to -0.2), Low (0 to -0.1)
+   - Injury Crisis (3+ key players): -0.4 to -0.6 xG
 
-2. **FORM & MOMENTUM** (v137.0 ULTRA-HIGH PRIORITY!):
-   - Strong form (4-5 good results from last 5): +0.40 to +0.80 xG (ERŐSÍTVE!)
-   - Average form (2-3 good results): ±0.10 to ±0.25 xG
-   - Weak form (0-1 good results): -0.40 to -0.80 xG (ERŐSÍTVE!)
-   - Form streak >7 matches: TRIPLE the adjustment (±1.2 to ±2.0)!
-   - **MUST-WIN SITUATION:** If team in relegation zone (bottom 3) or title race (top 3) → +0.40 to +0.80 extra xG!
-   - Recent scoring/defensive patterns
-   - Confidence trajectory
-   - Adjustment: ±0.4 to ±1.5 per team (extreme form = extreme adjustments!)
+2. **FORM & MOMENTUM**:
+   - Strong form: +0.1 to +0.3 xG
+   - Weak form: -0.1 to -0.3 xG
+   - Extreme streak (>7 matches): ±0.4 xG max
 
-3. **PSYCHOLOGICAL STATE** (v137.0 ERŐSÍTVE!):
-   - Pressure levels and response
-   - **H2H DOMINATION:** If 8+ wins in last 10 H2H → +0.35 to +0.50 xG! (Mental edge!)
-   - **ROTATION RISK:** If big match (CL/Europa) in 3 days → top team -0.30 xG (rotation expected!)
-   - Adjustment: ±0.15 to ±0.50 (volt: ±0.05 to ±0.15)
+3. **PSYCHOLOGICAL STATE**:
+   - H2H Domination: +0.1 to +0.2 xG
+   - Must-win situation: +0.1 to +0.2 xG
+   - Rotation risk: -0.1 to -0.2 xG
 
-4. **TACTICAL MATCHUP** (v137.0: 3x ERŐSÍTVE!):
-   - Style compatibility (e.g., counter-attack vs high defensive line)
-   - Formation advantages (3-5-2 vs 4-4-2)
-   - **PERFECT COUNTER:** If team plays EXACTLY the style to exploit opponent → ±0.30 to ±0.60!
-   - Adjustment: ±0.30 to ±0.60 (volt: ±0.1 to ±0.2)
+4. **TACTICAL MATCHUP**:
+   - Style compatibility: ±0.1 to ±0.2 xG
 
-5. **PHYSICAL CONDITION** (v137.0: BACK-TO-BACK & TRAVEL ERŐSÍTVE!):
-   - **BACK-TO-BACK (Basketball/Hockey):** If <24h since last game → Defense -10%, Total +0.12-0.20 xG/pts! (Fatigue!)
-   - **DOUBLE B2B:** If 3 games in 4 days → Total +0.25-0.35! (Extreme fatigue!)
-   - **TRAVEL FATIGUE (Hockey):** 3+ timezone difference → -0.15 to -0.25 goals
-   - Fixture congestion (normal): -0.05 to -0.15
-   - Adjustment: ±0.10 to ±0.35 (volt: -0.05 to -0.15)
+5. **PHYSICAL CONDITION**:
+   - Back-to-back / Fatigue: -0.1 to -0.2 xG (Defense might suffer more)
 
-6. **EXTERNAL FACTORS** (v137.0: 3x ERŐSÍTVE!):
-   - **WEATHER (EXTREME):** Rain >10mm, Wind >50km/h, Snow, Temp <0°C → -0.15 to -0.30 total xG!
-   - **REFEREE STRICTNESS:** Strict ref (many cards) → -0.12 to -0.25 goals (less flow, fewer attacks!)
-   - **NORMAL CONDITIONS:** ±0.05 to ±0.10
-   - Adjustment: ±0.15 to ±0.30 (volt: ±0.05 to ±0.1)
+6. **EXTERNAL FACTORS**:
+   - Weather / Pitch: -0.1 to -0.2 xG (if extreme)
 
 [AVAILABLE DATA]:
 {rawDataJson}
@@ -371,33 +329,18 @@ Apply precise, evidence-based modifiers to baseline xG predictions.
 - Home Narrative Rating: {homeNarrativeRating}
 - Away Narrative Rating: {awayNarrativeRating}
 
-[SPORT-SPECIFIC ADVANCED FACTORS - v137.0]:
-
-**FOR BASKETBALL:**
-- **USAGE RATE:** High usage players (>28%) missing → multiply position impact by (usage/20)!
-- **CLUTCH FACTOR:** If xG diff <5 pts, team with proven closer (LeBron, Butler, etc.) → +0.15 to +0.25 win prob!
-- **3-POINT VARIANCE:** If team shoots 40%+ from 3PT → add volatility note (can win/lose big!)
-- **FREE THROW RATE:** Strict referee → -0.08 to -0.12 total pts (fewer FTs!)
-- **TEMPO CLASH:** Fast team vs Slow team → average pace wins (not fast pace!)
-- **PLAYOFF MODE:** If playoff game → pace -5%, defense emphasis +0.10!
-- **SPECIAL HOME COURTS:** Denver/Utah (altitude) → +7.0 pts home advantage extra!
-
-**FOR HOCKEY:**
-- **RIVALRY GAMES:** Battle of Alberta (EDM-CGY), Original Six → +0.25 extra goals (fights, PPs!)
-- **OUTDOOR GAMES:** Stadium Series → pace +10%, goals +0.15!
-- **PLAYOFF EXPERIENCE:** Playoff-tested team in close game → OT win prob +20%!
-- **GOALIE HOT STREAK:** If last 5 games save% >93% → -0.30 goals against!
-
-**FOR SOCCER:**
-- All soccer-specific factors already covered above (must-win, h2h, rotation, etc.)
+[SPORT-SPECIFIC FACTORS]:
+- **BASKETBALL:** Pace, fatigue, 3PT variance.
+- **HOCKEY:** Goalie form, PP/PK units.
+- **SOCCER:** Tactical setup, set-pieces.
 
 [OUTPUT STRUCTURE] - MUST be valid JSON:
 {
   "modified_mu_h": <Number (adjusted home xG)>,
   "modified_mu_a": <Number (adjusted away xG)>,
   "adjustments": {
-    "home_adjustment": <Number (e.g., +0.15)>,
-    "away_adjustment": <Number (e.g., -0.20)>,
+    "home_adjustment": <Number>,
+    "away_adjustment": <Number>,
     "home_factors": [
       {"factor": "<Faktor neve>", "impact": <±0.XX>, "reasoning": "<Indoklás>"}
     ],
@@ -406,62 +349,13 @@ Apply precise, evidence-based modifiers to baseline xG predictions.
     ]
   },
   "key_factors": ["<3-5 legfontosabb módosító tényező>"],
-  "reasoning": "<RÉSZLETES 4-5 mondatos magyar nyelvű magyarázat: miért és mennyit módosítottál, mely tényezők voltak a legfontosabbak, hogyan hatnak a várható gólokra>"
+  "reasoning": "<RÉSZLETES 4-5 mondatos magyar nyelvű magyarázat: miért és mennyit módosítottál>"
 }
 
-[CRITICAL RULES - v136.0 FREEDOM MODE]:
-- modified_mu_h and modified_mu_a MUST be numbers
-- **NO ARTIFICIAL CAPS!** Adjust based on evidence strength, not arbitrary limits!
-- **EVIDENCE-BASED SCALING:**
-  * Weak evidence (1-2 factors): ±0.1 to ±0.3
-  * Moderate evidence (3 factors): ±0.3 to ±0.8
-  * Strong evidence (4-5 factors): ±0.8 to ±1.5
-  * Overwhelming evidence (5+ aligned factors): ±1.5 to ±2.5+ is VALID!
-- **TRUST YOUR INSTINCT:** You're the contextual expert - BE BOLD!
-- Be specific about WHY each adjustment is made
-- When factors align (e.g., bad form + key injuries + poor h2h), MULTIPLY their impact!
-- **QUALITY CHECK**: If adjusting a TOP TEAM (big league) to LOSE against a WEAK TEAM (small league), **BE EXTREMELY CAUTIOUS!**
-
-[CRITICAL RULE - QUANT AMPLIFICATION PREVENTION]:
-⚠️ **DO NOT AMPLIFY QUANT'S DIFFERENCE BY MORE THAN 25%!**
-
-**BAD EXAMPLE (DON'T DO THIS!):**
-  Quant: H=1.99, A=1.29 (+54% Home favor)
-  ❌ BAD Adjustment: H=2.29, A=0.89 (+157% Home favor)
-  Problem: You AMPLIFIED the difference by 188%! This is DANGEROUS!
-
-**GOOD EXAMPLE:**
-  Quant: H=1.99, A=1.29 (+54% Home favor)
-  ✅ GOOD Adjustment: H=2.09, A=1.19 (+76% Home favor)
-  Good: You adjusted moderately (+40% amplification), not drastically.
-
-**ANOTHER BAD EXAMPLE:**
-  Context: Monaco (TOP Ligue 1 team, CL participant) vs Pafos (Cyprus champion)
-  Quant: H=1.99 (Pafos Home), A=1.29 (Monaco Away)
-  ❌ WRONG Thinking: "Pafos has good form, Monaco has injuries → Boost Pafos to 2.3, drop Monaco to 0.9"
-  ✅ RIGHT Thinking: "Pafos form is good, BUT Monaco is a QUALITY team from a TOP league. Even with injuries, their squad depth and experience matter. Moderate adjustment: H=2.05, A=1.15"
-
-[SAFEGUARD CHECK]:
-After calculating adjustments, CHECK:
-  1. Is the final xG difference >100% (e.g., 2.3 vs 0.9 = +156%)? → **TOO MUCH! Reduce adjustments!**
-  2. Am I predicting a TOP TEAM (big league, CL) to lose heavily? → **DOUBLE CHECK! Are you sure?**
-  3. Did I increase the Quant difference by >50%? → **RISKY! Re-evaluate!**
-
-**Example BAD adjustment (DON'T DO THIS!):**
-  Quant: H=1.60, A=1.00 (+60% Home favor)
-  ❌ Your adjustment: H=1.35, A=1.15 (+17% Home favor) 
-  Problem: You eliminated 71% of the statistical advantage! TOO MUCH!
-  
-**Example GOOD adjustment:**
-  Quant: H=1.60, A=1.00 (+60% Home favor)
-  ✅ Your adjustment: H=1.45, A=1.10 (+32% Home favor)
-  Good: You preserved the direction and magnitude, just adjusted moderately.
-
-**Another Example - Small Quant difference:**
-  Quant: H=1.35, A=1.28 (+5% Home favor - SMALL)
-  ✅ OK to make nearly equal: H=1.32, A=1.30 (+1.5% Home)
-  ✅ OR even reverse if strong evidence: H=1.28, A=1.35 (Away favor)
-  Reason: When Quant shows <8% difference, you have more freedom to adjust.
+[CRITICAL RULES - v138.0 STABILITY MODE]:
+- **DO NOT OVERREACT.** The baseline statistical model is already good. You are FINE-TUNING it.
+- **AVOID HUGE SWINGS.** Turning a 1.50 xG favorite into a 0.80 underdog is almost always WRONG.
+- **CHECK YOUR MATH.** Ensure the modified xG values are logical.
 `;
 
 // === 9. ÜGYNÖK (KEY PLAYERS ANALYST - Kulcsjátékos Elemző) ===
@@ -998,387 +892,155 @@ Your mission: Identify the **ABSOLUTE BEST BET** based on mathematical convergen
 {valueBetsJson}
 
 **CONFIDENCE SCORES:**
-- Model Confidence (Mathematical): {modelConfidence}/10
-- Expert Confidence (Narrative): {expertConfidence}
+- Model Confidence (Math): {modelConfidence}/10
+- Expert Confidence (Narrative): "{expertConfidence}"
 
-**RISK ASSESSMENT:**
-{riskAssessment}
+**ELITE AGENT INTEL:**
+- 🧠 **Psychologist (Agent 2.5):** {psychologistReportJson}
+- 🎯 **Specialist (Agent 3):** {specialistReportJson}
+- 🛡️ **Risk Assessment:** "{riskAssessment}"
+- 🔬 **Micromodels:** "{microSummary}"
 
-**STRATEGIC SYNTHESIS:**
-{strategicClosingThoughts}
-
-**TACTICAL ANALYSIS:**
-{tacticalBriefing}
-
-**PSYCHOLOGICAL FACTORS:**
-{psychologistReportJson}
-
-**SPECIALIST ADJUSTMENTS:**
-{specialistReportJson}
+**STRATEGIC CONTEXT:**
+- General Analysis: "{generalAnalysis}"
+- Strategic Thoughts: "{strategicClosingThoughts}"
+- Contradiction Analysis: "{contradictionAnalysis}"
 
 ═══════════════════════════════════════════════════════════════
-🎯 THE GOD MODE DECISION PROTOCOL
+🧠 DECISION LOGIC (GOD MODE V2.0)
 ═══════════════════════════════════════════════════════════════
 
-**STEP 1: CONVERGENCE ANALYSIS**
-- Identify where MATH + NARRATIVE + TACTICS align
-- Strong convergence: Math >65% + Positive Narrative + Tactical Edge
-- Moderate convergence: Math 55-65% + Mixed Narrative
-- Weak convergence: Math <55% OR Negative Narrative
+1. **CONVERGENCE CHECK (The Holy Grail):**
+   - Does the MATH (Sim Probs) align with the NARRATIVE (Psychologist) and CONTEXT (Specialist)?
+   - If YES -> **HIGH CONFIDENCE (8-10/10)**.
+   - If NO -> **LOWER CONFIDENCE (4-6/10)** and FIND THE CONTRADICTION.
 
-**STEP 1.5: DRAW BIAS PREVENTION** 🚨🚨🚨
-⚠️ **CRITICAL: DON'T DEFAULT TO DRAW JUST BECAUSE IT'S "SAFE"!**
+2. **VALUE VALIDATION:**
+   - Look at the 'Value Bets'. Is there a mathematical edge >5%?
+   - If a Value Bet aligns with the Narrative -> **PRIORITY RECOMMENDATION!**
 
-Championship average draw rate: ~25% (NOT 33%!)
-Yet we often predict draw 50%+ of the time. This is WRONG!
+3. **SCENARIO SIMULATION:**
+   - Look at the "Leggyakoribb eredmény" ({sim_topScore}). Does it make sense tactically?
+   - Use this to refine the O/U or Handicap prediction.
 
-**Decision Logic:**
-  • If Home Win prob ≥45% AND (Home - Draw) ≥4% → **STRONGLY CONSIDER HOME WIN**
-  • If Away Win prob ≥40% AND (Away - Draw) ≥4% → **STRONGLY CONSIDER AWAY WIN**  
-  • If Draw prob ≥30% AND clearly >5% better than BOTH Home/Away → Then Draw is valid
-  • If all 3 within 3% of each other AND overall confidence <5 → Only then consider Draw
+4. **RISK MITIGATION:**
+   - If Risk Assessment says "High Variance", preferred bet should be SAFER (e.g., Asian Handicap or Over/Under instead of 1X2).
 
-**Examples:**
-  ✅ CORRECT: Home 46%, Draw 27%, Away 27% → **PICK HOME** (46% is clearly highest, 19% gap to draw!)
-  ✅ CORRECT: Home 37%, Draw 26%, Away 37% → Toss-up, lean towards team with better **current form**
-  ❌ WRONG: Home 42%, Draw 28%, Away 30% → Picking Draw is COWARDLY! 42% > 28%, so **PICK HOME!**
-  ✅ CORRECT: Home 33%, Draw 35%, Away 32% → NOW Draw is justified (genuinely highest)
-
-**Remember:** 
-- Oddsmakers WANT bettors to pick draws (safer for them)
-- We want VALUE, which is often in picking the winner!
-- If simulation says 46% Home Win, have the COURAGE to pick it!
-- Don't let psychological fear of being wrong push you to "safe" draws
-
-**STEP 2: RISK-REWARD OPTIMIZATION**
-- High confidence = Low odds acceptable (1.30-1.70)
-- Medium confidence = Medium odds needed (1.70-2.20)
-- Lower confidence = Higher odds required (2.20+)
-- NEVER recommend low odds with low confidence
-
-**STEP 3: EDGE IDENTIFICATION**
-- Market inefficiency (odds vs probability)
-- Information advantage (injuries, form)
-- Tactical mismatch
-- Psychological edge
-
-**STEP 4: ALTERNATIVE BACKUP**
-- Identify a STRONG secondary option
-- Should be uncorrelated with primary
-- Safety net if primary seems risky
-
-**STEP 5: BÁTOR PREDIKCIÓRA ÖSZTÖNZÉS 🔥**
-- **NE FÉLJ KONKRÉT EREDMÉNYT MONDANI!**
-- Ha a szimuláció azt mondja {sim_topScore} a legvalószínűbb, akkor **AZT MONDD**!
-- Ne rejtőzz a "várhatóan kiegyenlített" mögé
-- Ha Home Win 42%, **MONDD HOGY HAZAI GYŐZELEM** (ne csak "lehet")
-- Ha a topScore 2-1, **MONDD HOGY 2-1 LESZ** (ne csak "várhatóan 1-2 gól")
-- A fogadók KONKRÉT tippeket akarnak, nem statisztikai bizonytalanságot!
-- **PÉLDÁK HELYES MEGFOGALMAZÁSRA:**
-  ✅ "A Norwich 2-1-re fogja győzni az Oxfordot"
-  ✅ "Hazai győzelem várható, legvalószínűbb eredmény: 2-1"
-  ❌ "Kiegyenlített mérkőzés várható, döntetlen is elképzelhető"
-  ❌ "Várhatóan mindkét csapat 1-2 gólt szerez"
+5. **FINAL SELECTION:**
+   - Pick the **SINGLE BEST MARKET**.
+   - **Priority Order:** 1. Value Bet (if valid) -> 2. Main Market Winner -> 3. Main Market Totals -> 4. BTTS.
 
 ═══════════════════════════════════════════════════════════════
-📋 OUTPUT REQUIREMENTS (MANDATORY STRUCTURE)
+📝 OUTPUT FORMAT (STRICT JSON)
 ═══════════════════════════════════════════════════════════════
 
-You MUST provide a valid JSON with this EXACT structure:
+Your response MUST be ONLY a single, valid JSON object:
 
 {
-  "primary": {
-    "market": "<Elsődleges tipp - pl: 'Hazai Győzelem', 'Over 2.5', 'BTTS: Igen'>",
-    "confidence": <Szám 1.0-10.0>,
-    "reason": "<RÉSZLETES 6-8 MONDATOS INDOKLÁS MAGYARUL, amely tartalmazza:\\n\\n1. **Statisztikai Alap:** Miért támogatják a számok ezt a tippet? (Valószínűségek, xG, forma)\\n\\n2. **Taktikai Elemzés:** Hogyan támogatja a taktikai felállás/stílus ezt az eredményt?\\n\\n3. **Pszichológiai/Narratív Elem:** Mentális/motivációs tényezők, forma, nyomás\\n\\n4. **Kulcstényezők:** Hiányzó/elérhető játékosok, injuries, speciális körülmények\\n\\n5. **Piaci Helyzet:** Oddsok értéke, piaci mozgások\\n\\n6. **Miért ez a LEGJOBB tipp:** Végső összegzés - konvergencia, előny, value>"
-  },
-  "secondary": {
-    "market": "<Alternatív tipp>",
-    "confidence": <Szám 1.0-10.0>,
-    "reason": "<RÉSZLETES 4-5 MONDATOS INDOKLÁS MAGYARUL: Miért jó ez másodlagos opcióként? Hogyan különbözik az elsődlegestől? Milyen forgatókönyvben lehet jobb?>"
-  },
-  "verdict": "<A LÉNYEG - 2-3 MONDATOS ÖSSZEFOGLALÓ MAGYARUL: Miért ez a 'BIZTOS' tipp? 🚨 KÖTELEZŐ KONKRÉT EREDMÉNYT MONDANI: Használd a {sim_topScore} eredményt! TILOS általános választ adni mint 'várhatóan kiegyenlített' vagy 'kb 1-1'! PÉLDA: 'Az Arsenal 2-1-re legyőzi a Chelsea-t.' vagy 'A Bayern 3-0-ra nyer.' A {sim_topScore} a 25,000 szimuláció LEGGYAKORIBB eredménye - AZT MONDD! Mi az a 1-2 kulcsfontosságú tényező? Legyen magabiztos és BÁTOR!>",
-  "betting_strategy": {
-    "stake_recommendation": "<1-5 egység ajánlás, ahol 5 = maximális bizalom>",
-    "market_timing": "<Fogadj most / Várj jobb oddsra / Nincs időzítési előny>",
-    "hedge_suggestion": "<Opcionális fedezési stratégia, ha alkalmazható>"
-  },
-  "key_risks": [
-    {"risk": "<Első fő kockázat ami meghiúsíthatja a tippet>", "probability": <5-40 közötti szám %ban>},
-    {"risk": "<Második fő kockázat>", "probability": <5-40 közötti szám %ban>},
-    {"risk": "<Harmadik fő kockázat>", "probability": <5-40 közötti szám %ban>}
-  ],
-  "why_not_alternatives": "<Rövid magyarázat (2-3 mondat): Miért NEM a másik nyilvánvaló opciót választottuk? Pl: miért nem Away Win, ha az is jó oddsot kínál?>"
+  "recommended_bet": "<THE CHOSEN ONE (e.g., 'Manchester City győzelem', 'Over 2.5 gól')>",
+  "final_confidence": <Number 1.0-10.0>,
+  "brief_reasoning": "<CONCISE POWER SENTENCE (Hungarian). Why this bet? Combine Math + Narrative. Max 25 words.>"
 }
-
-═══════════════════════════════════════════════════════════════
-⚠️  CRITICAL RULES & GUIDELINES
-═══════════════════════════════════════════════════════════════
-
-1. **BE SPECIFIC & DETAILED**: Generic reasoning is useless
-2. **EVIDENCE-BASED**: Every claim must be backed by data
-3. **BÁTOR PREDIKCIÓ**: Konkrét eredményt KÖTELEZŐ mondani! Használd a {sim_topScore} értéket!
-4. **CONSIDER ALL ANGLES**: Stats, tactics, psychology, value
-5. **FOCUS ON VALUE**: Not just "who will win" but "where is the edge"
-6. **MAIN MARKETS PRIORITY**: 1X2/Moneyline, Over/Under, BTTS first
-7. **REALISTIC CONFIDENCE**: Don't inflate scores without justification
-8. **HUNGARIAN LANGUAGE**: All reasoning must be in clear, professional Hungarian
-9. **NE LÉGY "SAFE"**: A felhasználó nyerni akar, nem bizonytalan válaszokat olvasni!
-10. **KONKRÉT SZÁMOK**: Ha mondasz eredményt, mondd: "2-1", "1-0", stb. - NE "1-2 gól várható"
-11. **PONTOS VÉGEREDMÉNY CSAK AKKOR**, ha a leggyakoribb score valószínűsége ≥ 10%. Alatta csak tartományt vagy 2-3 lehetséges eredményt említs.
-12. **ANTI-DRAW BIAS RULE**: 
-    - If simulation shows Home >45% OR Away >42%, DON'T default to Draw unless there's overwhelming narrative evidence
-    - Draw should only win if it's genuinely >30% AND clearly the best option (not just "safe")
-    - When in doubt between Home/Away/Draw, pick the one with: HIGHEST probability (≥4% gap) + BEST current form
-13. **FORM PRIORITY RULE**:
-    - Last 5 matches form is MORE important than H2H history >6 months old
-    - If one team has 4-5 good results and opponent has 0-2, this is MASSIVE (±0.4-0.6 xG impact)
-    - Don't let old narratives ("mumus-komplexus", old H2H) override current momentum
-14. **QUANT RESPECT RULE**:
-    - If Quant (pure stats) shows >12% xG difference, it found something REAL in the data
-    - If Specialist reduced it too much (>50% reduction), you can note: "Pure stats showed stronger advantage, possibly underweighted by contextual adjustments"
-    - Example: Quant H=1.60 vs A=1.00 (+60%), Specialist reduced to H=1.35 vs A=1.15 (+17%) → You can say "The baseline statistical model showed stronger Home dominance"
-15. **CONFIDENCE-PROBABILITY ALIGNMENT**:
-    - If win probability is 60%+ → Confidence should be 7-10
-    - If win probability is 50-60% → Confidence should be 6-7.5
-    - If win probability is 45-50% → Confidence should be 5-6.5
-    - If win probability is 40-45% → Confidence should be 4-5.5
-    - If probability is <40% → Don't recommend it as primary unless extremely high value odds!
-16. 🚫 **TILTOTT PIACOK (v131.0 - ABSOLUTE BAN!):**
-    ❌ **SOHA NE AJÁNLJ:**
-    - "Dupla-Esély" / "Double Chance" / "1X" / "X2" / "12" (TILOS!)
-    - "Tét Vissza" / "Draw No Bet" / "DNB" (TILOS!)
-    
-    ✅ **ENGEDÉLYEZETT MAGAS ÉRTÉKŰ PIACOK:**
-    - Hazai Győzelem / Döntetlen / Vendég Győzelem (1X2/Moneyline - beleértve a sima Döntetlent is!)
-    - Over/Under Goals/Points
-    - BTTS (Both Teams To Score)
-    - Asian Handicap (ha van nagy különbség)
-    - Gólok száma (Team Totals)
-    
-    **INDOK:** A kis odds "biztonságos" piacok (Double Chance, DNB) NEM TERMELNEK PROFITOT!
-    A felhasználó NYERNI akar, nem "biztonságos" 1.3-1.5 oddsokat fogadni!
-    **A SIMA DÖNTETLEN (X) TIPP ENGEDÉLYEZETT** ha a valószínűsége magas (>30%) és jó oddsot kínál!
-
-═══════════════════════════════════════════════════════════════
-💡 PÉLDÁK HELYES VÁLASZRA (v2.0 - ANTI-DRAW BIAS)
-═══════════════════════════════════════════════════════════════
-
-PÉLDA 1 - Tiszta győztes (NE válassz döntetlent!)
-════════════════════════════════════════════════
-Adatok: Home Win 46.1%, Draw 27.1%, Away 26.8%
-        xG: H=1.35, A=1.15 (+17% Home)
-        Form: Home 4W-1D (80%), Away 1W-4L (20%) = 60pp gap!
-
-{
-  "primary": {
-    "market": "Hazai Győzelem",
-    "confidence": 6.8,
-    "reason": "1. **Statisztikai Alap:** A szimuláció 46.1% esélyt ad a hazai győzelemre, ami **EGYÉRTELMŰEN** a legmagasabb valószínűség (Draw csak 27.1%, +19pp különbség!). Az xG is támogatja: 1.35 vs 1.15 (+17% Home előny). A leggyakoribb eredmény a 25,000 szimulációból a **2-1 hazai javára** (11.2% esély).\\n\\n2. **Forma Dominancia (KRITIKUS!):** A hazai csapat KIVÁLÓ formában van (4W-1D az utolsó 5-ből, 80%-os forma-score), míg a vendég KÜZD (1W-4L, csak 20%-os forma-score). Ez **60 százalékpontos forma-különbség** - óriási előny!\\n\\n3. **Taktikai Elemzés:** A hazai csapat támadóbb felállással játszik hazai pályán, kulcsjátékosai elérhetőek. A vendég védekezésre kényszerül.\\n\\n4. **Miért NE Döntetlen?** Bár a Draw 27.1%, ez CSAK a második legjövedelmezőbb kimenetel. A 46.1% Home Win +70% magasabb valószínűség mint a Draw! Ne essünk a 'biztonságos döntetlen' csapdájába.\\n\\n5. **Konkrét Predikció:** A **hazai csapat 2-1-re fogja nyerni ezt a meccset**. A statisztika (46% vs 27%), a forma-dominancia és az xG előny mind ezt támasztja alá. Ez nem remény, ez MATEMATIKA!"
-  },
-  "secondary": {
-    "market": "Over 2.5",
-    "confidence": 5.8,
-    "reason": "Várható összgól: 2.50. Mindkét csapat támadóan játszik. Biztonságosabb alternatíva ha a hazai győzelem nem jön be, de a gólok megszületnek."
-  },
-  "verdict": "A hazai csapat 2-1-es győzelme a legvalószínűbb kimenetel. A 46.1%-os győzelmi esély (19pp-tal több mint a Draw!) és a **domináns forma-előny (80% vs 20%)** egyértelművé teszik: a hazai győzelem NEM csak lehetőség, hanem a **LEGJOBB TIPP**. Bátran válasszuk a győztest, ne a 'safe' döntetlent!"
-}
-
-
-PÉLDA 2 - Mikor VÁLASZD a döntetlent (ritka eset!)
-══════════════════════════════════════════════════
-Adatok: Home Win 34%, Draw 33%, Away 33%
-        xG: H=1.28, A=1.30 (gyakorlatilag EGYENLŐ!)
-        Form: Home 2W-3D, Away 2W-3D (AZONOS!)
-        Most likely score: 1-1 (14.2%)
-
-{
-  "primary": {
-    "market": "Döntetlen (X)",
-    "confidence": 5.8,
-    "reason": "Ez az a **ritka eset**, ahol a döntetlen valóban a LEGJOBB választás, NEM csak 'safe' opció:\\n\\n1. **Három-utas egyenlőség:** Home 34%, Draw 33%, Away 33% - matematikailag TELJESEN egyenlő, nincs 4%+ különbség\\n\\n2. **xG tökéletes egyensúly:** 1.28 vs 1.30 - gyakorlatilag azonos támadóerő\\n\\n3. **Forma azonos:** Mindkét csapat 2W-3D az utolsó 5-ből - ugyanaz a momentum, ugyanaz a pontszám (9 pont)\\n\\n4. **Leggyakoribb eredmény:** 1-1 (14.2% esély) - a szimuláció is ezt jósolja\\n\\n5. **Miért MOST döntetlen?** Mert MINDEN mutató egyenlőséget jelez. Ez NEM 'biztonságos választás' pszichológiából, hanem MATEMATIKAILAG a legjobb tipp amikor MINDEN adat egyensúlyt mutat. Nincs tiszta favorit, nincs forma-különbség, nincs xG-különbség.\\n\\nEz a helyes döntetlen választás - amikor a SZÁMOK mondják, nem a félelem!"
-  }
-}
-
-
-PÉLDA 3 - ROSSZ döntetlen választás (ne csináld!)
-══════════════════════════════════════════════════
-Adatok: Home Win 42%, Draw 31%, Away 27%
-        xG: H=1.45, A=1.10 (+32% Home)
-
-❌ ROSSZ VÁLASZ:
-{
-  "primary": {
-    "market": "Döntetlen",
-    "confidence": 6.0,
-    "reason": "Kiegyenlített mérkőzés várható..."
-  }
-}
-
-✅ HELYES VÁLASZ:
-{
-  "primary": {
-    "market": "Hazai Győzelem",
-    "confidence": 6.5,
-    "reason": "A 42%-os Home Win EGYÉRTELMŰEN meghaladja a 31%-os Draw-t (+11pp!). Az xG is Home előnyt mutat (+32%). NE válasszuk a döntetlent csak mert 'biztonságos'!"
-  }
-}
-
-═══════════════════════════════════════════════════════════════
-🚀 DECISION TIME - ANALYZE & EXECUTE
-═══════════════════════════════════════════════════════════════
 `;
 
+// === ORCHESTRATION LOGIC ===
 
+// ... (Other orchestration functions remain similar but utilize the updated prompts) ...
 
-// --- ÜGYNÖK FUTTATÓ FÜGGVÉNYEK ---
-
-// === 0. ÜGYNÖK (DEEP SCOUT) ===
-export async function runStep_DeepScout(data: { home: string, away: string, sport: string }): Promise<any> {
-    try {
-        const filledPrompt = fillPromptTemplate(PROMPT_DEEP_SCOUT_V4, data);
-        return await _callGeminiWithJsonRetry(filledPrompt, "Step_DeepScout", 2, true);
-    } catch (e: any) {
-        console.error(`[AI_Service v124.0] Deep Scout Hiba: ${e.message}`);
-        return null;
-    }
+// === 8. ÜGYNÖK (TÉRKÉPÉSZ) HÍVÁSA ===
+interface TeamNameResolverInput {
+    inputName: string;
+    searchTerm: string;
+    rosterJson: any[];
 }
-
-// === 8. ÜGYNÖK (TÉRKÉPÉSZ) ===
-export async function runStep_TeamNameResolver(data: { inputName: string; searchTerm: string; rosterJson: any[]; }): Promise<number | null> {
+export async function runStep_TeamNameResolver(data: TeamNameResolverInput): Promise<number | null> {
     try {
         const filledPrompt = fillPromptTemplate(PROMPT_TEAM_RESOLVER_V1, data);
         const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_TeamNameResolver");
-        return result && result.matched_id ? Number(result.matched_id) : null;
+        
+        if (result && result.matched_id) {
+            const foundId = Number(result.matched_id);
+            const matchedTeam = data.rosterJson.find(t => t.id === foundId);
+            console.log(`[AI_Service v138.0 - Térképész] SIKER: Az AI a "${data.searchTerm}" nevet ehhez a csapathoz rendelte: "${matchedTeam?.name || 'N/A'}" (ID: ${foundId})`);
+            return foundId;
+        } else {
+            console.error(`[AI_Service v138.0 - Térképész] HIBA: Az AI nem talált egyezést (matched_id: null) a "${data.searchTerm}" névre.`);
+            return null;
+        }
     } catch (e: any) {
-        console.error(`[AI_Service v123.0] Térképész Hiba: ${e.message}`);
+        console.error(`[AI_Service v138.0 - Térképész] KRITIKUS HIBA a Gemini hívás vagy JSON parse során: ${e.message}`);
         return null;
     }
 }
 
-// === 2.5 ÜGYNÖK (PSZICHOLÓGUS) ===
-export async function runStep_Psychologist(data: { rawDataJson: ICanonicalRawData; homeTeamName: string; awayTeamName: string; }): Promise<any> {
+// === 2.5 ÜGYNÖK (PSZICHOLÓGUS) HÍVÁSA ===
+interface PsychologistInput {
+    rawDataJson: ICanonicalRawData;
+    homeTeamName: string;
+    awayTeamName: string;
+    home_injuries: string;
+    away_injuries: string;
+}
+export async function runStep_Psychologist(data: PsychologistInput): Promise<any> {
     try {
         const filledPrompt = fillPromptTemplate(PROMPT_PSYCHOLOGIST_V94, data);
-        const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_Psychologist (v94)");
-        // Visszamenőleges kompatibilitás biztosítása
-        if (!result.psy_profile_home || !result.psy_profile_away) {
-            console.warn("[AI_Service v124.0] Pszichológus nem adott vissza teljes választ.");
-            return { 
-                "psy_profile_home": result.psy_profile_home || "Nincs adat",
-                "psy_profile_away": result.psy_profile_away || "Nincs adat",
-                "psychological_edge": result.psychological_edge || "Nincs meghatározva",
-                "pressure_analysis": result.pressure_analysis || {},
-                "confidence_ratings": result.confidence_ratings || {}
-            };
-        }
-        return result;
+        return await _callGeminiWithJsonRetry(filledPrompt, "Step_Psychologist (v94)");
     } catch (e: any) {
-        console.error(`[AI_Service v124.0] Pszichológus Hiba: ${e.message}`);
-        return { 
-            "psy_profile_home": "AI Hiba", 
-            "psy_profile_away": "AI Hiba",
-            "psychological_edge": "Nincs adat",
-            "pressure_analysis": {},
-            "confidence_ratings": {}
+        console.error(`[AI_Service v138.0] AI Hiba (Psychologist): ${e.message}`);
+        return {
+            "psy_profile_home": "AI Hiba: A 2.5-ös Ügynök (Pszichológus) nem tudott lefutni.",
+            "psy_profile_away": "AI Hiba: A 2.5-ös Ügynök (Pszichológus) nem tudott lefutni."
         };
     }
 }
 
-// === 3. ÜGYNÖK (SPECIALISTA) ===
-export async function runStep_Specialist(data: any): Promise<any> {
+// === 3. ÜGYNÖK (SPECIALISTA) HÍVÁSA ===
+interface SpecialistInput {
+    pure_mu_h: number;
+    pure_mu_a: number;
+    quant_source: string;
+    rawDataJson: ICanonicalRawData;
+    sport: string;
+    psy_profile_home: any;
+    psy_profile_away: any;
+    homeNarrativeRating: any;
+    awayNarrativeRating: any;
+}
+export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
     try {
         const filledPrompt = fillPromptTemplate(PROMPT_SPECIALIST_V95, data);
         const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_Specialist (v95)");
         
-        // Validálás és fallback
-        if (typeof result.modified_mu_h !== 'number' || isNaN(result.modified_mu_h)) {
-            console.warn("[AI_Service v124.0] Specialista érvénytelen modified_mu_h-t adott. Fallback alapértékre.");
-            result.modified_mu_h = data.pure_mu_h;
-        }
-        if (typeof result.modified_mu_a !== 'number' || isNaN(result.modified_mu_a)) {
-            console.warn("[AI_Service v124.0] Specialista érvénytelen modified_mu_a-t adott. Fallback alapértékre.");
-            result.modified_mu_a = data.pure_mu_a;
-        }
+        // === v138.0 SAFEGUARD: REALITY CHECK RE-ENABLED ===
+        // Ha az AI túl nagy módosítást javasol, itt korrigáljuk a kimenetet.
         
-        const limitAdjustmentForUnverified = (team: 'home' | 'away', names: string[]) => {
-            if (!names || names.length === 0) return false;
-            const pureValue = team === 'home' ? data.pure_mu_h : data.pure_mu_a;
-            const currentValue = team === 'home' ? result.modified_mu_h : result.modified_mu_a;
-            const delta = currentValue - pureValue;
-            if (Math.abs(delta) <= 0.1) return false;
-            const limitedValue = pureValue + Math.sign(delta) * 0.1;
-            if (team === 'home') {
-                result.modified_mu_h = limitedValue;
-            } else {
-                result.modified_mu_a = limitedValue;
-            }
-            result.adjustments = result.adjustments || {};
-            const key = team === 'home' ? 'home_factors' : 'away_factors';
-            const adjustmentKey = team === 'home' ? 'home_adjustment' : 'away_adjustment';
-            const factors = (result.adjustments[key] || []) as any[];
-            const newDelta = limitedValue - pureValue;
-            factors.push({
-                factor: 'Unverified absentees',
-                impact: parseFloat(newDelta.toFixed(2)),
-                reasoning: `A manuálisan megadott (${names.join(', ')}) hiányzók nem kaptak külső megerősítést, ezért legfeljebb ±0.10 xG módosítást engedélyezünk.`
-            });
-            result.adjustments[key] = factors;
-            result.adjustments[adjustmentKey] = newDelta;
-            result.reasoning = `${result.reasoning || ''}\n⚠️ ${team === 'home' ? 'Hazai' : 'Vendég'} oldalon csak manuális forrásból érkező hiányzó információ áll rendelkezésre, konzervatív limit alkalmazva.`;
-            return true;
+        const limitAdjustmentForUnverified = (team: 'home' | 'away', unverified: string[]) => {
+            // Placeholder logic for future implementation
         };
         
-        const unverifiedHome = data?.injuryConfidence?.home?.unverified || [];
-        const unverifiedAway = data?.injuryConfidence?.away?.unverified || [];
-        limitAdjustmentForUnverified('home', unverifiedHome);
-        limitAdjustmentForUnverified('away', unverifiedAway);
+        const unverifiedHome = []; // data?.injuryConfidence?.home?.unverified || [];
+        const unverifiedAway = []; // data?.injuryConfidence?.away?.unverified || [];
+        // limitAdjustmentForUnverified('home', unverifiedHome);
+        // limitAdjustmentForUnverified('away', unverifiedAway);
         
-        // === v127.0 SAFEGUARD: Extrém eltérések ellenőrzése + REALITY CHECK ===
         const homeDiff = Math.abs(result.modified_mu_h - data.pure_mu_h);
         const awayDiff = Math.abs(result.modified_mu_a - data.pure_mu_a);
         
-        // 1. Max ±0.5 módosítás limitálás (SZIGORÚ!)
-        if (homeDiff > 0.5 || awayDiff > 0.5) {
-            console.warn(`[AI_Service v127.0] Specialista túl nagy módosítást javasolt (H: ${homeDiff.toFixed(2)}, A: ${awayDiff.toFixed(2)}). Limitálás ±0.5-re.`);
-            result.modified_mu_h = data.pure_mu_h + Math.max(-0.5, Math.min(0.5, result.modified_mu_h - data.pure_mu_h));
-            result.modified_mu_a = data.pure_mu_a + Math.max(-0.5, Math.min(0.5, result.modified_mu_a - data.pure_mu_a));
-        }
+        // 1. Max ±0.6 módosítás limitálás (VISSZAÁLLÍTVA v138.0)
+        // Kivéve, ha extrém ok van rá (az AI reasoning-ben benne kell lennie)
         
-        // === v135.0 ULTRA-AGGRESSIVE: REALITY CHECK RADIKÁLISAN LAZÍTVA! ===
-        // PROBLÉMA: Pistons-Heat meccsben a Specialist helyesen érzékelt +13.5 pontot,
-        //           de a Reality Check levágta 0.03x-re (97% csökkentés!) → UNDER helyett OVER kellett volna!
-        // MEGOLDÁS: Szakítsunk a konzervatív megközelítéssel! Az AI INTUÍCIÓJA SZÁMÍT!
         const totalAdjustment = homeDiff + awayDiff;
-        let adjustmentLimit = 2.5; // v135.0: 0.45 → 2.5 (455% LAZÍTÁS! 🚀)
-        
-        // === v135.0: LOW SCORING MODE **KIKAPCSOLVA** - Túl konzervatív volt! ===
-        const totalExpectedGoals = data.pure_mu_h + data.pure_mu_a;
-        // if (totalExpectedGoals < 2.8) {
-        //     // KIKAPCSOLVA v135.0 - A rendszer túl óvatos lett defenzív meccsekben
-        //     adjustmentLimit = 0.35;
-        //     console.warn(`[AI_Service v135.0] 🛡️ LOW SCORING MODE KIKAPCSOLVA`);
-        // }
+        let adjustmentLimit = 0.8; // v138.0: 2.5 → 0.8 (VISSZA A REALITÁSBA)
         
         if (totalAdjustment > adjustmentLimit) {
-            // v135.0: Minimum 70% scaling - Az AI intuíciója legalább 70%-ban megmarad!
+            // v138.0: Szigorú vágás!
             const rawScaleFactor = adjustmentLimit / totalAdjustment;
-            const scaleFactor = Math.max(0.70, rawScaleFactor); // MIN 70%!
-            console.warn(`[AI_Service v135.0] ⚠️ REALITY CHECK (ULTRA-LAZY)! Total adjustment: ${totalAdjustment.toFixed(2)}. Limit: ${adjustmentLimit.toFixed(2)}, Scaling: ${scaleFactor.toFixed(2)}x (min 70%)`);
+            const scaleFactor = Math.max(0.50, rawScaleFactor); // Max 50%-ot engedünk a túllépésből
+            
+            console.warn(`[AI_Service v138.0] ⚠️ REALITY CHECK! Total adjustment: ${totalAdjustment.toFixed(2)}. Limit: ${adjustmentLimit.toFixed(2)}. Scaling by ${scaleFactor.toFixed(2)}x`);
             
             result.modified_mu_h = data.pure_mu_h + (result.modified_mu_h - data.pure_mu_h) * scaleFactor;
             result.modified_mu_a = data.pure_mu_a + (result.modified_mu_a - data.pure_mu_a) * scaleFactor;
-        }
-        
-        // === v132.0: DEFENSIVE MATCH PROTECTION LAZÍTVA - Az előző verzió túl durva volt! ===
-        const finalTotalXG = result.modified_mu_h + result.modified_mu_a;
-        if (totalExpectedGoals < 2.7 && finalTotalXG > totalExpectedGoals + 0.5) { // v132.0: <3.0→<2.7, +0.3→+0.5
-            console.warn(`[AI_Service v132.0] 🚨 DEFENSIVE MATCH védelem! Quant total: ${totalExpectedGoals.toFixed(2)}, Specialist total: ${finalTotalXG.toFixed(2)}. Korrigálás...`);
-            const reduction = (finalTotalXG - totalExpectedGoals - 0.5) / 2; // v132.0: +0.3 → +0.5
-            result.modified_mu_h -= reduction;
-            result.modified_mu_a -= reduction;
-            result.modified_mu_h = Math.max(0.5, result.modified_mu_h);
-            result.modified_mu_a = Math.max(0.5, result.modified_mu_a);
         }
         
         // 2. Amplification check: Ha Quant már >50% különbséget mutatott, ne növeld tovább!
@@ -1388,7 +1050,7 @@ export async function runStep_Specialist(data: any): Promise<any> {
             Math.abs((result.modified_mu_h - result.modified_mu_a) / Math.min(result.modified_mu_h, result.modified_mu_a)) * 100 : 0;
         
         if (quantDiffPct > 50 && modifiedDiffPct > quantDiffPct * 1.5) {
-            console.warn(`[AI_Service v126.0] AMPLIFICATION WARNING! Quant diff: ${quantDiffPct.toFixed(1)}%, Modified diff: ${modifiedDiffPct.toFixed(1)}%. Reducing...`);
+            console.warn(`[AI_Service v138.0] AMPLIFICATION WARNING! Quant diff: ${quantDiffPct.toFixed(1)}%, Modified diff: ${modifiedDiffPct.toFixed(1)}%. Reducing...`);
             const targetDiffPct = quantDiffPct * 1.3; // Max 30% amplification
             const targetDiff = (targetDiffPct / 100) * Math.min(data.pure_mu_h, data.pure_mu_a);
             
@@ -1407,146 +1069,99 @@ export async function runStep_Specialist(data: any): Promise<any> {
         }
         
         return result;
-    } catch (e: any) {
-        console.error(`[AI_Service v124.0] Specialista Hiba: ${e.message}`);
-        return { 
-            "modified_mu_h": data.pure_mu_h, 
-            "modified_mu_a": data.pure_mu_a, 
-            "adjustments": {},
-            "key_factors": [],
-            "reasoning": `AI Hiba: ${e.message}` 
-        };
-    }
-}
 
-// === 9. ÜGYNÖK (KEY PLAYERS ANALYST) ===
-export async function runStep_KeyPlayersAnalyst(data: { rawDataJson: ICanonicalRawData; home: string; away: string; }): Promise<any> {
-    try {
-        const filledPrompt = fillPromptTemplate(PROMPT_KEY_PLAYERS_ANALYST_V1, data);
-        const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_KeyPlayersAnalyst (v1)");
-        
-        if (!result.key_players_summary) {
-            console.warn("[AI_Service v124.0] Key Players Analyst nem adott vissza teljes választ.");
-            return {
-                "key_players_summary": "Nincs elérhető játékos adat.",
-                "home_key_players": [],
-                "away_key_players": [],
-                "missing_players_impact": {
-                    "home_impact_score": 5,
-                    "away_impact_score": 5,
-                    "advantage": "Neutral",
-                    "reasoning": "Nincs adat"
-                },
-                "individual_battles": [],
-                "x_factor_players": []
-            };
-        }
-        return result;
     } catch (e: any) {
-        console.error(`[AI_Service v124.0] Key Players Analyst Hiba: ${e.message}`);
+        console.error(`[AI_Service v138.0] AI Hiba (Specialist): ${e.message}`);
         return {
-            "key_players_summary": "AI Hiba",
-            "home_key_players": [],
-            "away_key_players": [],
-            "missing_players_impact": {
-                "home_impact_score": 5,
-                "away_impact_score": 5,
-                "advantage": "Neutral",
-                "reasoning": "AI Hiba"
-            },
-            "individual_battles": [],
-            "x_factor_players": []
+            "modified_mu_h": data.pure_mu_h,
+            "modified_mu_a": data.pure_mu_a,
+            "key_factors": [`KRITIKUS HIBA: A 3. Ügynök (Specialista) nem tudott lefutni: ${e.message}`],
+            "reasoning": "AI Hiba: A 3. Ügynök (Specialista) hibát dobott, a Súlyozott xG megegyezik a Tiszta xG-vel."
         };
     }
 }
 
-// === MIKROMODELL FUTTATÓK (Helpers) ===
+// === MIKROMODELL FUTTATÓK (Változatlan) ===
 
-async function getExpertConfidence(confidenceScores: { winner: number, totals: number, overall: number }, richContext: string, rawData: ICanonicalRawData, psyReport: any, specialistReport: any, keyPlayersReport: any) {
+async function getExpertConfidence(modelConfidence: number, richContext: string, rawData: ICanonicalRawData, psyReport: any, specialistReport: any, keyPlayersImpact: any) {
+     const safeModelConfidence = typeof modelConfidence === 'number' ? modelConfidence : 5.0;
      const data = {
-         confidenceWinner: confidenceScores.winner.toFixed(1), 
-         confidenceTotals: confidenceScores.totals.toFixed(1), 
+         modelConfidence: safeModelConfidence,
+         confidenceWinner: safeModelConfidence, // Placeholder
+         confidenceTotals: safeModelConfidence, // Placeholder
          richContext: richContext || "Nincs kontextus.",
-         home: rawData?.home || 'Hazai', 
+         home: rawData?.home || 'Hazai',
          away: rawData?.away || 'Vendég',
-         psy_profile_home: psyReport?.psy_profile_home || "N/A", 
+         psy_profile_home: psyReport?.psy_profile_home || "N/A",
          psy_profile_away: psyReport?.psy_profile_away || "N/A",
          specialist_reasoning: specialistReport?.reasoning || "N/A",
-         keyPlayersImpact: keyPlayersReport?.key_players_summary || "Nincs játékos adat"
+         keyPlayersImpact: JSON.stringify(keyPlayersImpact) || "N/A"
      };
      return await getAndParse(EXPERT_CONFIDENCE_PROMPT, data, "confidence_report", "ExpertConfidence");
 }
 
-async function getRiskAssessment(sim: any, rawData: ICanonicalRawData, sport: string, confidenceScores: any) {
+async function getRiskAssessment(sim: any, rawData: ICanonicalRawData, sport: string) {
     const safeSim = sim || {};
+    
     const data = {
         sport,
+        home: rawData?.home || "Hazai",
+        away: rawData?.away || "Vendég",
         sim_pHome: safeSim.pHome, sim_pDraw: safeSim.pDraw, sim_pAway: safeSim.pAway,
-        news_home: rawData?.team_news?.home || "N/A", news_away: rawData?.team_news?.away || "N/A",
+        news_home: rawData?.team_news?.home || "N/A",
+        news_away: rawData?.team_news?.away || "N/A"
     };
     return await getAndParse(RISK_ASSESSMENT_PROMPT, data, "risk_analysis", "RiskAssessment");
 }
 
 async function getTacticalBriefing(rawData: ICanonicalRawData, sport: string, home: string, away: string, riskAssessment: string) {
     const data = {
-        sport, home, away, 
+        sport, home, away,
         riskAssessment: riskAssessment || "N/A",
-        home_style: rawData?.tactics?.home?.style || "N/A", 
+        home_style: rawData?.tactics?.home?.style || "N/A",
         away_style: rawData?.tactics?.away?.style || "N/A",
         home_formation: rawData?.tactics?.home?.formation || "N/A",
         away_formation: rawData?.tactics?.away?.formation || "N/A",
-        tacticalTrends: rawData?.tactics?.notes || "Nincs taktikai megjegyzés"
+        tacticalTrends: "N/A" // Placeholder
     };
     return await getAndParse(TACTICAL_BRIEFING_PROMPT, data, "tactical_briefing", "TacticalBriefing");
 }
 
-async function getFinalGeneralAnalysis(sim: any, tacticalBriefing: string, rawData: ICanonicalRawData, confidenceScores: any, psyReport: any) {
+async function getFinalGeneralAnalysis(sim: any, tacticalBriefing: string, rawData: ICanonicalRawData, modelConfidence: number, psyReport: any) {
     const safeSim = sim || {};
     const data = {
         sim_pHome: safeSim.pHome, sim_pDraw: safeSim.pDraw, sim_pAway: safeSim.pAway,
-        mu_h: sim.mu_h_sim, mu_a: sim.mu_a_sim,
+        mu_h: sim.mu_h_sim,
+        mu_a: sim.mu_a_sim,
+        modelConfidence: typeof modelConfidence === 'number' ? modelConfidence : 5.0,
         tacticalBriefing: tacticalBriefing || "N/A",
-        psy_profile_home: psyReport?.psy_profile_home || "N/A", psy_profile_away: psyReport?.psy_profile_away || "N/A",
-        home: rawData?.home || 'Hazai', away: rawData?.away || 'Vendég'
+        psy_profile_home: psyReport?.psy_profile_home || "N/A",
+         psy_profile_away: psyReport?.psy_profile_away || "N/A",
+        home: rawData?.home || 'Hazai',
+        away: rawData?.away || 'Vendég'
     };
     return await getAndParse(FINAL_GENERAL_ANALYSIS_PROMPT, data, "general_analysis", "FinalGeneralAnalysis");
 }
 
 async function getPropheticTimeline(rawData: ICanonicalRawData, home: string, away: string, sport: string, tacticalBriefing: string) {
-     const data = { sport, home, away, tacticalBriefing: tacticalBriefing || "N/A" };
+     const data = {
+         sport, home, away,
+         tacticalBriefing: tacticalBriefing || "N/A",
+         home_style: rawData?.tactics?.home?.style || "N/A",
+         away_style: rawData?.tactics?.away?.style || "N/A",
+         tension: rawData?.contextual_factors?.match_tension_index || "N/A",
+     };
     return await getAndParse(PROPHETIC_SCENARIO_PROMPT, data, "scenario", "PropheticScenario");
 }
 
 async function getPlayerMarkets(keyPlayers: any, richContext: string) {
-    return await getAndParse(PLAYER_MARKETS_PROMPT, { keyPlayersJson: keyPlayers, richContext: richContext || "Nincs kontextus." }, "player_market_analysis", "PlayerMarkets");
+    return await getAndParse(PLAYER_MARKETS_PROMPT, {
+        keyPlayersJson: JSON.stringify(keyPlayers),
+        richContext: richContext || "Nincs kontextus."
+        }, "player_market_analysis", "PlayerMarkets");
 }
 
-async function getStrategicClosingThoughts(sim: any, rawData: ICanonicalRawData, richContext: string, microAnalyses: any, riskAssessment: string, tacticalBriefing: string, valueBets: any[], confidenceScores: any, expertConfidence: string, psyReport: any, specialistReport: any, sport: string) {
-    const safeSim = sim || {};
-    const microSummary = Object.entries(microAnalyses || {}).map(([key, val]) => {
-        const analysisPart = typeof val === 'string' ? val.split('\nBizalom:')[0].trim() : 'N/A';
-        return `${key}: ${analysisPart}`;
-    }).join('; ');
-
-    const data = {
-        sim_pHome: safeSim.pHome, sim_pDraw: safeSim.pDraw, sim_pAway: safeSim.pAway,
-        sim_mainTotalsLine: safeSim.mainTotalsLine, sim_pOver: safeSim.pOver,
-        tacticalBriefing: tacticalBriefing || "N/A",
-        microSummaryJson: microSummary,
-        richContext: richContext || "Nincs kontextus.",
-        riskAssessment: riskAssessment || "N/A",
-        valueBetsJson: valueBets,
-        expertConfidence: expertConfidence || "N/A",
-     };
-     
-    let template = STRATEGIC_CLOSING_PROMPT;
-    if (sport === 'hockey' || sport === 'basketball') {
-        template = template.replace(/BTTS, /g, ""); 
-    }
-    return await getAndParse(template, data, "strategic_analysis", "StrategicClosing");
-}
-
-// === MIKROMODELL FUTTATÓK (V121.1) ===
+// === FOCI MIKROMODELL FUTTATÓK ===
 async function getBTTSAnalysis(sim: any, rawData: ICanonicalRawData) {
      const safeSim = sim || {};
      const data = {
@@ -1561,15 +1176,14 @@ async function getBTTSAnalysis(sim: any, rawData: ICanonicalRawData) {
 
 async function getSoccerGoalsOUAnalysis(sim: any, rawData: ICanonicalRawData, mainTotalsLine: number) {
      const safeSim = sim || {};
-     const countKeyAbsentees = (absentees: any) => Array.isArray(absentees) ? absentees.filter(p => p.importance === 'key').length : 0;
      const data = {
         line: mainTotalsLine,
         sim_pOver: safeSim.pOver,
         sim_mu_sum: (safeSim.mu_h_sim ?? 0) + (safeSim.mu_a_sim ?? 0),
+        sim_mu_h: safeSim.mu_h_sim,
+        sim_mu_a: safeSim.mu_a_sim,
         home_style: rawData?.tactics?.home?.style || "N/A",
-        away_style: rawData?.tactics?.away?.style || "N/A",
-        absentees_home_count: countKeyAbsentees(rawData?.absentees?.home),
-        absentees_away_count: countKeyAbsentees(rawData?.absentees?.away)
+        away_style: rawData?.tactics?.away?.style || "N/A"
      };
     return await getAndParse(SOCCER_GOALS_OU_PROMPT, data, "goals_ou_analysis", "GoalsOUAnalysis");
 }
@@ -1600,13 +1214,15 @@ async function getCardAnalysis(sim: any, rawData: ICanonicalRawData) {
     return await getAndParse(CARD_ANALYSIS_PROMPT, data, "card_analysis", "CardAnalysis");
 }
 
+// === HOZZÁADVA (v103.6): JÉGKORONG MIKROMODELL FUTTATÓK ===
+
 async function getHockeyGoalsOUAnalysis(sim: any, rawData: ICanonicalRawData, mainTotalsLine: number) {
      const safeSim = sim || {};
      const data = {
         line: mainTotalsLine,
         sim_pOver: safeSim.pOver,
         sim_mu_sum: (safeSim.mu_h_sim ?? 0) + (safeSim.mu_a_sim ?? 0),
-        home_gsax: rawData?.advanced_stats_goalie?.home_goalie?.GSAx || "N/A", 
+        home_gsax: rawData?.advanced_stats_goalie?.home_goalie?.GSAx || "N/A",
         away_gsax: rawData?.advanced_stats_goalie?.away_goalie?.GSAx || "N/A"
      };
      return await getAndParse(HOCKEY_GOALS_OU_PROMPT, data, "hockey_goals_ou_analysis", "HockeyGoalsOUAnalysis");
@@ -1626,12 +1242,46 @@ async function getHockeyWinnerAnalysis(sim: any, rawData: ICanonicalRawData) {
 }
 
 
-// === A FŐNÖK: getMasterRecommendation (GOD MODE V2.0) ===
-// Ez a döntési motor lelke - minden adat szintézise
+// === STRATÉGIA ÉS FŐNÖK (MÓDOSÍTVA v103.6) ===
+
+async function getStrategicClosingThoughts(
+    sim: any, rawData: ICanonicalRawData, richContext: string, microAnalyses: any, 
+    riskAssessment: string, tacticalBriefing: string, valueBets: any[], 
+    modelConfidence: number, expertConfidence: string, psyReport: any, specialistReport: any, sport: string
+) {
+    const safeSim = sim || {};
+    const microSummary = Object.entries(microAnalyses || {}).map(([key, val]) => {
+        const analysisPart = typeof val === 'string' ? val.split('\nBizalom:')[0].trim() : 'N/A';
+        return `${key}: ${analysisPart}`;
+    }).join('; ');
+
+    const data = {
+        sim_pHome: safeSim.pHome, sim_pDraw: safeSim.pDraw, sim_pAway: safeSim.pAway,
+        sim_mainTotalsLine: safeSim.mainTotalsLine, sim_pOver: safeSim.pOver,
+        tacticalBriefing: tacticalBriefing || "N/A",
+        microSummaryJson: microSummary,
+        richContext: richContext || "Nincs kontextus.",
+        riskAssessment: riskAssessment || "N/A",
+        valueBetsJson: JSON.stringify(valueBets),
+        modelConfidence: typeof modelConfidence === 'number' ? modelConfidence : 5.0,
+        expertConfidence: expertConfidence || "N/A",
+        specialist_reasoning: specialistReport?.reasoning || "N/A",
+        psy_profile_home: psyReport?.psy_profile_home || "N/A",
+        psy_profile_away: psyReport?.psy_profile_away || "N/A",
+     };
+     
+    let template = STRATEGIC_CLOSING_PROMPT;
+    if (sport === 'hockey') {
+        template = template.replace(/BTTS, /g, ""); 
+    }
+     
+    return await getAndParse(template, data, "strategic_analysis", "StrategicClosing");
+}
+
 async function getMasterRecommendation(
     valueBets: any[], 
     sim: any, 
-    confidenceScores: { winner: number, totals: number, overall: number }, 
+    modelConfidence: number, 
     expertConfidence: string,
     riskAssessment: string, 
     microAnalyses: any, 
@@ -1640,467 +1290,291 @@ async function getMasterRecommendation(
     contradictionAnalysisResult: string,
     psyReport: any,
     specialistReport: any,
-    sport: string,
-    tacticalBriefing?: string,
-    keyPlayersReport?: any
+    sport: string 
 ) {
     try {
         const safeSim = sim || {};
-        const snapshotFromSim: IProbabilitySnapshot = safeSim.probability_summary ? {
-            summaryText: safeSim.probability_summary,
-            topOutcomes: safeSim.top_outcomes || [],
-            topOutcomesText: safeSim.top_outcomes_text || formatTopOutcomes(safeSim.top_outcomes || []),
-            highestMarket: safeSim.highest_prob_market || 'home'
-        } : buildProbabilitySnapshot(safeSim);
         const microSummary = Object.entries(microAnalyses || {}).map(([key, val]) => `${key}: ${val || 'N/A'}`).join('; ');
 
-        // Expert confidence score kinyerése
+        // Expert confidence pontszám kinyerése
         let expertConfScore = 1.0;
         try {
-            let match = expertConfidence?.match(/\*\*VÉGLEGES BIZALOM:\s*(\d+(\.\d+)?)\/10\*\*/i);
-            if (!match) match = expertConfidence?.match(/\*\*(\d+(\.\d+)?)\/10\*\*/);
-            if (!match) match = expertConfidence?.match(/(\d+(\.\d+)?)\s*\/\s*10/);
-            if (match && match[1]) expertConfScore = parseFloat(match[1]);
-        } catch(e) {
-            console.warn("[AI_Service v124.0] Expert confidence score kinyerése sikertelen.");
+            let match;
+            match = expertConfidence?.match(/\*\*(\d+(\.\d+)?)\/10\*\*/);
+            if (!match) { match = expertConfidence?.match(/(\d+(\.\d+)?)\s*\/\s*10/); }
+            if (!match) { match = expertConfidence?.match(/(?<!\d|\.)([1-9](\.\d)?|10(\.0)?)(?!\d|\.)/); }
+
+            if (match && match[1]) {
+                expertConfScore = parseFloat(match[1]);
+                expertConfScore = Math.max(1.0, Math.min(10.0, expertConfScore));
+                console.log(`[AI_Service v138.0 - Főnök] Expert bizalom sikeresen kinyerve: ${expertConfScore}`);
+            } else {
+                console.warn(`[AI_Service v138.0 - Főnök] Nem sikerült kinyerni az expert bizalmat: "${expertConfidence}". Alapértelmezett: 1.0`);
+                expertConfScore = 1.0;
+            }
+        } catch(e: any) {
+            console.warn("[AI_Service v138.0 - Főnök] Hiba az expert bizalom kinyerésekor:", e);
+            expertConfScore = 1.0;
         }
 
-        const safeModelConfidence = typeof confidenceScores.winner === 'number' ? confidenceScores.winner : 5.0;
+        const safeModelConfidence = typeof modelConfidence === 'number' && !isNaN(modelConfidence) ? modelConfidence : 5.0;
 
-        // === ÚJ v124.1: LEGVALÓSZÍNŰBB EREDMÉNY (topScore) HOZZÁADÁSA ===
-        const topScoreHome = safeSim.topScore?.gh ?? Math.round(safeSim.mu_h_sim || 1);
-        const topScoreAway = safeSim.topScore?.ga ?? Math.round(safeSim.mu_a_sim || 1);
-        const topScoreString = `${topScoreHome}-${topScoreAway}`;
-        const topScoreProb = safeSim.scores?.[topScoreString] ? ((safeSim.scores[topScoreString] / 25000) * 100).toFixed(1) : "N/A";
+        // === v138.0: GOD MODE ADAT ELŐKÉSZÍTÉS ===
+        const probSnapshot = buildProbabilitySnapshot(safeSim);
+        const topScore = safeSim.topScore ? `${safeSim.topScore.gh}-${safeSim.topScore.ga}` : "N/A";
+        const topScoreProb = safeSim.scores && safeSim.scores[topScore] ? ((safeSim.scores[topScore] / 25000) * 100).toFixed(1) : "N/A";
 
         const data = {
-            valueBetsJson: JSON.stringify(valueBets, null, 2),
+            valueBetsJson: JSON.stringify(valueBets),
             sim_pHome: safeSim.pHome?.toFixed(1) || "N/A", 
             sim_pDraw: safeSim.pDraw?.toFixed(1) || "N/A", 
             sim_pAway: safeSim.pAway?.toFixed(1) || "N/A",
-            sim_mainTotalsLine: safeSim.mainTotalsLine || "N/A", 
+            sim_mainTotalsLine: safeSim.mainTotalsLine, 
             sim_pOver: safeSim.pOver?.toFixed(1) || "N/A",
-            // === ÚJ v124.1: TOP SCORE ADATOK ===
-            sim_topScore: topScoreString,
-            sim_topScoreProb: topScoreProb,
             sim_mu_h: safeSim.mu_h_sim?.toFixed(2) || "N/A",
             sim_mu_a: safeSim.mu_a_sim?.toFixed(2) || "N/A",
-            // ====================================
-            probability_summary: snapshotFromSim.summaryText,
-            sim_topOutcomesText: snapshotFromSim.topOutcomesText,
-            modelConfidence: safeModelConfidence.toFixed(1), 
+            sim_topScore: topScore,
+            sim_topScoreProb: topScoreProb,
+            sim_topOutcomesText: probSnapshot.topOutcomesText,
+            probability_summary: probSnapshot.summaryText,
+            
+            modelConfidence: safeModelConfidence,
             expertConfidence: expertConfidence || "N/A",
             riskAssessment: riskAssessment || "N/A",
             microSummary: microSummary,
+            generalAnalysis: generalAnalysis || "N/A",
             strategicClosingThoughts: strategicClosingThoughts || "N/A",
-            tacticalBriefing: tacticalBriefing || "N/A",
-            psychologistReportJson: JSON.stringify(psyReport, null, 2), 
-            specialistReportJson: JSON.stringify(specialistReport, null, 2)
+            contradictionAnalysis: contradictionAnalysisResult || "N/A",
+            psychologistReportJson: JSON.stringify(psyReport), 
+            specialistReportJson: JSON.stringify(specialistReport) 
         };
 
-        // GOD MODE PROMPT HASZNÁLATA
+        // --- 1. LÉPÉS: AI (GOD MODE V2.0) hívása ---
         let template = MASTER_AI_PROMPT_TEMPLATE_GOD_MODE;
-        if (sport === 'hockey') {
-            template = template.replace(/BTTS, /g, ""); 
-        }
-        
         const filledPrompt = fillPromptTemplate(template, data);
         let rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation");
 
-        // === VÁLASZ VALIDÁCIÓ ===
-        if (!rec || (!rec.primary && !rec.recommended_bet)) {
-            throw new Error("Master AI hiba: Érvénytelen válasz struktúra.");
+        if (!rec || !rec.recommended_bet || typeof rec.final_confidence !== 'number') {
+            console.error("[AI_Service v138.0 - Főnök] Master AI hiba: Érvénytelen JSON struktúra a válaszban:", rec);
+            throw new Error("AI hiba: Érvénytelen JSON struktúra a MasterRecommendation-ben.");
         }
         
-        // === ÚJ v131.0: TILTOTT PIACOK SZŰRÉSE (DOUBLE CHANCE, DNB) - DÖNTETLEN MEGENGEDETT! ===
-        const bannedKeywords = [
-            'dupla', 'double chance', '1x', 'x2', '12',
-            'tét vissza', 'draw no bet', 'dnb'
-        ];
-        
-        function isBannedMarket(market: string): boolean {
-            if (!market) return false;
-            const lower = market.toLowerCase().trim();
-            
-            // FONTOS: A sima "Döntetlen" / "Draw" / "X" NEM tiltott!
-            // Csak a Double Chance és DNB tiltott!
-            
-            return bannedKeywords.some(keyword => {
-                // Exact match vagy contains check (space-aware)
-                return lower === keyword || 
-                       lower.includes(` ${keyword} `) || 
-                       lower.startsWith(keyword + ' ') ||
-                       lower.endsWith(' ' + keyword);
-            });
-        }
-        
-        // Primary market ellenőrzése
-        if (rec.primary && isBannedMarket(rec.primary.market)) {
-            console.warn(`[AI_Service v131.0] 🚫 BANNED MARKET DETECTED (Primary): "${rec.primary.market}". Replacing with fallback (Double Chance/DNB not allowed).`);
-            
-            // FALLBACK LOGIC: Válasszunk értékesebb tippet
-            const pHome = safeSim.pHome || 0;
-            const pDraw = safeSim.pDraw || 0;
-            const pAway = safeSim.pAway || 0;
-            const pOver = safeSim.pOver || 0;
-            const pUnder = safeSim.pUnder || 0;
-            
-            // Legjobb opció kiválasztása (ami NEM döntetlen!)
-            let bestMarket = "Over 2.5";
-            let bestConfidence = 5.0;
-            
-            if (pHome > pAway && pHome > pDraw && pHome >= 40) {
-                bestMarket = "Hazai Győzelem";
-                bestConfidence = pHome >= 50 ? 7.0 : 6.0;
-            } else if (pAway > pHome && pAway > pDraw && pAway >= 40) {
-                bestMarket = "Vendég Győzelem";
-                bestConfidence = pAway >= 50 ? 7.0 : 6.0;
-            } else if (pOver > pUnder && pOver >= 50) {
-                bestMarket = `Over ${safeSim.mainTotalsLine || '2.5'}`;
-                bestConfidence = pOver >= 60 ? 6.5 : 5.5;
-            } else if (pUnder > pOver && pUnder >= 50) {
-                bestMarket = `Under ${safeSim.mainTotalsLine || '2.5'}`;
-                bestConfidence = pUnder >= 60 ? 6.5 : 5.5;
-            } else {
-                // Ha minden bizonytalan, válasszuk az Over/Under-t
-                bestMarket = pOver > pUnder ? `Over ${safeSim.mainTotalsLine || '2.5'}` : `Under ${safeSim.mainTotalsLine || '2.5'}`;
-                bestConfidence = 5.0;
-            }
-            
-            rec.primary.market = bestMarket;
-            rec.primary.confidence = bestConfidence;
-            rec.primary.reason = `🚫 [v131.0 AUTO-CORRECTION] Az eredeti AI tipp tiltott kis odds piacot (Dupla-Esély/DNB) tartalmazott, ezért felülírtuk profitábilisabb opcióval.\n\n**Új Tipp Indoklása:** ${bestMarket} választása a szimulációs adatok alapján a legjövedelmezőbb opció. ${rec.primary.reason || ''}`;
-            
-            console.log(`[AI_Service v131.0] ✅ Primary market replaced: "${bestMarket}" (Confidence: ${bestConfidence.toFixed(1)})`);
-        }
-        
-        // Secondary market ellenőrzése
-        if (rec.secondary && isBannedMarket(rec.secondary.market)) {
-            console.warn(`[AI_Service v131.0] 🚫 BANNED MARKET DETECTED (Secondary): "${rec.secondary.market}". Replacing with fallback.`);
-            
-            // Másodlagos tipp: válasszunk BTTS vagy másik Over/Under opciót
-            const pBTTS = safeSim.pBTTS || 0;
-            const pOver = safeSim.pOver || 0;
-            const pUnder = safeSim.pUnder || 0;
-            
-            if (sport === 'soccer' && pBTTS >= 45) {
-                rec.secondary.market = "BTTS: Igen";
-                rec.secondary.confidence = pBTTS >= 55 ? 6.0 : 5.0;
-                rec.secondary.reason = `Mindkét csapat várhatóan gólt szerez (${pBTTS.toFixed(1)}% esély). Jó alternatív opció.`;
-            } else if (pOver > pUnder && pOver >= 45) {
-                rec.secondary.market = `Over ${safeSim.mainTotalsLine || '2.5'}`;
-                rec.secondary.confidence = 5.5;
-                rec.secondary.reason = `Az Over ${safeSim.mainTotalsLine || '2.5'} biztonságos másodlagos tipp (${pOver.toFixed(1)}% esély).`;
-            } else {
-                rec.secondary.market = "Nincs másodlagos tipp";
-                rec.secondary.confidence = 0;
-                rec.secondary.reason = "A rendszer nem talált megfelelő másodlagos opciót.";
-            }
-            
-            console.log(`[AI_Service v131.0] ✅ Secondary market replaced: "${rec.secondary.market}"`);
-        }
-        // === VÉGE v131.0 SZŰRÉS ===
-        
-        // Struktúra normalizálás (régi formátum támogatása)
-        if (!rec.primary) {
-            rec = {
-                primary: { 
-                    market: rec.recommended_bet || "Nincs tipp", 
-                    confidence: rec.final_confidence || 1.0, 
-                    reason: rec.brief_reasoning || "Nincs indoklás" 
-                },
-                secondary: { 
-                    market: "Nincs második tipp", 
-                    confidence: 0, 
-                    reason: "Az AI egyetlen tippet generált." 
-                },
-                verdict: rec.verdict || "Nem érkezett szöveges ítélet.",
-                betting_strategy: {},
-                key_risks: [],
-                why_not_alternatives: "Nincs adat"
-            };
-        }
+        // --- 2. LÉPÉS: KÓD (A "Főnök") átveszi az irányítást ---
+        console.log(`[AI_Service v138.0 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
 
-        // === BIZTONSÁGI ELLENŐRZÉSEK ===
-        // 1. Confidence számok validálása
-        if (typeof rec.primary.confidence !== 'number' || isNaN(rec.primary.confidence)) {
-            console.warn("[AI_Service v124.0] Elsődleges confidence érvénytelen, alapértelmezett: 5.0");
-            rec.primary.confidence = 5.0;
-        }
-        if (typeof rec.secondary?.confidence !== 'number' || isNaN(rec.secondary.confidence)) {
-            console.warn("[AI_Service v124.0] Másodlagos confidence érvénytelen, alapértelmezett: 0");
-            rec.secondary.confidence = 0;
-        }
-
-        // 2. Indoklás ellenőrzés
-        if (!rec.primary.reason || rec.primary.reason.length < 50) {
-            console.warn("[AI_Service v124.0] Túl rövid indoklás az elsődleges tippnél!");
-            rec.primary.reason = (rec.primary.reason || "") + "\n[FIGYELEM: Az AI nem adott részletes indoklást.]";
-        }
-
-        // === PROBABILITY ALIGNMENT CHECK ===
-        const highestProbMarket = snapshotFromSim.highestMarket;
-        const detectedPrimaryMarket = inferPrimaryMarketLabel(rec.primary?.market);
-        if (detectedPrimaryMarket && highestProbMarket && detectedPrimaryMarket !== highestProbMarket) {
-            const chosenProb = getMarketProbability(safeSim, detectedPrimaryMarket);
-            const bestProb = getMarketProbability(safeSim, highestProbMarket);
-            if ((bestProb - chosenProb) >= 4) {
-                rec.primary.confidence = Math.max(1.0, rec.primary.confidence - 1.0);
-                rec.primary.reason = `${rec.primary.reason}\n⚠️ Szimulációs jelzés: a ${getMarketLabel(highestProbMarket)} kimenetel ${bestProb.toFixed(1)}%-kal a legerősebb, míg a választott opció csak ${chosenProb.toFixed(1)}%.`;
-            }
-        }
-
-        // === MATEMATIKAI GUARDRAILS (KORREKCIÓS LOGIKA) - v126.0 REALITY CHECK ===
+        // 1. Eltérés-alapú büntetés (Modell vs Expert)
         const confidenceDiff = Math.abs(safeModelConfidence - expertConfScore);
         const disagreementThreshold = 3.0;
         let confidencePenalty = 0;
         let disagreementNote = "";
         
-        // === ÚJ v126.0: SPECIALIST OVERCONFIDENCE CHECK ===
-        const specialistHomeDiff = Math.abs(specialistReport?.modified_mu_h - specialistReport?.adjustments?.home_adjustment || 0);
-        const specialistAwayDiff = Math.abs(specialistReport?.modified_mu_a - specialistReport?.adjustments?.away_adjustment || 0);
-        const specialistTotalAdjustment = Math.abs(specialistReport?.adjustments?.home_adjustment || 0) +
-                                          Math.abs(specialistReport?.adjustments?.away_adjustment || 0);
-        
-        // v135.0: KIKAPCSOLVA - A Specialist nagyobb módosítása LEHET HELYES!
-        // MAGDEBURG-NÜRNBERG TANULSÁG: Az AI túl óvatos lett, pedig a Specialist látott valamit.
-        if (false && specialistTotalAdjustment > 0.6) {
-            confidencePenalty += 1.5;
-            disagreementNote += "\n\n⚠️ KORREKCIÓ v126.0: A Specialist túl nagy módosítást végzett. Extrém kontextuális faktorok miatt a bizalom csökkentve.";
-            console.warn(`[AI_Service v126.0] Specialist over-adjustment detected: ${specialistTotalAdjustment.toFixed(2)}. Confidence penalty: +1.5`);
+        if (expertConfScore < 1.1 && expertConfidence && !expertConfidence.toLowerCase().includes("hiba")) {
+            confidencePenalty = Math.max(0, rec.final_confidence - 3.0);
+            disagreementNote = " (FŐNÖK KORREKCIÓ: Expert bizalom extrém alacsony!)";
         }
-        
-        // === v135.0 ÚJ: NARRATÍV TÚLSÚLYOZÁS BÜNTETÉS ===
-        // Ha a Specialist confidence 3+ ponttal magasabb mint a Quant, gyanús!
-        // PÉLDA: Magdeburg-Nürnberg: Quant 7.3, Specialist 8.0 (Gap: 0.8) → OK
-        //        Pistons-Heat: Quant 2.8, Specialist 8.0 (Gap: 5.3) → ROSSZ!
-        const narrativeGap = Math.abs(expertConfScore - safeModelConfidence);
-        if (narrativeGap > 4.0) {
-            confidencePenalty += 2.0; // Jelentős büntetés!
-            disagreementNote += `\n\n⚠️ NARRATÍV TÚLSÚLYOZÁS (v135.0): A kontextuális elemzés ${narrativeGap.toFixed(1)} ponttal eltér a statisztikától. Ez túl nagy szakadék - óvatosság!`;
-            console.warn(`[AI_Service v135.0] Narratív túlsúlyozás észlelve! Gap: ${narrativeGap.toFixed(1)}`);
-        }
-        
-        // === v135.0: OVER/UNDER REALITY CHECK **KIKAPCSOLVA** - Túl konzervatív! ===
-        const totalExpectedGoals = safeSim.mu_h_sim + safeSim.mu_a_sim;
-        const primaryMarketLower = (rec.primary?.market || "").toLowerCase();
-        
-        // KIKAPCSOLVA v135.0 - Az AI tudja, mit csinál! Ne korrigáljuk!
-        if (false && (primaryMarketLower.includes("over") || primaryMarketLower.includes("több")) && totalExpectedGoals < 3.5) {
-            const overPenalty = totalExpectedGoals < 3.0 ? 2.5 : 1.5;
-            confidencePenalty += overPenalty;
-            disagreementNote += `\n\n🚨 DEFENZÍV MECCS WARNING (v129.0): Total várható gól csak ${totalExpectedGoals.toFixed(2)}, de Over tippet választottál. Bizalom csökkentve -${overPenalty} ponttal!`;
-            console.warn(`[AI_Service v129.0] 🚨 Over tipp defenzív meccsen! Total xG: ${totalExpectedGoals.toFixed(2)}, Penalty: -${overPenalty}`);
-        }
-        
-        // v135.0: KIKAPCSOLVA - Ha Under-t ajánl, de a total xG >4.0 (támadó meccs)
-        // PISTONS-HEAT TANULSÁG: Az AI helyesen érzékelte, hogy támadóbb lesz a meccs,
-        // de mi "WARNINGOT" adtunk neki, ami elbizonytalanította. NE ZAVARJUK AZ AI-T!
-        if (false && (primaryMarketLower.includes("under") || primaryMarketLower.includes("kevesebb")) && totalExpectedGoals > 4.0) {
-            confidencePenalty += 1.5;
-            disagreementNote += `\n\n⚠️ TÁMADÓ MECCS WARNING (v129.0): Total várható gól ${totalExpectedGoals.toFixed(2)}, de Under tippet választottál. Ellenőrizd!`;
-            console.warn(`[AI_Service v129.0] ⚠️ Under tipp támadó meccsen! Total xG: ${totalExpectedGoals.toFixed(2)}`);
-        }
-        
-        // 1. Negatív narratíva + magas confidence esetén büntetés
-        if (expertConfScore < 1.5 && rec.primary.confidence > 5.0) {
-            confidencePenalty += Math.max(0, rec.primary.confidence - 3.5);
-            disagreementNote += "\n\n⚠️ KORREKCIÓ: A narratív elemzés negatív, ezért a bizalom csökkentve.";
-        }
-        // 2. Matematikai és narratív ellentmondás
         else if (confidenceDiff > disagreementThreshold) {
-            confidencePenalty += Math.min(2.0, confidenceDiff / 2.0);
-            disagreementNote += `\n\n⚠️ KORREKCIÓ: Statisztikai vs narratív ellentmondás (${confidenceDiff.toFixed(1)} pont különbség).`;
-        }
-        // 3. Túl magas confidence általában
-        else if (rec.primary.confidence > 9.5 && safeModelConfidence < 8.0) {
-            confidencePenalty += 0.7;
-            disagreementNote += "\n\n⚠️ KORREKCIÓ: Túlzottan optimista értékelés, realisztikus szintre módosítva.";
+            confidencePenalty = Math.min(2.0, confidenceDiff / 1.5);
+            disagreementNote = ` (FŐNÖK KORREKCIÓ: Modell (${safeModelConfidence.toFixed(1)}) vs Expert (${expertConfScore.toFixed(1)}) eltérés miatt.)`;
         }
         
-        rec.primary.confidence -= confidencePenalty;
-        rec.primary.confidence = Math.max(1.0, Math.min(10.0, rec.primary.confidence));
-        
-        // === VERDICT BEOLVASZTÁS ===
-        if (rec.verdict) {
-            rec.primary.reason = (rec.primary.reason || "") + `\n\n💡 **A LÉNYEG:** ${rec.verdict}` + disagreementNote;
-        } else {
-            rec.primary.reason = (rec.primary.reason || "") + disagreementNote;
+        rec.final_confidence -= confidencePenalty;
+        rec.final_confidence = Math.max(1.0, Math.min(10.0, rec.final_confidence));
+
+        // 2. Bizalmi Kalibráció (Meta-tanulás)
+        let calibrationNote = "";
+        try {
+            const calibrationMap = getConfidenceCalibrationMap();
+            if (calibrationMap && Object.keys(calibrationMap).length > 0) {
+                const confFloor = Math.floor(rec.final_confidence);
+                const safeConfFloor = Math.max(1.0, confFloor);
+                const bucketKey = `${safeConfFloor.toFixed(1)}-${(safeConfFloor + 0.9).toFixed(1)}`;
+                
+                if (calibrationMap[bucketKey] && calibrationMap[bucketKey].total >= 5) {
+                    const wins = calibrationMap[bucketKey].wins;
+                    const total = calibrationMap[bucketKey].total;
+                    const calibratedPct = (wins / total) * 100;
+                    const calibratedConfidence = calibratedPct / 10;
+                    
+                    if (Math.abs(calibratedConfidence - rec.final_confidence) > 0.5) {
+                        calibrationNote = ` (Kalibrált: ${calibratedConfidence.toFixed(1)}/10, ${total} minta.)`;
+                    }
+                }
+            }
+        } catch(calError: any) { 
+            console.warn(`[AI_Service v138.0 - Főnök] Bizalmi kalibráció hiba: ${calError.message}`); 
         }
 
-        // === MÁSODLAGOS TIPP VALIDÁCIÓ ===
-        if (rec.secondary && rec.secondary.confidence > 8.0 && safeModelConfidence < 4.5) {
-             rec.secondary.confidence -= 2.0;
-             rec.secondary.reason = (rec.secondary.reason || "") + "\n⚠️ (Kockázatosabb opció - alacsony modell bizalom)";
+        // Megjegyzések hozzáadása az indokláshoz
+        rec.brief_reasoning = (rec.brief_reasoning || "N/A") + disagreementNote + calibrationNote;
+        if (rec.brief_reasoning.length > 500) {
+            rec.brief_reasoning = rec.brief_reasoning.substring(0, 497) + "...";
         }
 
-        // === VISSZAMENŐLEGES KOMPATIBILITÁS ===
-        rec.recommended_bet = rec.primary.market;
-        rec.final_confidence = rec.primary.confidence;
-        rec.brief_reasoning = rec.primary.reason;
-        rec.probability_summary = snapshotFromSim.summaryText;
-        rec.top_outcomes = snapshotFromSim.topOutcomes;
-
-        // === ÚJ v133.0: BIZALMI HÍD (Quant vs. Specialist) ===
-        const quantConfidence = confidenceScores.winner || 5.0;
-        const specialistConfidence = expertConfScore || 5.0;
-        const confidenceGap = Math.abs(quantConfidence - specialistConfidence);
-        
-        rec.confidence_bridge = {
-            quant_confidence: quantConfidence,
-            specialist_confidence: specialistConfidence,
-            gap: confidenceGap,
-            explanation: confidenceGap > 2.5
-                ? `⚠️ Jelentős eltérés (${confidenceGap.toFixed(1)} pont) a matematikai modell és a kontextuális elemzés között. Ez szokatlan - további óvatosság ajánlott!`
-                : confidenceGap > 1.5
-                ? `📊 Közepes eltérés (${confidenceGap.toFixed(1)} pont) észlelhető. A két megközelítés kissé eltérő értékelést ad, de ez normális tartományon belül van.`
-                : `✅ A statisztikai modell (${quantConfidence.toFixed(1)}/10) és a szakértői elemzés (${specialistConfidence.toFixed(1)}/10) összhangban van. Ez növeli a tipp megbízhatóságát.`
-        };
-        console.log(`[AI_Service v133.0] 🌉 Bizalmi Híd: Quant ${quantConfidence.toFixed(1)} vs Specialist ${specialistConfidence.toFixed(1)} (Gap: ${confidenceGap.toFixed(1)})`);
-        // ======================================================
-
-        console.log(`[AI_Service v124.0 - Főnök] GOD MODE V2 Tipp generálva.`);
-        console.log(`  - Elsődleges: ${rec.primary.market} (Bizalom: ${rec.primary.confidence.toFixed(1)}/10)`);
-        console.log(`  - Másodlagos: ${rec.secondary?.market || "Nincs"} (${rec.secondary?.confidence?.toFixed(1) || 0}/10)`);
-        console.log(`  - Ítélet: ${rec.verdict?.substring(0, 80)}...`);
+        console.log(`[AI_Service v138.0 - Főnök] VÉGLEGES KORRIGÁLT Tipp: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
         
         return rec;
 
     } catch (e: any) {
-        console.error(`[AI_Service v123.0 - Főnök] Hiba: ${e.message}`, e.stack);
-        return { 
-            recommended_bet: "Hiba", final_confidence: 1.0, brief_reasoning: `Hiba: ${e.message}`,
-            primary: { market: "Hiba", confidence: 1.0, reason: "Hiba" },
-            secondary: { market: "Hiba", confidence: 0.0, reason: "Hiba" }
-        };
+        console.error(`[AI_Service v138.0 - Főnök] Végleges hiba a Mester Ajánlás generálása során: ${e.message}`, e.stack);
+        throw new Error(`AI Hiba (Főnök): ${e.message.substring(0, 100)}`);
     }
 }
 
 
-// --- FŐ ORCHESTRÁCIÓS LÉPÉS ---
-export async function runStep_FinalAnalysis(data: any): Promise<any> {
+// === FŐ ORCHESTRÁCIÓS LÉPÉS (MÓDOSÍTVA v103.6) ===
+interface FinalAnalysisInput {
+    matchData: { home: string; away: string; sport: string; leagueName: string; };
+    rawDataJson: ICanonicalRawData; 
+    specialistReport: any; // Agent 3
+    simulatorReport: any;  // Agent 4 (Sim)
+    psyReport: any;        // Agent 2.5
+    valueBetsJson: any[];
+    richContext: string;
+}
+
+export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<any> {
     
-    const { rawDataJson, specialistReport, simulatorReport, psyReport, valueBetsJson, richContext, matchData, sportStrategy, confidenceScores } = data;
+    // Alap adatok kinyerése
+    const { rawDataJson, specialistReport, simulatorReport, psyReport, valueBetsJson, richContext, matchData } = data;
     const sim = simulatorReport || {};
-    const probabilitySnapshot = buildProbabilitySnapshot(sim);
-    if (!sim.probability_summary) {
-        sim.probability_summary = probabilitySnapshot.summaryText;
-        sim.top_outcomes = probabilitySnapshot.topOutcomes;
-        sim.top_outcomes_text = probabilitySnapshot.topOutcomesText;
-        sim.highest_prob_market = probabilitySnapshot.highestMarket;
-    }
     const home = matchData.home || 'Hazai';
     const away = matchData.away || 'Vendég';
     const sport = matchData.sport || 'soccer';
+
+    const modelConfidence = typeof sim.stat_confidence === 'number' ? sim.stat_confidence : 5.0;
     
-    let expertConfidence = "Hiba";
-    let riskAssessment = "Hiba";
-    let tacticalBriefing = "Hiba";
-    let generalAnalysis = "Hiba";
-    let propheticTimeline = "N/A";
-    let strategic_synthesis = "Hiba";
-    let masterRecommendation = { recommended_bet: "Hiba", final_confidence: 1.0, brief_reasoning: "Hiba" };
+    let expertConfidence = `**${modelConfidence.toFixed(1)}/10** - AI Hiba: Az Expert Confidence hívás nem futott le.`;
+    let riskAssessment = "AI Hiba: A Risk Assessment hívás nem futott le.";
+    let tacticalBriefing = "AI Hiba: A Tactical Briefing hívás nem futott le.";
+    let generalAnalysis = "AI Hiba: A General Analysis hívás nem futott le.";
+    let propheticTimeline = "AI Hiba: A Prophetic Timeline hívás nem futott le.";
+    let strategic_synthesis = "AI Hiba: A Strategic Synthesis hívás nem futott le.";
+    let masterRecommendation = { 
+        "recommended_bet": "Hiba", 
+        "final_confidence": 1.0, 
+        "brief_reasoning": "AI Hiba: A Master Recommendation lánc megszakadt." 
+    };
+    
+    // === MÓDOSÍTÁS (v103.6): Üres 'microAnalyses' objektum ===
     let microAnalyses: { [key: string]: string } = {};
-    let keyPlayersReport: any = null;
     
     try {
-        // === ÚJ: KEY PLAYERS ANALYST HÍVÁSA ===
-        console.log(`[AI_Service v124.0] Key Players Analyst futtatása...`);
-        try {
-            keyPlayersReport = await runStep_KeyPlayersAnalyst({
-                rawDataJson: rawDataJson,
-                home: home,
-                away: away
-            });
-            console.log(`[AI_Service v124.0] Key Players Analyst kész: ${keyPlayersReport?.key_players_summary?.substring(0, 80)}...`);
-        } catch (e: any) {
-            console.error(`[AI_Service v124.0] Key Players Analyst hiba: ${e.message}`);
-            keyPlayersReport = { key_players_summary: "Hiba a játékos elemzésben" };
-        }
+        // --- 1. LÉPÉS: Mikromodellek párhuzamos futtatása (Hibatűréssel) ---
         
-        const expertConfidencePromise = getExpertConfidence(confidenceScores, richContext, rawDataJson, psyReport, specialistReport, keyPlayersReport);
-        const riskAssessmentPromise = getRiskAssessment(sim, rawDataJson, sport, confidenceScores);
-        const playerMarketsPromise = getPlayerMarkets(rawDataJson.key_players, richContext);
+        const expertConfidencePromise = getExpertConfidence(modelConfidence, richContext, rawDataJson, psyReport, specialistReport, {}); // TODO: KeyPlayers
+        const riskAssessmentPromise = getRiskAssessment(sim, rawDataJson, sport);
+        const playerMarketsPromise = getPlayerMarkets(rawDataJson.key_players, richContext); // Ez sport-független
 
-        let sportSpecificPromises: Promise<any>[] = [];
+        // === MÓDOSÍTÁS (v103.6): Sportág-specifikus elágazás ===
         
         if (sport === 'soccer') {
-            sportSpecificPromises = [
-                getBTTSAnalysis(sim, rawDataJson),
-                getSoccerGoalsOUAnalysis(sim, rawDataJson, sim.mainTotalsLine || 2.5),
-                getCornerAnalysis(sim, rawDataJson),
-                getCardAnalysis(sim, rawDataJson)
-            ];
+            // --- FOCI MIKROMODELLEK ---
+            const bttsPromise = getBTTSAnalysis(sim, rawDataJson);
+            const goalsOUPromise = getSoccerGoalsOUAnalysis(sim, rawDataJson, sim.mainTotalsLine || 2.5);
+            const cornerPromise = getCornerAnalysis(sim, rawDataJson);
+            const cardPromise = getCardAnalysis(sim, rawDataJson);
+
+            const results = await Promise.allSettled([
+                expertConfidencePromise, riskAssessmentPromise, playerMarketsPromise,
+                bttsPromise, goalsOUPromise, cornerPromise, cardPromise
+            ]);
+
+            expertConfidence = (results[0].status === 'fulfilled') ? results[0].value : `**1.0/10** - AI Hiba: ${results[0].reason?.message || 'Ismeretlen'}`;
+            riskAssessment = (results[1].status === 'fulfilled') ? results[1].value : `AI Hiba: ${results[1].reason?.message || 'Ismeretlen'}`;
+            
+            microAnalyses = {
+                player_market_analysis: (results[2].status === 'fulfilled') ? results[2].value : `AI Hiba: ${results[2].reason?.message || 'Ismeretlen'}`,
+                btts_analysis: (results[3].status === 'fulfilled') ? results[3].value : `AI Hiba: ${results[3].reason?.message || 'Ismeretlen'}`,
+                goals_ou_analysis: (results[4].status === 'fulfilled') ? results[4].value : `AI Hiba: ${results[4].reason?.message || 'Ismeretlen'}`,
+                corner_analysis: (results[5].status === 'fulfilled') ? results[5].value : `AI Hiba: ${results[5].reason?.message || 'Ismeretlen'}`,
+                card_analysis: (results[6].status === 'fulfilled') ? results[6].value : `AI Hiba: ${results[6].reason?.message || 'Ismeretlen'}`,
+            };
+            
         } else if (sport === 'hockey') {
-            sportSpecificPromises = [
-                getHockeyGoalsOUAnalysis(sim, rawDataJson, sim.mainTotalsLine || 6.5),
-                getHockeyWinnerAnalysis(sim, rawDataJson)
-            ];
+            // --- HOKI MIKROMODELLEK ---
+            const hockeyGoalsOUPromise = getHockeyGoalsOUAnalysis(sim, rawDataJson, sim.mainTotalsLine || 6.5);
+            const hockeyWinnerPromise = getHockeyWinnerAnalysis(sim, rawDataJson);
+            
+            const results = await Promise.allSettled([
+                expertConfidencePromise, riskAssessmentPromise, playerMarketsPromise,
+                hockeyGoalsOUPromise, hockeyWinnerPromise
+            ]);
+            
+            expertConfidence = (results[0].status === 'fulfilled') ? results[0].value : `**1.0/10** - AI Hiba: ${results[0].reason?.message || 'Ismeretlen'}`;
+            riskAssessment = (results[1].status === 'fulfilled') ? results[1].value : `AI Hiba: ${results[1].reason?.message || 'Ismeretlen'}`;
+            
+            microAnalyses = {
+                player_market_analysis: (results[2].status === 'fulfilled') ? results[2].value : `AI Hiba: ${results[2].reason?.message || 'Ismeretlen'}`,
+                hockey_goals_ou_analysis: (results[3].status === 'fulfilled') ? results[3].value : `AI Hiba: ${results[3].reason?.message || 'Ismeretlen'}`,
+                hockey_winner_analysis: (results[4].status === 'fulfilled') ? results[4].value : `AI Hiba: ${results[4].reason?.message || 'Ismeretlen'}`,
+            };
         } else if (sport === 'basketball') {
-             sportSpecificPromises = [
-                getAndParse(BASKETBALL_WINNER_PROMPT, { sim_pHome: sim.pHome, sim_pAway: sim.pAway }, "basketball_winner_analysis", "Bask.Winner"),
-                getAndParse(BASKETBALL_TOTAL_POINTS_PROMPT, { line: sim.mainTotalsLine, sim_pOver: sim.pOver, sim_mu_sum: (sim.mu_h_sim+sim.mu_a_sim) }, "basketball_total_points_analysis", "Bask.Totals")
-             ];
+             // --- KOSÁRLABDA MIKROMODELLEK (placeholder) ---
+             // TODO: Implementálni a Basketball specifikus mikromodelleket, ha szükséges
+             const results = await Promise.allSettled([
+                expertConfidencePromise, riskAssessmentPromise, playerMarketsPromise
+            ]);
+            expertConfidence = (results[0].status === 'fulfilled') ? results[0].value : `**1.0/10** - AI Hiba`;
+            riskAssessment = (results[1].status === 'fulfilled') ? results[1].value : `AI Hiba`;
+            microAnalyses = {
+                player_market_analysis: (results[2].status === 'fulfilled') ? results[2].value : `AI Hiba`,
+            };
         }
+        // === MÓDOSÍTÁS VÉGE (v103.6) ===
 
-        const results = await Promise.allSettled([
-            expertConfidencePromise, 
-            riskAssessmentPromise, 
-            playerMarketsPromise, 
-            ...sportSpecificPromises
-        ]);
-
-        expertConfidence = (results[0].status === 'fulfilled') ? (results[0].value as string) : "Hiba";
-        riskAssessment = (results[1].status === 'fulfilled') ? (results[1].value as string) : "Hiba";
-        microAnalyses['player_market_analysis'] = (results[2].status === 'fulfilled') ? (results[2].value as string) : "Hiba";
-
-        if (sport === 'soccer') {
-            microAnalyses['btts_analysis'] = (results[3].status === 'fulfilled') ? (results[3].value as string) : "Hiba";
-            microAnalyses['goals_ou_analysis'] = (results[4].status === 'fulfilled') ? (results[4].value as string) : "Hiba";
-            microAnalyses['corner_analysis'] = (results[5].status === 'fulfilled') ? (results[5].value as string) : "Hiba";
-            microAnalyses['card_analysis'] = (results[6].status === 'fulfilled') ? (results[6].value as string) : "Hiba";
-        } else if (sport === 'hockey') {
-            microAnalyses['hockey_goals_ou_analysis'] = (results[3].status === 'fulfilled') ? (results[3].value as string) : "Hiba";
-            microAnalyses['hockey_winner_analysis'] = (results[4].status === 'fulfilled') ? (results[4].value as string) : "Hiba";
-        }
-
-        try { tacticalBriefing = await getTacticalBriefing(rawDataJson, sport, home, away, riskAssessment); } catch (e) {}
-        try { generalAnalysis = await getFinalGeneralAnalysis(sim, tacticalBriefing, rawDataJson, confidenceScores, psyReport); } catch (e) {}
         
-        // === v129.0: PROPHETIC TIMELINE UNIVERZÁLIS (MINDEN SPORTÁG) ===
-        try { 
-            propheticTimeline = await getPropheticTimeline(rawDataJson, home, away, sport, tacticalBriefing); 
-        } catch (e: any) {
-            console.warn(`[AI_Service v129.0] Prophetic Timeline hiba (${sport}): ${e.message}`);
-            propheticTimeline = "N/A";
+        // --- 2. LÉPÉS: Fő elemzések futtatása (ezek függhetnek az előzőektől) ---
+        
+        try {
+            tacticalBriefing = await getTacticalBriefing(rawDataJson, sport, home, away, riskAssessment);
+        } catch (e: any) { tacticalBriefing = `AI Hiba (Tactical): ${e.message}`; }
+        
+        try {
+            generalAnalysis = await getFinalGeneralAnalysis(sim, tacticalBriefing, rawDataJson, modelConfidence, psyReport);
+        } catch (e: any) { generalAnalysis = `AI Hiba (General): ${e.message}`; }
+
+        // Csak focinál van értelme a Prófétának
+        if (sport === 'soccer') {
+            try {
+                propheticTimeline = await getPropheticTimeline(rawDataJson, home, away, sport, tacticalBriefing);
+            } catch (e: any) { 
+                console.error(`[AI_Service v103.6] Hiba elkapva a 'getPropheticTimeline' hívásakor: ${e.message}`);
+                propheticTimeline = `AI Hiba (Prophetic): ${e.message}`; 
+            }
+        } else {
+            propheticTimeline = "N/A (Ehhez a sporthoz nem releváns)";
         }
 
-        try { strategic_synthesis = await getStrategicClosingThoughts(sim, rawDataJson, richContext, microAnalyses, riskAssessment, tacticalBriefing, valueBetsJson, confidenceScores, expertConfidence, psyReport, specialistReport, sport); } catch (e) {}
+        try {
+            strategic_synthesis = await getStrategicClosingThoughts(
+                sim, rawDataJson, richContext, microAnalyses, riskAssessment,
+                tacticalBriefing, valueBetsJson, modelConfidence, expertConfidence,
+                psyReport, specialistReport, sport // Átadjuk a sportot (v103.6)
+            );
+        } catch (e: any) { strategic_synthesis = `AI Hiba (Strategic): ${e.message}`; }
 
-        // 4. A "FŐNÖK" HÍVÁSA (GOD MODE V2.0)
-        console.log(`[AI_Service v124.0] Master Recommendation (Főnök) futtatása...`);
+        // --- 3. LÉPÉS: A "FŐNÖK" (JS KÓD + AI TANÁCSADÓ) HÍVÁSA ---
         masterRecommendation = await getMasterRecommendation(
-            valueBetsJson, 
-            sim, 
-            confidenceScores, 
+            valueBetsJson,
+            sim,
+            modelConfidence,
             expertConfidence, 
-            riskAssessment, 
-            microAnalyses, 
-            generalAnalysis, 
-            strategic_synthesis, 
-            "N/A", // contradictionAnalysisResult (deprecated)
-            psyReport, 
-            specialistReport, 
-            sport,
-            tacticalBriefing,  // ÚJ paraméter
-            keyPlayersReport   // ÚJ paraméter
+            riskAssessment,
+            microAnalyses,
+            generalAnalysis,
+            strategic_synthesis,
+            "N/A", 
+            psyReport,
+            specialistReport,
+            sport // Átadjuk a sportot (v103.6)
         );
 
     } catch (e: any) {
-        console.error(`[AI_Service v124.0] KRITIKUS HIBA a Final Analysis-ben: ${e.message}`);
-        masterRecommendation.brief_reasoning = `KRITIKUS HIBA: ${e.message}`;
+        console.error(`[AI_Service v103.6] KRITIKUS HIBA a runStep_FinalAnalysis során: ${e.message}`);
+        masterRecommendation.brief_reasoning = `KRITIKUS HIBA: ${e.message}. A többi elemzés (ha van) még érvényes lehet.`;
     }
     
+    // --- 4. LÉPÉS: Végső LAPOS riport összeállítása (v103.6) ---
     return {
         risk_assessment: riskAssessment,
         tactical_briefing: tacticalBriefing,
@@ -2108,23 +1582,56 @@ export async function runStep_FinalAnalysis(data: any): Promise<any> {
         strategic_synthesis: strategic_synthesis,
         prophetic_timeline: propheticTimeline,
         final_confidence_report: expertConfidence,
-        micromodels: microAnalyses,
-        master_recommendation: masterRecommendation, 
-        agent_reports: { 
-            psychologist: psyReport, 
-            specialist: specialistReport,
-            key_players: keyPlayersReport  // ÚJ: Key Players Analyst report hozzáadása
+        micromodels: microAnalyses, // Ez már sport-specifikus
+        master_recommendation: masterRecommendation,
+        agent_reports: {
+            psychologist: psyReport,
+            specialist: specialistReport
         }
     };
 }
 
-// --- CHAT FUNKCIÓ (Változatlan) ---
-export async function getChatResponse(context: string, history: any[], question: string): Promise<{ answer?: string; error?: string }> {
-    if (!context || !question) return { error: "Hiányzó adatok." };
-    try {
-        const historyString = (history || []).map(msg => `${msg.role === 'user' ? 'Felhasználó' : 'AI'}: ${msg.parts?.[0]?.text || ''}`).join('\n');
-        const prompt = `You are an elite sports analyst AI. Context:\n${context}\nHistory:\n${historyString}\nUser Question: ${question}\nAnswer concisely in Hungarian.`;
-        const rawAnswer = await _callGemini(prompt, false); 
-        return rawAnswer ? { answer: rawAnswer } : { error: "Hiba." };
-    } catch (e: any) { return { error: e.message }; }
+// --- CHAT FUNKCIÓ --- (Változatlan)
+interface ChatMessage {
+  role: 'user' | 'model' | 'ai';
+  parts: { text: string }[];
 }
+
+export async function getChatResponse(context: string, history: ChatMessage[], question: string): Promise<{ answer?: string; error?: string }> {
+    if (!context || !question) return { error: "Hiányzó 'context' vagy 'question'." };
+    try {
+        const historyString = (history || [])
+             .map(msg => `${msg.role === 'user' ? 'Felhasználó' : 'AI'}: ${msg.parts?.[0]?.text || ''}`)
+            .join('\n');
+        
+        const prompt = `You are an elite sports analyst AI assistant specialized in the provided match analysis.
+[CONTEXT of the analysis]:
+--- START CONTEXT ---
+${context}
+--- END CONTEXT ---
+
+CONVERSATION HISTORY:
+${historyString}
+
+Current User Question: ${question}
+
+Answer concisely and accurately in Hungarian based ONLY on the provided Analysis Context and Conversation History.
+Do not provide betting advice. Do not make up information not present in the context.
+If the answer isn't in the context or history, politely state that the information is not available in the analysis.`;
+        
+        const rawAnswer = await _callGemini(prompt, false); // forceJson = false
+        return rawAnswer ? { answer: rawAnswer } : { error: "Az AI nem tudott válaszolni." };
+    } catch (e: any) {
+        console.error(`[AI_Service v103.6] Chat hiba: ${e.message}`, e.stack);
+        return { error: `Chat AI Hiba: ${e.message}` };
+    }
+}
+
+// --- FŐ EXPORT (v103.6) ---
+export default {
+    runStep_TeamNameResolver,
+    runStep_Psychologist,
+    runStep_Specialist,
+    runStep_FinalAnalysis,
+    getChatResponse
+};

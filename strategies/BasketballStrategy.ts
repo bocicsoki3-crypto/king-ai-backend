@@ -1,21 +1,11 @@
 // FÁJL: strategies/BasketballStrategy.ts
-// VERZIÓ: v130.1 (DEFENSIVE MULTIPLIER + SANITY CHECK - BASKETBALL) 🏀
-// MÓDOSÍTÁS (v130.1):
-// 1. ÚJ: LEAGUE DEFENSIVE MULTIPLIER! (NBA Playoff -8%, Euroleague -10%)
-// 2. ÚJ: P1 MANUAL SANITY CHECK! (túl optimista inputok detektálása)
-// 3. EREDMÉNY: Reális Over/Under tippek playoff meccseken! ✅
+// VERZIÓ: v138.0 (EMERGENCY STABILIZATION) 🏀
 //
-// Korábbi módosítás (v128.0):
-// - P1 Manual Validation (80-140 pts)
-// - Forma Súlyozás
-// - Liga-függő HOME_ADVANTAGE
-// - Kulcsjátékos pozíció-alapú hatás
-// - Pace Factor
-// 
-// KORÁBBI MÓDOSÍTÁS (v124.0):
-// 1. ÚJ: Pace Factor beépítés (possessions/game alapján ±20% pontszám módosítás)
-// 2. ÚJ: Style-based fallback ('Fast'/'Slow' taktikák ±5% hatással)
-// 3. EREDMÉNY: Pontosabb total points becslés gyors/lassú játékstílusok esetén
+// JAVÍTÁS (v138.0):
+// 1. PACE FACTOR FIX: 3x-es szorzó helyett visszaállítva 1.2x-re (reális hatás).
+// 2. SANITY CHECK RESTORED: P1 manuális adatoknál visszakerült a 255 pontos limit.
+//    - Ha total > 255, akkor 10%-ot vágunk a pontokból.
+// 3. CÉL: Megszüntetni az irreálisan magas (280+) pontos becsléseket.
 
 import type { 
     ISportStrategy, 
@@ -276,20 +266,25 @@ export class BasketballStrategy implements ISportStrategy {
                 console.log(`  Before: H_pts=${advancedData.manual_H_xG.toFixed(1)}, A_pts=${advancedData.manual_A_xG.toFixed(1)} (Total: ${(advancedData.manual_H_xG + advancedData.manual_A_xG).toFixed(1)})`);
                 console.log(`  After:  H_pts=${manual_H_xG.toFixed(1)}, A_pts=${manual_A_xG.toFixed(1)} (Total: ${(manual_H_xG + manual_A_xG).toFixed(1)})`);
                 
-                // === v136.0: P1 MANUAL SANITY CHECK **KIKAPCSOLVA** ===
-                // PISTONS-HEAT TANULSÁG: Valós eredmény 273 pont volt, de a sanity check 240-re limitálta!
-                // Ez túl konzervatív - az AI/manuális xG-re BÍZUNK!
-                // KIKAPCSOLVA v136.0 - Nincs többé sanity cap!
+                // === v138.0: P1 MANUAL SANITY CHECK **VISSZAKAPCSOLVA** ===
+                // TANULSÁG: A Pistons-Heat (273 pt) outlier volt. A legtöbb meccs NEM 270 pontos.
+                // Biztonsági korlát: Max 255 pont.
                 
-                // const p1_mu_h_raw = (manual_H_xG + manual_A_xGA) / 2;
-                // const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
-                // const totalExpectedPoints = p1_mu_h_raw + p1_mu_a_raw;
-                // 
-                // if (false && totalExpectedPoints > 999) { // KIKAPCSOLVA!
-                //     // Sanity check eltávolítva - Trust the data!
-                // }
+                const p1_mu_h_raw = (manual_H_xG + manual_A_xGA) / 2;
+                const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
+                const totalExpectedPoints = p1_mu_h_raw + p1_mu_a_raw;
                 
-                console.log(`[BasketballStrategy v136.0] ✅ P1 SANITY CHECK KIKAPCSOLVA - Full trust in manual xG!`);
+                const EXPECTED_MAX_POINTS = 255.0;
+                
+                if (totalExpectedPoints > EXPECTED_MAX_POINTS) {
+                    const sanityAdjustment = 0.90; // -10% csökkentés
+                    console.warn(`[BasketballStrategy v138.0] 🚨 P1 SANITY CHECK! Total Points (${totalExpectedPoints.toFixed(1)}) > ${EXPECTED_MAX_POINTS}. Reducing by 10%.`);
+                    
+                    manual_H_xG *= sanityAdjustment;
+                    manual_A_xG *= sanityAdjustment;
+                    manual_H_xGA *= sanityAdjustment;
+                    manual_A_xGA *= sanityAdjustment;
+                }
                 
                 const p1_mu_h = (manual_H_xG + manual_A_xGA) / 2;
                 const p1_mu_a = (manual_A_xG + manual_H_xGA) / 2;
@@ -357,12 +352,15 @@ export class BasketballStrategy implements ISportStrategy {
             const paceDeviation = (expectedMatchPace / leagueAvgPossessions) - 1.0;
             
             // Ha +10% pace → ~+8-10% pontszám
-            // === v137.0: PACE FACTOR 2.5x ERŐSÍTVE! PISTONS-HEAT TANULSÁG! ===
-            const paceMultiplier = Math.abs(paceDeviation) > 0.05 ? 3.0 : 2.0;
+            // === v138.0: PACE FACTOR NORMALIZÁLVA (1.2x) ===
+            // ELŐTTE v137: 3.0x → Túl nagy kilengés!
+            // UTÁNA v138: 1.2x → Reálisabb. +10% pace ≈ +12% pontszám.
+            
+            const paceMultiplier = 1.2; // v138.0: 3.0 → 1.2
             homePaceFactor = 1.0 + (paceDeviation * paceMultiplier);
             awayPaceFactor = 1.0 + (paceDeviation * paceMultiplier);
             
-            console.log(`[BasketballStrategy v137.0] 🚀 PACE ERŐSÍTVE ${paceMultiplier}x! H_Pace=${homePace}, A_Pace=${awayPace}, Match_Pace=${expectedMatchPace.toFixed(1)}, Multiplier=${homePaceFactor.toFixed(3)}`);
+            console.log(`[BasketballStrategy v138.0] ⚡ PACE NORMALIZÁLVA ${paceMultiplier}x! H_Pace=${homePace}, A_Pace=${awayPace}, Match_Pace=${expectedMatchPace.toFixed(1)}, Multiplier=${homePaceFactor.toFixed(3)}`);
         } else if (advancedData?.tactics?.home?.style || advancedData?.tactics?.away?.style) {
             // Fallback: ha nincs pontos pace, de van style (pl. "Fast", "Slow")
             const homeStyle = (advancedData?.tactics?.home?.style || "").toLowerCase();

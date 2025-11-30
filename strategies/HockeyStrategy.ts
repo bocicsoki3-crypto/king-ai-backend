@@ -1,22 +1,12 @@
 // FÁJL: strategies/HockeyStrategy.ts
-// VERZIÓ: v130.1 (DEFENSIVE MULTIPLIER + SANITY CHECK - HOCKEY) 🏒
-// MÓDOSÍTÁS (v130.1):
-// 1. ÚJ: LEAGUE DEFENSIVE MULTIPLIER! (NHL Playoff -18%, KHL Playoff -15%)
-// 2. ÚJ: P1 MANUAL SANITY CHECK! (túl optimista inputok detektálása)
-// 3. EREDMÉNY: Reális Over/Under tippek playoff meccseken! ✅
+// VERZIÓ: v138.0 (EMERGENCY STABILIZATION) 🏒
 //
-// Korábbi módosítás (v128.0):
-// - P1 Manual Validation (1.5-5.0 goals)
-// - Forma Súlyozás (50/50)
-// - Liga-függő HOME_ADVANTAGE
-// - Kulcsjátékos pozíció-alapú hatás
-// - Power Play hatás
-// 
-// KORÁBBI MÓDOSÍTÁS (v124.0):
-// 1. ÚJ: Recent Form súlyozás (utolsó 5 meccs alapján ±10% xG módosítás)
-// 2. ÚJ: Power Play hatás (ha elérhető PP% → ±0.05 gól/meccs módosítás)
-// 3. ÚJ: Biztonsági korlátok (1.5-5.0 gól/meccs tartomány)
-// 4. EREDMÉNY: Pontosabb xG becslés momentum és specialista egységek alapján
+// JAVÍTÁS (v138.0):
+// 1. GOALIE IMPACT FIX: -1.20 gól helyett visszaállítva -0.60 gólra (reális kapus hatás).
+// 2. POWER PLAY FIX: 1.5x szorzó helyett visszaállítva 0.5x-re (reális PP hatás).
+// 3. SANITY CHECK RESTORED: Manuális xG limitálás visszakapcsolva.
+//    - Ha total > 7.0 (NHL/normál liga), akkor 10%-ot vágunk.
+// 4. CÉL: Megszüntetni az irreálisan magas (8-9 gólos) és kapus-túlreagált becsléseket.
 
 import type { 
     ISportStrategy, 
@@ -203,9 +193,12 @@ export class HockeyStrategy implements ISportStrategy {
         // Center (C): Közepes-nagy hatás → -0.15-0.25 goals (playmaker)
         // Wing (LW/RW): Kis-közepes hatás → -0.10-0.15 goals
         
-        // v137.0: GOALIE IMPACT 2.4x ERŐSÍTVE!
+        // v138.0: GOALIE IMPACT NORMALIZÁLVA (0.60)!
+        // ELŐTTE v137: 1.20 → Túl erős büntetés egy kapusért!
+        // UTÁNA v138: 0.60 → Jelentős, de nem meccseldöntő önmagában.
+        
         const POSITION_IMPACT_MAP: { [key: string]: number } = {
-            'G': -1.20,   // Goalie (v137: 2.4x! volt: -0.50) STARTER vs BACKUP = +1.0 goal!
+            'G': -0.60,   // Goalie (v138: 0.60 - volt: 1.20)
             'D': -0.25,   // Defense
             'C': -0.20,   // Center
             'LW': -0.12,  // Left Wing
@@ -279,17 +272,21 @@ export class HockeyStrategy implements ISportStrategy {
                 const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
                 const totalExpectedGoals = p1_mu_h_raw + p1_mu_a_raw;
                 
-                // === v137.0: HOCKEY SANITY CHECK **KIKAPCSOLVA** ===
-                // TANULSÁG: NHL meccsek TUDNAK 8-9 gólok lenni! (pl. Oilers-Rangers 8-6!)
-                // BÍZZUNK A MANUÁLIS xG-BEN! Mint basketball-nél!
-                // KIKAPCSOLVA v137.0 - Full trust in manual xG!
+                // === v138.0: HOCKEY SANITY CHECK **VISSZAKAPCSOLVA** ===
+                // TANULSÁG: Bár vannak 8-9 gólos meccsek, a VÁRHATÓ gólok (xG) ritkán ennyi.
+                // Ha xG > 7.0, akkor korrigálunk.
                 
-                // const expectedMaxGoals = 999; // NINCS LIMIT!
-                // if (false && totalExpectedGoals > expectedMaxGoals) {
-                //     // SANITY CHECK TELJESEN KIKAPCSOLVA!
-                // }
+                const EXPECTED_MAX_GOALS = 7.0;
                 
-                console.log(`[HockeyStrategy v137.0] ✅ SANITY CHECK KIKAPCSOLVA - Full trust in data! Total: ${totalExpectedGoals.toFixed(2)}`);
+                if (totalExpectedGoals > EXPECTED_MAX_GOALS) {
+                    const sanityAdjustment = 0.90; // -10%
+                    console.warn(`[HockeyStrategy v138.0] 🚨 P1 SANITY CHECK! Total xG (${totalExpectedGoals.toFixed(2)}) > ${EXPECTED_MAX_GOALS}. Reducing by 10%.`);
+                    
+                    manual_H_xG *= sanityAdjustment;
+                    manual_A_xG *= sanityAdjustment;
+                    manual_H_xGA *= sanityAdjustment;
+                    manual_A_xGA *= sanityAdjustment;
+                }
                 
                 const p1_mu_h = (manual_H_xG + manual_A_xGA) / 2;
                 const p1_mu_a = (manual_A_xG + manual_H_xGA) / 2;
@@ -338,14 +335,17 @@ export class HockeyStrategy implements ISportStrategy {
         // Ha van PP% vagy GSAx adat, azt is figyelembe vesszük
         if (advancedData?.home_pp_percent && advancedData?.away_pp_percent) {
             const leagueAvgPP = 0.20; // Liga átlag ~20% PP sikerség
-            // v137.0: POWER PLAY 3x ERŐSÍTVE! Tampa (28%) vs SJ (12%) = HUGE difference!
-            const homePPBonus = (advancedData.home_pp_percent - leagueAvgPP) * 1.5; // 0.5 → 1.5 (3x!)
-            const awayPPBonus = (advancedData.away_pp_percent - leagueAvgPP) * 1.5;
+            // v138.0: POWER PLAY NORMALIZÁLVA (0.5x)!
+            // ELŐTTE v137: 1.5x → Túl erős!
+            // UTÁNA v138: 0.5x → Reális.
+            
+            const homePPBonus = (advancedData.home_pp_percent - leagueAvgPP) * 0.5; // v138.0: 1.5 → 0.5
+            const awayPPBonus = (advancedData.away_pp_percent - leagueAvgPP) * 0.5;
             
             avg_h_gf += homePPBonus;
             avg_a_gf += awayPPBonus;
             
-            console.log(`[HockeyStrategy v137.0] 🔥 POWER PLAY 3x ERŐSÍTVE! Home=${homePPBonus.toFixed(3)}, Away=${awayPPBonus.toFixed(3)} (volt: ${(homePPBonus/3).toFixed(3)})`);
+            console.log(`[HockeyStrategy v138.0] ⚡ POWER PLAY NORMALIZÁLVA 0.5x! Home=${homePPBonus.toFixed(3)}, Away=${awayPPBonus.toFixed(3)}`);
         }
 
         // === ÚJ v128.0: LIGA-FÜGGŐ HOME ADVANTAGE ===

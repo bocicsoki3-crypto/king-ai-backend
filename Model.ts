@@ -1,18 +1,15 @@
 // FÁJL: Model.ts
-// VERZIÓ: v127.0 (Liga Minőség Confidence Penalty)
-// MÓDOSÍTÁS (v127.0):
-// 1. ÚJ: LIGA MINŐSÉG CONFIDENCE PENALTY!
-//    - Cyprus liga (coeff <2.0): Confidence -2.0 pont
-//    - Gyenge liga (2-4): Confidence -1.0 pont
-//    - Közepes+ liga (4+): Nincs penalty
-//    → Példa: Cyprus meccs 8/10 → 6/10 (reálisabb!)
-// 2. EREDMÉNY: +10-15% pontosság gyenge ligákban!
+// VERZIÓ: v138.0 (EMERGENCY STABILIZATION) ⚙️
 //
-// Korábbi módosítások (v124.0):
-// - Dinamikus százalékos thresholds sportágonként
-// - Basketball: 5% (high), 1.5% (low)
-// - Hockey: 12% (high), 3.5% (low)
-// - Soccer: 10% (high), 2.5% (low) - base értékek
+// JAVÍTÁS (v138.0):
+// 1. CONFIDENCE THRESHOLDS NORMALIZÁLVA: Visszaállítva a szigorúbb határokra.
+//    - Basketball: 5% (high), 1.5% (low) - (Volt: 2.5% / 0.75%)
+//    - Hockey: 12% (high), 3.5% (low) - (Volt: 6% / 1.75%)
+//    - Totals: 2x szigorúbb határok!
+// 2. LIGA QUALITY PENALTY RESTORED: Visszaállítva a gyenge ligák büntetése.
+//    - Very Weak: -2.0 (Volt: -1.0)
+//    - Weak: -1.0 (Volt: -0.5)
+// 3. CÉL: Megszüntetni a "false high confidence" jelzéseket. Csak a tényleg erős tippek legyenek 8-9/10!
 
 import { SPORT_CONFIG } from './config.js';
 import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
@@ -323,24 +320,24 @@ export function calculateConfidenceScores(
         const awayKeyAbsentees = rawData?.detailedPlayerStats?.away_absentees?.filter(p => p.status === 'confirmed_out' && p.importance === 'key').length || 0;
         generalPenalty += (homeKeyAbsentees + awayKeyAbsentees) * 0.5;
 
-        // === v136.0: LIGA MINŐSÉG PENALTY 50% CSÖKKENTVE! ===
-        // Gyenge ligák is adhatnak jó tippeket - kisebb penalty!
+        // === v138.0: LIGA MINŐSÉG PENALTY VISSZAKAPCSOLVA! ===
+        // Gyenge ligákban NAGY a bizonytalanság (bunda, kiszámíthatatlanság).
         const leagueName = rawData?.league_name;
         if (leagueName && sport === 'soccer') {
             const leagueCoeff = getLeagueCoefficient(leagueName);
             const leagueQuality = getLeagueQuality(leagueCoeff);
             
             if (leagueCoeff < 2.0) {
-                // VERY WEAK liga (Cyprus, Malta) → -1.0 pont (volt: -2.0)
-                generalPenalty += 1.0;
-                console.log(`[Confidence v136.0] ⚠️ VERY WEAK LIGA PENALTY: ${leagueName} (${leagueCoeff.toFixed(2)}) → -1.0 confidence (volt: -2.0)`);
+                // VERY WEAK liga (Cyprus, Malta) → -2.0 pont (v138.0)
+                generalPenalty += 2.0; 
+                console.log(`[Confidence v138.0] ⚠️ VERY WEAK LIGA PENALTY: ${leagueName} (${leagueCoeff.toFixed(2)}) → -2.0 confidence`);
             } else if (leagueCoeff < 4.0) {
-                // WEAK liga (Romania, Slovakia) → -0.5 pont (volt: -1.0)
-                generalPenalty += 0.5;
-                console.log(`[Confidence v136.0] ⚠️ WEAK LIGA PENALTY: ${leagueName} (${leagueCoeff.toFixed(2)}) → -0.5 confidence (volt: -1.0)`);
+                // WEAK liga (Romania, Slovakia) → -1.0 pont (v138.0)
+                generalPenalty += 1.0;
+                console.log(`[Confidence v138.0] ⚠️ WEAK LIGA PENALTY: ${leagueName} (${leagueCoeff.toFixed(2)}) → -1.0 confidence`);
             }
-            // MEDIUM liga (4.0-7.0): NINCS PENALTY TÖBBÉ! (volt: -0.5)
-            // STRONG+ liga (7.0+): nincs penalty
+            // MEDIUM liga (4.0-7.0): Nincs penalty
+            // STRONG+ liga (7.0+): Nincs penalty
         }
         
         // --- A. GYŐZTES (WINNER) PIACOK BIZALMA - FEJLESZTVE v124.0 ---
@@ -354,15 +351,17 @@ export function calculateConfidenceScores(
         // Sport-specifikus százalékos küszöbök
         let thresholdHighPct: number, thresholdLowPct: number;
         
-        // === v136.0: THRESHOLD 50% CSÖKKENTÉS - Könnyebb high confidence elérés! ===
+        // === v138.0: THRESHOLDS NORMALIZÁLVA (Szigorítva!) ===
+        // Könnyelmű volt az 50%-os lazítás. Vissza a realitáshoz.
+        
         if (sport === 'basketball') {
-            thresholdHighPct = 2.5;  // 2.5% (volt: 5.0%) - Pistons-Heat 1.0% különbség már medium conf!
-            thresholdLowPct = 0.75;  // 0.75% (volt: 1.5%)
+            thresholdHighPct = 5.0;  // v138.0: 2.5 → 5.0%
+            thresholdLowPct = 1.5;   // v138.0: 0.75 → 1.5%
         } else if (sport === 'hockey') {
-            thresholdHighPct = 6.0;  // 6% (volt: 12%)
-            thresholdLowPct = 1.75;  // 1.75% (volt: 3.5%)
+            thresholdHighPct = 12.0;  // v138.0: 6.0 → 12.0%
+            thresholdLowPct = 3.5;    // v138.0: 1.75 → 3.5%
         } else { // soccer
-            // === v136.0: THRESHOLD SCALING FELÉRE CSÖKKENTVE ===
+            // === v138.0: SOCCER SCALING NORMALIZÁLVA ===
             let thresholdMultiplier = 1.0;
             
             if (totalExpected < 2.3) {
@@ -373,8 +372,8 @@ export function calculateConfidenceScores(
                 console.log(`[Confidence] HIGH SCORING liga észlelve (${totalExpected.toFixed(2)} goals/game) → Threshold scaling: 1.20x`);
             }
             
-            thresholdHighPct = 5.0 * thresholdMultiplier;  // Base: 5% (volt: 10%)
-            thresholdLowPct = 1.25 * thresholdMultiplier;  // Base: 1.25% (volt: 2.5%)
+            thresholdHighPct = 10.0 * thresholdMultiplier;  // v138.0: 5.0 → 10.0%
+            thresholdLowPct = 2.5 * thresholdMultiplier;    // v138.0: 1.25 → 2.5%
         }
         
         if (xgDiffPercent > thresholdHighPct) winnerScore += 2.0;
@@ -419,17 +418,17 @@ export function calculateConfidenceScores(
         // === FEJLESZTVE v125.0: LIGA-SPECIFIKUS DINAMIKUS THRESHOLDS (TOTALS) ===
         const totalsDiffPercent = (totalsDiff / marketTotal) * 100;
         
-        // === v136.0: TOTALS THRESHOLD LAZÍTVA (60%-kal könnyebb high confidence!) ===
+        // === v138.0: TOTALS THRESHOLD NORMALIZÁLVA ===
         let totalsThresholdHighPct: number, totalsThresholdLowPct: number;
         
         if (sport === 'basketball') {
-            totalsThresholdHighPct = 4.0;  // 4% (volt: 2.5%) - Lazítva! Pistons-Heat 5.8% diff OK!
-            totalsThresholdLowPct = 1.5;   // 1.5% (volt: 0.9%)
+            totalsThresholdHighPct = 5.0;  // v138.0: 4.0 → 5.0%
+            totalsThresholdLowPct = 1.5;   // 1.5% (OK)
         } else if (sport === 'hockey') {
-            totalsThresholdHighPct = 15.0; // 15% (volt: 10%)
-            totalsThresholdLowPct = 4.5;   // 4.5% (volt: 3.0%)
+            totalsThresholdHighPct = 15.0; // 15% (OK, magas szórás)
+            totalsThresholdLowPct = 4.5;   // 4.5% (OK)
         } else { // soccer
-            // === v136.0: TOTALS SCALING LAZÍTVA ===
+            // === v138.0: TOTALS SCALING NORMALIZÁLVA ===
             let totalsThresholdMultiplier = 1.0;
             
             if (totalExpected < 2.3) {
@@ -438,8 +437,8 @@ export function calculateConfidenceScores(
                 totalsThresholdMultiplier = 1.15; // High scoring
             }
             
-            totalsThresholdHighPct = 18.4 * totalsThresholdMultiplier; // Base: 18.4% (volt: 16%)
-            totalsThresholdLowPct = 4.6 * totalsThresholdMultiplier;   // Base: 4.6% (volt: 4.0%)
+            totalsThresholdHighPct = 18.4 * totalsThresholdMultiplier; // Base: 18.4% (OK)
+            totalsThresholdLowPct = 4.6 * totalsThresholdMultiplier;   // Base: 4.6% (OK)
         }
         
         if (totalsDiffPercent > totalsThresholdHighPct) totalsScore += 4.0;

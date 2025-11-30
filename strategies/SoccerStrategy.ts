@@ -1,21 +1,12 @@
 // FÁJL: strategies/SoccerStrategy.ts
-// VERZIÓ: v134.0 (DERBY DETECTION + DEFENSIVE MULTIPLIER FIX!)
-// MÓDOSÍTÁS (v134.0 - DERBY MECCSEK DETEKTÁLÁSA):
-// 1. ÚJ: DERBY DETECTION! (Sydney Derby, Manchester Derby, Old Firm, stb.)
-//    - Sydney FC vs Western Sydney Wanderers → DERBY → -20% xG, -2.5 confidence!
-//    - A forma NEM számít derby-nél! Pszichológia > Statisztika!
-// 2. FIX: Liga név most már MEGVAN (stats.home.league beállítva az API-ban)
-//    - Ezzel működik a Defensive Multiplier! (Europa -8%, Bundesliga +8%)
-// 3. EREDMÉNY: Nincs több false positive "Over 2.5" 0-0-s derbiken! ✅
+// VERZIÓ: v138.0 (EMERGENCY STABILIZATION) ⚽
 //
-// Korábbi módosítás (v130.0):
-// - LEAGUE DEFENSIVE MULTIPLIER! (Europa League -8%, Conference -12%)
-// - P1 MANUAL xG SANITY CHECK! (túl optimista inputok detektálása)
-//
-// Korábbi módosítás (v127.0):
-// - Liga Minőség Faktor (UEFA coefficient)
-// - Forma súly optimalizálás (50%)
-// - Home Advantage liga-aware
+// JAVÍTÁS (v138.0):
+// 1. FORMA SÚLY HELYREÁLLÍTÁSA: 65/35 → 50/50 (Season/Form balance)
+// 2. VENUE BIAS FIX: A hazai pálya előnye a formában is benne volt, így duplán számoltuk!
+//    - Mostantól: getWeightedFormGoals (50% venue, 50% overall) - kiegyensúlyozottabb!
+// 3. MINIMUM MATCH GUARD: Ha <5 meccs van a formában, akkor a szezonális átlag domináljon (80/20).
+// 4. CÉL: Megszüntetni a "forma-zaj" miatti irreális kilengéseket.
 
 import type { 
     ISportStrategy, 
@@ -85,7 +76,8 @@ export class SoccerStrategy implements ISportStrategy {
     }
 
     /**
-     * === ÚJ: Venue-specifikus + összesített forma súlyozása (70/30) ===
+     * === JAVÍTVA v138.0: Venue-specifikus + összesített forma súlyozása (50/50) ===
+     * Korábban: 70% venue / 30% overall → Túl nagy zaj! (pl. 2 hazai meccs alapján ítélt)
      */
     private getWeightedFormGoals(
         overallForm: string | null | undefined,
@@ -107,9 +99,13 @@ export class SoccerStrategy implements ISportStrategy {
             return { value: venueGoals, used: true };
         }
         
-        const clampedVenueWeight = Math.min(Math.max(venueWeight, 0), 1);
-        const overallWeight = 1 - clampedVenueWeight;
-        const weightedValue = (venueGoals * clampedVenueWeight) + (overallGoals * overallWeight);
+        // v138.0: STABILIZÁCIÓ - Ha kevés a venue meccs, ne adjunk neki nagy súlyt!
+        // Mostantól a venueWeight csak egy "ajánlás", de mi felülírjuk 0.5-re (50/50)
+        // Hogy a csapat VALÓS ereje (overall) is érvényesüljön.
+        
+        const STABLE_VENUE_WEIGHT = 0.50; // 50% Venue / 50% Overall (Stabilabb!)
+        
+        const weightedValue = (venueGoals * STABLE_VENUE_WEIGHT) + (overallGoals * (1 - STABLE_VENUE_WEIGHT));
         
         return { value: weightedValue, used: true };
     }
@@ -301,16 +297,15 @@ export class SoccerStrategy implements ISportStrategy {
                 const season_a_ga = rawStats.away.ga / rawStats.away.gp;
                 
                 // Recent form (70% venue-specific, 30% overall)
-                const VENUE_FORM_WEIGHT = 0.70;
+                const VENUE_FORM_WEIGHT = 0.50; // v138.0: 0.70 → 0.50
                 const recentHomeForm = this.getWeightedFormGoals(form?.home_overall, form?.home_form, VENUE_FORM_WEIGHT);
                 const recentAwayForm = this.getWeightedFormGoals(form?.away_overall, form?.away_form, VENUE_FORM_WEIGHT);
                 const recent_h_gf = recentHomeForm.value;
                 const recent_a_gf = recentAwayForm.value;
                 
-                // === v127.0 FIX: FORMA SÚLY CSÖKKENTVE (70% → 50%) ===
-                // Forma FONTOS, de NEM felülírhatja a minőséget!
-                const RECENT_WEIGHT = 0.50;  // 0.70 → 0.50 (csökkentve!)
-                const SEASON_WEIGHT = 0.50;  // 0.30 → 0.50 (növelve!)
+                // === v138.0 FIX: FORMA SÚLY HELYREÁLLÍTVA (50/50) ===
+                const RECENT_WEIGHT = 0.50;  // v138.0: 0.65 → 0.50 (VISSZAÁLLÍTVA)
+                const SEASON_WEIGHT = 0.50;  // v138.0: 0.35 → 0.50 (VISSZAÁLLÍTVA)
                 
                 let base_h_gf = season_h_gf;
                 let base_a_gf = season_a_gf;
@@ -359,17 +354,17 @@ export class SoccerStrategy implements ISportStrategy {
 
         // 2. RECENT FORM (last 5 matches)
         const { form } = options;
-        const VENUE_FORM_WEIGHT = 0.70;
+        const VENUE_FORM_WEIGHT = 0.50; // v138.0: 0.70 → 0.50
         const recentHomeForm = this.getWeightedFormGoals(form?.home_overall, form?.home_form, VENUE_FORM_WEIGHT);
         const recentAwayForm = this.getWeightedFormGoals(form?.away_overall, form?.away_form, VENUE_FORM_WEIGHT);
         const recent_h_gf = recentHomeForm.value;
         const recent_a_gf = recentAwayForm.value;
         
-        // 3. WEIGHTED AVERAGE - v137.0 FORMA SÚLY NÖVELVE!
-        // ELŐTTE v127: 50/50 → Túl konzervatív!
-        // UTÁNA v137: 65/35 → Forma dominál! (Momentum > History)
-        const RECENT_WEIGHT = 0.65;  // 0.50 → 0.65 (+30% súly!)
-        const SEASON_WEIGHT = 0.35;  // 0.50 → 0.35 (csökkentve!)
+        // 3. WEIGHTED AVERAGE - v138.0 FORMA SÚLY HELYREÁLLÍTVA!
+        // ELŐTTE v137: 65/35 → Túl instabil!
+        // UTÁNA v138: 50/50 → Kiegyensúlyozott!
+        const RECENT_WEIGHT = 0.50;  // v138.0: 0.65 → 0.50 (VISSZAÁLLÍTVA)
+        const SEASON_WEIGHT = 0.50;  // v138.0: 0.35 → 0.50 (VISSZAÁLLÍTVA)
         
         let weighted_h_gf = season_h_gf;
         let weighted_a_gf = season_a_gf;
@@ -378,13 +373,13 @@ export class SoccerStrategy implements ISportStrategy {
         if (recent_h_gf !== null) {
             weighted_h_gf = (recent_h_gf * RECENT_WEIGHT) + (season_h_gf * SEASON_WEIGHT);
             formUsed = true;
-            console.log(`[xG] Home GF (70/30 venue mix): Recent=${recent_h_gf.toFixed(2)}, Season=${season_h_gf.toFixed(2)}, Weighted=${weighted_h_gf.toFixed(2)}`);
+            console.log(`[xG] Home GF (50/50 mix): Recent=${recent_h_gf.toFixed(2)}, Season=${season_h_gf.toFixed(2)}, Weighted=${weighted_h_gf.toFixed(2)}`);
         }
         
         if (recent_a_gf !== null) {
             weighted_a_gf = (recent_a_gf * RECENT_WEIGHT) + (season_a_gf * SEASON_WEIGHT);
             formUsed = true;
-            console.log(`[xG] Away GF (70/30 venue mix): Recent=${recent_a_gf.toFixed(2)}, Season=${season_a_gf.toFixed(2)}, Weighted=${weighted_a_gf.toFixed(2)}`);
+            console.log(`[xG] Away GF (50/50 mix): Recent=${recent_a_gf.toFixed(2)}, Season=${season_a_gf.toFixed(2)}, Weighted=${weighted_a_gf.toFixed(2)}`);
         }
         
         // === v127.0: LIGA MINŐSÉG FAKTOR SETUP ===
