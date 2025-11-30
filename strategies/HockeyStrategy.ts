@@ -203,8 +203,9 @@ export class HockeyStrategy implements ISportStrategy {
         // Center (C): Közepes-nagy hatás → -0.15-0.25 goals (playmaker)
         // Wing (LW/RW): Kis-közepes hatás → -0.10-0.15 goals
         
+        // v137.0: GOALIE IMPACT 2.4x ERŐSÍTVE!
         const POSITION_IMPACT_MAP: { [key: string]: number } = {
-            'G': -0.50,   // Goalie (KRITIKUS!)
+            'G': -1.20,   // Goalie (v137: 2.4x! volt: -0.50) STARTER vs BACKUP = +1.0 goal!
             'D': -0.25,   // Defense
             'C': -0.20,   // Center
             'LW': -0.12,  // Left Wing
@@ -278,24 +279,17 @@ export class HockeyStrategy implements ISportStrategy {
                 const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
                 const totalExpectedGoals = p1_mu_h_raw + p1_mu_a_raw;
                 
-                // Liga alapú max várható gólszám (empirikus) - v132.0 LAZÍTVA!
-                // v132.0: NHL meccsek gyakran 6-7 gól között vannak! Lazítva: 5.2→5.8, 5.8→6.2, 6.5→7.0
-                const expectedMaxGoals = leagueDefensiveMultiplier <= 0.90 ? 5.8 :  // Playoff/Defenzív ligák (Finn, stb.) (+0.6)
-                                        leagueDefensiveMultiplier <= 0.95 ? 6.2 :  // Defenzív ligák (KHL, Svéd, stb.) (+0.4)
-                                        7.0;                                        // Normál ligák (NHL Regular) (+0.5)
+                // === v137.0: HOCKEY SANITY CHECK **KIKAPCSOLVA** ===
+                // TANULSÁG: NHL meccsek TUDNAK 8-9 gólok lenni! (pl. Oilers-Rangers 8-6!)
+                // BÍZZUNK A MANUÁLIS xG-BEN! Mint basketball-nél!
+                // KIKAPCSOLVA v137.0 - Full trust in manual xG!
                 
-                if (totalExpectedGoals > expectedMaxGoals) {
-                    const sanityAdjustment = 0.88; // v132.0: -12% korrekció (előtte -15% volt, túl durva!)
-                    console.warn(`[HockeyStrategy v132.0] 🚨 P1 SANITY CHECK! Total goals (${totalExpectedGoals.toFixed(2)}) > Expected Max (${expectedMaxGoals.toFixed(2)}) for this league.`);
-                    console.warn(`  📉 Applying MODERATE adjustment (-12%, volt -15%)`);
-                    
-                    manual_H_xG *= sanityAdjustment;
-                    manual_A_xG *= sanityAdjustment;
-                    manual_H_xGA *= sanityAdjustment;
-                    manual_A_xGA *= sanityAdjustment;
-                    
-                    console.log(`  After Sanity: H_goals=${manual_H_xG.toFixed(2)}, A_goals=${manual_A_xG.toFixed(2)} (Total: ${(manual_H_xG + manual_A_xG).toFixed(2)})`);
-                }
+                // const expectedMaxGoals = 999; // NINCS LIMIT!
+                // if (false && totalExpectedGoals > expectedMaxGoals) {
+                //     // SANITY CHECK TELJESEN KIKAPCSOLVA!
+                // }
+                
+                console.log(`[HockeyStrategy v137.0] ✅ SANITY CHECK KIKAPCSOLVA - Full trust in data! Total: ${totalExpectedGoals.toFixed(2)}`);
                 
                 const p1_mu_h = (manual_H_xG + manual_A_xGA) / 2;
                 const p1_mu_a = (manual_A_xG + manual_H_xGA) / 2;
@@ -344,13 +338,14 @@ export class HockeyStrategy implements ISportStrategy {
         // Ha van PP% vagy GSAx adat, azt is figyelembe vesszük
         if (advancedData?.home_pp_percent && advancedData?.away_pp_percent) {
             const leagueAvgPP = 0.20; // Liga átlag ~20% PP sikerség
-            const homePPBonus = (advancedData.home_pp_percent - leagueAvgPP) * 0.5; // +0.1 → +0.05 gól
-            const awayPPBonus = (advancedData.away_pp_percent - leagueAvgPP) * 0.5;
+            // v137.0: POWER PLAY 3x ERŐSÍTVE! Tampa (28%) vs SJ (12%) = HUGE difference!
+            const homePPBonus = (advancedData.home_pp_percent - leagueAvgPP) * 1.5; // 0.5 → 1.5 (3x!)
+            const awayPPBonus = (advancedData.away_pp_percent - leagueAvgPP) * 1.5;
             
             avg_h_gf += homePPBonus;
             avg_a_gf += awayPPBonus;
             
-            console.log(`[HockeyStrategy v128.0] Power Play bonus: Home=${homePPBonus.toFixed(3)}, Away=${awayPPBonus.toFixed(3)}`);
+            console.log(`[HockeyStrategy v137.0] 🔥 POWER PLAY 3x ERŐSÍTVE! Home=${homePPBonus.toFixed(3)}, Away=${awayPPBonus.toFixed(3)} (volt: ${(homePPBonus/3).toFixed(3)})`);
         }
 
         // === ÚJ v128.0: LIGA-FÜGGŐ HOME ADVANTAGE ===

@@ -329,11 +329,11 @@ export class SoccerStrategy implements ISportStrategy {
         const recent_h_gf = this.estimateGoalsFromForm(form?.home_overall);
         const recent_a_gf = this.estimateGoalsFromForm(form?.away_overall);
         
-        // 3. WEIGHTED AVERAGE (Recent 50% + Season 50%) - v127.0 FIXED!
-        // ELŐTTE: 70/30 → Túl nagy forma súly!
-        // UTÁNA: 50/50 → Kiegyensúlyozott!
-        const RECENT_WEIGHT = 0.50;  // 0.70 → 0.50 (CSÖKKENTVE!)
-        const SEASON_WEIGHT = 0.50;  // 0.30 → 0.50 (NÖVELVE!)
+        // 3. WEIGHTED AVERAGE - v137.0 FORMA SÚLY NÖVELVE!
+        // ELŐTTE v127: 50/50 → Túl konzervatív!
+        // UTÁNA v137: 65/35 → Forma dominál! (Momentum > History)
+        const RECENT_WEIGHT = 0.65;  // 0.50 → 0.65 (+30% súly!)
+        const SEASON_WEIGHT = 0.35;  // 0.50 → 0.35 (csökkentve!)
         
         let weighted_h_gf = season_h_gf;
         let weighted_a_gf = season_a_gf;

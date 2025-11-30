@@ -357,10 +357,12 @@ export class BasketballStrategy implements ISportStrategy {
             const paceDeviation = (expectedMatchPace / leagueAvgPossessions) - 1.0;
             
             // Ha +10% pace → ~+8-10% pontszám
-            homePaceFactor = 1.0 + (paceDeviation * 0.8);
-            awayPaceFactor = 1.0 + (paceDeviation * 0.8);
+            // === v137.0: PACE FACTOR 2.5x ERŐSÍTVE! PISTONS-HEAT TANULSÁG! ===
+            const paceMultiplier = Math.abs(paceDeviation) > 0.05 ? 3.0 : 2.0;
+            homePaceFactor = 1.0 + (paceDeviation * paceMultiplier);
+            awayPaceFactor = 1.0 + (paceDeviation * paceMultiplier);
             
-            console.log(`[BasketballStrategy v128.0] Pace Factor: H_Pace=${homePace}, A_Pace=${awayPace}, Match_Pace=${expectedMatchPace.toFixed(1)}, Multiplier=${homePaceFactor.toFixed(3)}`);
+            console.log(`[BasketballStrategy v137.0] 🚀 PACE ERŐSÍTVE ${paceMultiplier}x! H_Pace=${homePace}, A_Pace=${awayPace}, Match_Pace=${expectedMatchPace.toFixed(1)}, Multiplier=${homePaceFactor.toFixed(3)}`);
         } else if (advancedData?.tactics?.home?.style || advancedData?.tactics?.away?.style) {
             // Fallback: ha nincs pontos pace, de van style (pl. "Fast", "Slow")
             const homeStyle = (advancedData?.tactics?.home?.style || "").toLowerCase();
