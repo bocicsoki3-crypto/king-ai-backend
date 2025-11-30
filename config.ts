@@ -46,9 +46,10 @@ export const PORT: number = parseInt(process.env.PORT || "3001", 10);
 
 // --- API KULCSOK ---
 export const GEMINI_API_KEY: string | undefined = process.env.GEMINI_API_KEY;
-// v135.0: GEMINI-2.5-FLASH aktiválva! (3-5x gyorsabb, 10x olcsóbb, kb. 90%-os minőség)
-// PRO: 10-15 sec/hívás, FLASH: 2-4 sec/hívás → 60% időspórolás!
-export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
+// v137.1: VISSZAVÁLTVA PRO-RA a MAX_TOKENS hiba miatt!
+// Flash: gyors de max 8k tokens → Pro: lassabb de 32k tokens!
+// Ha Flash MAX_TOKENS hibát ad, Pro megoldja!
+export const GEMINI_MODEL_ID: string = process.env.GEMINI_MODEL_ID || 'gemini-2.5-pro';
 export const SHEET_URL: string | undefined = process.env.SHEET_URL;
 
 // === FOCI (RapidAPI) ===

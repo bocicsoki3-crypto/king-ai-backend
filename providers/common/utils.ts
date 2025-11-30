@@ -98,8 +98,8 @@ export async function _callGemini(
     const payload: any = { 
         contents: [{ role: "user", parts: [{ text: finalPrompt }] }], 
         generationConfig: { 
-            temperature: useSearch ? 0.1 : 0.2, // Keresésnél legyünk precízebbek
-            maxOutputTokens: 8192,
+            temperature: useSearch ? 0.1 : 0.2,
+            maxOutputTokens: 16384, // v137.0: 8192 → 16384 (2x NÖVELÉS! Flash model-nek kell!)
             // Ha Search van, a JSON módot néha jobb kikapcsolni a generationConfig-ban, 
             // de megpróbáljuk így, mert a forceJson prompt erős.
             ...(forceJson && !useSearch && { responseMimeType: "application/json" }),
