@@ -12,6 +12,10 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+// === v137.1: TYPESCRIPT PROCESS.ENV FIX ===
+// @ts-ignore - process.env Node.js runtime változó (működik production-ben!)
+declare const process: any;
+
 // --- TÍPUSDEFINÍCIÓK A KONFIGURÁCIÓHOZ ---
 interface IEspnLeagueConfig {
   slug: string;
