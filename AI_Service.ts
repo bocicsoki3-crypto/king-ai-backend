@@ -320,38 +320,45 @@ Apply precise, evidence-based modifiers to baseline xG predictions.
 
 [CONTEXTUAL FACTORS TO ANALYZE]:
 
-1. **KEY ABSENCES**:
+1. **KEY ABSENCES** (v137.0 ERŐSÍTVE!):
    - Missing star players (attack/defense/midfield)
-   - Impact: High (-0.2 to -0.4), Medium (-0.1 to -0.2), Low (0 to -0.1)
+   - Impact: High (-0.4 to -0.8), Medium (-0.2 to -0.4), Low (-0.1 to -0.2)
+   - **INJURY CRISIS (3+ key players):** -0.8 to -1.2 xG! MASSIVE IMPACT!
 
-2. **FORM & MOMENTUM** (HIGH PRIORITY - USE LAST 5 MATCHES):
-   - Strong form (4-5 good results from last 5): +0.25 to +0.45 xG
-   - Average form (2-3 good results): ±0.05 to ±0.15 xG
-   - Weak form (0-1 good results): -0.25 to -0.45 xG
-   - Form streak >7 matches: Consider DOUBLING the adjustment (max ±0.6)
+2. **FORM & MOMENTUM** (v137.0 ULTRA-HIGH PRIORITY!):
+   - Strong form (4-5 good results from last 5): +0.40 to +0.80 xG (ERŐSÍTVE!)
+   - Average form (2-3 good results): ±0.10 to ±0.25 xG
+   - Weak form (0-1 good results): -0.40 to -0.80 xG (ERŐSÍTVE!)
+   - Form streak >7 matches: TRIPLE the adjustment (±1.2 to ±2.0)!
+   - **MUST-WIN SITUATION:** If team in relegation zone (bottom 3) or title race (top 3) → +0.40 to +0.80 extra xG!
    - Recent scoring/defensive patterns
    - Confidence trajectory
-   - Adjustment: ±0.2 to ±0.5 per team (can go higher for extreme form differences)
+   - Adjustment: ±0.4 to ±1.5 per team (extreme form = extreme adjustments!)
 
-3. **PSYCHOLOGICAL STATE**:
+3. **PSYCHOLOGICAL STATE** (v137.0 ERŐSÍTVE!):
    - Pressure levels and response
-   - Mental edge from H2H history
-   - Adjustment: ±0.05 to ±0.15
+   - **H2H DOMINATION:** If 8+ wins in last 10 H2H → +0.35 to +0.50 xG! (Mental edge!)
+   - **ROTATION RISK:** If big match (CL/Europa) in 3 days → top team -0.30 xG (rotation expected!)
+   - Adjustment: ±0.15 to ±0.50 (volt: ±0.05 to ±0.15)
 
-4. **TACTICAL MATCHUP**:
-   - Style compatibility (e.g., high press vs weak buildup)
-   - Formation advantages
-   - Adjustment: ±0.1 to ±0.2
+4. **TACTICAL MATCHUP** (v137.0: 3x ERŐSÍTVE!):
+   - Style compatibility (e.g., counter-attack vs high defensive line)
+   - Formation advantages (3-5-2 vs 4-4-2)
+   - **PERFECT COUNTER:** If team plays EXACTLY the style to exploit opponent → ±0.30 to ±0.60!
+   - Adjustment: ±0.30 to ±0.60 (volt: ±0.1 to ±0.2)
 
-5. **PHYSICAL CONDITION**:
-   - Fatigue from fixture congestion
-   - Travel impact
-   - Adjustment: -0.05 to -0.15
+5. **PHYSICAL CONDITION** (v137.0: BACK-TO-BACK & TRAVEL ERŐSÍTVE!):
+   - **BACK-TO-BACK (Basketball/Hockey):** If <24h since last game → Defense -10%, Total +0.12-0.20 xG/pts! (Fatigue!)
+   - **DOUBLE B2B:** If 3 games in 4 days → Total +0.25-0.35! (Extreme fatigue!)
+   - **TRAVEL FATIGUE (Hockey):** 3+ timezone difference → -0.15 to -0.25 goals
+   - Fixture congestion (normal): -0.05 to -0.15
+   - Adjustment: ±0.10 to ±0.35 (volt: -0.05 to -0.15)
 
-6. **EXTERNAL FACTORS**:
-   - Weather (extreme conditions)
-   - Referee strictness (affects flow)
-   - Adjustment: ±0.05 to ±0.1
+6. **EXTERNAL FACTORS** (v137.0: 3x ERŐSÍTVE!):
+   - **WEATHER (EXTREME):** Rain >10mm, Wind >50km/h, Snow, Temp <0°C → -0.15 to -0.30 total xG!
+   - **REFEREE STRICTNESS:** Strict ref (many cards) → -0.12 to -0.25 goals (less flow, fewer attacks!)
+   - **NORMAL CONDITIONS:** ±0.05 to ±0.10
+   - Adjustment: ±0.15 to ±0.30 (volt: ±0.05 to ±0.1)
 
 [AVAILABLE DATA]:
 {rawDataJson}
@@ -363,6 +370,26 @@ Apply precise, evidence-based modifiers to baseline xG predictions.
 [HISTORICAL LEARNING]:
 - Home Narrative Rating: {homeNarrativeRating}
 - Away Narrative Rating: {awayNarrativeRating}
+
+[SPORT-SPECIFIC ADVANCED FACTORS - v137.0]:
+
+**FOR BASKETBALL:**
+- **USAGE RATE:** High usage players (>28%) missing → multiply position impact by (usage/20)!
+- **CLUTCH FACTOR:** If xG diff <5 pts, team with proven closer (LeBron, Butler, etc.) → +0.15 to +0.25 win prob!
+- **3-POINT VARIANCE:** If team shoots 40%+ from 3PT → add volatility note (can win/lose big!)
+- **FREE THROW RATE:** Strict referee → -0.08 to -0.12 total pts (fewer FTs!)
+- **TEMPO CLASH:** Fast team vs Slow team → average pace wins (not fast pace!)
+- **PLAYOFF MODE:** If playoff game → pace -5%, defense emphasis +0.10!
+- **SPECIAL HOME COURTS:** Denver/Utah (altitude) → +7.0 pts home advantage extra!
+
+**FOR HOCKEY:**
+- **RIVALRY GAMES:** Battle of Alberta (EDM-CGY), Original Six → +0.25 extra goals (fights, PPs!)
+- **OUTDOOR GAMES:** Stadium Series → pace +10%, goals +0.15!
+- **PLAYOFF EXPERIENCE:** Playoff-tested team in close game → OT win prob +20%!
+- **GOALIE HOT STREAK:** If last 5 games save% >93% → -0.30 goals against!
+
+**FOR SOCCER:**
+- All soccer-specific factors already covered above (must-win, h2h, rotation, etc.)
 
 [OUTPUT STRUCTURE] - MUST be valid JSON:
 {
