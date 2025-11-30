@@ -52,8 +52,9 @@ const STATIC_LEAGUE_MAP: { [key: string]: number } = {
     // --- TÖBBI DÉL-AMERIKA ---
     'argentina_ligaprofesional': 128,
     'argentina_primera': 128,
-    'argentina_primeradivision': 128, // ÚJ
-    'argentina_copadelaligaprofesional': 128, // Néha ez az ID
+    'argentina_primeradivision': 128, 
+    'argentina_copadelaligaprofesional': 128,
+    'argentina_argentinianligaprofesional': 128, // 🔥 FIX: EZ HIÁNYZOTT A LOG ALAPJÁN!
     'colombia_primeraa': 239,
     'colombia_primerab': 240,
     
