@@ -52,6 +52,8 @@ const STATIC_LEAGUE_MAP: { [key: string]: number } = {
     // --- TÖBBI DÉL-AMERIKA ---
     'argentina_ligaprofesional': 128,
     'argentina_primera': 128,
+    'argentina_primeradivision': 128, // ÚJ
+    'argentina_copadelaligaprofesional': 128, // Néha ez az ID
     'colombia_primeraa': 239,
     'colombia_primerab': 240,
     
@@ -66,6 +68,13 @@ const STATIC_LEAGUE_MAP: { [key: string]: number } = {
     'france_ligue2': 62,
     'netherlands_eredivisie': 88,
     'portugal_ligaportugal': 94,
+    
+    // --- KELET-EURÓPA (JAVÍTVA v138.1) ---
+    'romania_liga1': 283,
+    'romania_superliga': 283,
+    'romania_serieabetano': 283,
+    'czechrepublic_1liga': 345,
+    'czechrepublic_chanceliga': 345,
     
     // --- NEMZETKÖZI / SZELEJTEZŐK (FIX V107.1) ---
     'world_worldcup': 1,
