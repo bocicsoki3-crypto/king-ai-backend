@@ -469,10 +469,36 @@ export class SoccerStrategy implements ISportStrategy {
             sourceDetails += ` [DERBY: ${derbyInfo.derbyName}]`;
         }
         
+        // === v138.0 FIX: REPUTATION BIAS ELTÁVOLÍTÁSA ===
+        // A Las Palmas vs Castellón meccsen az AI tévedett, mert a Las Palmas "híresebb".
+        // Mostantól: HA a hazai csapat (Home) otthoni mérlege erős, és a vendég (Away) idegenben gyenge,
+        // akkor a hazai pálya előnye SOKKAL NAGYOBB, függetlenül a "hírnévtől".
+        
+        let homeDominanceFactor = 0;
+        if (hasHomeSplit && hasAwaySplit) {
+            const homeWinRate = (rawStats.home.home_wins || 0) / (rawStats.home.home_gp || 1);
+            const awayWinRate = (rawStats.away.away_wins || 0) / (rawStats.away.away_gp || 1);
+            const awayLossRate = (rawStats.away.away_l || 0) / (rawStats.away.away_gp || 1);
+            
+            // Ha a hazai csapat otthon erős (>50% win), a vendég idegenben gyenge (<30% win)
+            if (homeWinRate > 0.50 && awayWinRate < 0.30) {
+                homeDominanceFactor = 0.40; // +0.40 xG boost a hazainak!
+                console.log(`[SoccerStrategy v138.0] 🏠 HAZAI ERŐD ÉSZLELVE! Home Win Rate: ${homeWinRate.toFixed(2)}, Away Win Rate: ${awayWinRate.toFixed(2)} -> Boost: +${homeDominanceFactor}`);
+            }
+            
+            // Ha a vendég sokat veszít idegenben (>50% loss)
+            if (awayLossRate > 0.50) {
+                homeDominanceFactor += 0.20; // Még +0.20!
+                console.log(`[SoccerStrategy v138.0] 🚌 VENDÉG GYENGESÉG ÉSZLELVE! Away Loss Rate: ${awayLossRate.toFixed(2)} -> Boost: +0.20`);
+            }
+        }
+        
+        pure_mu_h += homeDominanceFactor;
+        
         return {
             pure_mu_h: pure_mu_h,
             pure_mu_a: pure_mu_a,
-            source: sourceDetails,
+            source: sourceDetails + (homeDominanceFactor > 0 ? ` + HomeDominance(${homeDominanceFactor.toFixed(2)})` : ''),
             isDerby: derbyInfo.isDerby,
             derbyName: derbyInfo.derbyName || undefined
         };

@@ -939,8 +939,42 @@ Your response MUST be ONLY a single, valid JSON object:
 {
   "recommended_bet": "<THE CHOSEN ONE (e.g., 'Manchester City győzelem', 'Over 2.5 gól')>",
   "final_confidence": <Number 1.0-10.0>,
-  "brief_reasoning": "<CONCISE POWER SENTENCE (Hungarian). Why this bet? Combine Math + Narrative. Max 25 words.>"
+  "brief_reasoning": "<CONCISE POWER SENTENCE (Hungarian). Why this bet? Combine Math + Narrative. Max 25 words.>",
+  "verdict": "<A LÉNYEG - 2-3 MONDATOS ÖSSZEFOGLALÓ MAGYARUL: Miért ez a 'BIZTOS' tipp? 🚨 KÖTELEZŐ KONKRÉT EREDMÉNYT MONDANI: Használd a {sim_topScore} eredményt! TILOS általános választ adni mint 'várhatóan kiegyenlített' vagy 'kb 1-1'! PÉLDA: 'Az Arsenal 2-1-re legyőzi a Chelsea-t.' vagy 'A Bayern 3-0-ra nyer.' A {sim_topScore} a 25,000 szimuláció LEGGYAKORIBB eredménye - AZT MONDD! Mi az a 1-2 kulcsfontosságú tényező? Legyen magabiztos és BÁTOR!>",
+  "primary": {
+    "market": "<ELSŐDLEGES PIAC (pl: Hazai győzelem)>",
+    "confidence": <Number 1.0-10.0>,
+    "reason": "<RÉSZLETES 4-5 MONDATOS INDOKLÁS MAGYARUL: Miért ez a legjobb tipp? Hivatkozz a statisztikára, a formára és a szakértői véleményre!>"
+  },
+  "secondary": {
+    "market": "<MÁSODLAGOS PIAC (pl: BTTS Igen)>",
+    "confidence": <Number 1.0-10.0>,
+    "reason": "<RÉSZLETES 4-5 MONDATOS INDOKLÁS MAGYARUL: Miért jó ez másodlagos opcióként? Hogyan különbözik az elsődlegestől? Milyen forgatókönyvben lehet jobb?>"
+  },
+  "betting_strategy": {
+    "stake_recommendation": "<1-5 egység ajánlás, ahol 5 = maximális bizalom>",
+    "market_timing": "<Fogadj most / Várj jobb oddsra / Nincs időzítési előny>",
+    "hedge_suggestion": "<Opcionális fedezési stratégia, ha alkalmazható>"
+  },
+  "key_risks": [
+    {"risk": "<Első fő kockázat ami meghiúsíthatja a tippet>", "probability": <5-40 közötti szám %ban>},
+    {"risk": "<Második fő kockázat>", "probability": <5-40 közötti szám %ban>},
+    {"risk": "<Harmadik fő kockázat>", "probability": <5-40 közötti szám %ban>}
+  ],
+  "why_not_alternatives": "<Rövid magyarázat (2-3 mondat): Miért NEM a másik nyilvánvaló opciót választottuk? Pl: miért nem Away Win, ha az is jó oddsot kínál?>"
 }
+
+═══════════════════════════════════════════════════════════════
+⚠️  CRITICAL RULES & GUIDELINES
+═══════════════════════════════════════════════════════════════
+1. **BE SPECIFIC & DETAILED**: Generic reasoning is useless
+2. **EVIDENCE-BASED**: Every claim must be backed by data
+3. **BÁTOR PREDIKCIÓ**: Konkrét eredményt KÖTELEZŐ mondani! Használd a {sim_topScore} értéket!
+4. **CONSIDER ALL ANGLES**: Stats, tactics, psychology, value
+5. **FOCUS ON VALUE**: Not just "who will win" but "where is the edge"
+6. **MAIN MARKETS PRIORITY**: 1X2/Moneyline, Over/Under, BTTS first
+7. **REALISTIC CONFIDENCE**: Don't inflate scores without justification
+8. **HUNGARIAN LANGUAGE**: All reasoning must be in clear, professional Hungarian
 `;
 
 // === ORCHESTRATION LOGIC ===
@@ -1005,6 +1039,7 @@ interface SpecialistInput {
     psy_profile_away: any;
     homeNarrativeRating: any;
     awayNarrativeRating: any;
+    injuryConfidence: any;
 }
 export async function runStep_Specialist(data: SpecialistInput): Promise<any> {
     try {
@@ -1410,6 +1445,24 @@ async function getMasterRecommendation(
             rec.brief_reasoning = rec.brief_reasoning.substring(0, 497) + "...";
         }
 
+        // === ÚJ v133.0: BIZALMI HÍD (Quant vs. Specialist) ===
+        const quantConfidence = safeModelConfidence;
+        const specialistConfidence = expertConfScore || 5.0;
+        const confidenceGap = Math.abs(quantConfidence - specialistConfidence);
+        
+        rec.confidence_bridge = {
+            quant_confidence: quantConfidence,
+            specialist_confidence: specialistConfidence,
+            gap: confidenceGap,
+            explanation: confidenceGap > 2.5
+                ? `⚠️ Jelentős eltérés (${confidenceGap.toFixed(1)} pont) a matematikai modell és a kontextuális elemzés között. Ez szokatlan - további óvatosság ajánlott!`
+                : confidenceGap > 1.5
+                ? `📊 Közepes eltérés (${confidenceGap.toFixed(1)} pont) észlelhető. A két megközelítés kissé eltérő értékelést ad, de ez normális tartományon belül van.`
+                : `✅ A statisztikai modell (${quantConfidence.toFixed(1)}/10) és a szakértői elemzés (${specialistConfidence.toFixed(1)}/10) összhangban van. Ez növeli a tipp megbízhatóságát.`
+        };
+        console.log(`[AI_Service v133.0] 🌉 Bizalmi Híd: Quant ${quantConfidence.toFixed(1)} vs Specialist ${specialistConfidence.toFixed(1)} (Gap: ${confidenceGap.toFixed(1)})`);
+        // ======================================================
+
         console.log(`[AI_Service v138.0 - Főnök] VÉGLEGES KORRIGÁLT Tipp: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
         
         return rec;
@@ -1430,6 +1483,8 @@ interface FinalAnalysisInput {
     psyReport: any;        // Agent 2.5
     valueBetsJson: any[];
     richContext: string;
+    sportStrategy: ISportStrategy;
+    confidenceScores: { winner: number; totals: number; overall: number }; 
 }
 
 export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<any> {

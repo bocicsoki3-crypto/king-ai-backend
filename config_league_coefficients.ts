@@ -1,5 +1,5 @@
 // FÁJL: config_league_coefficients.ts
-// VERZIÓ: v130.0 (Liga Minőség + Defensive Multiplier Rendszer)
+// VERZIÓ: v138.0 (Liga Minőség + Defensive Multiplier Rendszer)
 // CÉL: UEFA coefficient + Liga erősség + Defensive Nature → TÖKÉLETES xG módosítás!
 // 
 // PÉLDA PROBLÉMA:
@@ -484,4 +484,3 @@ export default {
     getLeagueQuality,
     calculateLeagueQualityModifier
 };
-
