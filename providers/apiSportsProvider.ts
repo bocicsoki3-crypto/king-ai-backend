@@ -69,6 +69,7 @@ const STATIC_LEAGUE_MAP: { [key: string]: number } = {
     'france_ligue2': 62,
     'netherlands_eredivisie': 88,
     'portugal_ligaportugal': 94,
+    'turkey_superlig': 203, // 🔥 FIX: Török Super Lig
     
     // --- KELET-EURÓPA (JAVÍTVA v138.1) ---
     'romania_liga1': 283,
