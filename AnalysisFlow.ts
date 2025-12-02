@@ -480,7 +480,6 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         const finalXgSource = xgSource;
 
         // === 4. ÜGYNÖK (SZIMULÁTOR): Meccs szimulálása ===
-        console.log(`[Lánc 4/6] Szimulátor Ügynök: 25000 szimuláció futtatása...`);
         const { mu_corners, mu_cards } = estimateAdvancedMetrics(
             rawData, 
             sport, 
@@ -502,9 +501,17 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         );
         console.log(`Szimulátor (Bizalom): Győztes=${confidenceScores.winner.toFixed(1)}, Pontok=${confidenceScores.totals.toFixed(1)}, Átlag=${confidenceScores.overall.toFixed(1)}`);
 
+        // === v139.2: DINAMIKUS SZIMULÁCIÓ SZÁM (CONFIDENCE ALAPJÁN) ===
+        // Magas confidence → több szimuláció (pontosabb)
+        // Alacsony confidence → kevesebb szimuláció (gyorsabb)
+        const baseSims = 25000;
+        const confidenceMultiplier = Math.max(0.8, Math.min(1.5, confidenceScores.overall / 5.0));
+        const finalSims = Math.round(baseSims * confidenceMultiplier);
+        console.log(`[AnalysisFlow v139.2] Dinamikus szimuláció: ${finalSims} (confidence: ${confidenceScores.overall.toFixed(1)}/10, multiplier: ${confidenceMultiplier.toFixed(2)}x)`);
+
         const sim = simulateMatchProgress(
             mu_h, mu_a, 
-            mu_corners, mu_cards, sims, sport, null, mainTotalsLine, rawData
+            mu_corners, mu_cards, finalSims, sport, null, mainTotalsLine, rawData
         );
         
         sim.stat_confidence_winner = confidenceScores.winner; 
