@@ -368,13 +368,21 @@ export function calculateConfidenceScores(
         const homeOverallFormScore = getFormPointsPerc(form?.home_overall);
         const awayOverallFormScore = getFormPointsPerc(form?.away_overall);
         
-        // v139.0: Csak akkor büntetünk, ha extrém ellentmondás van (pl. statisztika hazai, de forma 0/5)
+        // === v139.2: FORM-XG ELLENTMONDÁS DINAMIKUS BÜNTETÉS ===
+        // Minél nagyobb az ellentmondás, annál nagyobb a büntetés
         if (homeOverallFormScore != null && awayOverallFormScore != null) {
              const formDiff = homeOverallFormScore - awayOverallFormScore; 
              const simDiff = (mu_h - mu_a); 
              
              if ((simDiff > 0.5 && formDiff < -0.4) || (simDiff < -0.5 && formDiff > 0.4)) {
-                winnerScore -= 1.0; // Enyhe büntetés ellentmondásnál
+                const contradictionSeverity = Math.abs(simDiff) + Math.abs(formDiff);
+                if (contradictionSeverity > 1.0) {
+                    winnerScore -= 2.0; // Erős ellentmondás (pl. statisztika +1.0, forma -0.8)
+                    console.log(`[Confidence v139.2] ⚠️ ERŐS FORM-XG ELLENTMONDÁS észlelve! Severity: ${contradictionSeverity.toFixed(2)} → -2.0 penalty`);
+                } else {
+                    winnerScore -= 1.0; // Enyhe ellentmondás
+                    console.log(`[Confidence v139.2] ⚠️ Enyhe form-xG ellentmondás észlelve → -1.0 penalty`);
+                }
             }
         }
         
@@ -440,7 +448,9 @@ export function calculateValue(
 ): any[] { 
     
     const valueBets: any[] = [];
-    const MIN_VALUE_THRESHOLD = 5.0; // Minimum 5% észlelt érték
+    // === v139.2: VALUE THRESHOLD CSÖKKENTVE ===
+    // 5% → 3%: Könnyebben találunk value beteket, de még mindig jelentős érték
+    const MIN_VALUE_THRESHOLD = 3.0; // Minimum 3% észlelt érték (volt: 5.0%)
 
     if (!oddsData || !oddsData.allMarkets || oddsData.allMarkets.length === 0 || !sim) {
         console.log("[Model.ts/calculateValue] Kihagyva: Hiányzó odds adatok vagy szimulációs eredmény.");

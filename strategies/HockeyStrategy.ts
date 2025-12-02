@@ -353,9 +353,12 @@ export class HockeyStrategy implements ISportStrategy {
         console.log(`[HockeyStrategy v128.0] Kulcsjátékos hatás: Home=${homePlayerImpact.toFixed(2)} goals, Away=${awayPlayerImpact.toFixed(2)} goals`);
         // ================================================
         
-        // Biztonsági korlátok (NHL-ben nagyon ritka a 7+ gól)
-        pure_mu_h = Math.max(1.5, Math.min(5.0, pure_mu_h));
-        pure_mu_a = Math.max(1.5, Math.min(5.0, pure_mu_a));
+        // === v139.2: KORLÁTOK LAZÍTVA - Csak extrém esetekben korrigálunk ===
+        // Csak akkor korrigálunk, ha valóban irreális (pl. <0.5 vagy >8.0 gól)
+        if (pure_mu_h < 0.5) pure_mu_h = 0.5; // Minimum 0.5 gól
+        if (pure_mu_h > 8.0) pure_mu_h = 8.0; // Maximum 8.0 gól (extrém esetek)
+        if (pure_mu_a < 0.5) pure_mu_a = 0.5;
+        if (pure_mu_a > 8.0) pure_mu_a = 8.0;
         
         console.log(`[HockeyStrategy v128.0] ✅ FINAL xG: mu_h=${pure_mu_h.toFixed(2)}, mu_a=${pure_mu_a.toFixed(2)}`);
         

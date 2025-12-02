@@ -389,9 +389,12 @@ export class BasketballStrategy implements ISportStrategy {
         console.log(`[BasketballStrategy v128.0] Kulcsjátékos hatás: Home=${homePlayerImpact.toFixed(1)} pts, Away=${awayPlayerImpact.toFixed(1)} pts`);
         // ================================================
 
-        // Értékek "normalizálása" (hogy ne legyenek extrém kiugrók hibás adat esetén)
-        est_mu_h = Math.max(80, Math.min(140, est_mu_h));
-        est_mu_a = Math.max(80, Math.min(140, est_mu_a));
+        // === v139.2: KORLÁTOK LAZÍTVA - Csak extrém esetekben korrigálunk ===
+        // Csak akkor korrigálunk, ha valóban irreális (pl. <60 vagy >180 pont)
+        if (est_mu_h < 60) est_mu_h = 60; // Minimum 60 pont
+        if (est_mu_h > 180) est_mu_h = 180; // Maximum 180 pont (extrém esetek)
+        if (est_mu_a < 60) est_mu_a = 60;
+        if (est_mu_a > 180) est_mu_a = 180;
 
         console.log(`[BasketballStrategy v128.0] ✅ FINAL xG: mu_h=${est_mu_h.toFixed(1)}, mu_a=${est_mu_a.toFixed(1)}`);
 

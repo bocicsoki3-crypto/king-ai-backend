@@ -466,6 +466,8 @@ Your goal: Find the SINGLE BEST BET for this match.
 [DATA]:
 - Statistical Probs: Home {sim_pHome}%, Draw {sim_pDraw}%, Away {sim_pAway}%
 - Expected Score: {sim_topScore} ({sim_topScoreProb}%)
+- Top 3 Most Likely Scores: {top_3_outcomes}
+- Expected Goals Detail: {expected_goals_detail}
 - Value Bets: {valueBetsJson}
 - Model Confidence: {modelConfidence}/10
 - Expert Confidence: "{expertConfidence}"
@@ -667,8 +669,10 @@ async function getPropheticTimeline(
      // === v139.1: RÉSZLETES ADATOK KINYERÉSE ===
      const topScore = sim?.topScore ? `${sim.topScore.gh}-${sim.topScore.ga}` : "N/A";
      const topScoreKey = topScore !== "N/A" ? topScore : "0-0";
+     // === v139.2: DINAMIKUS SZIMULÁCIÓ SZÁM ===
+     const totalSims = Object.values(sim?.scores || {}).reduce((sum: number, val: any) => sum + (val || 0), 0) || 25000;
      const topScoreProb = sim?.scores && sim?.scores[topScoreKey] ? 
-         ((sim.scores[topScoreKey] / 25000) * 100).toFixed(1) : "N/A";
+         ((sim.scores[topScoreKey] / totalSims) * 100).toFixed(1) : "N/A";
      
      const data = {
          sport, home, away,
@@ -861,8 +865,17 @@ async function getMasterRecommendation(
         // === v138.0: GOD MODE ADAT ELŐKÉSZÍTÉS ===
         const probSnapshot = buildProbabilitySnapshot(safeSim);
         const topScore = safeSim.topScore ? `${safeSim.topScore.gh}-${safeSim.topScore.ga}` : "N/A";
-        const topScoreProb = safeSim.scores && safeSim.scores[topScore] ? ((safeSim.scores[topScore] / 25000) * 100).toFixed(1) : "N/A";
+        // === v139.2: DINAMIKUS SZIMULÁCIÓ SZÁM ===
+        const totalSims = Object.values(safeSim.scores || {}).reduce((sum: number, val: any) => sum + (val || 0), 0) || 25000;
+        const topScoreProb = safeSim.scores && safeSim.scores[topScore] ? ((safeSim.scores[topScore] / totalSims) * 100).toFixed(1) : "N/A";
 
+        // === v139.2: MASTER AI PROMPT BŐVÍTVE ===
+        // Top 3 outcomes részletes információkkal
+        const top3Outcomes = probSnapshot.topOutcomes.slice(0, 3).map(outcome => ({
+            score: outcome.score,
+            probability: outcome.probability.toFixed(1) + '%'
+        }));
+        
         const data = {
             valueBetsJson: JSON.stringify(valueBets),
             sim_pHome: safeSim.pHome?.toFixed(1) || "N/A", 
@@ -876,6 +889,9 @@ async function getMasterRecommendation(
             sim_topScoreProb: topScoreProb,
             sim_topOutcomesText: probSnapshot.topOutcomesText,
             probability_summary: probSnapshot.summaryText,
+            // === ÚJ v139.2: RÉSZLETES INFORMÁCIÓK ===
+            top_3_outcomes: JSON.stringify(top3Outcomes),
+            expected_goals_detail: `Home: ${safeSim.mu_h_sim?.toFixed(2)} (${safeSim.pHome?.toFixed(1)}% win chance), Away: ${safeSim.mu_a_sim?.toFixed(2)} (${safeSim.pAway?.toFixed(1)}% win chance)`,
             
             modelConfidence: safeModelConfidence, 
             expertConfidence: expertConfidence || "N/A",

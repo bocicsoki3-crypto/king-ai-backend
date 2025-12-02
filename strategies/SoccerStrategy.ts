@@ -305,9 +305,11 @@ export class SoccerStrategy implements ISportStrategy {
                 p4_mu_a -= awayAttackImpact;           // Away attack weakened
                 p4_mu_a += awayDefenseVulnerability;   // Home defense vulnerable → Away profitál
                 
-                // Biztosítjuk, hogy ne legyenek extrém értékek
-                p4_mu_h = Math.max(0.3, Math.min(4.0, p4_mu_h));
-                p4_mu_a = Math.max(0.3, Math.min(4.0, p4_mu_a));
+                // === v139.2: KORLÁTOK LAZÍTVA - Csak extrém esetekben korrigálunk ===
+                if (p4_mu_h < 0.1) p4_mu_h = 0.1;
+                if (p4_mu_h > 6.0) p4_mu_h = 6.0;
+                if (p4_mu_a < 0.1) p4_mu_a = 0.1;
+                if (p4_mu_a > 6.0) p4_mu_a = 6.0;
                 
                 console.log(`[SoccerStrategy] P4 Auto xG (Position-Based): H=${p4_mu_h.toFixed(2)}, A=${p4_mu_a.toFixed(2)}`);
                 console.log(`  ↳ Home Impact: Attack=-${homeAttackImpact.toFixed(2)}, Defense Vuln=+${homeDefenseVulnerability.toFixed(2)}`);
@@ -422,9 +424,13 @@ export class SoccerStrategy implements ISportStrategy {
         // pure_mu_h += homeLeagueModifier;
         // pure_mu_a += awayLeagueModifier;
         
-        // Biztosítjuk, hogy ne legyenek extrém értékek
-        pure_mu_h = Math.max(0.3, Math.min(4.0, pure_mu_h));
-        pure_mu_a = Math.max(0.3, Math.min(4.0, pure_mu_a));
+        // === v139.2: KORLÁTOK LAZÍTVA - Csak extrém esetekben korrigálunk ===
+        // Csak akkor korrigálunk, ha valóban irreális (pl. <0.1 vagy >6.0 gól)
+        // Hagyjuk, hogy a statisztika és az AI döntsön, ne mesterségesen korlátozzuk
+        if (pure_mu_h < 0.1) pure_mu_h = 0.1; // Minimum 0.1 gól
+        if (pure_mu_h > 6.0) pure_mu_h = 6.0; // Maximum 6.0 gól (extrém esetek)
+        if (pure_mu_a < 0.1) pure_mu_a = 0.1;
+        if (pure_mu_a > 6.0) pure_mu_a = 6.0;
         
         // === v135.0: DERBY REDUCTION **KIKAPCSOLVA** ===
         // Ha derby meccs → -20% várható gólok (psziché > statisztika!)
