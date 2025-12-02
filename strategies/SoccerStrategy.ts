@@ -228,12 +228,12 @@ export class SoccerStrategy implements ISportStrategy {
                 console.log(`  ↳ Original Input: H_xG=${advancedData.manual_H_xG.toFixed(2)}, A_xG=${advancedData.manual_A_xG.toFixed(2)}`);
                 console.log(`  ↳ After Adjustments: H_xG=${h_xG.toFixed(2)}, A_xG=${a_xG.toFixed(2)}`);
                 console.log(`  ↳ Ratio Check: ${diffRatio.toFixed(2)}x ${diffRatio > 3.0 ? '⚠️ HIGH!' : '✅ OK'}`);
-                
-                return {
-                    pure_mu_h: p1_mu_h,
-                    pure_mu_a: p1_mu_a,
+            
+            return {
+                pure_mu_h: p1_mu_h,
+                pure_mu_a: p1_mu_a,
                     source: `Manual (Defensive Adjusted ${leagueDefensiveMultiplier.toFixed(2)}x) ${diffRatio > 3.0 ? '⚠️ High Ratio' : ''}`
-                };
+            };
             }
         }
 

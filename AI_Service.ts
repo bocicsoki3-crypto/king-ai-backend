@@ -705,7 +705,7 @@ async function getHockeyGoalsOUAnalysis(sim: any, rawData: ICanonicalRawData, ma
         line: mainTotalsLine,
         sim_pOver: safeSim.pOver,
         sim_mu_sum: (safeSim.mu_h_sim ?? 0) + (safeSim.mu_a_sim ?? 0),
-        home_gsax: rawData?.advanced_stats_goalie?.home_goalie?.GSAx || "N/A",
+        home_gsax: rawData?.advanced_stats_goalie?.home_goalie?.GSAx || "N/A", 
         away_gsax: rawData?.advanced_stats_goalie?.away_goalie?.GSAx || "N/A"
      };
      return await getAndParse(HOCKEY_GOALS_OU_PROMPT, data, "hockey_goals_ou_analysis", "HockeyGoalsOUAnalysis");
@@ -773,7 +773,7 @@ async function getMasterRecommendation(
     contradictionAnalysisResult: string,
     psyReport: any,
     specialistReport: any,
-    sport: string 
+    sport: string
 ) {
     try {
         const safeSim = sim || {};
@@ -821,7 +821,7 @@ async function getMasterRecommendation(
             sim_topOutcomesText: probSnapshot.topOutcomesText,
             probability_summary: probSnapshot.summaryText,
             
-            modelConfidence: safeModelConfidence,
+            modelConfidence: safeModelConfidence, 
             expertConfidence: expertConfidence || "N/A",
             riskAssessment: riskAssessment || "N/A",
             microSummary: microSummary,
@@ -921,7 +921,7 @@ interface FinalAnalysisInput {
     richContext: string;
     sportStrategy: ISportStrategy;
     confidenceScores: { winner: number; totals: number; overall: number }; 
-}
+    }
 
 export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<any> {
     
@@ -931,7 +931,7 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
     const home = matchData.home || 'Hazai';
     const away = matchData.away || 'Vendég';
     const sport = matchData.sport || 'soccer';
-
+    
     const modelConfidence = typeof sim.stat_confidence === 'number' ? sim.stat_confidence : 5.0;
     
     let expertConfidence = `**${modelConfidence.toFixed(1)}/10** - AI Hiba: Az Expert Confidence hívás nem futott le.`;
@@ -965,10 +965,10 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
             const cornerPromise = getCornerAnalysis(sim, rawDataJson);
             const cardPromise = getCardAnalysis(sim, rawDataJson);
 
-            const results = await Promise.allSettled([
+        const results = await Promise.allSettled([
                 expertConfidencePromise, riskAssessmentPromise, playerMarketsPromise,
                 bttsPromise, goalsOUPromise, cornerPromise, cardPromise
-            ]);
+        ]);
 
             expertConfidence = (results[0].status === 'fulfilled') ? results[0].value : `**1.0/10** - AI Hiba: ${results[0].reason?.message || 'Ismeretlen'}`;
             riskAssessment = (results[1].status === 'fulfilled') ? results[1].value : `AI Hiba: ${results[1].reason?.message || 'Ismeretlen'}`;
@@ -1015,7 +1015,7 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
 
         
         // --- 2. LÉPÉS: Fő elemzések futtatása (ezek függhetnek az előzőektől) ---
-        
+
         try {
             tacticalBriefing = await getTacticalBriefing(rawDataJson, sport, home, away, riskAssessment);
         } catch (e: any) { tacticalBriefing = `AI Hiba (Tactical): ${e.message}`; }
@@ -1023,7 +1023,7 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
         try {
             generalAnalysis = await getFinalGeneralAnalysis(sim, tacticalBriefing, rawDataJson, modelConfidence, psyReport);
         } catch (e: any) { generalAnalysis = `AI Hiba (General): ${e.message}`; }
-
+        
         // Csak focinál van értelme a Prófétának
         if (sport === 'soccer') {
             try {
@@ -1046,17 +1046,17 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
 
         // --- 3. LÉPÉS: A "FŐNÖK" (JS KÓD + AI TANÁCSADÓ) HÍVÁSA ---
         masterRecommendation = await getMasterRecommendation(
-            valueBetsJson,
-            sim,
+            valueBetsJson, 
+            sim, 
             modelConfidence,
             expertConfidence, 
-            riskAssessment,
-            microAnalyses,
-            generalAnalysis,
-            strategic_synthesis,
+            riskAssessment, 
+            microAnalyses, 
+            generalAnalysis, 
+            strategic_synthesis, 
             "N/A", 
-            psyReport,
-            specialistReport,
+            psyReport, 
+            specialistReport, 
             sport // Átadjuk a sportot (v103.6)
         );
 
@@ -1074,7 +1074,7 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
         prophetic_timeline: propheticTimeline,
         final_confidence_report: expertConfidence,
         micromodels: microAnalyses, // Ez már sport-specifikus
-        master_recommendation: masterRecommendation,
+        master_recommendation: masterRecommendation, 
         agent_reports: {
             psychologist: psyReport,
             specialist: specialistReport
