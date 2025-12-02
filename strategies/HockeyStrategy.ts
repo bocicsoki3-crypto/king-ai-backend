@@ -1,5 +1,5 @@
 // FÁJL: strategies/HockeyStrategy.ts
-// VERZIÓ: v138.0 (EMERGENCY STABILIZATION) 🏒
+// VERZIÓ: v139.0 (PURE AI MODE - FINAL) 🏒
 //
 // JAVÍTÁS (v138.0):
 // 1. GOALIE IMPACT FIX: -1.20 gól helyett visszaállítva -0.60 gólra (reális kapus hatás).
@@ -267,26 +267,13 @@ export class HockeyStrategy implements ISportStrategy {
                 console.log(`  Before: H_goals=${advancedData.manual_H_xG.toFixed(2)}, A_goals=${advancedData.manual_A_xG.toFixed(2)} (Total: ${(advancedData.manual_H_xG + advancedData.manual_A_xG).toFixed(2)})`);
                 console.log(`  After:  H_goals=${manual_H_xG.toFixed(2)}, A_goals=${manual_A_xG.toFixed(2)} (Total: ${(manual_H_xG + manual_A_xG).toFixed(2)})`);
                 
-                // === ÚJ v130.1: P1 MANUAL SANITY CHECK ===
-                const p1_mu_h_raw = (manual_H_xG + manual_A_xGA) / 2;
-                const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
-                const totalExpectedGoals = p1_mu_h_raw + p1_mu_a_raw;
-                
-                // === v138.0: HOCKEY SANITY CHECK **VISSZAKAPCSOLVA** ===
-                // TANULSÁG: Bár vannak 8-9 gólos meccsek, a VÁRHATÓ gólok (xG) ritkán ennyi.
-                // Ha xG > 7.0, akkor korrigálunk.
-                
-                const EXPECTED_MAX_GOALS = 7.0;
-                
-                if (totalExpectedGoals > EXPECTED_MAX_GOALS) {
-                    const sanityAdjustment = 0.90; // -10%
-                    console.warn(`[HockeyStrategy v138.0] 🚨 P1 SANITY CHECK! Total xG (${totalExpectedGoals.toFixed(2)}) > ${EXPECTED_MAX_GOALS}. Reducing by 10%.`);
-                    
-                    manual_H_xG *= sanityAdjustment;
-                    manual_A_xG *= sanityAdjustment;
-                    manual_H_xGA *= sanityAdjustment;
-                    manual_A_xGA *= sanityAdjustment;
-                }
+                // === v139.0: P1 MANUAL SANITY CHECK KIKAPCSOLVA (PURE AI MODE) ===
+                // Hagyjuk, hogy a manuális xG értékek szabadon működjenek, ne korrigáljuk mesterségesen.
+                // Ha valóban irreális az érték, az AI és a Specialist majd kezeli.
+                // const p1_mu_h_raw = (manual_H_xG + manual_A_xGA) / 2;
+                // const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
+                // const totalExpectedGoals = p1_mu_h_raw + p1_mu_a_raw;
+                // ... sanity check logika törölve ...
                 
                 const p1_mu_h = (manual_H_xG + manual_A_xGA) / 2;
                 const p1_mu_a = (manual_A_xG + manual_H_xGA) / 2;

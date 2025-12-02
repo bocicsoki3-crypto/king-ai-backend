@@ -1,5 +1,5 @@
 // FÁJL: strategies/SoccerStrategy.ts
-// VERZIÓ: v138.0 (EMERGENCY STABILIZATION) ⚽
+// VERZIÓ: v139.0 (PURE AI MODE - FINAL) ⚽
 //
 // JAVÍTÁS (v138.0):
 // 1. FORMA SÚLY HELYREÁLLÍTÁSA: 65/35 → 50/50 (Season/Form balance)
@@ -182,35 +182,13 @@ export class SoccerStrategy implements ISportStrategy {
                 console.log(`  Before: H_xG=${advancedData.manual_H_xG.toFixed(2)}, A_xG=${advancedData.manual_A_xG.toFixed(2)} (Total: ${(advancedData.manual_H_xG + advancedData.manual_A_xG).toFixed(2)})`);
                 console.log(`  After:  H_xG=${h_xG.toFixed(2)}, A_xG=${a_xG.toFixed(2)} (Total: ${(h_xG + a_xG).toFixed(2)})`);
                 
-                // === ÚJ v130.0: P1 MANUAL xG SANITY CHECK ===
-                // Ha a total xG túl magas a ligához képest → auto korrekció
-                const p1_mu_h_raw = (h_xG + a_xGA) / 2;
-                const p1_mu_a_raw = (a_xG + h_xGA) / 2;
-                const totalExpectedGoals = p1_mu_h_raw + p1_mu_a_raw;
-                
-                // v136.0: ULTRA-LAZÍTVA! Maximumok +0.5-0.7 gól növelve!
-                // Europa League/Conference League: ~3.5 goals/match (volt: 3.0)
-                // Top Ligák: ~3.8 goals/match (volt: 3.3)
-                // Támadó ligák: ~4.2-4.5 goals/match (volt: 3.6-3.8)
-                
-                const isBundesliga = leagueName?.toLowerCase().includes('bundesliga') || false;
-                const expectedMaxGoals = isBundesliga ? 4.5 :                        // Bundesliga: +0.7 (volt: 3.8)
-                                         leagueDefensiveMultiplier <= 0.92 ? 3.5 :   // Europa/Conference +0.5 (volt: 3.0)
-                                         leagueDefensiveMultiplier >= 1.05 ? 4.2 :   // Eredivisie +0.6 (volt: 3.6)
-                                         3.8;                                         // Normál ligák +0.5 (volt: 3.3)
-                
-                if (totalExpectedGoals > expectedMaxGoals) {
-                    const sanityAdjustment = 0.95; // v136.0: -5% korrekció (volt: -10%!) ULTRA-LAX!
-                    console.warn(`[SoccerStrategy v136.0] 🚨 P1 SANITY CHECK (ULTRA-LAX)! Total xG (${totalExpectedGoals.toFixed(2)}) > Expected Max (${expectedMaxGoals.toFixed(2)}) for this league${isBundesliga ? ' (Bundesliga)' : ''}.`);
-                    console.warn(`  📉 Applying LIGHT adjustment (-5%, volt -10%)`);
-                    
-                    h_xG *= sanityAdjustment;
-                    h_xGA *= sanityAdjustment;
-                    a_xG *= sanityAdjustment;
-                    a_xGA *= sanityAdjustment;
-                    
-                    console.log(`  After Sanity: H_xG=${h_xG.toFixed(2)}, A_xG=${a_xG.toFixed(2)} (Total: ${(h_xG + a_xG).toFixed(2)})`);
-                }
+                // === v139.0: P1 MANUAL xG SANITY CHECK KIKAPCSOLVA (PURE AI MODE) ===
+                // Hagyjuk, hogy a manuális xG értékek szabadon működjenek, ne korrigáljuk mesterségesen.
+                // Ha valóban irreális az érték, az AI és a Specialist majd kezeli.
+                // const p1_mu_h_raw = (h_xG + a_xGA) / 2;
+                // const p1_mu_a_raw = (a_xG + h_xGA) / 2;
+                // const totalExpectedGoals = p1_mu_h_raw + p1_mu_a_raw;
+                // ... sanity check logika törölve ...
                 
                 // 2. Extrém különbség ellenőrzés
                 const p1_mu_h = (h_xG + a_xGA) / 2;
@@ -437,17 +415,12 @@ export class SoccerStrategy implements ISportStrategy {
             console.log(`[xG v127.0] Home Advantage (+${HOME_ADVANTAGE.toFixed(2)}) alkalmazva: H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)}`);
         }
         
-        // === v127.0: LIGA MINŐSÉG MÓDOSÍTÁS ALKALMAZÁSA ===
-        const homeLeagueModifier = calculateLeagueQualityModifier(finalHomeCoeff, finalAwayCoeff, true);
-        const awayLeagueModifier = calculateLeagueQualityModifier(finalHomeCoeff, finalAwayCoeff, false);
-        
-        pure_mu_h += homeLeagueModifier;
-        pure_mu_a += awayLeagueModifier;
-        
-        if (Math.abs(homeLeagueModifier) > 0.05 || Math.abs(awayLeagueModifier) > 0.05) {
-            console.log(`[xG v127.0] 🔥 LIGA MINŐSÉG MÓDOSÍTÁS: Home xG ${homeLeagueModifier >= 0 ? '+' : ''}${homeLeagueModifier.toFixed(2)}, Away xG ${awayLeagueModifier >= 0 ? '+' : ''}${awayLeagueModifier.toFixed(2)}`);
-            sourceDetails += " + Liga Quality";
-        }
+        // === v139.0: LIGA MINŐSÉG MÓDOSÍTÁS KIKAPCSOLVA (PURE AI MODE) ===
+        // Hagyjuk, hogy az AI döntse el a liga minőség hatását, ne mesterségesen módosítsuk.
+        // const homeLeagueModifier = calculateLeagueQualityModifier(finalHomeCoeff, finalAwayCoeff, true);
+        // const awayLeagueModifier = calculateLeagueQualityModifier(finalHomeCoeff, finalAwayCoeff, false);
+        // pure_mu_h += homeLeagueModifier;
+        // pure_mu_a += awayLeagueModifier;
         
         // Biztosítjuk, hogy ne legyenek extrém értékek
         pure_mu_h = Math.max(0.3, Math.min(4.0, pure_mu_h));
@@ -469,36 +442,21 @@ export class SoccerStrategy implements ISportStrategy {
             sourceDetails += ` [DERBY: ${derbyInfo.derbyName}]`;
         }
         
-        // === v138.0 FIX: REPUTATION BIAS ELTÁVOLÍTÁSA ===
-        // A Las Palmas vs Castellón meccsen az AI tévedett, mert a Las Palmas "híresebb".
-        // Mostantól: HA a hazai csapat (Home) otthoni mérlege erős, és a vendég (Away) idegenben gyenge,
-        // akkor a hazai pálya előnye SOKKAL NAGYOBB, függetlenül a "hírnévtől".
-        
-        let homeDominanceFactor = 0;
-        if (hasHomeSplit && hasAwaySplit) {
-            const homeWinRate = (rawStats.home.home_wins || 0) / (rawStats.home.home_gp || 1);
-            const awayWinRate = (rawStats.away.away_wins || 0) / (rawStats.away.away_gp || 1);
-            const awayLossRate = (rawStats.away.away_l || 0) / (rawStats.away.away_gp || 1);
-            
-            // Ha a hazai csapat otthon erős (>50% win), a vendég idegenben gyenge (<30% win)
-            if (homeWinRate > 0.50 && awayWinRate < 0.30) {
-                homeDominanceFactor = 0.40; // +0.40 xG boost a hazainak!
-                console.log(`[SoccerStrategy v138.0] 🏠 HAZAI ERŐD ÉSZLELVE! Home Win Rate: ${homeWinRate.toFixed(2)}, Away Win Rate: ${awayWinRate.toFixed(2)} -> Boost: +${homeDominanceFactor}`);
-            }
-            
-            // Ha a vendég sokat veszít idegenben (>50% loss)
-            if (awayLossRate > 0.50) {
-                homeDominanceFactor += 0.20; // Még +0.20!
-                console.log(`[SoccerStrategy v138.0] 🚌 VENDÉG GYENGESÉG ÉSZLELVE! Away Loss Rate: ${awayLossRate.toFixed(2)} -> Boost: +0.20`);
-            }
-        }
-        
-        pure_mu_h += homeDominanceFactor;
+        // === v139.0: HOME DOMINANCE FACTOR KIKAPCSOLVA (PURE AI MODE) ===
+        // Hagyjuk, hogy az AI és a statisztika döntse el a hazai dominanciát, ne mesterségesen boostoljuk.
+        // let homeDominanceFactor = 0;
+        // if (hasHomeSplit && hasAwaySplit) {
+        //     const homeWinRate = (rawStats.home.home_wins || 0) / (rawStats.home.home_gp || 1);
+        //     const awayWinRate = (rawStats.away.away_wins || 0) / (rawStats.away.away_gp || 1);
+        //     const awayLossRate = (rawStats.away.away_l || 0) / (rawStats.away.away_gp || 1);
+        //     ...
+        // }
+        // pure_mu_h += homeDominanceFactor;
         
         return {
             pure_mu_h: pure_mu_h,
             pure_mu_a: pure_mu_a,
-            source: sourceDetails + (homeDominanceFactor > 0 ? ` + HomeDominance(${homeDominanceFactor.toFixed(2)})` : ''),
+            source: sourceDetails,
             isDerby: derbyInfo.isDerby,
             derbyName: derbyInfo.derbyName || undefined
         };

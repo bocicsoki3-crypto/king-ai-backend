@@ -1,5 +1,5 @@
 // FÁJL: Model.ts
-// VERZIÓ: v138.0 (EMERGENCY STABILIZATION) ⚙️
+// VERZIÓ: v139.0 (PURE AI MODE - FINAL) ⚙️
 //
 // JAVÍTÁS (v138.0):
 // 1. CONFIDENCE THRESHOLDS NORMALIZÁLVA: Visszaállítva a szigorúbb határokra.
@@ -335,18 +335,19 @@ export function calculateConfidenceScores(
         const totalExpected = mu_h + mu_a;
         const xgDiffPercent = (xgDiff / totalExpected) * 100;
         
-        // Sport-specifikus százalékos küszöbök (v139.0: STANDARD ÉRTÉKEK)
+        // Sport-specifikus százalékos küszöbök (v139.0: LAZÍTOTT ÉRTÉKEK - PURE AI MODE)
+        // Lazítva, hogy az AI könnyebben adhasson magas bizalmat
         let thresholdHighPct: number, thresholdLowPct: number;
         
         if (sport === 'basketball') {
-            thresholdHighPct = 4.0;  // 4%
-            thresholdLowPct = 1.0;   // 1%
+            thresholdHighPct = 3.0;  // 3% (volt: 4.0) - Lazítva
+            thresholdLowPct = 0.5;   // 0.5% (volt: 1.0) - Lazítva
         } else if (sport === 'hockey') {
-            thresholdHighPct = 10.0; // 10%
-            thresholdLowPct = 3.0;   // 3%
+            thresholdHighPct = 7.0; // 7% (volt: 10.0) - Lazítva
+            thresholdLowPct = 2.0;   // 2% (volt: 3.0) - Lazítva
         } else { // soccer
-            thresholdHighPct = 8.0;  // 8%
-            thresholdLowPct = 2.0;   // 2%
+            thresholdHighPct = 6.0;  // 6% (volt: 8.0) - Lazítva
+            thresholdLowPct = 1.5;   // 1.5% (volt: 2.0) - Lazítva
         }
         
         if (xgDiffPercent > thresholdHighPct) winnerScore += 2.0;
@@ -385,15 +386,16 @@ export function calculateConfidenceScores(
         
         let totalsThresholdHighPct: number, totalsThresholdLowPct: number;
         
+        // v139.0: Totals threshold-ok lazítva (PURE AI MODE)
         if (sport === 'basketball') {
-            totalsThresholdHighPct = 3.5; 
-            totalsThresholdLowPct = 1.0;
+            totalsThresholdHighPct = 2.5;  // (volt: 3.5) - Lazítva
+            totalsThresholdLowPct = 0.5;   // (volt: 1.0) - Lazítva
         } else if (sport === 'hockey') {
-            totalsThresholdHighPct = 12.0;
-            totalsThresholdLowPct = 4.0;
+            totalsThresholdHighPct = 8.0;   // (volt: 12.0) - Lazítva
+            totalsThresholdLowPct = 2.5;   // (volt: 4.0) - Lazítva
         } else { // soccer
-            totalsThresholdHighPct = 15.0;
-            totalsThresholdLowPct = 5.0;
+            totalsThresholdHighPct = 10.0;  // (volt: 15.0) - Lazítva
+            totalsThresholdLowPct = 3.0;   // (volt: 5.0) - Lazítva
         }
         
         if (totalsDiffPercent > totalsThresholdHighPct) totalsScore += 4.0;

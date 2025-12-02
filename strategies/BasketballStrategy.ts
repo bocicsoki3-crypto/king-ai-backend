@@ -1,5 +1,5 @@
 // FÁJL: strategies/BasketballStrategy.ts
-// VERZIÓ: v138.0 (EMERGENCY STABILIZATION) 🏀
+// VERZIÓ: v139.0 (PURE AI MODE - FINAL) 🏀
 //
 // JAVÍTÁS (v138.0):
 // 1. PACE FACTOR FIX: 3x-es szorzó helyett visszaállítva 1.2x-re (reális hatás).
@@ -266,25 +266,13 @@ export class BasketballStrategy implements ISportStrategy {
                 console.log(`  Before: H_pts=${advancedData.manual_H_xG.toFixed(1)}, A_pts=${advancedData.manual_A_xG.toFixed(1)} (Total: ${(advancedData.manual_H_xG + advancedData.manual_A_xG).toFixed(1)})`);
                 console.log(`  After:  H_pts=${manual_H_xG.toFixed(1)}, A_pts=${manual_A_xG.toFixed(1)} (Total: ${(manual_H_xG + manual_A_xG).toFixed(1)})`);
                 
-                // === v138.0: P1 MANUAL SANITY CHECK **VISSZAKAPCSOLVA** ===
-                // TANULSÁG: A Pistons-Heat (273 pt) outlier volt. A legtöbb meccs NEM 270 pontos.
-                // Biztonsági korlát: Max 255 pont.
-                
-                const p1_mu_h_raw = (manual_H_xG + manual_A_xGA) / 2;
-                const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
-                const totalExpectedPoints = p1_mu_h_raw + p1_mu_a_raw;
-                
-                const EXPECTED_MAX_POINTS = 255.0;
-                
-                if (totalExpectedPoints > EXPECTED_MAX_POINTS) {
-                    const sanityAdjustment = 0.90; // -10% csökkentés
-                    console.warn(`[BasketballStrategy v138.0] 🚨 P1 SANITY CHECK! Total Points (${totalExpectedPoints.toFixed(1)}) > ${EXPECTED_MAX_POINTS}. Reducing by 10%.`);
-                    
-                    manual_H_xG *= sanityAdjustment;
-                    manual_A_xG *= sanityAdjustment;
-                    manual_H_xGA *= sanityAdjustment;
-                    manual_A_xGA *= sanityAdjustment;
-                }
+                // === v139.0: P1 MANUAL SANITY CHECK KIKAPCSOLVA (PURE AI MODE) ===
+                // Hagyjuk, hogy a manuális pontszám értékek szabadon működjenek, ne korrigáljuk mesterségesen.
+                // Ha valóban irreális az érték, az AI és a Specialist majd kezeli.
+                // const p1_mu_h_raw = (manual_H_xG + manual_A_xGA) / 2;
+                // const p1_mu_a_raw = (manual_A_xG + manual_H_xGA) / 2;
+                // const totalExpectedPoints = p1_mu_h_raw + p1_mu_a_raw;
+                // ... sanity check logika törölve ...
                 
                 const p1_mu_h = (manual_H_xG + manual_A_xGA) / 2;
                 const p1_mu_a = (manual_A_xG + manual_H_xGA) / 2;
