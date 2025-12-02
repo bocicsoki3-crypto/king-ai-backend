@@ -550,24 +550,25 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             console.error("KRITIKUS HIBA: A Hibrid Főnök nem adott vissza érvényes 'final_confidence' számot! 1.0-ra állítva.");
         }
         
-        // === ÚJ v134.0: DERBY CONFIDENCE PENALTY ===
+        // === v139.0: NINCS TÖBB DERBY CONFIDENCE PENALTY! ===
+        /*
         if (isDerby) {
             const originalConfidence = finalConfidenceScore;
-            finalConfidenceScore = Math.max(1.0, Math.min(4.5, finalConfidenceScore - 2.5)); // -2.5 penalty, MAX 4.5/10
+            finalConfidenceScore = Math.max(1.0, Math.min(4.5, finalConfidenceScore - 2.5)); 
             
             console.log(`[AnalysisFlow v134.0] 🔥 DERBY PENALTY APPLIED:`);
             console.log(`  Original Confidence: ${originalConfidence.toFixed(1)}/10`);
             console.log(`  After Derby Penalty: ${finalConfidenceScore.toFixed(1)}/10 (MAX 4.5 - KISZÁMÍTHATATLAN!)`);
             console.log(`  Derby: ${derbyName}`);
             
-            // Figyelmeztetés hozzáadása a key_risks-hez
             if (masterRecommendation && masterRecommendation.key_risks) {
                 masterRecommendation.key_risks.unshift({
                     risk: `⚠️ DERBY MECCS (${derbyName})! A forma és statisztikák kevésbé relevánsak! Pszichológia > Matematika!`,
-                    probability: 40 // Derby hatás 40% esély a meglepetésre
+                    probability: 40
                 });
             }
         }
+        */
         // === Hibrid Főnök Végzett ===
 
         console.log(`Bizottsági Lánc Befejezve. Ajánlás: ${JSON.stringify(masterRecommendation)} (Végső bizalom: ${finalConfidenceScore})`);
