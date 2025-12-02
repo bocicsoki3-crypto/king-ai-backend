@@ -1,5 +1,5 @@
 // FÁJL: Model.ts
-// VERZIÓ: v139.0 (PURE AI MODE - FINAL) ⚙️
+// VERZIÓ: v139.3 (NO LOW ODDS - PROFITABLE TIPS ONLY) ⚙️
 //
 // JAVÍTÁS (v138.0):
 // 1. CONFIDENCE THRESHOLDS NORMALIZÁLVA: Visszaállítva a szigorúbb határokra.
@@ -483,7 +483,10 @@ export function calculateValue(
                 const simProb = simProbs[simKey];
                 const value = simProb - marketProb;
                 
-                if (value > MIN_VALUE_THRESHOLD) {
+                // === v139.3: MINIMUM ODDS SZŰRÉS ===
+                // Csak akkor adjuk hozzá, ha value > threshold ÉS odds >= 1.8
+                const MIN_ODDS_FOR_VALUE = 1.8;
+                if (value > MIN_VALUE_THRESHOLD && outcome.price >= MIN_ODDS_FOR_VALUE) {
                     valueBets.push({
                         market: `1X2 - ${simKey.toUpperCase()}`,
                         odds: outcome.price.toFixed(2),
@@ -507,11 +510,14 @@ export function calculateValue(
             o.name.toLowerCase().includes('under') && o.name.includes(mainLine)
         );
 
+        // === v139.3: MINIMUM ODDS SZŰRÉS ===
+        const MIN_ODDS_FOR_VALUE = 1.8;
+        
         if (overOutcome) {
             const marketProb = _getImpliedProbability(overOutcome.price);
             const simProb = simProbs['over'];
             const value = simProb - marketProb;
-            if (value > MIN_VALUE_THRESHOLD) {
+            if (value > MIN_VALUE_THRESHOLD && overOutcome.price >= MIN_ODDS_FOR_VALUE) {
                  valueBets.push({
                     market: `Over ${mainLine}`,
                     odds: overOutcome.price.toFixed(2),
@@ -524,7 +530,7 @@ export function calculateValue(
             const marketProb = _getImpliedProbability(underOutcome.price);
             const simProb = simProbs['under'];
             const value = simProb - marketProb;
-            if (value > MIN_VALUE_THRESHOLD) {
+            if (value > MIN_VALUE_THRESHOLD && underOutcome.price >= MIN_ODDS_FOR_VALUE) {
                  valueBets.push({
                     market: `Under ${mainLine}`,
                     odds: underOutcome.price.toFixed(2),
@@ -559,7 +565,9 @@ export function calculateValue(
             const marketProb = _getImpliedProbability(outcome.price);
             const value = simProb - marketProb;
             
-            if (value > MIN_VALUE_THRESHOLD) {
+            // === v139.3: MINIMUM ODDS SZŰRÉS ===
+            const MIN_ODDS_FOR_VALUE = 1.8;
+            if (value > MIN_VALUE_THRESHOLD && outcome.price >= MIN_ODDS_FOR_VALUE) {
                 valueBets.push({
                     market: `${teamName} ${outcome.name}`, // Pl. "Warriors Over 115.5"
                     odds: outcome.price.toFixed(2),
@@ -580,11 +588,14 @@ export function calculateValue(
         const yesOutcome = bttsMarket.outcomes.find(o => o.name.toLowerCase() === 'yes');
         const noOutcome = bttsMarket.outcomes.find(o => o.name.toLowerCase() === 'no');
 
+        // === v139.3: MINIMUM ODDS SZŰRÉS ===
+        const MIN_ODDS_FOR_VALUE = 1.8;
+        
         if (yesOutcome) {
             const marketProb = _getImpliedProbability(yesOutcome.price);
             const simProb = simProbs['btts_yes'];
             const value = simProb - marketProb;
-            if (value > MIN_VALUE_THRESHOLD) {
+            if (value > MIN_VALUE_THRESHOLD && yesOutcome.price >= MIN_ODDS_FOR_VALUE) {
                  valueBets.push({
                     market: `BTTS: Yes`,
                     odds: yesOutcome.price.toFixed(2),
@@ -597,7 +608,7 @@ export function calculateValue(
             const marketProb = _getImpliedProbability(noOutcome.price);
             const simProb = simProbs['btts_no'];
             const value = simProb - marketProb;
-            if (value > MIN_VALUE_THRESHOLD) {
+            if (value > MIN_VALUE_THRESHOLD && noOutcome.price >= MIN_ODDS_FOR_VALUE) {
                  valueBets.push({
                     market: `BTTS: No`,
                     odds: noOutcome.price.toFixed(2),

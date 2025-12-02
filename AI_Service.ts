@@ -1,5 +1,5 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v139.1 (PROPHETIC ACCURACY UPGRADE) 🧠
+// VERZIÓ: v139.3 (NO LOW ODDS - PROFITABLE TIPS ONLY) 🧠
 //
 // JAVÍTÁS (v139.0):
 // 1. PROMPTOK EGYSZERŰSÍTÉSE:
@@ -481,6 +481,21 @@ Your goal: Find the SINGLE BEST BET for this match.
 4. If they disagree -> Find out WHY and pick the side with STRONGER EVIDENCE.
 5. **BE DECISIVE.** Don't hedge. Pick a winner.
 
+🚫 **ABSOLUTELY FORBIDDEN MARKETS (v139.3 - NO LOW ODDS!):**
+- ❌ "Dupla-Esély" / "Double Chance" / "1X" / "X2" / "12" - TILOS! (Alacsony odds ~1.3-1.6)
+- ❌ "Tét Vissza" / "Draw No Bet" / "DNB" - TILOS! (Alacsony odds ~1.5-1.8)
+- ❌ ANY market with odds < 1.8 - TILOS! (Nem profitábilis)
+
+✅ **ALLOWED MARKETS (High Value Only - Minimum 1.8 odds):**
+- ✅ Home Win / Away Win / Draw (1X2/Moneyline) - ONLY if odds >= 1.8
+- ✅ Over/Under Goals/Points - ONLY if odds >= 1.8
+- ✅ BTTS (Both Teams To Score) - ONLY if odds >= 1.8
+- ✅ Asian Handicap - ONLY if odds >= 1.8
+- ✅ Team Totals - ONLY if odds >= 1.8
+
+**CRITICAL RULE:** If the best value bet has odds < 1.8, find the NEXT BEST option with odds >= 1.8!
+**GOAL:** Find PROFITABLE bets, not "safe" low-odds bets. The user wants to WIN, not just "not lose"!
+
 [OUTPUT FORMAT] - STRICT JSON:
 {
   "recommended_bet": "<THE CHOSEN BET (e.g. 'Arsenal győzelem', 'Over 2.5 gól')>",
@@ -915,7 +930,114 @@ async function getMasterRecommendation(
         }
         
         // --- 2. LÉPÉS: KÓD (A "Főnök") átveszi az irányítást ---
-        console.log(`[AI_Service v138.0 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
+        console.log(`[AI_Service v139.3 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
+
+        // === v139.3: TILTOTT PIACOK SZŰRÉSE + MINIMUM ODDS KÖVETELMÉNY ===
+        const BANNED_KEYWORDS = [
+            'dupla', 'double chance', '1x', 'x2', '12',
+            'tét vissza', 'draw no bet', 'dnb'
+        ];
+        
+        const MIN_ODDS = 1.8; // Minimum 1.8 odds (profitábilis tippekhez)
+        
+        function isBannedMarket(market: string): boolean {
+            if (!market) return false;
+            const lower = market.toLowerCase().trim();
+            // FONTOS: A sima "Döntetlen" / "Draw" / "X" NEM tiltott! Csak a Double Chance és DNB tiltott!
+            return BANNED_KEYWORDS.some(keyword => 
+                lower === keyword || 
+                lower.includes(` ${keyword} `) || 
+                lower.startsWith(keyword + ' ') ||
+                lower.endsWith(' ' + keyword)
+            );
+        }
+        
+        // Helper: Odds kinyerése a valueBets-ből
+        function findOddsForMarket(marketName: string, valueBets: any[]): number | null {
+            const marketLower = marketName.toLowerCase();
+            for (const vb of valueBets) {
+                if (marketLower.includes(vb.market.toLowerCase()) || 
+                    marketLower.includes(vb.odds)) {
+                    return parseFloat(vb.odds);
+                }
+            }
+            return null;
+        }
+        
+        // Primary market és recommended_bet ellenőrzése
+        const primaryMarket = rec.primary?.market || rec.recommended_bet || '';
+        const primaryOdds = findOddsForMarket(primaryMarket, valueBets);
+        const isBanned = isBannedMarket(primaryMarket) || isBannedMarket(rec.recommended_bet || '');
+        const hasLowOdds = primaryOdds !== null && primaryOdds < MIN_ODDS;
+        
+        if (isBanned || hasLowOdds) {
+            console.warn(`[AI_Service v139.3] 🚫 BANNED/LOW ODDS DETECTED: "${primaryMarket}" (Odds: ${primaryOdds || 'N/A'}). Replacing...`);
+            
+            // FALLBACK: Válasszunk a legjobb value bet-ből, ami NEM tiltott és >= 1.8 odds
+            let bestValueBet = null;
+            let bestValue = -1;
+            
+            for (const vb of valueBets) {
+                if (isBannedMarket(vb.market)) continue;
+                const odds = parseFloat(vb.odds);
+                if (odds < MIN_ODDS) continue;
+                
+                const value = parseFloat(vb.value.replace('+', '').replace('%', ''));
+                if (value > bestValue) {
+                    bestValue = value;
+                    bestValueBet = vb;
+                }
+            }
+            
+            if (bestValueBet) {
+                rec.recommended_bet = bestValueBet.market;
+                if (rec.primary) {
+                    rec.primary.market = bestValueBet.market;
+                    rec.primary.confidence = Math.min(8.0, parseFloat(bestValueBet.probability) / 10);
+                    rec.primary.reason = `🚫 [v139.3 AUTO-CORRECTION] Az eredeti tipp tiltott piacot vagy alacsony oddsot (<${MIN_ODDS}) tartalmazott. Cserélve a legjobb value bet-re: ${bestValueBet.market} (Odds: ${bestValueBet.odds}, Value: ${bestValueBet.value})`;
+                }
+                console.log(`[AI_Service v139.3] ✅ Replaced with: ${bestValueBet.market} (Odds: ${bestValueBet.odds}, Value: ${bestValueBet.value})`);
+            } else {
+                // Ha nincs jó value bet, használjuk a statisztikát (de csak ha >= 1.8 odds lenne)
+                const pHome = safeSim.pHome || 0;
+                const pAway = safeSim.pAway || 0;
+                const pOver = safeSim.pOver || 0;
+                const pUnder = safeSim.pUnder || 0;
+                
+                // Válasszunk a legvalószínűbb opciót, ami NEM tiltott
+                if (pHome >= 50 && pHome > pAway) {
+                    rec.recommended_bet = "Hazai Győzelem";
+                    if (rec.primary) rec.primary.market = "Hazai Győzelem";
+                } else if (pAway >= 50 && pAway > pHome) {
+                    rec.recommended_bet = "Vendég Győzelem";
+                    if (rec.primary) rec.primary.market = "Vendég Győzelem";
+                } else if (pOver >= 55 && pOver > pUnder) {
+                    rec.recommended_bet = `Over ${safeSim.mainTotalsLine || '2.5'}`;
+                    if (rec.primary) rec.primary.market = `Over ${safeSim.mainTotalsLine || '2.5'}`;
+                } else if (pUnder >= 55 && pUnder > pOver) {
+                    rec.recommended_bet = `Under ${safeSim.mainTotalsLine || '2.5'}`;
+                    if (rec.primary) rec.primary.market = `Under ${safeSim.mainTotalsLine || '2.5'}`;
+                } else {
+                    // Utolsó fallback: Over/Under alapján
+                    rec.recommended_bet = pOver > pUnder ? `Over ${safeSim.mainTotalsLine || '2.5'}` : `Under ${safeSim.mainTotalsLine || '2.5'}`;
+                    if (rec.primary) rec.primary.market = rec.recommended_bet;
+                }
+                console.log(`[AI_Service v139.3] ⚠️ No valid value bets found. Using statistical fallback: ${rec.recommended_bet}`);
+            }
+        }
+        
+        // Secondary market ellenőrzése
+        if (rec.secondary && (isBannedMarket(rec.secondary.market) || (findOddsForMarket(rec.secondary.market, valueBets) || 999) < MIN_ODDS)) {
+            // Secondary market is banned/low odds, find alternative
+            for (const vb of valueBets) {
+                if (!isBannedMarket(vb.market) && parseFloat(vb.odds) >= MIN_ODDS) {
+                    rec.secondary.market = vb.market;
+                    rec.secondary.confidence = Math.min(7.0, parseFloat(vb.probability) / 10);
+                    rec.secondary.reason = `🚫 [v139.3 AUTO-CORRECTION] Secondary market replaced with valid value bet.`;
+                    break;
+                }
+            }
+        }
 
         // === v139.0: NINCS TÖBB CONFIDENCE PENALTY! ===
         // Hagyjuk, hogy az AI döntse el a bizalmat.
