@@ -1,5 +1,5 @@
 // FÁJL: AI_Service.ts
-// VERZIÓ: v139.0 (PURE AI MODE - SIMPLIFIED) 🧠
+// VERZIÓ: v139.1 (PROPHETIC ACCURACY UPGRADE) 🧠
 //
 // JAVÍTÁS (v139.0):
 // 1. PROMPTOK EGYSZERŰSÍTÉSE:
@@ -7,6 +7,15 @@
 //    - Helyette: "Analyze the data and tell me the truth." (Elemezd és mondd az igazat).
 //    - Az AI-ra bízzuk a súlyozást, nem mesterséges korlátokra.
 // 2. CÉL: Visszatérni a "régi, nyerő" logikához, ahol az AI szabadon döntött.
+//
+// JAVÍTÁS (v139.1):
+// 1. PROPHETIC_SCENARIO_PROMPT UPGRADE:
+//    - Most már kapja a szimuláció legvalószínűbb eredményét (topScore, topScoreProb)
+//    - Kapja az xG értékeket (mu_h, mu_a)
+//    - Kapja a valószínűségeket (pHome, pDraw, pAway)
+//    - Kapja a Specialist elemzését
+//    - Kapja a kulcsjátékos és hiányzó információkat
+// 2. CÉL: Pontosabb próféta eredmények - a végeredmény a szimuláció legvalószínűbb eredményével egyezzen meg!
 
 import { 
     _callGemini, 
@@ -377,13 +386,33 @@ export const FINAL_GENERAL_ANALYSIS_PROMPT = `You are an Editor. Write a 2-parag
 2. Narrative & Context.
 Output: {"general_analysis": "<Text>"}`;
 
-export const PROPHETIC_SCENARIO_PROMPT = `You are a sports journalist. Write a REALISTIC match scenario (timeline) in Hungarian.
-Match: {home} vs {away}.
-[RULES]:
-- Use specific minutes (e.g., "12. perc").
-- Mention key players.
-- End with: "**Végeredmény: [Home] X-Y [Away]**"
-Output: {"scenario": "<Text>"}`;
+export const PROPHETIC_SCENARIO_PROMPT = `You are an elite sports journalist with perfect predictive abilities.
+Write a REALISTIC and DETAILED match scenario (timeline) in Hungarian for: {home} vs {away}
+
+[CRITICAL DATA - USE THESE FOR ACCURACY]:
+- **Expected Score (Most Likely)**: {expected_score} ({score_probability}% probability)
+- **Expected Goals**: Home {mu_h}, Away {mu_a}
+- **Win Probabilities**: Home {prob_home}%, Draw {prob_draw}%, Away {prob_away}%
+- **Specialist Analysis**: {specialist_reasoning}
+- **Key Players**: Home: {key_players_home} | Away: {key_players_away}
+- **Missing Players**: Home: {absentees_home} | Away: {absentees_away}
+- **Tactical Briefing**: {tacticalBriefing}
+- **Styles**: {home_style} vs {away_style}
+
+[RULES FOR ACCURACY]:
+1. **MUST END WITH**: "**Végeredmény: {home} X-Y {away}**" - Use the {expected_score} as your primary guide!
+2. Use specific minutes (e.g., "12. perc", "67. perc")
+3. Mention key players by name when they score or create chances
+4. Reflect the expected goals (mu_h, mu_a) in the narrative - if mu_h is higher, Home should score more
+5. If {prob_home} > 50%, Home should win. If {prob_away} > 50%, Away should win. If {prob_draw} > 30%, consider a draw.
+6. Consider missing players' impact on the match flow
+7. Make it REALISTIC - not fantasy. Base it on the statistical probabilities.
+8. The final score MUST match {expected_score} exactly!
+
+[OUTPUT FORMAT] - STRICT JSON:
+{
+  "scenario": "<Detailed Hungarian timeline with specific minutes, player actions, and the EXACT final score: **Végeredmény: {home} X-Y {away}**>"
+}`;
 
 export const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst. Synthesize all reports into "Stratégiai Zárógondolatok" (Hungarian).
 Focus on the best betting angles.
@@ -626,13 +655,40 @@ async function getFinalGeneralAnalysis(sim: any, tacticalBriefing: string, rawDa
     return await getAndParse(FINAL_GENERAL_ANALYSIS_PROMPT, data, "general_analysis", "FinalGeneralAnalysis");
 }
 
-async function getPropheticTimeline(rawData: ICanonicalRawData, home: string, away: string, sport: string, tacticalBriefing: string) {
+async function getPropheticTimeline(
+    rawData: ICanonicalRawData, 
+    home: string, 
+    away: string, 
+    sport: string, 
+    tacticalBriefing: string,
+    sim: any,  // ÚJ v139.1: Szimuláció eredmények
+    specialistReport: any  // ÚJ v139.1: Specialist elemzés
+) {
+     // === v139.1: RÉSZLETES ADATOK KINYERÉSE ===
+     const topScore = sim?.topScore ? `${sim.topScore.gh}-${sim.topScore.ga}` : "N/A";
+     const topScoreKey = topScore !== "N/A" ? topScore : "0-0";
+     const topScoreProb = sim?.scores && sim?.scores[topScoreKey] ? 
+         ((sim.scores[topScoreKey] / 25000) * 100).toFixed(1) : "N/A";
+     
      const data = {
          sport, home, away,
          tacticalBriefing: tacticalBriefing || "N/A",
          home_style: rawData?.tactics?.home?.style || "N/A",
          away_style: rawData?.tactics?.away?.style || "N/A",
          tension: rawData?.contextual_factors?.match_tension_index || "N/A",
+         // === ÚJ v139.1: STATISZTIKAI ADATOK ===
+         expected_score: topScore,
+         score_probability: `${topScoreProb}%`,
+         mu_h: sim?.mu_h_sim?.toFixed(2) || "N/A",
+         mu_a: sim?.mu_a_sim?.toFixed(2) || "N/A",
+         prob_home: sim?.pHome?.toFixed(1) || "N/A",
+         prob_draw: sim?.pDraw?.toFixed(1) || "N/A",
+         prob_away: sim?.pAway?.toFixed(1) || "N/A",
+         specialist_reasoning: specialistReport?.reasoning || "N/A",
+         key_players_home: rawData?.key_players?.home?.map((p: any) => p.name || p.player_name).filter(Boolean).join(', ') || "N/A",
+         key_players_away: rawData?.key_players?.away?.map((p: any) => p.name || p.player_name).filter(Boolean).join(', ') || "N/A",
+         absentees_home: rawData?.absentees?.home?.map((p: any) => p.name).filter(Boolean).join(', ') || "Nincs",
+         absentees_away: rawData?.absentees?.away?.map((p: any) => p.name).filter(Boolean).join(', ') || "Nincs"
      };
     return await getAndParse(PROPHETIC_SCENARIO_PROMPT, data, "scenario", "PropheticScenario");
 }
@@ -1027,9 +1083,18 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
         // Csak focinál van értelme a Prófétának
         if (sport === 'soccer') {
             try {
-                propheticTimeline = await getPropheticTimeline(rawDataJson, home, away, sport, tacticalBriefing);
+                // === v139.1: RÉSZLETES ADATOK ÁTADÁSA ===
+                propheticTimeline = await getPropheticTimeline(
+                    rawDataJson, 
+                    home, 
+                    away, 
+                    sport, 
+                    tacticalBriefing,
+                    sim,  // ÚJ: Szimuláció eredmények
+                    specialistReport  // ÚJ: Specialist elemzés
+                );
             } catch (e: any) { 
-                console.error(`[AI_Service v103.6] Hiba elkapva a 'getPropheticTimeline' hívásakor: ${e.message}`);
+                console.error(`[AI_Service v139.1] Hiba elkapva a 'getPropheticTimeline' hívásakor: ${e.message}`);
                 propheticTimeline = `AI Hiba (Prophetic): ${e.message}`; 
             }
         } else {
