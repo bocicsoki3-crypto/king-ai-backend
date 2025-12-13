@@ -522,3 +522,97 @@ export async function getStructuredWeatherData(
         return fallbackWeather;
     }
 }
+
+// === v140.0: TIPP FORMÁZÓ FÜGGVÉNYEK (EGYSÉGES FORMÁTUM) ===
+
+/**
+ * Standardizálja a tippformátumokat minden sportágnál
+ * @param market - A tipp piac neve (pl. "1X2 - Hazai győzelem", "Over 2.5")
+ * @param sport - Sport típus ('soccer', 'basketball', 'hockey')
+ * @returns Egységes formátumú tipp név
+ */
+export function formatBettingMarket(market: string, sport: string = 'soccer'): string {
+    if (!market) return market;
+    
+    const marketLower = market.toLowerCase().trim();
+    
+    // 1X2 tippek standardizálása
+    if (marketLower.includes('hazai') || marketLower.includes('home') || marketLower === '1') {
+        return '1X2 - Hazai győzelem';
+    }
+    if (marketLower.includes('vendég') || marketLower.includes('away') || marketLower === '2') {
+        return '1X2 - Vendég győzelem';
+    }
+    if (marketLower.includes('döntetlen') || marketLower.includes('draw') || marketLower === 'x') {
+        return '1X2 - Döntetlen';
+    }
+    
+    // Over/Under tippek - megtartjuk az eredeti formátumot, de normalizáljuk
+    if (marketLower.startsWith('over')) {
+        const lineMatch = market.match(/(\d+\.?\d*)/);
+        const line = lineMatch ? lineMatch[1] : (sport === 'soccer' ? '2.5' : sport === 'hockey' ? '6.5' : '220.5');
+        return `Over ${line}`;
+    }
+    if (marketLower.startsWith('under')) {
+        const lineMatch = market.match(/(\d+\.?\d*)/);
+        const line = lineMatch ? lineMatch[1] : (sport === 'soccer' ? '2.5' : sport === 'hockey' ? '6.5' : '220.5');
+        return `Under ${line}`;
+    }
+    
+    // BTTS tippek
+    if (marketLower.includes('btts')) {
+        if (marketLower.includes('igen') || marketLower.includes('yes')) {
+            return 'BTTS - Igen';
+        }
+        if (marketLower.includes('nem') || marketLower.includes('no')) {
+            return 'BTTS - Nem';
+        }
+    }
+    
+    // Team Totals - megtartjuk az eredeti formátumot
+    if (marketLower.includes('over') || marketLower.includes('under')) {
+        return market; // Pl. "Arsenal Over 1.5" marad
+    }
+    
+    // Egyéb esetekben megtartjuk az eredeti formátumot
+    return market;
+}
+
+/**
+ * Normalizálja az AI által generált tippeket az egységes formátumra
+ * @param recommendation - Az AI által generált tipp
+ * @param sport - Sport típus
+ * @returns Normalizált tipp név
+ */
+export function normalizeBettingRecommendation(recommendation: string, sport: string = 'soccer'): string {
+    if (!recommendation) return recommendation;
+    
+    // Először próbáljuk meg a formatBettingMarket-tel
+    let normalized = formatBettingMarket(recommendation, sport);
+    
+    // Ha nem változott, akkor további normalizálás
+    if (normalized === recommendation) {
+        const recLower = recommendation.toLowerCase().trim();
+        
+        // További pattern matching
+        if (recLower.match(/^(home|hazai|1)(\s+win|\s+győzelem)?$/i)) {
+            return '1X2 - Hazai győzelem';
+        }
+        if (recLower.match(/^(away|vendég|2)(\s+win|\s+győzelem)?$/i)) {
+            return '1X2 - Vendég győzelem';
+        }
+        if (recLower.match(/^(draw|döntetlen|x)$/i)) {
+            return '1X2 - Döntetlen';
+        }
+        
+        // Moneyline formátumok
+        if (recLower.includes('moneyline') && recLower.includes('home')) {
+            return '1X2 - Hazai győzelem';
+        }
+        if (recLower.includes('moneyline') && recLower.includes('away')) {
+            return '1X2 - Vendég győzelem';
+        }
+    }
+    
+    return normalized;
+}

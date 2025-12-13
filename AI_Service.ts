@@ -483,27 +483,27 @@ Your goal: Find the SINGLE BEST BET for this match.
 4. If they disagree -> Find out WHY and pick the side with STRONGER EVIDENCE.
 5. **BE DECISIVE.** Don't hedge. Pick a winner.
 
-🚨 **CRITICAL PROBABILITY THRESHOLDS (v140.1 - PROFITABLE TIPS ONLY):**
-- ❌ NEVER recommend Home if Home probability < 25% (Too risky!)
-- ❌ NEVER recommend Away if Away probability < 25% (Too risky!)
+🚨 **CRITICAL PROBABILITY THRESHOLDS (v140.2 - PROFITABLE TIPS ONLY):**
+- ❌ NEVER recommend Home if Home probability < 30% (Too risky! 25% = 4.0 odds, margin miatt veszteséges)
+- ❌ NEVER recommend Away if Away probability < 30% (Too risky!)
 - ❌ NEVER recommend Draw if Draw probability < 30% (Draw is inherently risky!)
 - ❌ NEVER recommend Over/Under if probability < 30% (Too uncertain!)
-- ✅ ONLY recommend if the chosen outcome has probability >= 30% AND confidence >= 6.5/10
+- ✅ ONLY recommend if the chosen outcome has probability >= 30% AND confidence >= 7.0/10 (volt: 6.5 - túl alacsony!)
 
 📊 **DRAW PROBABILITY CHECK:**
 - If Draw probability > 30% AND it's the highest probability → RECOMMEND DRAW (if odds >= 1.8)
 - If Draw probability > 35% → DO NOT recommend a clear winner (Home/Away)
   → Instead recommend Over/Under or BTTS
 
-🎯 **CONFIDENCE REQUIREMENTS:**
-- Probability 30-40% → Minimum confidence: 6.5/10
-- Probability 40-50% → Minimum confidence: 7.0/10
-- Probability 50-60% → Minimum confidence: 7.5/10
-- Probability > 60% → Minimum confidence: 8.0/10
+🎯 **CONFIDENCE REQUIREMENTS (v140.2 - SZIGORÚBB):**
+- Probability 30-40% → Minimum confidence: 7.0/10 (volt: 6.5 - túl alacsony!)
+- Probability 40-50% → Minimum confidence: 7.5/10 (volt: 7.0)
+- Probability 50-60% → Minimum confidence: 8.0/10 (volt: 7.5)
+- Probability > 60% → Minimum confidence: 8.5/10 (volt: 8.0)
 
 ⚠️ **WHEN TO SKIP A RECOMMENDATION:**
 - If NO outcome has probability >= 30% → Return: "Nincs elég biztos tipp ezen a meccsen"
-- If confidence < 6.5/10 → Return: "Túl bizonytalan a meccs, nincs ajánlás"
+- If confidence < 7.0/10 → Return: "Túl bizonytalan a meccs, nincs ajánlás" (volt: 6.5)
 - If Draw probability > 40% AND no clear favorite (>50%) → Recommend Over/Under instead
 
 🚫 **ABSOLUTELY FORBIDDEN MARKETS (v139.3 - NO LOW ODDS!):**
@@ -999,15 +999,15 @@ async function getMasterRecommendation(
         
         if (recommendedMarket.includes('hazai') || recommendedMarket.includes('home')) {
             recommendedProb = pHome;
-            if (pHome < 25) {
+            if (pHome < 30) { // === v140.2: 25% → 30% (profitábilis tippekhez) ===
                 isValidRecommendation = false;
-                skipReason = `Hazai győzelem valószínűsége túl alacsony (${pHome.toFixed(1)}% < 25%)`;
+                skipReason = `Hazai győzelem valószínűsége túl alacsony (${pHome.toFixed(1)}% < 30%)`;
             }
         } else if (recommendedMarket.includes('vendég') || recommendedMarket.includes('away')) {
             recommendedProb = pAway;
-            if (pAway < 25) {
+            if (pAway < 30) { // === v140.2: 25% → 30% (profitábilis tippekhez) ===
                 isValidRecommendation = false;
-                skipReason = `Vendég győzelem valószínűsége túl alacsony (${pAway.toFixed(1)}% < 25%)`;
+                skipReason = `Vendég győzelem valószínűsége túl alacsony (${pAway.toFixed(1)}% < 30%)`;
             }
         } else if (recommendedMarket.includes('döntetlen') || recommendedMarket.includes('draw')) {
             recommendedProb = pDraw;
@@ -1029,10 +1029,17 @@ async function getMasterRecommendation(
             }
         }
         
-        // 2. Minimum confidence ellenőrzés
-        if (confidence < 6.5) {
+        // 2. Minimum confidence ellenőrzés (v140.2: 6.5 → 7.0)
+        // Dinamikus confidence követelmény a valószínűség alapján
+        let minConfidence = 7.0; // Alapértelmezett
+        if (recommendedProb >= 60) minConfidence = 8.5;
+        else if (recommendedProb >= 50) minConfidence = 8.0;
+        else if (recommendedProb >= 40) minConfidence = 7.5;
+        else if (recommendedProb >= 30) minConfidence = 7.0;
+        
+        if (confidence < minConfidence) {
             isValidRecommendation = false;
-            skipReason = `Bizalom túl alacsony (${confidence.toFixed(1)}/10 < 6.5/10)`;
+            skipReason = `Bizalom túl alacsony (${confidence.toFixed(1)}/10 < ${minConfidence}/10, szükséges: ${recommendedProb.toFixed(1)}% valószínűséghez)`;
         }
         
         // 3. Döntetlen valószínűség ellenőrzés
@@ -1050,11 +1057,12 @@ async function getMasterRecommendation(
         if (!isValidRecommendation) {
             console.warn(`[AI_Service v140.1] ⚠️ AJÁNLÁS ELUTASÍTVA: ${skipReason}`);
             
-            // Próbáljunk alternatívát találni a valueBets-ből
+            // Próbáljunk alternatívát találni a valueBets-ből (v140.2: minimum 5% value)
             const bestValueBet = valueBets
                 .filter(vb => {
                     const prob = parseFloat(vb.probability.replace('%', ''));
-                    return prob >= 30 && parseFloat(vb.odds) >= 1.8;
+                    const value = parseFloat(vb.value.replace('+', '').replace('%', ''));
+                    return prob >= 30 && parseFloat(vb.odds) >= 1.8 && value >= 5.0; // === v140.2: minimum 5% value ===
                 })
                 .sort((a, b) => parseFloat(b.value.replace('+', '').replace('%', '')) - parseFloat(a.value.replace('+', '').replace('%', '')))[0];
             
@@ -1218,15 +1226,15 @@ async function getMasterRecommendation(
         // Gyenge ligákhoz (török, brazil, ausztrál) alacsonyabb confidence
         let leagueConfidencePenalty = 0;
         if (leagueName && sport === 'soccer') {
-            const { getLeagueCoefficient, getLeagueQuality } = await import('./config_league_coefficients.js');
+            const { getLeagueCoefficient, getLeagueQuality, LeagueQuality } = await import('./config_league_coefficients.js');
             const leagueCoeff = getLeagueCoefficient(leagueName);
             const leagueQuality = getLeagueQuality(leagueCoeff);
             
-            // Gyenge ligákhoz confidence penalty
-            if (leagueQuality === 'Very Weak' || leagueQuality === 'Weak') {
+            // Gyenge ligákhoz confidence penalty (enum értékek használata)
+            if (leagueQuality === LeagueQuality.VERY_WEAK || leagueQuality === LeagueQuality.WEAK) {
                 leagueConfidencePenalty = -1.5;
                 console.log(`[AI_Service v140.1] ⚠️ Liga minőség penalty: ${leagueName} (${leagueQuality}) → -1.5 confidence`);
-            } else if (leagueQuality === 'Medium') {
+            } else if (leagueQuality === LeagueQuality.MEDIUM) {
                 leagueConfidencePenalty = -0.5;
                 console.log(`[AI_Service v140.1] ⚠️ Liga minőség penalty: ${leagueName} (${leagueQuality}) → -0.5 confidence`);
             }
@@ -1292,7 +1300,76 @@ async function getMasterRecommendation(
         console.log(`[AI_Service v133.0] 🌉 Bizalmi Híd: Quant ${quantConfidence.toFixed(1)} vs Specialist ${specialistConfidence.toFixed(1)} (Gap: ${confidenceGap.toFixed(1)})`);
         // ======================================================
 
-        console.log(`[AI_Service v138.0 - Főnök] VÉGLEGES TIPP: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
+        // === v140.2: KELLY CRITERION STAKE SIZING (OPTIMAL BET SIZE) ===
+        // Kelly Criterion: f* = (bp - q) / b
+        // ahol: b = odds - 1, p = valószínűség (0-1), q = 1 - p
+        // Maximum 5% bankroll per bet (biztonság)
+        if (rec.recommended_bet && rec.recommended_bet !== "Nincs elég biztos tipp ezen a meccsen") {
+            const recommendedMarket = rec.recommended_bet?.toLowerCase() || '';
+            let recommendedProb = 0;
+            
+            if (recommendedMarket.includes('hazai') || recommendedMarket.includes('home')) {
+                recommendedProb = pHome / 100;
+            } else if (recommendedMarket.includes('vendég') || recommendedMarket.includes('away')) {
+                recommendedProb = pAway / 100;
+            } else if (recommendedMarket.includes('döntetlen') || recommendedMarket.includes('draw')) {
+                recommendedProb = pDraw / 100;
+            } else if (recommendedMarket.includes('over')) {
+                recommendedProb = pOver / 100;
+            } else if (recommendedMarket.includes('under')) {
+                recommendedProb = pUnder / 100;
+            }
+            
+            // Odds kinyerése a valueBets-ből
+            const findOddsForMarket = (market: string, valueBets: any[]): number | null => {
+                for (const vb of valueBets) {
+                    if (vb.market && market.toLowerCase().includes(vb.market.toLowerCase().substring(0, 10))) {
+                        return parseFloat(vb.odds);
+                    }
+                }
+                return null;
+            };
+            
+            const odds = findOddsForMarket(rec.recommended_bet, valueBets);
+            
+            if (recommendedProb > 0 && odds && odds >= 1.8) {
+                // Kelly Criterion számítás
+                const b = odds - 1; // Net odds
+                const p = recommendedProb; // Valószínűség (0-1)
+                const q = 1 - p;
+                const kellyFraction = (b * p - q) / b;
+                
+                // Csak pozitív Kelly értékek (value bet)
+                if (kellyFraction > 0) {
+                    // Fractional Kelly (50% - konzervatívabb)
+                    const fractionalKelly = kellyFraction * 0.5;
+                    // Maximum 5% bankroll per bet
+                    const maxStakePercent = 5.0;
+                    const optimalStakePercent = Math.min(maxStakePercent, fractionalKelly * 100);
+                    
+                    rec.kelly_stake = {
+                        optimal_percent: optimalStakePercent.toFixed(2),
+                        kelly_fraction: (kellyFraction * 100).toFixed(2),
+                        recommended_stake: optimalStakePercent > 0 ? `${optimalStakePercent.toFixed(1)}% bankroll` : 'Nincs ajánlás (negatív value)',
+                        explanation: optimalStakePercent > 0 
+                            ? `Kelly Criterion alapján: ${optimalStakePercent.toFixed(1)}% bankroll (${(kellyFraction * 100).toFixed(1)}% full Kelly, 50% fractional)`
+                            : 'Nincs value bet (negatív Kelly)'
+                    };
+                    
+                    console.log(`[AI_Service v140.2] 💰 Kelly Stake: ${optimalStakePercent.toFixed(1)}% bankroll (Odds: ${odds}, Prob: ${(recommendedProb * 100).toFixed(1)}%, Value: ${((odds * recommendedProb - 1) * 100).toFixed(1)}%)`);
+                } else {
+                    rec.kelly_stake = {
+                        optimal_percent: '0.00',
+                        kelly_fraction: (kellyFraction * 100).toFixed(2),
+                        recommended_stake: 'Nincs ajánlás (negatív value)',
+                        explanation: 'Nincs value bet (negatív Kelly)'
+                    };
+                }
+            }
+        }
+        // === VÉGE v140.2 ===
+
+        console.log(`[AI_Service v140.2 - Főnök] VÉGLEGES TIPP: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
         
         return rec;
 
