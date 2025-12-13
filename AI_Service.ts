@@ -1097,8 +1097,30 @@ async function getMasterRecommendation(
         }
         // === VÉGE v140.1 ===
         
+        // === v140.3: TILT PROTECTION ÉS BANKROLL CHECK ===
+        const { checkTiltProtection } = await import('./trackingService.js');
+        const { canPlaceBet } = await import('./bankrollService.js');
+        
+        const tiltCheck = await checkTiltProtection(5); // 5 egymás utáni veszteség = tilt
+        const bankrollCheck = await canPlaceBet();
+        
+        if (tiltCheck.isTilted) {
+            rec.recommended_bet = "TILT PROTECTION: Szünet a fogadástól";
+            rec.final_confidence = 1.0;
+            rec.brief_reasoning = tiltCheck.message;
+            rec.skip_reason = tiltCheck.message;
+            console.warn(`[AI_Service v140.3] 🚨 TILT PROTECTION: ${tiltCheck.consecutiveLosses} egymás utáni veszteség`);
+        } else if (!bankrollCheck.canBet) {
+            rec.recommended_bet = "BANKROLL PROTECTION: Szünet a fogadástól";
+            rec.final_confidence = 1.0;
+            rec.brief_reasoning = bankrollCheck.reason;
+            rec.skip_reason = bankrollCheck.reason;
+            console.warn(`[AI_Service v140.3] 🚨 BANKROLL PROTECTION: ${bankrollCheck.reason}`);
+        }
+        // === VÉGE v140.3 ===
+        
         // --- 2. LÉPÉS: KÓD (A "Főnök") átveszi az irányítást ---
-        console.log(`[AI_Service v140.1 - Főnök] Végleges ajánlás: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10 (Valószínűség: ${recommendedProb > 0 ? recommendedProb.toFixed(1) + '%' : 'N/A'})`);
+        console.log(`[AI_Service v140.3 - Főnök] Végleges ajánlás: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10 (Valószínűség: ${recommendedProb > 0 ? recommendedProb.toFixed(1) + '%' : 'N/A'})`);
 
         // === v139.3: TILTOTT PIACOK SZŰRÉSE + MINIMUM ODDS KÖVETELMÉNY ===
         const BANNED_KEYWORDS = [

@@ -17,6 +17,8 @@ import { getHistoryFromSheet, getAnalysisDetailFromSheet, deleteHistoryItemFromS
 import { getChatResponse } from './AI_Service.js';
 import { updatePowerRatings, runConfidenceCalibration } from './LearningService.js';
 import { runSettlementProcess } from './settlementService.js';
+import { calculateBettingStats, checkTiltProtection } from './trackingService.js';
+import { getBankrollStatus, canPlaceBet } from './bankrollService.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -363,6 +365,52 @@ app.post('/runLearning', protect, async (req: Request, res: Response) => {
         res.status(500).json({ error: `Szerver hiba (runLearning): ${e.message}` });
     }
 });
+
+// === v140.3: TRACKING & BANKROLL ENDPOINTS ===
+app.get('/getBettingStats', protect, async (req: Request, res: Response) => {
+    try {
+        const days = parseInt(req.query.days as string) || 30;
+        const stats = await calculateBettingStats(days);
+        res.status(200).json(stats);
+    } catch (e: any) {
+        console.error(`Hiba a /getBettingStats végpont-on: ${e.message}`, e.stack);
+        res.status(500).json({ error: `Szerver hiba (getBettingStats): ${e.message}` });
+    }
+});
+
+app.get('/getTiltStatus', protect, async (req: Request, res: Response) => {
+    try {
+        const maxLosses = parseInt(req.query.maxLosses as string) || 5;
+        const tiltStatus = await checkTiltProtection(maxLosses);
+        res.status(200).json(tiltStatus);
+    } catch (e: any) {
+        console.error(`Hiba a /getTiltStatus végpont-on: ${e.message}`, e.stack);
+        res.status(500).json({ error: `Szerver hiba (getTiltStatus): ${e.message}` });
+    }
+});
+
+app.get('/getBankrollStatus', protect, async (req: Request, res: Response) => {
+    try {
+        const config = req.body.config || undefined; // Opcionális config
+        const bankrollStatus = await getBankrollStatus(config);
+        res.status(200).json(bankrollStatus);
+    } catch (e: any) {
+        console.error(`Hiba a /getBankrollStatus végpont-on: ${e.message}`, e.stack);
+        res.status(500).json({ error: `Szerver hiba (getBankrollStatus): ${e.message}` });
+    }
+});
+
+app.get('/canPlaceBet', protect, async (req: Request, res: Response) => {
+    try {
+        const config = req.body.config || undefined; // Opcionális config
+        const canBet = await canPlaceBet(config);
+        res.status(200).json(canBet);
+    } catch (e: any) {
+        console.error(`Hiba a /canPlaceBet végpont-on: ${e.message}`, e.stack);
+        res.status(500).json({ error: `Szerver hiba (canPlaceBet): ${e.message}` });
+    }
+});
+// === VÉGE v140.3 ===
 
 // --- Szerver Indítása (Változatlan) ---
 async function startServer() {
