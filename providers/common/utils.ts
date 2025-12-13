@@ -207,6 +207,121 @@ export function fillPromptTemplate(template: string, data: any): string {
     } catch(e) { return template; }
 }
 
+// === ÚJ (v140.0): TIPP FORMÁZÓ FÜGGVÉNY - EGYSÉGES FORMÁTUMOK ===
+/**
+ * Standardizálja a tipp formátumokat. Minden tipp ugyanúgy jelenik meg.
+ * 
+ * @param market - A piac neve (pl. "home", "away", "draw", "Over 2.5", stb.)
+ * @param sport - Sport típus ('soccer', 'hockey', 'basketball')
+ * @returns Egységes formátumú tipp név
+ */
+export function formatBettingMarket(market: string, sport: string = 'soccer'): string {
+    if (!market || typeof market !== 'string') return market || '';
+    
+    const lower = market.toLowerCase().trim();
+    
+    // === 1X2 / MONEYLINE TIPPEK ===
+    // Hazai győzelem - mindig: "1X2 - Hazai győzelem"
+    if (lower.includes('home') || lower.includes('hazai') || lower === '1' || lower.includes('(1)')) {
+        // Ellenőrizzük, hogy nem "1X" vagy "12" (Double Chance)
+        if (!lower.includes('1x') && !lower.includes('12') && !lower.includes('double')) {
+            return '1X2 - Hazai győzelem';
+        }
+    }
+    
+    // Vendég győzelem - mindig: "1X2 - Vendég győzelem"
+    if (lower.includes('away') || lower.includes('vendég') || lower === '2' || lower.includes('(2)')) {
+        // Ellenőrizzük, hogy nem "X2" vagy "12" (Double Chance)
+        if (!lower.includes('x2') && !lower.includes('12') && !lower.includes('double')) {
+            return '1X2 - Vendég győzelem';
+        }
+    }
+    
+    // Döntetlen - mindig: "1X2 - Döntetlen"
+    if (lower.includes('draw') || lower.includes('döntetlen') || lower === 'x' || lower === '(x)') {
+        return '1X2 - Döntetlen';
+    }
+    
+    // === OVER/UNDER TIPPEK ===
+    // Over tippek - formátum: "Over X.X"
+    const overMatch = lower.match(/over\s*(\d+\.?\d*)/);
+    if (overMatch) {
+        const line = overMatch[1];
+        return `Over ${line}`;
+    }
+    
+    // Under tippek - formátum: "Under X.X"
+    const underMatch = lower.match(/under\s*(\d+\.?\d*)/);
+    if (underMatch) {
+        const line = underMatch[1];
+        return `Under ${line}`;
+    }
+    
+    // === BTTS TIPPEK ===
+    if (lower.includes('btts') || lower.includes('mindkét csapat szerez gólt')) {
+        if (lower.includes('nem') || lower.includes('no') || lower.includes('igen') === false) {
+            return 'BTTS - Nem';
+        }
+        return 'BTTS - Igen';
+    }
+    
+    // === ASIAN HANDICAP ===
+    // Formátum: "Hazai +X.X" vagy "Vendég -X.X"
+    const handicapMatch = lower.match(/(hazai|home|vendég|away)\s*([+-]?\d+\.?\d*)/);
+    if (handicapMatch) {
+        const team = handicapMatch[1].includes('hazai') || handicapMatch[1].includes('home') ? 'Hazai' : 'Vendég';
+        const line = handicapMatch[2];
+        return `${team} ${line} (Ázsiai Hendikep)`;
+    }
+    
+    // === TEAM TOTALS ===
+    // Formátum: "[Csapatnév] Over/Under X.X"
+    const teamTotalMatch = lower.match(/(.+?)\s*(over|under)\s*(\d+\.?\d*)/);
+    if (teamTotalMatch) {
+        const teamName = teamTotalMatch[1].trim();
+        const direction = teamTotalMatch[2].toLowerCase() === 'over' ? 'Over' : 'Under';
+        const line = teamTotalMatch[3];
+        return `${teamName} ${direction} ${line}`;
+    }
+    
+    // === HA NEM TALÁLTUNK EGYEZÉST, VISSZAADJUK AZ EREDETIT (de normalizálva) ===
+    // Eltávolítjuk a felesleges zárójeleket, szóközöket
+    return market.trim()
+        .replace(/\s*\([^)]*\)\s*/g, '') // Zárójelek eltávolítása
+        .replace(/\s+/g, ' ') // Többszörös szóközök egy szóközre
+        .replace(/^1x2\s*-\s*/i, '1X2 - ') // "1X2 -" normalizálása
+        .replace(/\s*\(moneyline\)/gi, '') // "(Moneyline)" eltávolítása
+        .trim();
+}
+
+/**
+ * Normalizálja az AI által generált tippet az egységes formátumra.
+ * 
+ * @param aiRecommendation - Az AI által generált tipp szövege
+ * @param sport - Sport típus
+ * @returns Normalizált tipp név
+ */
+export function normalizeBettingRecommendation(aiRecommendation: string, sport: string = 'soccer'): string {
+    if (!aiRecommendation || typeof aiRecommendation !== 'string') return aiRecommendation || '';
+    
+    // Először próbáljuk meg a formázó függvénnyel
+    const formatted = formatBettingMarket(aiRecommendation, sport);
+    
+    // Ha változott, akkor sikerült formázni
+    if (formatted !== aiRecommendation) {
+        return formatted;
+    }
+    
+    // Ha nem változott, még próbáljuk meg normalizálni
+    return aiRecommendation
+        .trim()
+        .replace(/^1x2\s*[-–—]\s*/i, '1X2 - ') // "1X2 -" vagy "1X2-" normalizálása
+        .replace(/\s*\([^)]*moneyline[^)]*\)/gi, '') // "(Moneyline)" eltávolítása
+        .replace(/\s*\([^)]*1x2[^)]*\)/gi, '') // "(1X2)" eltávolítása
+        .replace(/\s+/g, ' ') // Többszörös szóközök
+        .trim();
+}
+
 // --- SPORT ADAT SEGÉDFÜGGVÉNYEK (VISSZAÁLLÍTVA AZ EREDETI) ---
 
 /**

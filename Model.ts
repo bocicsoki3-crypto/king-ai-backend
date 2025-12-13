@@ -13,6 +13,7 @@
 
 import { SPORT_CONFIG } from './config.js';
 import { getAdjustedRatings, getNarrativeRatings } from './LearningService.js';
+import { formatBettingMarket } from './providers/common/utils.js';
 // Kanonikus típusok importálása
 import type {
     ICanonicalStats,
@@ -484,11 +485,19 @@ export function calculateValue(
                 const value = simProb - marketProb;
                 
                 // === v139.3: MINIMUM ODDS SZŰRÉS ===
+                // === v140.0: EGYSÉGES FORMÁTUM ===
                 // Csak akkor adjuk hozzá, ha value > threshold ÉS odds >= 1.8
                 const MIN_ODDS_FOR_VALUE = 1.8;
                 if (value > MIN_VALUE_THRESHOLD && outcome.price >= MIN_ODDS_FOR_VALUE) {
+                    // Standardizált formátum használata
+                    let marketLabel = '';
+                    if (simKey === 'home') marketLabel = '1X2 - Hazai győzelem';
+                    else if (simKey === 'away') marketLabel = '1X2 - Vendég győzelem';
+                    else if (simKey === 'draw') marketLabel = '1X2 - Döntetlen';
+                    else marketLabel = formatBettingMarket(`1X2 - ${simKey}`, sport);
+                    
                     valueBets.push({
-                        market: `1X2 - ${simKey.toUpperCase()}`,
+                        market: marketLabel,
                         odds: outcome.price.toFixed(2),
                         probability: `${simProb.toFixed(1)}%`,
                         value: `+${value.toFixed(1)}%`
@@ -519,7 +528,7 @@ export function calculateValue(
             const value = simProb - marketProb;
             if (value > MIN_VALUE_THRESHOLD && overOutcome.price >= MIN_ODDS_FOR_VALUE) {
                  valueBets.push({
-                    market: `Over ${mainLine}`,
+                    market: formatBettingMarket(`Over ${mainLine}`, sport), // === v140.0: EGYSÉGES FORMÁTUM ===
                     odds: overOutcome.price.toFixed(2),
                     probability: `${simProb.toFixed(1)}%`,
                     value: `+${value.toFixed(1)}%`
@@ -532,7 +541,7 @@ export function calculateValue(
             const value = simProb - marketProb;
             if (value > MIN_VALUE_THRESHOLD && underOutcome.price >= MIN_ODDS_FOR_VALUE) {
                  valueBets.push({
-                    market: `Under ${mainLine}`,
+                    market: formatBettingMarket(`Under ${mainLine}`, sport), // === v140.0: EGYSÉGES FORMÁTUM ===
                     odds: underOutcome.price.toFixed(2),
                     probability: `${simProb.toFixed(1)}%`,
                     value: `+${value.toFixed(1)}%`
@@ -549,15 +558,15 @@ export function calculateValue(
         if (!market || !market.outcomes) return;
 
         market.outcomes.forEach(outcome => {
-            const line = outcome.point;
-            if (line === undefined || line === null) return;
+            const lineValue = outcome.point;
+            if (lineValue === undefined || lineValue === null) return;
 
             let simProb = 0;
             // Használjuk az új segédfüggvényt a 'sim.scores'-ból való számoláshoz
             if (outcome.name.toLowerCase().includes('over')) {
-                simProb = calculateProbabilityFromScores(sim.scores, safeTotalSims, (h, a) => isHome ? h > line : a > line);
+                simProb = calculateProbabilityFromScores(sim.scores, safeTotalSims, (h, a) => isHome ? h > lineValue : a > lineValue);
             } else if (outcome.name.toLowerCase().includes('under')) {
-                simProb = calculateProbabilityFromScores(sim.scores, safeTotalSims, (h, a) => isHome ? h < line : a < line);
+                simProb = calculateProbabilityFromScores(sim.scores, safeTotalSims, (h, a) => isHome ? h < lineValue : a < lineValue);
             } else {
                 return;
             }
@@ -566,10 +575,14 @@ export function calculateValue(
             const value = simProb - marketProb;
             
             // === v139.3: MINIMUM ODDS SZŰRÉS ===
+            // === v140.0: EGYSÉGES FORMÁTUM ===
             const MIN_ODDS_FOR_VALUE = 1.8;
             if (value > MIN_VALUE_THRESHOLD && outcome.price >= MIN_ODDS_FOR_VALUE) {
+                const direction = outcome.name.toLowerCase().includes('over') ? 'Over' : 'Under';
+                const lineStr = String(lineValue);
+                const formattedMarket = formatBettingMarket(`${teamName} ${direction} ${lineStr}`, sport);
                 valueBets.push({
-                    market: `${teamName} ${outcome.name}`, // Pl. "Warriors Over 115.5"
+                    market: formattedMarket, // === v140.0: EGYSÉGES FORMÁTUM ===
                     odds: outcome.price.toFixed(2),
                     probability: `${simProb.toFixed(1)}%`,
                     value: `+${value.toFixed(1)}%`
@@ -597,7 +610,7 @@ export function calculateValue(
             const value = simProb - marketProb;
             if (value > MIN_VALUE_THRESHOLD && yesOutcome.price >= MIN_ODDS_FOR_VALUE) {
                  valueBets.push({
-                    market: `BTTS: Yes`,
+                    market: formatBettingMarket('BTTS - Igen', sport), // === v140.0: EGYSÉGES FORMÁTUM ===
                     odds: yesOutcome.price.toFixed(2),
                     probability: `${simProb.toFixed(1)}%`,
                     value: `+${value.toFixed(1)}%`
@@ -610,7 +623,7 @@ export function calculateValue(
             const value = simProb - marketProb;
             if (value > MIN_VALUE_THRESHOLD && noOutcome.price >= MIN_ODDS_FOR_VALUE) {
                  valueBets.push({
-                    market: `BTTS: No`,
+                    market: formatBettingMarket('BTTS - Nem', sport), // === v140.0: EGYSÉGES FORMÁTUM ===
                     odds: noOutcome.price.toFixed(2),
                     probability: `${simProb.toFixed(1)}%`,
                     value: `+${value.toFixed(1)}%`

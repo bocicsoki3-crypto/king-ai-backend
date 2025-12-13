@@ -20,7 +20,9 @@
 import { 
     _callGemini, 
     _callGeminiWithJsonRetry, 
-    fillPromptTemplate 
+    fillPromptTemplate,
+    formatBettingMarket,
+    normalizeBettingRecommendation
 } from './providers/common/utils.js'; 
 import { getConfidenceCalibrationMap } from './LearningService.js';
 import type { ICanonicalRawData } from './src/types/canonical.d.ts';
@@ -496,6 +498,21 @@ Your goal: Find the SINGLE BEST BET for this match.
 **CRITICAL RULE:** If the best value bet has odds < 1.8, find the NEXT BEST option with odds >= 1.8!
 **GOAL:** Find PROFITABLE bets, not "safe" low-odds bets. The user wants to WIN, not just "not lose"!
 
+📋 **MANDATORY FORMATTING RULES (v140.0 - UNIFORM TIP NAMES):**
+You MUST use these EXACT formats for recommendations:
+- Home Win: "1X2 - Hazai győzelem" (NEVER "Home", "1", "Hazai", "Moneyline", etc.)
+- Away Win: "1X2 - Vendég győzelem" (NEVER "Away", "2", "Vendég", "Moneyline", etc.)
+- Draw: "1X2 - Döntetlen" (NEVER "X", "Draw", "Döntetlen", etc.)
+- Over: "Over X.X" (e.g. "Over 2.5", "Over 6.5", "Over 220.5")
+- Under: "Under X.X" (e.g. "Under 2.5", "Under 6.5", "Under 220.5")
+- BTTS: "BTTS - Igen" or "BTTS - Nem"
+- Team Totals: "[Team Name] Over X.X" or "[Team Name] Under X.X"
+- Asian Handicap: "Hazai +X.X (Ázsiai Hendikep)" or "Vendég -X.X (Ázsiai Hendikep)"
+
+**CRITICAL:** Do NOT add team names, parentheses, or extra text to 1X2 recommendations!
+**WRONG:** "Arsenal győzelem", "1X2 - Home (Arsenal)", "Hazai győzelem (Moneyline)"
+**CORRECT:** "1X2 - Hazai győzelem"
+
 [OUTPUT FORMAT] - STRICT JSON:
 {
   "recommended_bet": "<THE CHOSEN BET (e.g. 'Arsenal győzelem', 'Over 2.5 gól')>",
@@ -929,8 +946,21 @@ async function getMasterRecommendation(
             throw new Error("AI hiba: Érvénytelen JSON struktúra a MasterRecommendation-ben.");
         }
         
+        // === v140.0: TIPP FORMÁTUM NORMALIZÁLÁS (AI válasz után) ===
+        // Normalizáljuk az AI által generált tippeket az egységes formátumra
+        if (rec.recommended_bet) {
+            rec.recommended_bet = normalizeBettingRecommendation(rec.recommended_bet, sport);
+        }
+        if (rec.primary?.market) {
+            rec.primary.market = normalizeBettingRecommendation(rec.primary.market, sport);
+        }
+        if (rec.secondary?.market) {
+            rec.secondary.market = normalizeBettingRecommendation(rec.secondary.market, sport);
+        }
+        // === VÉGE v140.0 ===
+        
         // --- 2. LÉPÉS: KÓD (A "Főnök") átveszi az irányítást ---
-        console.log(`[AI_Service v139.3 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
+        console.log(`[AI_Service v140.0 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
 
         // === v139.3: TILTOTT PIACOK SZŰRÉSE + MINIMUM ODDS KÖVETELMÉNY ===
         const BANNED_KEYWORDS = [
@@ -990,13 +1020,14 @@ async function getMasterRecommendation(
             }
             
             if (bestValueBet) {
-                rec.recommended_bet = bestValueBet.market;
+                // === v140.0: EGYSÉGES FORMÁTUM ===
+                rec.recommended_bet = normalizeBettingRecommendation(bestValueBet.market, sport);
                 if (rec.primary) {
-                    rec.primary.market = bestValueBet.market;
+                    rec.primary.market = normalizeBettingRecommendation(bestValueBet.market, sport);
                     rec.primary.confidence = Math.min(8.0, parseFloat(bestValueBet.probability) / 10);
                     rec.primary.reason = `🚫 [v139.3 AUTO-CORRECTION] Az eredeti tipp tiltott piacot vagy alacsony oddsot (<${MIN_ODDS}) tartalmazott. Cserélve a legjobb value bet-re: ${bestValueBet.market} (Odds: ${bestValueBet.odds}, Value: ${bestValueBet.value})`;
                 }
-                console.log(`[AI_Service v139.3] ✅ Replaced with: ${bestValueBet.market} (Odds: ${bestValueBet.odds}, Value: ${bestValueBet.value})`);
+                console.log(`[AI_Service v140.0] ✅ Replaced with: ${rec.recommended_bet} (Odds: ${bestValueBet.odds}, Value: ${bestValueBet.value})`);
             } else {
                 // Ha nincs jó value bet, használjuk a statisztikát (de csak ha >= 1.8 odds lenne)
                 const pHome = safeSim.pHome || 0;
@@ -1004,23 +1035,25 @@ async function getMasterRecommendation(
                 const pOver = safeSim.pOver || 0;
                 const pUnder = safeSim.pUnder || 0;
                 
+                // === v140.0: EGYSÉGES FORMÁTUM HASZNÁLATA ===
                 // Válasszunk a legvalószínűbb opciót, ami NEM tiltott
                 if (pHome >= 50 && pHome > pAway) {
-                    rec.recommended_bet = "Hazai Győzelem";
-                    if (rec.primary) rec.primary.market = "Hazai Győzelem";
+                    rec.recommended_bet = formatBettingMarket("1X2 - Hazai győzelem", sport);
+                    if (rec.primary) rec.primary.market = formatBettingMarket("1X2 - Hazai győzelem", sport);
                 } else if (pAway >= 50 && pAway > pHome) {
-                    rec.recommended_bet = "Vendég Győzelem";
-                    if (rec.primary) rec.primary.market = "Vendég Győzelem";
+                    rec.recommended_bet = formatBettingMarket("1X2 - Vendég győzelem", sport);
+                    if (rec.primary) rec.primary.market = formatBettingMarket("1X2 - Vendég győzelem", sport);
                 } else if (pOver >= 55 && pOver > pUnder) {
-                    rec.recommended_bet = `Over ${safeSim.mainTotalsLine || '2.5'}`;
-                    if (rec.primary) rec.primary.market = `Over ${safeSim.mainTotalsLine || '2.5'}`;
+                    rec.recommended_bet = formatBettingMarket(`Over ${safeSim.mainTotalsLine || '2.5'}`, sport);
+                    if (rec.primary) rec.primary.market = formatBettingMarket(`Over ${safeSim.mainTotalsLine || '2.5'}`, sport);
                 } else if (pUnder >= 55 && pUnder > pOver) {
-                    rec.recommended_bet = `Under ${safeSim.mainTotalsLine || '2.5'}`;
-                    if (rec.primary) rec.primary.market = `Under ${safeSim.mainTotalsLine || '2.5'}`;
+                    rec.recommended_bet = formatBettingMarket(`Under ${safeSim.mainTotalsLine || '2.5'}`, sport);
+                    if (rec.primary) rec.primary.market = formatBettingMarket(`Under ${safeSim.mainTotalsLine || '2.5'}`, sport);
                 } else {
                     // Utolsó fallback: Over/Under alapján
-                    rec.recommended_bet = pOver > pUnder ? `Over ${safeSim.mainTotalsLine || '2.5'}` : `Under ${safeSim.mainTotalsLine || '2.5'}`;
-                    if (rec.primary) rec.primary.market = rec.recommended_bet;
+                    const fallbackMarket = pOver > pUnder ? `Over ${safeSim.mainTotalsLine || '2.5'}` : `Under ${safeSim.mainTotalsLine || '2.5'}`;
+                    rec.recommended_bet = formatBettingMarket(fallbackMarket, sport);
+                    if (rec.primary) rec.primary.market = formatBettingMarket(fallbackMarket, sport);
                 }
                 console.log(`[AI_Service v139.3] ⚠️ No valid value bets found. Using statistical fallback: ${rec.recommended_bet}`);
             }
@@ -1031,12 +1064,24 @@ async function getMasterRecommendation(
             // Secondary market is banned/low odds, find alternative
             for (const vb of valueBets) {
                 if (!isBannedMarket(vb.market) && parseFloat(vb.odds) >= MIN_ODDS) {
-                    rec.secondary.market = vb.market;
+                    // === v140.0: EGYSÉGES FORMÁTUM ===
+                    rec.secondary.market = normalizeBettingRecommendation(vb.market, sport);
                     rec.secondary.confidence = Math.min(7.0, parseFloat(vb.probability) / 10);
                     rec.secondary.reason = `🚫 [v139.3 AUTO-CORRECTION] Secondary market replaced with valid value bet.`;
                     break;
                 }
             }
+        }
+        
+        // === v140.0: VÉGLEGES NORMALIZÁLÁS (biztos, hogy minden egységes) ===
+        if (rec.recommended_bet) {
+            rec.recommended_bet = normalizeBettingRecommendation(rec.recommended_bet, sport);
+        }
+        if (rec.primary?.market) {
+            rec.primary.market = normalizeBettingRecommendation(rec.primary.market, sport);
+        }
+        if (rec.secondary?.market) {
+            rec.secondary.market = normalizeBettingRecommendation(rec.secondary.market, sport);
         }
 
         // === v139.0: NINCS TÖBB CONFIDENCE PENALTY! ===
