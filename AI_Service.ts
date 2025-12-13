@@ -483,6 +483,29 @@ Your goal: Find the SINGLE BEST BET for this match.
 4. If they disagree -> Find out WHY and pick the side with STRONGER EVIDENCE.
 5. **BE DECISIVE.** Don't hedge. Pick a winner.
 
+🚨 **CRITICAL PROBABILITY THRESHOLDS (v140.1 - PROFITABLE TIPS ONLY):**
+- ❌ NEVER recommend Home if Home probability < 25% (Too risky!)
+- ❌ NEVER recommend Away if Away probability < 25% (Too risky!)
+- ❌ NEVER recommend Draw if Draw probability < 30% (Draw is inherently risky!)
+- ❌ NEVER recommend Over/Under if probability < 30% (Too uncertain!)
+- ✅ ONLY recommend if the chosen outcome has probability >= 30% AND confidence >= 6.5/10
+
+📊 **DRAW PROBABILITY CHECK:**
+- If Draw probability > 30% AND it's the highest probability → RECOMMEND DRAW (if odds >= 1.8)
+- If Draw probability > 35% → DO NOT recommend a clear winner (Home/Away)
+  → Instead recommend Over/Under or BTTS
+
+🎯 **CONFIDENCE REQUIREMENTS:**
+- Probability 30-40% → Minimum confidence: 6.5/10
+- Probability 40-50% → Minimum confidence: 7.0/10
+- Probability 50-60% → Minimum confidence: 7.5/10
+- Probability > 60% → Minimum confidence: 8.0/10
+
+⚠️ **WHEN TO SKIP A RECOMMENDATION:**
+- If NO outcome has probability >= 30% → Return: "Nincs elég biztos tipp ezen a meccsen"
+- If confidence < 6.5/10 → Return: "Túl bizonytalan a meccs, nincs ajánlás"
+- If Draw probability > 40% AND no clear favorite (>50%) → Recommend Over/Under instead
+
 🚫 **ABSOLUTELY FORBIDDEN MARKETS (v139.3 - NO LOW ODDS!):**
 - ❌ "Dupla-Esély" / "Double Chance" / "1X" / "X2" / "12" - TILOS! (Alacsony odds ~1.3-1.6)
 - ❌ "Tét Vissza" / "Draw No Bet" / "DNB" - TILOS! (Alacsony odds ~1.5-1.8)
@@ -865,7 +888,8 @@ async function getMasterRecommendation(
     contradictionAnalysisResult: string,
     psyReport: any,
     specialistReport: any,
-    sport: string
+    sport: string,
+    leagueName?: string  // === ÚJ v140.1: Liga név a confidence korrekcióhoz ===
 ) {
     try {
         const safeSim = sim || {};
@@ -959,8 +983,114 @@ async function getMasterRecommendation(
         }
         // === VÉGE v140.0 ===
         
+        // === v140.1: VALIDÁCIÓ - MINIMUM VALÓSZÍNŰSÉG ÉS CONFIDENCE ELLENŐRZÉS ===
+        const pHome = safeSim.pHome || 0;
+        const pDraw = safeSim.pDraw || 0;
+        const pAway = safeSim.pAway || 0;
+        const pOver = safeSim.pOver || 0;
+        const pUnder = safeSim.pUnder || 0;
+        const confidence = rec.final_confidence || 0;
+        
+        // 1. Minimum valószínűség ellenőrzés
+        const recommendedMarket = rec.recommended_bet?.toLowerCase() || '';
+        let recommendedProb = 0;
+        let isValidRecommendation = true;
+        let skipReason = '';
+        
+        if (recommendedMarket.includes('hazai') || recommendedMarket.includes('home')) {
+            recommendedProb = pHome;
+            if (pHome < 25) {
+                isValidRecommendation = false;
+                skipReason = `Hazai győzelem valószínűsége túl alacsony (${pHome.toFixed(1)}% < 25%)`;
+            }
+        } else if (recommendedMarket.includes('vendég') || recommendedMarket.includes('away')) {
+            recommendedProb = pAway;
+            if (pAway < 25) {
+                isValidRecommendation = false;
+                skipReason = `Vendég győzelem valószínűsége túl alacsony (${pAway.toFixed(1)}% < 25%)`;
+            }
+        } else if (recommendedMarket.includes('döntetlen') || recommendedMarket.includes('draw')) {
+            recommendedProb = pDraw;
+            if (pDraw < 30) {
+                isValidRecommendation = false;
+                skipReason = `Döntetlen valószínűsége túl alacsony (${pDraw.toFixed(1)}% < 30%)`;
+            }
+        } else if (recommendedMarket.includes('over')) {
+            recommendedProb = pOver;
+            if (pOver < 30) {
+                isValidRecommendation = false;
+                skipReason = `Over valószínűsége túl alacsony (${pOver.toFixed(1)}% < 30%)`;
+            }
+        } else if (recommendedMarket.includes('under')) {
+            recommendedProb = pUnder;
+            if (pUnder < 30) {
+                isValidRecommendation = false;
+                skipReason = `Under valószínűsége túl alacsony (${pUnder.toFixed(1)}% < 30%)`;
+            }
+        }
+        
+        // 2. Minimum confidence ellenőrzés
+        if (confidence < 6.5) {
+            isValidRecommendation = false;
+            skipReason = `Bizalom túl alacsony (${confidence.toFixed(1)}/10 < 6.5/10)`;
+        }
+        
+        // 3. Döntetlen valószínűség ellenőrzés
+        if (pDraw > 35 && !recommendedMarket.includes('döntetlen') && !recommendedMarket.includes('draw')) {
+            // Ha a döntetlen valószínűsége magas, ne ajánljunk egyértelmű győztest
+            // Kivéve, ha a győztes valószínűsége > 50%
+            const maxWinProb = Math.max(pHome, pAway);
+            if (maxWinProb < 50) {
+                isValidRecommendation = false;
+                skipReason = `Döntetlen valószínűsége túl magas (${pDraw.toFixed(1)}%), de nincs egyértelmű favorit (>50%)`;
+            }
+        }
+        
+        // 4. Ha nem valid, próbáljunk alternatívát találni
+        if (!isValidRecommendation) {
+            console.warn(`[AI_Service v140.1] ⚠️ AJÁNLÁS ELUTASÍTVA: ${skipReason}`);
+            
+            // Próbáljunk alternatívát találni a valueBets-ből
+            const bestValueBet = valueBets
+                .filter(vb => {
+                    const prob = parseFloat(vb.probability.replace('%', ''));
+                    return prob >= 30 && parseFloat(vb.odds) >= 1.8;
+                })
+                .sort((a, b) => parseFloat(b.value.replace('+', '').replace('%', '')) - parseFloat(a.value.replace('+', '').replace('%', '')))[0];
+            
+            if (bestValueBet) {
+                rec.recommended_bet = normalizeBettingRecommendation(bestValueBet.market, sport);
+                rec.final_confidence = Math.min(7.5, parseFloat(bestValueBet.probability) / 10);
+                rec.brief_reasoning = `[AUTO-CORRECTED v140.1] ${skipReason}. Alternatíva: ${bestValueBet.market} (Valószínűség: ${bestValueBet.probability}, Value: ${bestValueBet.value})`;
+                if (rec.primary) {
+                    rec.primary.market = normalizeBettingRecommendation(bestValueBet.market, sport);
+                    rec.primary.confidence = rec.final_confidence;
+                }
+                console.log(`[AI_Service v140.1] ✅ Alternatíva találva: ${rec.recommended_bet}`);
+            } else {
+                // Ha nincs jó alternatíva, adjunk Over/Under tippet, ha az valid
+                if (pOver >= 30 && pOver > pUnder) {
+                    rec.recommended_bet = formatBettingMarket(`Over ${safeSim.mainTotalsLine || '2.5'}`, sport);
+                    rec.final_confidence = Math.min(7.0, (pOver / 10));
+                    rec.brief_reasoning = `[AUTO-CORRECTED v140.1] ${skipReason}. Over/Under alternatíva: Over ${safeSim.mainTotalsLine || '2.5'} (${pOver.toFixed(1)}%)`;
+                } else if (pUnder >= 30 && pUnder > pOver) {
+                    rec.recommended_bet = formatBettingMarket(`Under ${safeSim.mainTotalsLine || '2.5'}`, sport);
+                    rec.final_confidence = Math.min(7.0, (pUnder / 10));
+                    rec.brief_reasoning = `[AUTO-CORRECTED v140.1] ${skipReason}. Over/Under alternatíva: Under ${safeSim.mainTotalsLine || '2.5'} (${pUnder.toFixed(1)}%)`;
+                } else {
+                    // Utolsó eset: nincs ajánlás
+                    rec.recommended_bet = "Nincs elég biztos tipp ezen a meccsen";
+                    rec.final_confidence = 1.0;
+                    rec.brief_reasoning = skipReason || "Túl bizonytalan a meccs";
+                    rec.skip_reason = skipReason;
+                    console.log(`[AI_Service v140.1] ❌ Nincs ajánlás: ${skipReason}`);
+                }
+            }
+        }
+        // === VÉGE v140.1 ===
+        
         // --- 2. LÉPÉS: KÓD (A "Főnök") átveszi az irányítást ---
-        console.log(`[AI_Service v140.0 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
+        console.log(`[AI_Service v140.1 - Főnök] Végleges ajánlás: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10 (Valószínűség: ${recommendedProb > 0 ? recommendedProb.toFixed(1) + '%' : 'N/A'})`);
 
         // === v139.3: TILTOTT PIACOK SZŰRÉSE + MINIMUM ODDS KÖVETELMÉNY ===
         const BANNED_KEYWORDS = [
@@ -1084,11 +1214,35 @@ async function getMasterRecommendation(
             rec.secondary.market = normalizeBettingRecommendation(rec.secondary.market, sport);
         }
 
-        // === v139.0: NINCS TÖBB CONFIDENCE PENALTY! ===
-        // Hagyjuk, hogy az AI döntse el a bizalmat.
-        // Töröljük a mesterséges büntetéseket (League Quality, Contradiction, stb.)
+        // === v140.1: LIGA MINŐSÉG ALAPÚ CONFIDENCE KORREKCIÓ ===
+        // Gyenge ligákhoz (török, brazil, ausztrál) alacsonyabb confidence
+        let leagueConfidencePenalty = 0;
+        if (leagueName && sport === 'soccer') {
+            const { getLeagueCoefficient, getLeagueQuality } = await import('./config_league_coefficients.js');
+            const leagueCoeff = getLeagueCoefficient(leagueName);
+            const leagueQuality = getLeagueQuality(leagueCoeff);
+            
+            // Gyenge ligákhoz confidence penalty
+            if (leagueQuality === 'Very Weak' || leagueQuality === 'Weak') {
+                leagueConfidencePenalty = -1.5;
+                console.log(`[AI_Service v140.1] ⚠️ Liga minőség penalty: ${leagueName} (${leagueQuality}) → -1.5 confidence`);
+            } else if (leagueQuality === 'Medium') {
+                leagueConfidencePenalty = -0.5;
+                console.log(`[AI_Service v140.1] ⚠️ Liga minőség penalty: ${leagueName} (${leagueQuality}) → -0.5 confidence`);
+            }
+        } else if (leagueName && (sport === 'basketball' || sport === 'hockey')) {
+            // NBA/NHL = nincs penalty, egyéb ligák = -0.5 to -1.0
+            const leagueLower = leagueName.toLowerCase();
+            const isTopLeague = leagueLower.includes('nba') || leagueLower.includes('nhl') || 
+                               leagueLower.includes('euroleague') || leagueLower.includes('khl');
+            if (!isTopLeague) {
+                leagueConfidencePenalty = -0.5;
+                console.log(`[AI_Service v140.1] ⚠️ Liga minőség penalty: ${leagueName} (nem TOP liga) → -0.5 confidence`);
+            }
+        }
         
-        rec.final_confidence = Math.max(1.0, Math.min(10.0, rec.final_confidence));
+        rec.final_confidence = Math.max(1.0, Math.min(10.0, rec.final_confidence + leagueConfidencePenalty));
+        // === VÉGE v140.1 ===
 
         // 2. Bizalmi Kalibráció (Meta-tanulás) - Ez marad, mert hasznos
         let calibrationNote = "";
@@ -1305,7 +1459,8 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
             "N/A", 
             psyReport, 
             specialistReport, 
-            sport // Átadjuk a sportot (v103.6)
+            sport, // Átadjuk a sportot (v103.6)
+            matchData.leagueName  // === ÚJ v140.1: Liga név átadása ===
         );
 
     } catch (e: any) {
