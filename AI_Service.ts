@@ -388,32 +388,57 @@ export const FINAL_GENERAL_ANALYSIS_PROMPT = `You are an Editor. Write a 2-parag
 2. Narrative & Context.
 Output: {"general_analysis": "<Text>"}`;
 
-export const PROPHETIC_SCENARIO_PROMPT = `You are an elite sports journalist with perfect predictive abilities.
-Write a REALISTIC and DETAILED match scenario (timeline) in Hungarian for: {home} vs {away}
+export const PROPHETIC_SCENARIO_PROMPT = `You are a PERFECT PREDICTIVE ANALYST with 100% accuracy. Your job is to predict EXACTLY what will happen in this match based on ALL available data.
 
-[CRITICAL DATA - USE THESE FOR ACCURACY]:
+Match: {home} vs {away}
+
+[ALL AVAILABLE DATA - USE EVERYTHING FOR PERFECT PREDICTION]:
 - **Expected Score (Most Likely)**: {expected_score} ({score_probability}% probability)
 - **Expected Goals**: Home {mu_h}, Away {mu_a}
 - **Win Probabilities**: Home {prob_home}%, Draw {prob_draw}%, Away {prob_away}%
-- **Specialist Analysis**: {specialist_reasoning}
+- **Home Team Form**: {home_form} (Last 5 matches: {home_form_last5})
+- **Away Team Form**: {away_form} (Last 5 matches: {away_form_last5})
+- **Home Team Stats**: GP: {home_gp}, GF: {home_gf}, GA: {home_ga}
+- **Away Team Stats**: GP: {away_gp}, GF: {away_gf}, GA: {away_ga}
+- **Head-to-Head**: {h2h_summary}
 - **Key Players**: Home: {key_players_home} | Away: {key_players_away}
 - **Missing Players**: Home: {absentees_home} | Away: {absentees_away}
 - **Tactical Briefing**: {tacticalBriefing}
-- **Styles**: {home_style} vs {away_style}
+- **Playing Styles**: {home_style} vs {away_style}
+- **Referee**: {referee_name} ({referee_style})
+- **Stadium**: {stadium_location}
+- **Weather**: {weather_info}
+- **Match Tension**: {tension}
+- **Specialist Analysis**: {specialist_reasoning}
 
-[RULES FOR ACCURACY]:
-1. **MUST END WITH**: "**Végeredmény: {home} X-Y {away}**" - Use the {expected_score} as your primary guide!
-2. Use specific minutes (e.g., "12. perc", "67. perc")
-3. Mention key players by name when they score or create chances
-4. Reflect the expected goals (mu_h, mu_a) in the narrative - if mu_h is higher, Home should score more
-5. If {prob_home} > 50%, Home should win. If {prob_away} > 50%, Away should win. If {prob_draw} > 30%, consider a draw.
-6. Consider missing players' impact on the match flow
-7. Make it REALISTIC - not fantasy. Base it on the statistical probabilities.
-8. The final score MUST match {expected_score} exactly!
+[CRITICAL PREDICTION RULES - v144.0 PERFECT ACCURACY]:
+1. **YOU MUST PREDICT EXACTLY WHAT WILL HAPPEN** - Not "expected" or "likely", but EXACTLY what WILL happen!
+2. **FINAL SCORE IS MANDATORY**: The match WILL end {expected_score} - predict this EXACTLY!
+3. **PREDICT SPECIFIC EVENTS**:
+   - Exact minutes when goals will be scored (e.g., "23. percben {player_name} gólt szerez")
+   - Which players will score (use {key_players_home} and {key_players_away})
+   - Yellow/red cards if referee style suggests it
+   - Substitutions that will impact the game
+   - Key tactical moments
+4. **USE ALL DATA**:
+   - If {home_form} shows strong form (WWW), predict they will dominate early
+   - If {absentees_home} includes key defenders, predict the away team will score
+   - If {h2h_summary} shows home dominance, reflect this in your prediction
+   - If {referee_style} is strict, predict more cards
+   - If {weather_info} mentions rain, predict more mistakes
+5. **MATCH FLOW PREDICTION**:
+   - Who will start stronger? (Based on form and stats)
+   - When will the first goal come? (Based on mu_h and mu_a)
+   - Will there be a comeback? (Based on probabilities)
+   - How will missing players affect the game? (Be specific!)
+6. **BE PRECISE, NOT VAGUE**:
+   - ❌ BAD: "A hazai csapat valószínűleg nyer"
+   - ✅ GOOD: "A {home} a 23. percben {player_name} góljával vezetést szerzi, majd a 67. percben {away_player} egyenlít, de a 89. percben {home_player} döntő gólt szerez. **Végeredmény: {home} 2-1 {away}**"
+7. **PREDICT THE EXACT FINAL SCORE**: {expected_score} - This WILL be the final score!
 
 [OUTPUT FORMAT] - STRICT JSON:
 {
-  "scenario": "<Detailed Hungarian timeline with specific minutes, player actions, and the EXACT final score: **Végeredmény: {home} X-Y {away}**>"
+  "scenario": "<Detailed Hungarian prediction with EXACT events, minutes, player names, and the EXACT final score: **Végeredmény: {home} X-Y {away}**. Write as if you are seeing the future - be specific and confident about what WILL happen!>"
 }`;
 
 export const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst. Synthesize all reports into "Stratégiai Zárógondolatok" (Hungarian).
@@ -741,6 +766,28 @@ async function getPropheticTimeline(
      const topScoreProb = sim?.scores && sim?.scores[topScoreKey] ? 
          ((sim.scores[topScoreKey] / totalSims) * 100).toFixed(1) : "N/A";
      
+     // === ÚJ v144.0: MINDEN ADAT KINYERÉSE A TÖKÉLETES ELŐREJELZÉSHEZ ===
+     const homeStats = rawData?.stats?.home || {};
+     const awayStats = rawData?.stats?.away || {};
+     const homeForm = rawData?.form?.home_overall || rawData?.form?.home_form || "N/A";
+     const awayForm = rawData?.form?.away_overall || rawData?.form?.away_form || "N/A";
+     
+     // H2H összefoglaló (utolsó 3-5 meccs)
+     const h2hMatches = rawData?.h2h_structured || [];
+     const h2hSummary = h2hMatches.length > 0 
+         ? h2hMatches.slice(0, 5).map((m: any) => {
+             const score = m.score || m.result || "N/A";
+             const date = m.date || "N/A";
+             return `${date}: ${score}`;
+         }).join(' | ')
+         : "Nincs H2H adat";
+     
+     // Időjárás info
+     const weather = rawData?.contextual_factors?.structured_weather;
+     const weatherInfo = weather 
+         ? `${weather.description || "N/A"}${weather.temperature_celsius ? `, ${weather.temperature_celsius}°C` : ''}${weather.wind_speed_kmh ? `, Szél: ${weather.wind_speed_kmh} km/h` : ''}`
+         : rawData?.contextual_factors?.weather || "N/A";
+     
      const data = {
          sport, home, away,
          tacticalBriefing: tacticalBriefing || "N/A",
@@ -759,7 +806,23 @@ async function getPropheticTimeline(
          key_players_home: rawData?.key_players?.home?.map((p: any) => p.name || p.player_name).filter(Boolean).join(', ') || "N/A",
          key_players_away: rawData?.key_players?.away?.map((p: any) => p.name || p.player_name).filter(Boolean).join(', ') || "N/A",
          absentees_home: rawData?.absentees?.home?.map((p: any) => p.name).filter(Boolean).join(', ') || "Nincs",
-         absentees_away: rawData?.absentees?.away?.map((p: any) => p.name).filter(Boolean).join(', ') || "Nincs"
+         absentees_away: rawData?.absentees?.away?.map((p: any) => p.name).filter(Boolean).join(', ') || "Nincs",
+         // === ÚJ v144.0: TELJES ADATKÉSZLET A TÖKÉLETES ELŐREJELZÉSHEZ ===
+         home_form: homeForm,
+         away_form: awayForm,
+         home_form_last5: homeForm.substring(0, 5) || "N/A",
+         away_form_last5: awayForm.substring(0, 5) || "N/A",
+         home_gp: homeStats.gp || "N/A",
+         home_gf: homeStats.gf || "N/A",
+         home_ga: homeStats.ga || "N/A",
+         away_gp: awayStats.gp || "N/A",
+         away_gf: awayStats.gf || "N/A",
+         away_ga: awayStats.ga || "N/A",
+         h2h_summary: h2hSummary,
+         referee_name: rawData?.referee?.name || "N/A",
+         referee_style: rawData?.referee?.style || "N/A",
+         stadium_location: rawData?.contextual_factors?.stadium_location || "N/A",
+         weather_info: weatherInfo
      };
     return await getAndParse(PROPHETIC_SCENARIO_PROMPT, data, "scenario", "PropheticScenario");
 }

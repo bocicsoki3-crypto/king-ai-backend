@@ -261,6 +261,9 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             manual_H_xGA,
             manual_A_xG, 
             manual_A_xGA,
+            // === ÚJ v144.0: PPG paraméterek ===
+            manual_H_PPG,
+            manual_A_PPG,
             manual_absentees
         } = params;
 
@@ -316,6 +319,9 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
             manual_H_xGA: safeConvertToNumber(manual_H_xGA),
             manual_A_xG: safeConvertToNumber(manual_A_xG),
             manual_A_xGA: safeConvertToNumber(manual_A_xGA),
+            // === ÚJ v144.0: PPG paraméterek ===
+            manual_H_PPG: safeConvertToNumber(manual_H_PPG),
+            manual_A_PPG: safeConvertToNumber(manual_A_PPG),
             manual_absentees: manual_absentees 
         };
         

@@ -1142,7 +1142,10 @@ export async function fetchMatchData(options: any): Promise<IDataFetchResponse> 
         manual_H_xG,
         manual_H_xGA,
         manual_A_xG,
-        manual_A_xGA
+        manual_A_xGA,
+        // === ÚJ v144.0: PPG paraméterek fogadása ===
+        manual_H_PPG,
+        manual_A_PPG
     } = options;
     
     console.log(`Adatgyűjtés indul (v95.3 - ${sport}): ${homeTeamName} vs ${awayTeamName}...`);
@@ -1290,7 +1293,10 @@ null
         manual_H_xG: manual_H_xG ?? null,
         manual_H_xGA: manual_H_xGA ?? null,
         manual_A_xG: manual_A_xG ?? null,
-        manual_A_xGA: manual_A_xGA ?? null
+        manual_A_xGA: manual_A_xGA ?? null,
+        // === ÚJ v144.0: PPG mezők ===
+        manual_H_PPG: manual_H_PPG ?? null,
+        manual_A_PPG: manual_A_PPG ?? null
     } :
         { 
             home: { xG: null }, 
@@ -1299,11 +1305,17 @@ null
             manual_H_xG: manual_H_xG ?? null,
             manual_H_xGA: manual_H_xGA ?? null,
             manual_A_xG: manual_A_xG ?? null,
-            manual_A_xGA: manual_A_xGA ?? null
+            manual_A_xGA: manual_A_xGA ?? null,
+            // === ÚJ v144.0: PPG mezők ===
+            manual_H_PPG: manual_H_PPG ?? null,
+            manual_A_PPG: manual_A_PPG ?? null
         };
     
     if (manual_H_xG != null || manual_H_xGA != null || manual_A_xG != null || manual_A_xGA != null) {
         console.log(`[apiSportsProvider v125.0] ✅ Manuális xG értékek beépítve: H_xG=${manual_H_xG}, H_xGA=${manual_H_xGA}, A_xG=${manual_A_xG}, A_xGA=${manual_A_xGA}`);
+        if (manual_H_PPG != null || manual_A_PPG != null) {
+            console.log(`[apiSportsProvider v144.0] ✅ Manuális PPG értékek beépítve: H_PPG=${manual_H_PPG}, A_PPG=${manual_A_PPG}`);
+        }
     }
         
     const result: ICanonicalRichContext = {

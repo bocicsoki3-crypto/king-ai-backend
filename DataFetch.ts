@@ -105,6 +105,9 @@ export interface IDataFetchOptions {
     manual_H_xGA?: number | null;
     manual_A_xG?: number | null;
     manual_A_xGA?: number | null;
+    // === ÚJ v144.0: PPG (Points Per Game) paraméterek ===
+    manual_H_PPG?: number | null;
+    manual_A_PPG?: number | null;
     manual_absentees?: { home: { name: string, pos: string }[], away: { name: string, pos: string }[] } | null; 
 }
 
@@ -290,7 +293,10 @@ async function generateEmptyStubContext(options: IDataFetchOptions): Promise<IDa
              manual_H_xG: options.manual_H_xG,
              manual_H_xGA: options.manual_H_xGA,
              manual_A_xG: options.manual_A_xG,
-             manual_A_xGA: options.manual_A_xGA
+             manual_A_xGA: options.manual_A_xGA,
+             // === ÚJ v144.0: PPG mezők ===
+             manual_H_PPG: options.manual_H_PPG,
+             manual_A_PPG: options.manual_A_PPG
          },
          form: emptyRawData.form,
          rawData: emptyRawData,
@@ -345,6 +351,9 @@ export async function getRichContextualData(
         manual_H_xGA,
         manual_A_xG,
         manual_A_xGA,
+        // === ÚJ v144.0: PPG paraméterek ===
+        manual_H_PPG,
+        manual_A_PPG,
         manual_absentees
     } = options;
 
@@ -454,7 +463,10 @@ export async function getRichContextualData(
             manual_H_xG: manual_H_xG ?? null,
             manual_H_xGA: manual_H_xGA ?? null,
             manual_A_xG: manual_A_xG ?? null,
-            manual_A_xGA: manual_A_xGA ?? null
+            manual_A_xGA: manual_A_xGA ?? null,
+            // === ÚJ v144.0: PPG paraméterek továbbítása ===
+            manual_H_PPG: manual_H_PPG ?? null,
+            manual_A_PPG: manual_A_PPG ?? null
         };
         // ==========================================================================
         
@@ -608,8 +620,14 @@ export async function getRichContextualData(
         finalResult.advancedData.manual_H_xGA = manual_H_xGA;
         finalResult.advancedData.manual_A_xG = manual_A_xG;
         finalResult.advancedData.manual_A_xGA = manual_A_xGA;
+        // === ÚJ v144.0: PPG tárolása ===
+        if (manual_H_PPG != null) finalResult.advancedData.manual_H_PPG = manual_H_PPG;
+        if (manual_A_PPG != null) finalResult.advancedData.manual_A_PPG = manual_A_PPG;
         xgSource = "Manual (Components)";
         console.log(`[DataFetch v125.0] ✅ MANUÁLIS xG HASZNÁLVA: H_xG=${manual_H_xG}, H_xGA=${manual_H_xGA}, A_xG=${manual_A_xG}, A_xGA=${manual_A_xGA}`);
+        if (manual_H_PPG != null || manual_A_PPG != null) {
+            console.log(`[DataFetch v144.0] ✅ MANUÁLIS PPG HASZNÁLVA: H_PPG=${manual_H_PPG}, A_PPG=${manual_A_PPG}`);
+        }
     }
     else if (manual_H_xG != null || manual_H_xGA != null || manual_A_xG != null || manual_A_xGA != null) {
         // ⚠️ RÉSZLEGES manuális xG (pl. csak 1-2 érték)

@@ -202,6 +202,41 @@ export class SoccerStrategy implements ISportStrategy {
                     console.warn(`  Folytatjuk, de ELLENŐRIZD a manuális inputot!`);
                 }
                 
+                // === ÚJ v144.0: PPG alapú korrekció (ha van PPG adat) ===
+                if (advancedData?.manual_H_PPG != null && advancedData?.manual_A_PPG != null) {
+                    const h_ppg = advancedData.manual_H_PPG;
+                    const a_ppg = advancedData.manual_A_PPG;
+                    
+                    // PPG alapú erősség korrekció (magasabb PPG → magasabb xG)
+                    // Példa: Ha H_PPG = 2.0 és A_PPG = 1.5, akkor a hazai csapat erősebb
+                    const ppgRatio = h_ppg / a_ppg;
+                    const ppgCorrectionFactor = 1.05; // 5% korrekció maximum
+                    
+                    if (ppgRatio > 1.2) {
+                        // Hazai csapat erősebb → növeljük az xG-t, csökkentjük az xGA-t
+                        h_xG *= (1 + (ppgRatio - 1.2) * ppgCorrectionFactor);
+                        a_xGA *= (1 + (ppgRatio - 1.2) * ppgCorrectionFactor);
+                        console.log(`[SoccerStrategy v144.0] 📊 PPG korrekció (H erősebb): H_PPG=${h_ppg}, A_PPG=${a_ppg}, Ratio=${ppgRatio.toFixed(2)}`);
+                    } else if (ppgRatio < 0.8) {
+                        // Vendég csapat erősebb → növeljük az xG-t, csökkentjük az xGA-t
+                        a_xG *= (1 + ((1 / ppgRatio) - 1.2) * ppgCorrectionFactor);
+                        h_xGA *= (1 + ((1 / ppgRatio) - 1.2) * ppgCorrectionFactor);
+                        console.log(`[SoccerStrategy v144.0] 📊 PPG korrekció (A erősebb): H_PPG=${h_ppg}, A_PPG=${a_ppg}, Ratio=${ppgRatio.toFixed(2)}`);
+                    }
+                    
+                    // Újraszámoljuk a mu értékeket a korrigált xG-vel
+                    const p1_mu_h_corrected = (h_xG + a_xGA) / 2;
+                    const p1_mu_a_corrected = (a_xG + h_xGA) / 2;
+                    
+                    console.log(`[SoccerStrategy v144.0] ✅ PPG korrekció után: mu_h=${p1_mu_h_corrected.toFixed(2)}, mu_a=${p1_mu_a_corrected.toFixed(2)}`);
+                    
+                    return {
+                        pure_mu_h: p1_mu_h_corrected,
+                        pure_mu_a: p1_mu_a_corrected,
+                        source: `Manual (Defensive Adjusted ${leagueDefensiveMultiplier.toFixed(2)}x, PPG Corrected) ${diffRatio > 3.0 ? '⚠️ High Ratio' : ''}`
+                    };
+                }
+                
                 console.log(`[SoccerStrategy v132.0] ✅ P1 (MANUÁLIS xG) VÉGLEGES: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
                 console.log(`  ↳ Original Input: H_xG=${advancedData.manual_H_xG.toFixed(2)}, A_xG=${advancedData.manual_A_xG.toFixed(2)}`);
                 console.log(`  ↳ After Adjustments: H_xG=${h_xG.toFixed(2)}, A_xG=${a_xG.toFixed(2)}`);

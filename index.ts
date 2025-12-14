@@ -219,6 +219,9 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             manual_H_xGA,
             manual_A_xG, 
             manual_A_xGA,
+            // === ÚJ v144.0: PPG (Points Per Game) paraméterek ===
+            manual_H_PPG,
+            manual_A_PPG,
     
             // === MÓDOSÍTÁS (v72.0): Helyes típus fogadása ===
             manual_absentees // Típus: ManualAbsentees | null
@@ -240,6 +243,9 @@ app.post('/runAnalysis', protect, async (req: Request, res: Response) => {
             manual_H_xGA,
             manual_A_xG,
             manual_A_xGA,
+            // === ÚJ v144.0: PPG paraméterek ===
+            manual_H_PPG,
+            manual_A_PPG,
             manual_absentees: manual_absentees as ManualAbsentees | null // Típus kényszerítése
         };
         

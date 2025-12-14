@@ -231,6 +231,9 @@ export interface ICanonicalRichContext {
     manual_H_xGA?: number | null;
     manual_A_xG?: number | null;
     manual_A_xGA?: number | null;
+    // === ÚJ v144.0: PPG (Points Per Game) mezők ===
+    manual_H_PPG?: number | null;
+    manual_A_PPG?: number | null;
   };
   form: {
     home_overall: string | null;
