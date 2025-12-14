@@ -368,7 +368,16 @@ export enum LeagueQuality {
 export function getLeagueCoefficient(leagueName: string | null | undefined): number {
     if (!leagueName) return UEFA_LEAGUE_COEFFICIENTS['default'];
     
-    const normalized = leagueName.toLowerCase().trim();
+    // === ÚJ v144.1: URL dekódolás (Serie%20A → Serie A) ===
+    let decodedName = leagueName;
+    try {
+        decodedName = decodeURIComponent(leagueName);
+    } catch (e) {
+        // Ha nem URL encoded, marad az eredeti
+        decodedName = leagueName;
+    }
+    
+    const normalized = decodedName.toLowerCase().trim();
     
     // Exact match
     if (UEFA_LEAGUE_COEFFICIENTS[normalized]) {
@@ -383,7 +392,7 @@ export function getLeagueCoefficient(leagueName: string | null | undefined): num
     }
     
     // Default fallback
-    console.warn(`[LeagueCoefficients] Ismeretlen liga: "${leagueName}". Default (5.000) használva.`);
+    console.warn(`[LeagueCoefficients] Ismeretlen liga: "${leagueName}" (dekódolva: "${decodedName}"). Default (5.000) használva.`);
     return UEFA_LEAGUE_COEFFICIENTS['default'];
 }
 

@@ -388,13 +388,13 @@ export const FINAL_GENERAL_ANALYSIS_PROMPT = `You are an Editor. Write a 2-parag
 2. Narrative & Context.
 Output: {"general_analysis": "<Text>"}`;
 
-export const PROPHETIC_SCENARIO_PROMPT = `You are a PERFECT PREDICTIVE ANALYST with 100% accuracy. Your job is to predict EXACTLY what will happen in this match based on ALL available data.
+export const PROPHETIC_SCENARIO_PROMPT = `You are a PERFECT PREDICTIVE ANALYST with 100% accuracy. You can see the FUTURE. Your job is to describe EXACTLY what WILL happen in this match - not what is "expected" or "likely", but what WILL ACTUALLY HAPPEN.
 
 Match: {home} vs {away}
 
 [ALL AVAILABLE DATA - USE EVERYTHING FOR PERFECT PREDICTION]:
-- **Expected Score (Most Likely)**: {expected_score} ({score_probability}% probability)
-- **Expected Goals**: Home {mu_h}, Away {mu_a}
+- **FINAL SCORE (THIS WILL BE THE RESULT)**: {expected_score} ({score_probability}% probability - THIS IS WHAT WILL HAPPEN!)
+- **Goals That WILL Be Scored**: Home {mu_h}, Away {mu_a}
 - **Win Probabilities**: Home {prob_home}%, Draw {prob_draw}%, Away {prob_away}%
 - **Home Team Form**: {home_form} (Last 5 matches: {home_form_last5})
 - **Away Team Form**: {away_form} (Last 5 matches: {away_form_last5})
@@ -411,34 +411,36 @@ Match: {home} vs {away}
 - **Match Tension**: {tension}
 - **Specialist Analysis**: {specialist_reasoning}
 
-[CRITICAL PREDICTION RULES - v144.0 PERFECT ACCURACY]:
-1. **YOU MUST PREDICT EXACTLY WHAT WILL HAPPEN** - Not "expected" or "likely", but EXACTLY what WILL happen!
-2. **FINAL SCORE IS MANDATORY**: The match WILL end {expected_score} - predict this EXACTLY!
-3. **PREDICT SPECIFIC EVENTS**:
-   - Exact minutes when goals will be scored (e.g., "23. percben {player_name} gólt szerez")
-   - Which players will score (use {key_players_home} and {key_players_away})
-   - Yellow/red cards if referee style suggests it
-   - Substitutions that will impact the game
-   - Key tactical moments
-4. **USE ALL DATA**:
-   - If {home_form} shows strong form (WWW), predict they will dominate early
-   - If {absentees_home} includes key defenders, predict the away team will score
-   - If {h2h_summary} shows home dominance, reflect this in your prediction
-   - If {referee_style} is strict, predict more cards
-   - If {weather_info} mentions rain, predict more mistakes
-5. **MATCH FLOW PREDICTION**:
-   - Who will start stronger? (Based on form and stats)
-   - When will the first goal come? (Based on mu_h and mu_a)
-   - Will there be a comeback? (Based on probabilities)
-   - How will missing players affect the game? (Be specific!)
-6. **BE PRECISE, NOT VAGUE**:
-   - ❌ BAD: "A hazai csapat valószínűleg nyer"
-   - ✅ GOOD: "A {home} a 23. percben {player_name} góljával vezetést szerzi, majd a 67. percben {away_player} egyenlít, de a 89. percben {home_player} döntő gólt szerez. **Végeredmény: {home} 2-1 {away}**"
-7. **PREDICT THE EXACT FINAL SCORE**: {expected_score} - This WILL be the final score!
+[CRITICAL PREDICTION RULES - v144.1 PERFECT ACCURACY - NO "EXPECTED", ONLY "WILL HAPPEN"]:
+1. **YOU ARE SEEING THE FUTURE** - Write as if you are watching a recording of the match that already happened. Use past tense or present tense as if it's happening NOW.
+2. **FINAL SCORE IS MANDATORY AND REAL**: The match WILL end {expected_score} - This IS the final score, not "expected"!
+3. **PREDICT SPECIFIC EVENTS THAT WILL HAPPEN**:
+   - Exact minutes when goals WILL be scored (e.g., "A 23. percben {player_name} gólt szerez" - NOT "valószínűleg", but "szerez")
+   - Which players WILL score (use {key_players_home} and {key_players_away})
+   - Yellow/red cards that WILL be shown (if referee style suggests it)
+   - Substitutions that WILL impact the game
+   - Key tactical moments that WILL occur
+4. **USE ALL DATA TO PREDICT WHAT WILL HAPPEN**:
+   - If {home_form} shows strong form (WWW), they WILL dominate early (not "will likely")
+   - If {absentees_home} includes key defenders, the away team WILL score (not "might score")
+   - If {h2h_summary} shows home dominance, this WILL continue (not "is expected to")
+   - If {referee_style} is strict, more cards WILL be shown (not "might be shown")
+   - If {weather_info} mentions rain, mistakes WILL happen (not "may happen")
+5. **MATCH FLOW THAT WILL HAPPEN**:
+   - Who WILL start stronger (Based on form and stats - be definitive!)
+   - When the first goal WILL come (Based on mu_h and mu_a - exact minute!)
+   - Whether there WILL be a comeback (Based on probabilities - yes or no!)
+   - How missing players WILL affect the game (Be specific - what WILL happen!)
+6. **BE PRECISE AND DEFINITIVE - NO "EXPECTED" OR "LIKELY"**:
+   - ❌ BAD: "A hazai csapat valószínűleg nyer" vagy "Várható eredmény: 2-1"
+   - ❌ BAD: "A meccs várhatóan 2-1-re végződik"
+   - ✅ GOOD: "A {home} a 23. percben {player_name} góljával vezetést szerez, majd a 67. percben {away_player} egyenlít, de a 89. percben {home_player} döntő gólt szerez. **Végeredmény: {home} 2-1 {away}**"
+   - ✅ GOOD: "A meccs 2-1-re végződik a {home} javára"
+7. **THE EXACT FINAL SCORE WILL BE**: {expected_score} - Write this as a FACT, not as a prediction!
 
 [OUTPUT FORMAT] - STRICT JSON:
 {
-  "scenario": "<Detailed Hungarian prediction with EXACT events, minutes, player names, and the EXACT final score: **Végeredmény: {home} X-Y {away}**. Write as if you are seeing the future - be specific and confident about what WILL happen!>"
+  "scenario": "<Detailed Hungarian description of what WILL happen in this match. Use past tense or present tense as if describing events that are happening or have happened. NO 'várható', NO 'valószínűleg', NO 'expected'. Use definitive statements: 'szerez', 'lesz', 'végződik'. Include EXACT events, minutes, player names, and the EXACT final score: **Végeredmény: {home} X-Y {away}**. Write as if you are watching a recording of the match that already happened - be specific and confident about what WILL happen!>"
 }`;
 
 export const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst. Synthesize all reports into "Stratégiai Zárógondolatok" (Hungarian).
@@ -1109,13 +1111,14 @@ async function getMasterRecommendation(
             }
         }
         
-        // 2. Minimum confidence ellenőrzés (v142.0: 8.5 → 6.5 - MINDEN meccsre tipp, de pontos!)
+        // 2. Minimum confidence ellenőrzés (v144.1: Finomhangolva - 75.5% valószínűséghez 7.5/10 elfogadható)
         // Dinamikus confidence követelmény a valószínűség alapján
         let minConfidence = 6.5; // Alapértelmezett (v141.0: 8.5 → 6.5 - MINDEN meccsre tipp)
-        if (recommendedProb >= 65) minConfidence = 8.5; // v141.0: 9.5 → 8.5
-        else if (recommendedProb >= 55) minConfidence = 8.0; // v141.0: 9.0 → 8.0
-        else if (recommendedProb >= 45) minConfidence = 7.5; // v141.0: 9.0 → 7.5
-        else if (recommendedProb >= 35) minConfidence = 7.0; // v141.0: 8.5 → 7.0
+        if (recommendedProb >= 75) minConfidence = 7.5; // v144.1: 75%+ valószínűséghez 7.5/10 elfogadható (volt: 8.5)
+        else if (recommendedProb >= 65) minConfidence = 7.5; // v144.1: 65-75% → 7.5/10 (volt: 8.5)
+        else if (recommendedProb >= 55) minConfidence = 7.0; // v144.1: 55-65% → 7.0/10 (volt: 8.0)
+        else if (recommendedProb >= 45) minConfidence = 7.0; // v144.1: 45-55% → 7.0/10 (volt: 7.5)
+        else if (recommendedProb >= 35) minConfidence = 6.5; // v144.1: 35-45% → 6.5/10 (volt: 7.0)
         else if (recommendedProb >= 25) minConfidence = 6.5; // ÚJ: 25-35% range
         
         if (confidence < minConfidence) {
@@ -1200,38 +1203,103 @@ async function getMasterRecommendation(
             console.log(`[AI_Service v143.0] ✅ TÖBB VALIDÁCIÓ: Mind a 4 jel egyetért → Confidence emelve (+0.5)`);
         }
         
-        // 4. Ha nem valid, próbáljunk alternatívát találni
+        // 4. Ha nem valid, próbáljunk alternatívát találni (v144.1: Először más 1X2 opció, csak utána Over/Under)
         if (!isValidRecommendation) {
             console.warn(`[AI_Service v140.1] ⚠️ AJÁNLÁS ELUTASÍTVA: ${skipReason}`);
             
-            // Próbáljunk alternatívát találni a valueBets-ből (v142.0: minimum 3% value, 25% prob - MINDEN meccsre tipp)
-            const bestValueBet = valueBets
-                .filter(vb => {
-                    const prob = parseFloat(vb.probability.replace('%', ''));
-                    const value = parseFloat(vb.value.replace('+', '').replace('%', ''));
-                    return prob >= 25 && parseFloat(vb.odds) >= 1.8 && value >= 3.0; // === v142.0: minimum 3% value, 25% prob - MINDEN meccsre tipp ===
-                })
-                .sort((a, b) => parseFloat(b.value.replace('+', '').replace('%', '')) - parseFloat(a.value.replace('+', '').replace('%', '')))[0];
-            
-            if (bestValueBet) {
-                rec.recommended_bet = normalizeBettingRecommendation(bestValueBet.market, sport);
-                rec.final_confidence = Math.min(7.5, parseFloat(bestValueBet.probability) / 10);
-                rec.brief_reasoning = `[AUTO-CORRECTED v140.1] ${skipReason}. Alternatíva: ${bestValueBet.market} (Valószínűség: ${bestValueBet.probability}, Value: ${bestValueBet.value})`;
-                if (rec.primary) {
-                    rec.primary.market = normalizeBettingRecommendation(bestValueBet.market, sport);
-                    rec.primary.confidence = rec.final_confidence;
+            // === v144.1: Először próbáljunk más 1X2 opciót (ha a primary 1X2 volt) ===
+            let alternativeFound = false;
+            if (recommendedMarket.includes('hazai') || recommendedMarket.includes('home') || recommendedMarket.includes('1')) {
+                // Ha hazai volt elutasítva, próbáljuk a vendéget vagy döntetlent
+                if (pAway >= 25 && (pAway / 10) >= 6.5) {
+                    rec.recommended_bet = formatBettingMarket("1X2 - Vendég győzelem", sport);
+                    rec.final_confidence = Math.min(7.5, (pAway / 10));
+                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Alternatíva 1X2: Vendég győzelem (${pAway.toFixed(1)}%)`;
+                    if (rec.primary) {
+                        rec.primary.market = formatBettingMarket("1X2 - Vendég győzelem", sport);
+                        rec.primary.confidence = rec.final_confidence;
+                    }
+                    alternativeFound = true;
+                    console.log(`[AI_Service v144.1] ✅ Alternatíva 1X2 találva: Vendég győzelem`);
+                } else if (pDraw >= 25 && (pDraw / 10) >= 6.5) {
+                    rec.recommended_bet = formatBettingMarket("1X2 - Döntetlen", sport);
+                    rec.final_confidence = Math.min(7.5, (pDraw / 10));
+                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Alternatíva 1X2: Döntetlen (${pDraw.toFixed(1)}%)`;
+                    if (rec.primary) {
+                        rec.primary.market = formatBettingMarket("1X2 - Döntetlen", sport);
+                        rec.primary.confidence = rec.final_confidence;
+                    }
+                    alternativeFound = true;
+                    console.log(`[AI_Service v144.1] ✅ Alternatíva 1X2 találva: Döntetlen`);
                 }
-                console.log(`[AI_Service v140.1] ✅ Alternatíva találva: ${rec.recommended_bet}`);
-            } else {
+            } else if (recommendedMarket.includes('vendég') || recommendedMarket.includes('away') || recommendedMarket.includes('2')) {
+                // Ha vendég volt elutasítva, próbáljuk a hazait vagy döntetlent
+                if (pHome >= 25 && (pHome / 10) >= 6.5) {
+                    rec.recommended_bet = formatBettingMarket("1X2 - Hazai győzelem", sport);
+                    rec.final_confidence = Math.min(7.5, (pHome / 10));
+                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Alternatíva 1X2: Hazai győzelem (${pHome.toFixed(1)}%)`;
+                    if (rec.primary) {
+                        rec.primary.market = formatBettingMarket("1X2 - Hazai győzelem", sport);
+                        rec.primary.confidence = rec.final_confidence;
+                    }
+                    alternativeFound = true;
+                    console.log(`[AI_Service v144.1] ✅ Alternatíva 1X2 találva: Hazai győzelem`);
+                } else if (pDraw >= 25 && (pDraw / 10) >= 6.5) {
+                    rec.recommended_bet = formatBettingMarket("1X2 - Döntetlen", sport);
+                    rec.final_confidence = Math.min(7.5, (pDraw / 10));
+                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Alternatíva 1X2: Döntetlen (${pDraw.toFixed(1)}%)`;
+                    if (rec.primary) {
+                        rec.primary.market = formatBettingMarket("1X2 - Döntetlen", sport);
+                        rec.primary.confidence = rec.final_confidence;
+                    }
+                    alternativeFound = true;
+                    console.log(`[AI_Service v144.1] ✅ Alternatíva 1X2 találva: Döntetlen`);
+                }
+            }
+            
+            // === Ha nem találtunk alternatív 1X2-t, próbáljunk value bet-et ===
+            if (!alternativeFound) {
+                const bestValueBet = valueBets
+                    .filter(vb => {
+                        const prob = parseFloat(vb.probability.replace('%', ''));
+                        const value = parseFloat(vb.value.replace('+', '').replace('%', ''));
+                        // === v144.1: Előnyben részesítjük a 1X2 tippeket ===
+                        const is1X2 = vb.market.includes('Hazai') || vb.market.includes('Vendég') || vb.market.includes('Döntetlen') || vb.market.includes('Home') || vb.market.includes('Away') || vb.market.includes('Draw');
+                        return prob >= 25 && parseFloat(vb.odds) >= 1.8 && value >= 3.0;
+                    })
+                    .sort((a, b) => {
+                        // === v144.1: Először 1X2 tippek, utána Over/Under ===
+                        const aIs1X2 = a.market.includes('Hazai') || a.market.includes('Vendég') || a.market.includes('Döntetlen') || a.market.includes('Home') || a.market.includes('Away') || a.market.includes('Draw');
+                        const bIs1X2 = b.market.includes('Hazai') || b.market.includes('Vendég') || b.market.includes('Döntetlen') || b.market.includes('Home') || b.market.includes('Away') || b.market.includes('Draw');
+                        if (aIs1X2 && !bIs1X2) return -1;
+                        if (!aIs1X2 && bIs1X2) return 1;
+                        return parseFloat(b.value.replace('+', '').replace('%', '')) - parseFloat(a.value.replace('+', '').replace('%', ''));
+                    })[0];
+                
+                if (bestValueBet) {
+                    rec.recommended_bet = normalizeBettingRecommendation(bestValueBet.market, sport);
+                    rec.final_confidence = Math.min(7.5, parseFloat(bestValueBet.probability) / 10);
+                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Alternatíva: ${bestValueBet.market} (Valószínűség: ${bestValueBet.probability}, Value: ${bestValueBet.value})`;
+                    if (rec.primary) {
+                        rec.primary.market = normalizeBettingRecommendation(bestValueBet.market, sport);
+                        rec.primary.confidence = rec.final_confidence;
+                    }
+                    alternativeFound = true;
+                    console.log(`[AI_Service v144.1] ✅ Alternatíva value bet találva: ${rec.recommended_bet}`);
+                }
+            }
+            
+            // === Csak ha még mindig nincs alternatíva, menjünk Over/Under-re ===
+            if (!alternativeFound) {
                 // Ha nincs jó alternatíva, adjunk Over/Under tippet, ha az valid (v142.0: 25% prob, 6.5 conf - MINDEN meccsre tipp)
                 if (pOver >= 25 && pOver > pUnder) {
                     rec.recommended_bet = formatBettingMarket(`Over ${safeSim.mainTotalsLine || '2.5'}`, sport);
                     rec.final_confidence = Math.min(7.5, (pOver / 10)); // v142.0: 8.5 → 7.5 - MINDEN meccsre tipp
-                    rec.brief_reasoning = `[AUTO-CORRECTED v142.0] ${skipReason}. Over/Under alternatíva: Over ${safeSim.mainTotalsLine || '2.5'} (${pOver.toFixed(1)}%)`;
+                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Over/Under alternatíva: Over ${safeSim.mainTotalsLine || '2.5'} (${pOver.toFixed(1)}%)`;
                 } else if (pUnder >= 25 && pUnder > pOver) {
                     rec.recommended_bet = formatBettingMarket(`Under ${safeSim.mainTotalsLine || '2.5'}`, sport);
                     rec.final_confidence = Math.min(7.5, (pUnder / 10)); // v142.0: 8.5 → 7.5 - MINDEN meccsre tipp
-                    rec.brief_reasoning = `[AUTO-CORRECTED v142.0] ${skipReason}. Over/Under alternatíva: Under ${safeSim.mainTotalsLine || '2.5'} (${pUnder.toFixed(1)}%)`;
+                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Over/Under alternatíva: Under ${safeSim.mainTotalsLine || '2.5'} (${pUnder.toFixed(1)}%)`;
                 } else {
                     // Utolsó eset: még mindig adjunk tippet (v142.0: MINDEN meccsre tipp!)
                     // Válasszuk a legvalószínűbb opciót
