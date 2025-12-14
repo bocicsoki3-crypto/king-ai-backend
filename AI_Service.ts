@@ -1074,23 +1074,23 @@ async function getMasterRecommendation(
         // === v142.0: STATISZTIKAI VS KONTEKSTUÁLIS - KONTEKST NYER (CONTEXT WINS!) ===
         // Ha a statisztikai modell és a kontextuális elemzés ellentmond egymásnak,
         // akkor a KONTEKST NYER (injuries, form, motivation > pure stats)
-        const quantConfidence = safeModelConfidence || 5.0;
-        const specialistConfidence = parseFloat(rec.primary?.confidence?.toString() || '0') || 0;
-        const confidenceGap = Math.abs(quantConfidence - specialistConfidence);
+        const quantConfidenceCheck = safeModelConfidence || 5.0;
+        const specialistConfidenceCheck = parseFloat(rec.primary?.confidence?.toString() || '0') || 0;
+        const confidenceGapCheck = Math.abs(quantConfidenceCheck - specialistConfidenceCheck);
         
         // Ha a gap > 3.0, akkor jelentős ellentmondás van
-        if (confidenceGap > 3.0) {
+        if (confidenceGapCheck > 3.0) {
             // Ha a specialist (kontextuális) confidence magasabb → használjuk azt!
-            if (specialistConfidence > quantConfidence) {
+            if (specialistConfidenceCheck > quantConfidenceCheck) {
                 // Kontextuális elemzés erősebb → emeljük a confidence-t
-                rec.final_confidence = Math.min(9.5, Math.max(rec.final_confidence, specialistConfidence));
-                console.log(`[AI_Service v142.0] ✅ KONTEKST NYER: Specialist confidence (${specialistConfidence.toFixed(1)}/10) > Quant (${quantConfidence.toFixed(1)}/10). Using context-based recommendation.`);
+                rec.final_confidence = Math.min(9.5, Math.max(rec.final_confidence, specialistConfidenceCheck));
+                console.log(`[AI_Service v142.0] ✅ KONTEKST NYER: Specialist confidence (${specialistConfidenceCheck.toFixed(1)}/10) > Quant (${quantConfidenceCheck.toFixed(1)}/10). Using context-based recommendation.`);
             } else {
                 // Ha a gap > 4.0 ÉS a quant erősebb → csökkentsük a confidence-t
-                if (confidenceGap > 4.0) {
-                    const penalty = Math.min(1.5, confidenceGap / 3);
+                if (confidenceGapCheck > 4.0) {
+                    const penalty = Math.min(1.5, confidenceGapCheck / 3);
                     rec.final_confidence = Math.max(1.0, rec.final_confidence - penalty);
-                    console.warn(`[AI_Service v142.0] ⚠️ STATISZTIKAI VS KONTEKSTUÁLIS ELLENTMONDÁS: Gap=${confidenceGap.toFixed(1)}, Confidence penalty=${penalty.toFixed(1)}`);
+                    console.warn(`[AI_Service v142.0] ⚠️ STATISZTIKAI VS KONTEKSTUÁLIS ELLENTMONDÁS: Gap=${confidenceGapCheck.toFixed(1)}, Confidence penalty=${penalty.toFixed(1)}`);
                 }
             }
         }
@@ -1109,6 +1109,32 @@ async function getMasterRecommendation(
                 rec.final_confidence = Math.max(5.0, rec.final_confidence - 1.0);
                 console.warn(`[AI_Service v142.0] ⚠️ Alacsony value (${value.toFixed(1)}% < 3%), de mégis ajánljuk (MINDEN meccsre tipp). Confidence csökkentve.`);
             }
+        }
+        
+        // === v143.0: TÖBB VALIDÁCIÓ (ENSEMBLE CHECK) ===
+        // Csak akkor ajánlunk tippet, ha több jel is egyetért
+        // Jel 1: Statisztikai modell (quant confidence)
+        // Jel 2: Kontextuális elemzés (specialist confidence)
+        // Jel 3: Value bet (van-e érték)
+        // Jel 4: Valószínűség (>= 25%)
+        
+        const signals = {
+            statistical: quantConfidenceCheck >= 5.0, // Statisztikai modell >= 5.0
+            contextual: specialistConfidenceCheck >= 5.0, // Kontextuális elemzés >= 5.0
+            value: recommendedMarketValue && parseFloat(recommendedMarketValue.value.replace('+', '').replace('%', '')) >= 3.0, // Van value
+            probability: recommendedProb >= 25 // Valószínűség >= 25%
+        };
+        
+        const signalCount = Object.values(signals).filter(s => s).length;
+        
+        // Ha csak 1-2 jel egyetért → csökkentsük a confidence-t
+        if (signalCount <= 2) {
+            rec.final_confidence = Math.max(1.0, rec.final_confidence - 1.5);
+            console.warn(`[AI_Service v143.0] ⚠️ TÖBB VALIDÁCIÓ: Csak ${signalCount}/4 jel egyetért → Confidence csökkentve (-1.5)`);
+        } else if (signalCount === 4) {
+            // Ha mind a 4 jel egyetért → emeljük a confidence-t
+            rec.final_confidence = Math.min(10.0, rec.final_confidence + 0.5);
+            console.log(`[AI_Service v143.0] ✅ TÖBB VALIDÁCIÓ: Mind a 4 jel egyetért → Confidence emelve (+0.5)`);
         }
         
         // 4. Ha nem valid, próbáljunk alternatívát találni
@@ -1388,6 +1414,52 @@ async function getMasterRecommendation(
             rec.secondary.market = normalizeBettingRecommendation(rec.secondary.market, sport);
         }
 
+        // === v143.0: CONFIDENCE KALIBRÁCIÓ (tényleges win rate alapján) ===
+        // Kalibráljuk a confidence-t a múltbeli eredmények alapján
+        const { calibrateConfidence } = await import('./trackingService.js');
+        const originalConfidence = rec.final_confidence;
+        rec.final_confidence = await calibrateConfidence(originalConfidence);
+        if (Math.abs(originalConfidence - rec.final_confidence) > 0.5) {
+            console.log(`[AI_Service v143.0] 🔧 Confidence kalibrálva: ${originalConfidence.toFixed(1)}/10 → ${rec.final_confidence.toFixed(1)}/10`);
+        }
+        
+        // === v143.0: ENSEMBLE MODELLEK (több modell kombinálása) ===
+        // Modell 1: Statisztikai (quant confidence)
+        // Modell 2: Kontextuális (specialist confidence)
+        // Modell 3: Piaci (odds movement - ha elérhető)
+        // Modell 4: H2H és forma (ha elérhető)
+        
+        const ensembleModels = {
+            statistical: quantConfidence,
+            contextual: specialistConfidence,
+            market: 5.0, // Default, ha nincs piaci adat
+            h2h: 5.0 // Default, ha nincs H2H adat
+        };
+        
+        // Piaci modell: odds movement alapján (ha elérhető)
+        // Ha az odds csökken → több ember fogad rá → magasabb confidence
+        // TODO: Implementálni odds movement tracking-et
+        
+        // H2H modell: közvetlen összecsapások alapján
+        // TODO: Implementálni H2H tracking-et
+        
+        // Ensemble súlyozás: ha mind a 4 modell egyetért → magas confidence
+        const modelAgreement = [
+            Math.abs(ensembleModels.statistical - ensembleModels.contextual) < 2.0,
+            Math.abs(ensembleModels.statistical - ensembleModels.market) < 2.0,
+            Math.abs(ensembleModels.contextual - ensembleModels.market) < 2.0
+        ];
+        
+        const agreementCount = modelAgreement.filter(a => a).length;
+        const ensembleBonus = agreementCount >= 2 ? 0.5 : 0; // Ha 2+ modell egyetért → +0.5 confidence
+        const ensemblePenalty = agreementCount === 0 ? -1.0 : 0; // Ha egyik sem egyetért → -1.0 confidence
+        
+        rec.final_confidence = Math.max(1.0, Math.min(10.0, rec.final_confidence + ensembleBonus + ensemblePenalty));
+        
+        if (ensembleBonus > 0 || ensemblePenalty < 0) {
+            console.log(`[AI_Service v143.0] 🎯 Ensemble modell: ${agreementCount}/3 egyetértés → ${ensembleBonus > 0 ? '+' : ''}${(ensembleBonus + ensemblePenalty).toFixed(1)} confidence`);
+        }
+        
         // === v140.1: LIGA MINŐSÉG ALAPÚ CONFIDENCE KORREKCIÓ ===
         // Gyenge ligákhoz (török, brazil, ausztrál) alacsonyabb confidence
         let leagueConfidencePenalty = 0;
@@ -1499,6 +1571,7 @@ async function getMasterRecommendation(
             const odds = findOddsForMarket(rec.recommended_bet, valueBets);
             
             if (recommendedProb > 0 && odds && odds >= 1.8) {
+                // === v143.0: DINAMIKUS KELLY CRITERION (confidence alapján) ===
                 // Kelly Criterion számítás
                 const b = odds - 1; // Net odds
                 const p = recommendedProb; // Valószínűség (0-1)
@@ -1507,8 +1580,20 @@ async function getMasterRecommendation(
                 
                 // Csak pozitív Kelly értékek (value bet)
                 if (kellyFraction > 0) {
-                    // Fractional Kelly (50% - konzervatívabb)
-                    const fractionalKelly = kellyFraction * 0.5;
+                    // Dinamikus fractional Kelly (confidence alapján)
+                    // Ha confidence 9.0+ → 75% Kelly (agresszívabb)
+                    // Ha confidence 8.0-8.9 → 60% Kelly
+                    // Ha confidence 7.0-7.9 → 50% Kelly (konzervatív)
+                    // Ha confidence 6.0-6.9 → 35% Kelly (nagyon konzervatív)
+                    // Ha confidence < 6.0 → 25% Kelly (ultra konzervatív)
+                    let fractionalMultiplier = 0.5; // Default 50%
+                    if (rec.final_confidence >= 9.0) fractionalMultiplier = 0.75;
+                    else if (rec.final_confidence >= 8.0) fractionalMultiplier = 0.60;
+                    else if (rec.final_confidence >= 7.0) fractionalMultiplier = 0.50;
+                    else if (rec.final_confidence >= 6.0) fractionalMultiplier = 0.35;
+                    else fractionalMultiplier = 0.25;
+                    
+                    const fractionalKelly = kellyFraction * fractionalMultiplier;
                     // Maximum 5% bankroll per bet
                     const maxStakePercent = 5.0;
                     const optimalStakePercent = Math.min(maxStakePercent, fractionalKelly * 100);
@@ -1517,12 +1602,12 @@ async function getMasterRecommendation(
                         optimal_percent: optimalStakePercent.toFixed(2),
                         kelly_fraction: (kellyFraction * 100).toFixed(2),
                         recommended_stake: optimalStakePercent > 0 ? `${optimalStakePercent.toFixed(1)}% bankroll` : 'Nincs ajánlás (negatív value)',
-                        explanation: optimalStakePercent > 0 
-                            ? `Kelly Criterion alapján: ${optimalStakePercent.toFixed(1)}% bankroll (${(kellyFraction * 100).toFixed(1)}% full Kelly, 50% fractional)`
+                        explanation: optimalStakePercent > 0
+                            ? `Kelly Criterion alapján: ${optimalStakePercent.toFixed(1)}% bankroll (${(kellyFraction * 100).toFixed(1)}% full Kelly, ${(fractionalMultiplier * 100).toFixed(0)}% fractional - confidence: ${rec.final_confidence.toFixed(1)}/10)`
                             : 'Nincs value bet (negatív Kelly)'
                     };
                     
-                    console.log(`[AI_Service v140.2] 💰 Kelly Stake: ${optimalStakePercent.toFixed(1)}% bankroll (Odds: ${odds}, Prob: ${(recommendedProb * 100).toFixed(1)}%, Value: ${((odds * recommendedProb - 1) * 100).toFixed(1)}%)`);
+                    console.log(`[AI_Service v143.0] 💰 Dinamikus Kelly Stake: ${optimalStakePercent.toFixed(1)}% bankroll (Odds: ${odds}, Prob: ${(recommendedProb * 100).toFixed(1)}%, Value: ${((odds * recommendedProb - 1) * 100).toFixed(1)}%, Confidence: ${rec.final_confidence.toFixed(1)}/10, Fractional: ${(fractionalMultiplier * 100).toFixed(0)}%)`);
                 } else {
                     rec.kelly_stake = {
                         optimal_percent: '0.00',

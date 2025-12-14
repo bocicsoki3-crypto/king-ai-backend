@@ -297,3 +297,53 @@ export async function checkTiltProtection(maxLosses: number = 5): Promise<{
     }
 }
 
+/**
+ * === v143.0: CONFIDENCE KALIBRÁCIÓ ===
+ * Kalibrálja a confidence-t a tényleges win rate alapján
+ * Ha 8.0/10 confidence = 60% win rate → kalibráljuk 6.0/10-re
+ */
+export async function calibrateConfidence(rawConfidence: number): Promise<number> {
+    try {
+        const stats = await calculateBettingStats(365); // Utolsó év
+        
+        // Ha nincs elég adat, ne kalibráljunk
+        if (stats.total_bets < 20) {
+            return rawConfidence;
+        }
+        
+        // Keressük meg a megfelelő confidence bucket-et
+        const confidenceFloor = Math.floor(rawConfidence);
+        const confidenceCeil = Math.ceil(rawConfidence);
+        
+        // Keresés a kalibrációs adatokban
+        let calibrationFactor = 1.0; // Alapértelmezett: nincs kalibráció
+        
+        for (const [bucket, data] of Object.entries(stats.confidence_calibration)) {
+            const [min, max] = bucket.split('-').map(Number);
+            
+            // Ha a confidence ebben a bucket-ben van
+            if (rawConfidence >= min && rawConfidence < max && data.sample_size >= 5) {
+                // Számoljuk ki a kalibrációs faktort
+                // Ha predicted 80% de actual 60% → factor = 60/80 = 0.75
+                const predictedRate = data.predicted_win_rate / 100;
+                const actualRate = data.actual_win_rate / 100;
+                
+                if (predictedRate > 0) {
+                    calibrationFactor = actualRate / predictedRate;
+                    console.log(`[Tracking v143.0] Confidence kalibráció: ${rawConfidence.toFixed(1)}/10 → ${(rawConfidence * calibrationFactor).toFixed(1)}/10 (Predicted: ${(predictedRate * 100).toFixed(1)}%, Actual: ${(actualRate * 100).toFixed(1)}%)`);
+                    break;
+                }
+            }
+        }
+        
+        // Kalibrált confidence (minimum 1.0, maximum 10.0)
+        const calibrated = Math.max(1.0, Math.min(10.0, rawConfidence * calibrationFactor));
+        
+        return calibrated;
+        
+    } catch (e: any) {
+        console.error(`[Tracking] Hiba a confidence kalibráció során: ${e.message}`);
+        return rawConfidence; // Hiba esetén visszaadjuk az eredeti confidence-t
+    }
+}
+
