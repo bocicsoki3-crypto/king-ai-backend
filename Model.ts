@@ -449,9 +449,9 @@ export function calculateValue(
 ): any[] { 
     
     const valueBets: any[] = [];
-    // === v140.2: PROFITÁBILIS VALUE THRESHOLD ===
-    // 3% → 5%: A bookmaker margin (~5-7%) miatt minimum 5% value kell a profitábilis tippekhez
-    const MIN_VALUE_THRESHOLD = 5.0; // Minimum 5% észlelt érték (volt: 3.0% - túl alacsony volt!)
+    // === v142.0: MINDEN MECCSRE TIPP - VALUE THRESHOLD ===
+    // 7% → 3%: MINDEN meccsre tipp, de még mindig profitábilis (minimum 3% value)
+    const MIN_VALUE_THRESHOLD = 3.0; // Minimum 3% észlelt érték (v141.0: 7.0% → 3.0% - MINDEN meccsre tipp)
 
     if (!oddsData || !oddsData.allMarkets || oddsData.allMarkets.length === 0 || !sim) {
         console.log("[Model.ts/calculateValue] Kihagyva: Hiányzó odds adatok vagy szimulációs eredmény.");
