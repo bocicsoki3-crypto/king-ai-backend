@@ -1429,9 +1429,13 @@ async function getMasterRecommendation(
         // Modell 3: Piaci (odds movement - ha elérhető)
         // Modell 4: H2H és forma (ha elérhető)
         
+        // Először deklaráljuk a változókat (később lesznek használva a confidence_bridge részben)
+        const quantConfidenceForEnsemble = safeModelConfidence || 5.0;
+        const specialistConfidenceForEnsemble = parseFloat(rec.primary?.confidence?.toString() || '0') || 0;
+        
         const ensembleModels = {
-            statistical: quantConfidence,
-            contextual: specialistConfidence,
+            statistical: quantConfidenceForEnsemble,
+            contextual: specialistConfidenceForEnsemble,
             market: 5.0, // Default, ha nincs piaci adat
             h2h: 5.0 // Default, ha nincs H2H adat
         };
