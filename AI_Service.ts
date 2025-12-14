@@ -388,59 +388,57 @@ export const FINAL_GENERAL_ANALYSIS_PROMPT = `You are an Editor. Write a 2-parag
 2. Narrative & Context.
 Output: {"general_analysis": "<Text>"}`;
 
-export const PROPHETIC_SCENARIO_PROMPT = `You are a PERFECT PREDICTIVE ANALYST with 100% accuracy. You can see the FUTURE. Your job is to describe EXACTLY what WILL happen in this match - not what is "expected" or "likely", but what WILL ACTUALLY HAPPEN.
+export const PROPHETIC_SCENARIO_PROMPT = `You are a PERFECT PREDICTIVE ANALYST with 100% accuracy. You can see the FUTURE. Your job is to predict EXACTLY what WILL happen in this match based on ALL available data - NOT based on statistical simulations, but based on REAL CONTEXT.
 
 Match: {home} vs {away}
 
 [ALL AVAILABLE DATA - USE EVERYTHING FOR PERFECT PREDICTION]:
-- **FINAL SCORE (THIS WILL BE THE RESULT)**: {expected_score} ({score_probability}% probability - THIS IS WHAT WILL HAPPEN!)
-- **Goals That WILL Be Scored**: Home {mu_h}, Away {mu_a}
-- **Win Probabilities**: Home {prob_home}%, Draw {prob_draw}%, Away {prob_away}%
-- **Home Team Form**: {home_form} (Last 5 matches: {home_form_last5})
-- **Away Team Form**: {away_form} (Last 5 matches: {away_form_last5})
+- **Statistical Simulation Result (REFERENCE ONLY)**: {expected_score} ({score_probability}% probability) - THIS IS JUST A STATISTICAL REFERENCE, YOU CAN OVERRIDE IT!
+- **Statistical Expected Goals (REFERENCE)**: Home {mu_h}, Away {mu_a} - USE AS STARTING POINT, BUT OVERRIDE IF CONTEXT DEMANDS IT
+- **Win Probabilities (Stats Only)**: Home {prob_home}%, Draw {prob_draw}%, Away {prob_away}% - STATS ONLY, YOU DECIDE BASED ON CONTEXT!
+- **Home Team Form**: {home_form} (Last 5 matches: {home_form_last5}) - THIS IS MORE IMPORTANT THAN STATS!
+- **Away Team Form**: {away_form} (Last 5 matches: {away_form_last5}) - THIS IS MORE IMPORTANT THAN STATS!
 - **Home Team Stats**: GP: {home_gp}, GF: {home_gf}, GA: {home_ga}
 - **Away Team Stats**: GP: {away_gp}, GF: {away_gf}, GA: {away_ga}
-- **Head-to-Head**: {h2h_summary}
+- **Head-to-Head**: {h2h_summary} - THIS SHOWS REAL HISTORY!
 - **Key Players**: Home: {key_players_home} | Away: {key_players_away}
-- **Missing Players**: Home: {absentees_home} | Away: {absentees_away}
-- **Tactical Briefing**: {tacticalBriefing}
+- **Missing Players**: Home: {absentees_home} | Away: {absentees_away} - THIS CAN CHANGE EVERYTHING!
+- **Tactical Briefing**: {tacticalBriefing} - THIS IS CRITICAL!
 - **Playing Styles**: {home_style} vs {away_style}
-- **Referee**: {referee_name} ({referee_style})
+- **Referee**: {referee_name} ({referee_style}) - THIS AFFECTS THE GAME!
 - **Stadium**: {stadium_location}
-- **Weather**: {weather_info}
+- **Weather**: {weather_info} - THIS CAN IMPACT THE RESULT!
 - **Match Tension**: {tension}
-- **Specialist Analysis**: {specialist_reasoning}
+- **Specialist Analysis**: {specialist_reasoning} - THIS IS YOUR PRIMARY GUIDE!
 
-[CRITICAL PREDICTION RULES - v144.1 PERFECT ACCURACY - NO "EXPECTED", ONLY "WILL HAPPEN"]:
-1. **YOU ARE SEEING THE FUTURE** - Write as if you are watching a recording of the match that already happened. Use past tense or present tense as if it's happening NOW.
-2. **FINAL SCORE IS MANDATORY AND REAL**: The match WILL end {expected_score} - This IS the final score, not "expected"!
-3. **PREDICT SPECIFIC EVENTS THAT WILL HAPPEN**:
+[CRITICAL PREDICTION RULES - v144.2 PERFECT ACCURACY - OVERRIDE SIMULATION IF NEEDED]:
+1. **YOU ARE INDEPENDENT FROM THE SIMULATION** - The statistical simulation says {expected_score}, but YOU decide what WILL actually happen based on ALL context!
+2. **YOU CAN AND SHOULD OVERRIDE THE SIMULATION** - If the simulation says 2-0, but context (injuries, form, motivation, specialist analysis) suggests 3-2, predict 3-2! The simulation is just numbers, YOU see the real game!
+3. **CONTEXT IS MORE IMPORTANT THAN STATS** - Form, missing players, motivation, recent performance, specialist analysis are MORE IMPORTANT than pure statistics!
+4. **PREDICT THE REAL FINAL SCORE** - Not what statistics say, but what WILL actually happen when the match is played! Your predicted score may be DIFFERENT from {expected_score}!
+5. **PREDICT SPECIFIC EVENTS THAT WILL HAPPEN**:
    - Exact minutes when goals WILL be scored (e.g., "A 23. percben {player_name} gólt szerez" - NOT "valószínűleg", but "szerez")
    - Which players WILL score (use {key_players_home} and {key_players_away})
    - Yellow/red cards that WILL be shown (if referee style suggests it)
    - Substitutions that WILL impact the game
    - Key tactical moments that WILL occur
-4. **USE ALL DATA TO PREDICT WHAT WILL HAPPEN**:
-   - If {home_form} shows strong form (WWW), they WILL dominate early (not "will likely")
-   - If {absentees_home} includes key defenders, the away team WILL score (not "might score")
-   - If {h2h_summary} shows home dominance, this WILL continue (not "is expected to")
-   - If {referee_style} is strict, more cards WILL be shown (not "might be shown")
-   - If {weather_info} mentions rain, mistakes WILL happen (not "may happen")
-5. **MATCH FLOW THAT WILL HAPPEN**:
-   - Who WILL start stronger (Based on form and stats - be definitive!)
-   - When the first goal WILL come (Based on mu_h and mu_a - exact minute!)
-   - Whether there WILL be a comeback (Based on probabilities - yes or no!)
+6. **MATCH FLOW THAT WILL HAPPEN**:
+   - Who WILL start stronger (Based on form, motivation, NOT just stats!)
+   - When the first goal WILL come (Based on context, not just mu_h/mu_a!)
+   - Whether there WILL be a comeback (Based on team psychology, not just probabilities!)
    - How missing players WILL affect the game (Be specific - what WILL happen!)
-6. **BE PRECISE AND DEFINITIVE - NO "EXPECTED" OR "LIKELY"**:
-   - ❌ BAD: "A hazai csapat valószínűleg nyer" vagy "Várható eredmény: 2-1"
+7. **BE PRECISE AND DEFINITIVE - NO "EXPECTED" OR "LIKELY"**:
+   - ❌ BAD: "A szimuláció szerint 2-0, várhatóan ez lesz"
    - ❌ BAD: "A meccs várhatóan 2-1-re végződik"
+   - ❌ BAD: "A statisztikák szerint..."
    - ✅ GOOD: "A {home} a 23. percben {player_name} góljával vezetést szerez, majd a 67. percben {away_player} egyenlít, de a 89. percben {home_player} döntő gólt szerez. **Végeredmény: {home} 2-1 {away}**"
-   - ✅ GOOD: "A meccs 2-1-re végződik a {home} javára"
-7. **THE EXACT FINAL SCORE WILL BE**: {expected_score} - Write this as a FACT, not as a prediction!
+   - ✅ GOOD: "Bár a statisztikák 2-0-at mutatnak, a {away} hiányzó kulcsjátékosai és a {home} rossz formája miatt a meccs 3-2-re végződik a {away} javára"
+   - ✅ GOOD: "A {specialist_reasoning} elemzése alapján, a meccs 3-1-re végződik a {home} javára, annak ellenére, hogy a szimuláció 2-0-at mutat"
+8. **THE FINAL SCORE YOU PREDICT WILL BE THE ACTUAL RESULT** - Write this as a FACT, not as a prediction! It may differ from the simulation!
 
 [OUTPUT FORMAT] - STRICT JSON:
 {
-  "scenario": "<Detailed Hungarian description of what WILL happen in this match. Use past tense or present tense as if describing events that are happening or have happened. NO 'várható', NO 'valószínűleg', NO 'expected'. Use definitive statements: 'szerez', 'lesz', 'végződik'. Include EXACT events, minutes, player names, and the EXACT final score: **Végeredmény: {home} X-Y {away}**. Write as if you are watching a recording of the match that already happened - be specific and confident about what WILL happen!>"
+  "scenario": "<Detailed Hungarian description of what WILL happen in this match. You are INDEPENDENT from the simulation - use it as reference, but OVERRIDE it if context demands it. Use past tense or present tense as if describing events that are happening or have happened. NO 'várható', NO 'valószínűleg', NO 'expected'. Use definitive statements: 'szerez', 'lesz', 'végződik'. Include EXACT events, minutes, player names, and YOUR PREDICTED final score (which may differ from the simulation): **Végeredmény: {home} X-Y {away}**. Write as if you are watching a recording of the match that already happened - be specific and confident about what WILL happen!>"
 }`;
 
 export const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst. Synthesize all reports into "Stratégiai Zárógondolatok" (Hungarian).
