@@ -336,25 +336,26 @@ export function calculateConfidenceScores(
         const totalExpected = mu_h + mu_a;
         const xgDiffPercent = (xgDiff / totalExpected) * 100;
         
-        // Sport-specifikus százalékos küszöbök (v139.0: LAZÍTOTT ÉRTÉKEK - PURE AI MODE)
-        // Lazítva, hogy az AI könnyebben adhasson magas bizalmat
+        // Sport-specifikus százalékos küszöbök (v145.0: FINOMHANGOLVA - TÖKÉLETES TIPPEK)
+        // Finomhangolva, hogy pontosabb confidence-t kapjunk
         let thresholdHighPct: number, thresholdLowPct: number;
         
         if (sport === 'basketball') {
-            thresholdHighPct = 3.0;  // 3% (volt: 4.0) - Lazítva
-            thresholdLowPct = 0.5;   // 0.5% (volt: 1.0) - Lazítva
+            thresholdHighPct = 2.5;  // v145.0: 3.0 → 2.5 (finomhangolva)
+            thresholdLowPct = 0.4;   // v145.0: 0.5 → 0.4 (finomhangolva)
         } else if (sport === 'hockey') {
-            thresholdHighPct = 7.0; // 7% (volt: 10.0) - Lazítva
-            thresholdLowPct = 2.0;   // 2% (volt: 3.0) - Lazítva
+            thresholdHighPct = 6.0;  // v145.0: 7.0 → 6.0 (finomhangolva)
+            thresholdLowPct = 1.5;    // v145.0: 2.0 → 1.5 (finomhangolva)
         } else { // soccer
-            thresholdHighPct = 6.0;  // 6% (volt: 8.0) - Lazítva
-            thresholdLowPct = 1.5;   // 1.5% (volt: 2.0) - Lazítva
+            thresholdHighPct = 5.0;  // v145.0: 6.0 → 5.0 (finomhangolva)
+            thresholdLowPct = 1.2;   // v145.0: 1.5 → 1.2 (finomhangolva)
         }
         
-        if (xgDiffPercent > thresholdHighPct) winnerScore += 2.0;
-        else if (xgDiffPercent > thresholdHighPct * 0.6) winnerScore += 1.0;
-        if (xgDiffPercent < thresholdLowPct) winnerScore -= 2.0;
-        else if (xgDiffPercent < thresholdLowPct * 1.5) winnerScore -= 1.0;
+        // === v145.0: FINOMHANGOLT CONFIDENCE BÓNUSZ/PENALTY ===
+        if (xgDiffPercent > thresholdHighPct) winnerScore += 2.5; // v145.0: 2.0 → 2.5 (nagyobb bónusz)
+        else if (xgDiffPercent > thresholdHighPct * 0.6) winnerScore += 1.5; // v145.0: 1.0 → 1.5
+        if (xgDiffPercent < thresholdLowPct) winnerScore -= 1.5; // v145.0: 2.0 → 1.5 (kevésbé szigorú)
+        else if (xgDiffPercent < thresholdLowPct * 1.5) winnerScore -= 0.5; // v145.0: 1.0 → 0.5 (kevésbé szigorú)
         
         console.log(`[Confidence] xG Diff: ${xgDiff.toFixed(2)} (${xgDiffPercent.toFixed(1)}%) | Thresholds: High=${thresholdHighPct.toFixed(1)}%, Low=${thresholdLowPct.toFixed(1)}%`);
 
@@ -395,21 +396,22 @@ export function calculateConfidenceScores(
         
         let totalsThresholdHighPct: number, totalsThresholdLowPct: number;
         
-        // v139.0: Totals threshold-ok lazítva (PURE AI MODE)
+        // v145.0: Totals threshold-ok finomhangolva (TÖKÉLETES TIPPEK)
         if (sport === 'basketball') {
-            totalsThresholdHighPct = 2.5;  // (volt: 3.5) - Lazítva
-            totalsThresholdLowPct = 0.5;   // (volt: 1.0) - Lazítva
+            totalsThresholdHighPct = 2.0;  // v145.0: 2.5 → 2.0 (finomhangolva)
+            totalsThresholdLowPct = 0.4;   // v145.0: 0.5 → 0.4 (finomhangolva)
         } else if (sport === 'hockey') {
-            totalsThresholdHighPct = 8.0;   // (volt: 12.0) - Lazítva
-            totalsThresholdLowPct = 2.5;   // (volt: 4.0) - Lazítva
+            totalsThresholdHighPct = 7.0;   // v145.0: 8.0 → 7.0 (finomhangolva)
+            totalsThresholdLowPct = 2.0;    // v145.0: 2.5 → 2.0 (finomhangolva)
         } else { // soccer
-            totalsThresholdHighPct = 10.0;  // (volt: 15.0) - Lazítva
-            totalsThresholdLowPct = 3.0;   // (volt: 5.0) - Lazítva
+            totalsThresholdHighPct = 8.0;   // v145.0: 10.0 → 8.0 (finomhangolva)
+            totalsThresholdLowPct = 2.5;    // v145.0: 3.0 → 2.5 (finomhangolva)
         }
         
-        if (totalsDiffPercent > totalsThresholdHighPct) totalsScore += 4.0;
-        else if (totalsDiffPercent > totalsThresholdHighPct * 0.6) totalsScore += 2.5;
-        if (totalsDiffPercent < totalsThresholdLowPct) totalsScore -= 2.0;
+        // === v145.0: FINOMHANGOLT TOTALS CONFIDENCE BÓNUSZ/PENALTY ===
+        if (totalsDiffPercent > totalsThresholdHighPct) totalsScore += 4.5; // v145.0: 4.0 → 4.5 (nagyobb bónusz)
+        else if (totalsDiffPercent > totalsThresholdHighPct * 0.6) totalsScore += 3.0; // v145.0: 2.5 → 3.0
+        if (totalsDiffPercent < totalsThresholdLowPct) totalsScore -= 1.5; // v145.0: 2.0 → 1.5 (kevésbé szigorú)
         
         console.log(`[Confidence] Totals Diff: ${totalsDiff.toFixed(2)} (${totalsDiffPercent.toFixed(1)}%) | Thresholds: High=${totalsThresholdHighPct.toFixed(1)}%, Low=${totalsThresholdLowPct.toFixed(1)}%`);
         

@@ -501,16 +501,25 @@ Your goal: Find the SINGLE BEST BET for this match.
 - Risk: "{riskAssessment}"
 - Specialist: {specialistReportJson}
 
-[DECISION LOGIC - v142.0: CONTEXT WINS!]:
-1. Look at the STATS (probabilities, xG, simulations).
-2. Look at the CONTEXT (Injuries, Form, Motivation, Recent Performance).
-3. **CRITICAL: CONTEXT IS MORE IMPORTANT THAN STATS!**
+[DECISION LOGIC - v145.0: PERFECT TIPS - PRIORITIZE MOST LIKELY OUTCOME!]:
+1. **PRIORITY 1: MOST LIKELY OUTCOME** - Always prioritize the outcome with the HIGHEST probability!
+   - If Home has 55% probability → RECOMMEND HOME (even if value is slightly lower)
+   - If Away has 60% probability → RECOMMEND AWAY (even if value is slightly lower)
+   - **CRITICAL: Probability > Value for PERFECT TIPS!**
+2. Look at the STATS (probabilities, xG, simulations) - THIS IS YOUR PRIMARY GUIDE!
+3. Look at the CONTEXT (Injuries, Form, Motivation, Recent Performance) - THIS CAN OVERRIDE STATS!
+4. **CRITICAL: CONTEXT IS MORE IMPORTANT THAN STATS!**
    - If stats say Home (60%) BUT context says Away (key injuries, bad form, low motivation) → RECOMMEND AWAY!
    - If stats say Draw BUT context says clear winner (strong motivation, key players back) → RECOMMEND THE WINNER!
-4. If stats and context AGREE -> HIGH CONFIDENCE (8-9/10).
-5. If stats and context DISAGREE -> Use the STRONGER signal (usually CONTEXT wins!).
-6. **BE DECISIVE.** Don't hedge. Pick a winner. MINDEN meccsre tipp!
-7. **ALWAYS recommend something** - even if confidence is 6.5/10, pick the BEST option available.
+5. If stats and context AGREE -> HIGH CONFIDENCE (8-9/10).
+6. If stats and context DISAGREE -> Use the STRONGER signal (usually CONTEXT wins!).
+7. **BE DECISIVE.** Don't hedge. Pick a winner. MINDEN meccsre tipp!
+8. **ALWAYS recommend something** - even if confidence is 6.0/10, pick the BEST option available.
+9. **TIP PRIORITY ORDER (v145.0):**
+   - 1X2 (Home/Away/Draw) > Over/Under > BTTS > Team Totals
+   - If Home has 50%+ probability → RECOMMEND HOME (even if Over/Under has higher value)
+   - If Away has 50%+ probability → RECOMMEND AWAY (even if BTTS has higher value)
+   - **GOAL: PERFECT TIPS = HIGHEST PROBABILITY OUTCOME!**
 
 🚨 **CRITICAL PROBABILITY THRESHOLDS (v142.0 - PERFECT ACCURACY FOR ALL MATCHES):**
 - ✅ ALWAYS recommend the BEST option, even if probability is 25%+ (MINDEN meccsre tipp!)
@@ -524,12 +533,13 @@ Your goal: Find the SINGLE BEST BET for this match.
 - If Draw probability > 35% → Consider Over/Under or BTTS as alternative
 - BUT: If context strongly suggests a winner → RECOMMEND THE WINNER (context overrides stats)
 
-🎯 **CONFIDENCE REQUIREMENTS (v142.0 - ACCURACY FOCUSED):**
-- Probability 25-35% → Minimum confidence: 6.5/10 (BUT only if context strongly supports it)
-- Probability 35-45% → Minimum confidence: 7.0/10
-- Probability 45-55% → Minimum confidence: 7.5/10
-- Probability 55-65% → Minimum confidence: 8.0/10
-- Probability > 65% → Minimum confidence: 8.5/10
+🎯 **CONFIDENCE REQUIREMENTS (v145.0 - PERFECT TIPS):**
+- Probability 25-35% → Minimum confidence: 5.5/10 (TÖKÉLETES TIPPEK - lazább)
+- Probability 35-45% → Minimum confidence: 6.0/10
+- Probability 45-55% → Minimum confidence: 6.5/10
+- Probability 55-65% → Minimum confidence: 6.5/10
+- Probability > 65% → Minimum confidence: 7.0/10
+- **CRITICAL: If context strongly supports → Can go 0.5-1.0 lower!**
 
 ⚠️ **STATISTICAL VS CONTEXTUAL AGREEMENT (v142.0 - CONTEXT WINS):**
 - If stats say Home wins BUT context (injuries, form, motivation) says Away → RECOMMEND AWAY (context is more important!)
@@ -1045,6 +1055,56 @@ async function getMasterRecommendation(
             throw new Error("AI hiba: Érvénytelen JSON struktúra a MasterRecommendation-ben.");
         }
         
+        // === v145.0: TIPP KIVÁLASZTÁS OPTIMALIZÁLÁS - PRIORITIZÁLJUK A LEGVALÓSZÍNŰBB EREDMÉNYT ===
+        // Ha az AI nem a legvalószínűbb eredményt választotta, de van egyértelmű favorit, javítsuk
+        const pHome = safeSim.pHome || 0;
+        const pAway = safeSim.pAway || 0;
+        const pDraw = safeSim.pDraw || 0;
+        const pOver = safeSim.pOver || 0;
+        const pUnder = safeSim.pUnder || 0;
+        
+        // Keressük a legvalószínűbb eredményt
+        const maxProb = Math.max(pHome, pAway, pDraw, pOver, pUnder);
+        const recommendedMarketLower = rec.recommended_bet?.toLowerCase() || '';
+        
+        // Ha van egyértelmű favorit (50%+ valószínűség), és az AI nem azt választotta
+        if (maxProb >= 50) {
+            let shouldOverride = false;
+            let overrideMarket = '';
+            let overrideConfidence = 0;
+            
+            if (pHome === maxProb && pHome >= 50 && 
+                !recommendedMarketLower.includes('hazai') && !recommendedMarketLower.includes('home') && !recommendedMarketLower.includes('1')) {
+                // Hazai a legvalószínűbb, de az AI nem azt választotta
+                shouldOverride = true;
+                overrideMarket = formatBettingMarket("1X2 - Hazai győzelem", sport);
+                overrideConfidence = Math.min(9.0, (pHome / 10) + 0.5); // Valószínűség alapján + bónusz
+            } else if (pAway === maxProb && pAway >= 50 && 
+                       !recommendedMarketLower.includes('vendég') && !recommendedMarketLower.includes('away') && !recommendedMarketLower.includes('2')) {
+                // Vendég a legvalószínűbb, de az AI nem azt választotta
+                shouldOverride = true;
+                overrideMarket = formatBettingMarket("1X2 - Vendég győzelem", sport);
+                overrideConfidence = Math.min(9.0, (pAway / 10) + 0.5);
+            } else if (pDraw === maxProb && pDraw >= 50 && 
+                       !recommendedMarketLower.includes('döntetlen') && !recommendedMarketLower.includes('draw')) {
+                // Döntetlen a legvalószínűbb, de az AI nem azt választotta
+                shouldOverride = true;
+                overrideMarket = formatBettingMarket("1X2 - Döntetlen", sport);
+                overrideConfidence = Math.min(9.0, (pDraw / 10) + 0.5);
+            }
+            
+            if (shouldOverride) {
+                console.log(`[AI_Service v145.0] 🎯 TIPP OPTIMALIZÁLÁS: Legvalószínűbb eredmény (${maxProb.toFixed(1)}%) prioritizálva: ${overrideMarket}`);
+                rec.recommended_bet = overrideMarket;
+                rec.final_confidence = Math.max(rec.final_confidence, overrideConfidence);
+                if (rec.primary) {
+                    rec.primary.market = overrideMarket;
+                    rec.primary.confidence = rec.final_confidence;
+                    rec.primary.reason = `[v145.0 OPTIMALIZÁLÁS] Legvalószínűbb eredmény (${maxProb.toFixed(1)}%) prioritizálva a tökéletes tippért.`;
+                }
+            }
+        }
+        
         // === v140.0: TIPP FORMÁTUM NORMALIZÁLÁS (AI válasz után) ===
         // Normalizáljuk az AI által generált tippeket az egységes formátumra
         if (rec.recommended_bet) {
@@ -1109,19 +1169,29 @@ async function getMasterRecommendation(
             }
         }
         
-        // 2. Minimum confidence ellenőrzés (v144.1: Finomhangolva - 75.5% valószínűséghez 7.5/10 elfogadható)
+        // 2. Minimum confidence ellenőrzés (v145.0: FINOMHANGOLVA - TÖKÉLETES TIPPEKHEZ)
         // Dinamikus confidence követelmény a valószínűség alapján
-        let minConfidence = 6.5; // Alapértelmezett (v141.0: 8.5 → 6.5 - MINDEN meccsre tipp)
-        if (recommendedProb >= 75) minConfidence = 7.5; // v144.1: 75%+ valószínűséghez 7.5/10 elfogadható (volt: 8.5)
-        else if (recommendedProb >= 65) minConfidence = 7.5; // v144.1: 65-75% → 7.5/10 (volt: 8.5)
-        else if (recommendedProb >= 55) minConfidence = 7.0; // v144.1: 55-65% → 7.0/10 (volt: 8.0)
-        else if (recommendedProb >= 45) minConfidence = 7.0; // v144.1: 45-55% → 7.0/10 (volt: 7.5)
-        else if (recommendedProb >= 35) minConfidence = 6.5; // v144.1: 35-45% → 6.5/10 (volt: 7.0)
-        else if (recommendedProb >= 25) minConfidence = 6.5; // ÚJ: 25-35% range
+        // === v145.0: LAZÁBB KÖVETELMÉNYEK - TÖKÉLETES TIPPEK ===
+        let minConfidence = 6.0; // Alapértelmezett (v145.0: 6.5 → 6.0 - TÖKÉLETES TIPPEK)
+        if (recommendedProb >= 75) minConfidence = 7.0; // v145.0: 75%+ valószínűséghez 7.0/10 (volt: 7.5)
+        else if (recommendedProb >= 65) minConfidence = 6.5; // v145.0: 65-75% → 6.5/10 (volt: 7.5)
+        else if (recommendedProb >= 55) minConfidence = 6.5; // v145.0: 55-65% → 6.5/10 (volt: 7.0)
+        else if (recommendedProb >= 45) minConfidence = 6.0; // v145.0: 45-55% → 6.0/10 (volt: 7.0)
+        else if (recommendedProb >= 35) minConfidence = 6.0; // v145.0: 35-45% → 6.0/10 (volt: 6.5)
+        else if (recommendedProb >= 25) minConfidence = 5.5; // v145.0: 25-35% → 5.5/10 (volt: 6.5)
         
+        // === v145.0: HA A CONFIDENCE ALACSONY, DE VAN ERŐS KONTEKST → NE SKIP-ELJÜNK ===
+        // Ha a specialist confidence magasabb, mint a minConfidence, akkor elfogadjuk
+        const specialistConfCheck = parseFloat(rec.primary?.confidence?.toString() || '0') || 0;
         if (confidence < minConfidence) {
-            isValidRecommendation = false;
-            skipReason = `Bizalom túl alacsony (${confidence.toFixed(1)}/10 < ${minConfidence}/10, szükséges: ${recommendedProb.toFixed(1)}% valószínűséghez)`;
+            // Ha a specialist confidence elég magas, akkor elfogadjuk
+            if (specialistConfCheck >= minConfidence) {
+                rec.final_confidence = Math.max(confidence, specialistConfCheck);
+                console.log(`[AI_Service v145.0] ✅ KONTEKST ALAPÚ CONFIDENCE: Specialist (${specialistConfCheck.toFixed(1)}/10) >= minConfidence (${minConfidence}/10) → Elfogadva`);
+            } else {
+                isValidRecommendation = false;
+                skipReason = `Bizalom túl alacsony (${confidence.toFixed(1)}/10 < ${minConfidence}/10, szükséges: ${recommendedProb.toFixed(1)}% valószínűséghez)`;
+            }
         }
         
         // 3. Döntetlen valószínűség ellenőrzés (v142.0: lazább - MINDEN meccsre tipp)
@@ -1175,7 +1245,7 @@ async function getMasterRecommendation(
             }
         }
         
-        // === v143.0: TÖBB VALIDÁCIÓ (ENSEMBLE CHECK) ===
+        // === v145.0: TÖBB VALIDÁCIÓ (ENSEMBLE CHECK) - FINOMHANGOLVA ===
         // Csak akkor ajánlunk tippet, ha több jel is egyetért
         // Jel 1: Statisztikai modell (quant confidence)
         // Jel 2: Kontextuális elemzés (specialist confidence)
@@ -1191,14 +1261,23 @@ async function getMasterRecommendation(
         
         const signalCount = Object.values(signals).filter(s => s).length;
         
-        // Ha csak 1-2 jel egyetért → csökkentsük a confidence-t
-        if (signalCount <= 2) {
-            rec.final_confidence = Math.max(1.0, rec.final_confidence - 1.5);
-            console.warn(`[AI_Service v143.0] ⚠️ TÖBB VALIDÁCIÓ: Csak ${signalCount}/4 jel egyetért → Confidence csökkentve (-1.5)`);
+        // === v145.0: FINOMHANGOLT CONFIDENCE MÓDOSÍTÁS ===
+        // Kevésbé szigorú: csak akkor csökkentsük jelentősen, ha TÉNYLEG gyenge a jel
+        if (signalCount <= 1) {
+            // Csak 1 jel egyetért → jelentős csökkentés
+            rec.final_confidence = Math.max(1.0, rec.final_confidence - 1.0);
+            console.warn(`[AI_Service v145.0] ⚠️ TÖBB VALIDÁCIÓ: Csak ${signalCount}/4 jel egyetért → Confidence csökkentve (-1.0)`);
+        } else if (signalCount === 2) {
+            // 2 jel egyetért → enyhe csökkentés
+            rec.final_confidence = Math.max(1.0, rec.final_confidence - 0.5);
+            console.warn(`[AI_Service v145.0] ⚠️ TÖBB VALIDÁCIÓ: ${signalCount}/4 jel egyetért → Confidence csökkentve (-0.5)`);
+        } else if (signalCount === 3) {
+            // 3 jel egyetért → nincs változás (jó egyetértés)
+            console.log(`[AI_Service v145.0] ✅ TÖBB VALIDÁCIÓ: ${signalCount}/4 jel egyetért → Confidence változatlan`);
         } else if (signalCount === 4) {
             // Ha mind a 4 jel egyetért → emeljük a confidence-t
             rec.final_confidence = Math.min(10.0, rec.final_confidence + 0.5);
-            console.log(`[AI_Service v143.0] ✅ TÖBB VALIDÁCIÓ: Mind a 4 jel egyetért → Confidence emelve (+0.5)`);
+            console.log(`[AI_Service v145.0] ✅ TÖBB VALIDÁCIÓ: Mind a 4 jel egyetért → Confidence emelve (+0.5)`);
         }
         
         // 4. Ha nem valid, próbáljunk alternatívát találni (v144.1: Először más 1X2 opció, csak utána Over/Under)
