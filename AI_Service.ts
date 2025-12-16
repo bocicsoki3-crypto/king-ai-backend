@@ -1119,11 +1119,7 @@ async function getMasterRecommendation(
         // === VÉGE v140.0 ===
         
         // === v140.1: VALIDÁCIÓ - MINIMUM VALÓSZÍNŰSÉG ÉS CONFIDENCE ELLENŐRZÉS ===
-        const pHome = safeSim.pHome || 0;
-        const pDraw = safeSim.pDraw || 0;
-        const pAway = safeSim.pAway || 0;
-        const pOver = safeSim.pOver || 0;
-        const pUnder = safeSim.pUnder || 0;
+        // NOTE: pHome, pAway, pDraw, pOver, pUnder már deklarálva vannak a 1060-1064 sorokban (v145.0 tipp optimalizálás)
         const confidence = rec.final_confidence || 0;
         
         // 1. Minimum valószínűség ellenőrzés
