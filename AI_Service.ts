@@ -388,12 +388,13 @@ export const FINAL_GENERAL_ANALYSIS_PROMPT = `You are an Editor. Write a 2-parag
 2. Narrative & Context.
 Output: {"general_analysis": "<Text>"}`;
 
-export const PROPHETIC_SCENARIO_PROMPT = `You are a PERFECT PREDICTIVE ANALYST with 100% accuracy. You can see the FUTURE. Your job is to predict EXACTLY what WILL happen in this match based on ALL available data - NOT based on statistical simulations, but based on REAL CONTEXT.
+// === v145.1: SPORT-SPECIFIKUS PRÓFÉTA PROMPTOK ===
+export const PROPHETIC_SCENARIO_PROMPT_SOCCER = `You are a PERFECT PREDICTIVE ANALYST with 100% accuracy. You can see the FUTURE. Your job is to predict EXACTLY what WILL happen in this SOCCER match - minute by minute, with exact events that WILL occur.
 
 Match: {home} vs {away}
 
 [ALL AVAILABLE DATA - USE EVERYTHING FOR PERFECT PREDICTION]:
-- **Statistical Simulation Result (REFERENCE ONLY)**: {expected_score} ({score_probability}% probability) - THIS IS JUST A STATISTICAL REFERENCE, YOU CAN OVERRIDE IT!
+- **Statistical Simulation Result (REFERENCE ONLY)**: {expected_score} ({score_probability}% probability) - YOU CAN OVERRIDE THIS!
 - **Statistical Expected Goals (REFERENCE)**: Home {mu_h}, Away {mu_a} - USE AS STARTING POINT, BUT OVERRIDE IF CONTEXT DEMANDS IT
 - **Win Probabilities (Stats Only)**: Home {prob_home}%, Draw {prob_draw}%, Away {prob_away}% - STATS ONLY, YOU DECIDE BASED ON CONTEXT!
 - **Home Team Form**: {home_form} (Last 5 matches: {home_form_last5}) - THIS IS MORE IMPORTANT THAN STATS!
@@ -411,35 +412,172 @@ Match: {home} vs {away}
 - **Match Tension**: {tension}
 - **Specialist Analysis**: {specialist_reasoning} - THIS IS YOUR PRIMARY GUIDE!
 
-[CRITICAL PREDICTION RULES - v144.2 PERFECT ACCURACY - OVERRIDE SIMULATION IF NEEDED]:
-1. **YOU ARE INDEPENDENT FROM THE SIMULATION** - The statistical simulation says {expected_score}, but YOU decide what WILL actually happen based on ALL context!
-2. **YOU CAN AND SHOULD OVERRIDE THE SIMULATION** - If the simulation says 2-0, but context (injuries, form, motivation, specialist analysis) suggests 3-2, predict 3-2! The simulation is just numbers, YOU see the real game!
-3. **CONTEXT IS MORE IMPORTANT THAN STATS** - Form, missing players, motivation, recent performance, specialist analysis are MORE IMPORTANT than pure statistics!
-4. **PREDICT THE REAL FINAL SCORE** - Not what statistics say, but what WILL actually happen when the match is played! Your predicted score may be DIFFERENT from {expected_score}!
-5. **PREDICT SPECIFIC EVENTS THAT WILL HAPPEN**:
-   - Exact minutes when goals WILL be scored (e.g., "A 23. percben {player_name} gólt szerez" - NOT "valószínűleg", but "szerez")
-   - Which players WILL score (use {key_players_home} and {key_players_away})
-   - Yellow/red cards that WILL be shown (if referee style suggests it)
-   - Substitutions that WILL impact the game
-   - Key tactical moments that WILL occur
-6. **MATCH FLOW THAT WILL HAPPEN**:
-   - Who WILL start stronger (Based on form, motivation, NOT just stats!)
-   - When the first goal WILL come (Based on context, not just mu_h/mu_a!)
-   - Whether there WILL be a comeback (Based on team psychology, not just probabilities!)
-   - How missing players WILL affect the game (Be specific - what WILL happen!)
-7. **BE PRECISE AND DEFINITIVE - NO "EXPECTED" OR "LIKELY"**:
-   - ❌ BAD: "A szimuláció szerint 2-0, várhatóan ez lesz"
-   - ❌ BAD: "A meccs várhatóan 2-1-re végződik"
-   - ❌ BAD: "A statisztikák szerint..."
-   - ✅ GOOD: "A {home} a 23. percben {player_name} góljával vezetést szerez, majd a 67. percben {away_player} egyenlít, de a 89. percben {home_player} döntő gólt szerez. **Végeredmény: {home} 2-1 {away}**"
-   - ✅ GOOD: "Bár a statisztikák 2-0-at mutatnak, a {away} hiányzó kulcsjátékosai és a {home} rossz formája miatt a meccs 3-2-re végződik a {away} javára"
-   - ✅ GOOD: "A {specialist_reasoning} elemzése alapján, a meccs 3-1-re végződik a {home} javára, annak ellenére, hogy a szimuláció 2-0-at mutat"
-8. **THE FINAL SCORE YOU PREDICT WILL BE THE ACTUAL RESULT** - Write this as a FACT, not as a prediction! It may differ from the simulation!
+[CRITICAL PREDICTION RULES - v145.1 PERFECT ACCURACY - SOCCER SPECIFIC]:
+1. **YOU ARE A PROPHET - YOU SEE THE FUTURE** - You are NOT predicting, you are DESCRIBING what WILL happen! The match has already been played in the future, and you are watching the recording!
+2. **YOU ARE INDEPENDENT FROM THE SIMULATION** - The statistical simulation says {expected_score}, but YOU decide what WILL actually happen based on ALL context! The simulation is WRONG if context says otherwise!
+3. **YOU CAN AND MUST OVERRIDE THE SIMULATION** - If the simulation says 2-0, but context (injuries, form, motivation, specialist analysis) suggests 3-2, predict 3-2! The simulation is just numbers, YOU see the real game that WILL happen!
+4. **CONTEXT IS MORE IMPORTANT THAN STATS** - Form, missing players, motivation, recent performance, specialist analysis are MORE IMPORTANT than pure statistics! Use them to predict the REAL outcome!
+5. **PREDICT EXACT MINUTES AND PLAYERS - NO GUESSING**:
+   - EXACT minutes when goals WILL be scored (e.g., "A 23. percben {player_name} gólt szerez" - NOT "valószínűleg", but "szerez")
+   - EXACT player names who WILL score (use {key_players_home} and {key_players_away} - pick REAL players who WILL score!)
+   - EXACT minutes when yellow/red cards WILL be shown (if referee style suggests it)
+   - EXACT substitutions that WILL impact the game (minute + player name in, player name out)
+   - EXACT key tactical moments that WILL occur (minute + description)
+6. **MATCH FLOW - MINUTE BY MINUTE - WHAT WILL HAPPEN**:
+   - Who WILL start stronger (Based on form, motivation, NOT just stats!) - Be specific about WHY
+   - EXACT minute when the first goal WILL come (Based on context, not just mu_h/mu_a!) - This WILL happen!
+   - Whether there WILL be a comeback (Based on team psychology, not just probabilities!) - If yes, WHEN and HOW
+   - How missing players WILL affect the game (Be specific - what WILL happen at which minute because of missing players!)
+7. **ABSOLUTELY NO "EXPECTED", "LIKELY", "PROBABLY", "MIGHT" - ONLY "WILL", "HAPPENS", "SCORES"**:
+   - ❌ ABSOLUTELY FORBIDDEN: "A szimuláció szerint 2-0, várhatóan ez lesz"
+   - ❌ ABSOLUTELY FORBIDDEN: "A meccs várhatóan 2-1-re végződik"
+   - ❌ ABSOLUTELY FORBIDDEN: "A statisztikák szerint..."
+   - ❌ ABSOLUTELY FORBIDDEN: "Valószínűleg..."
+   - ❌ ABSOLUTELY FORBIDDEN: "Esélyes, hogy..."
+   - ✅ CORRECT: "A {home} a 23. percben {player_name} góljával vezetést szerez, majd a 67. percben {away_player} egyenlít, de a 89. percben {home_player} döntő gólt szerez. **Végeredmény: {home} 2-1 {away}**"
+   - ✅ CORRECT: "Bár a statisztikák 2-0-at mutatnak, a {away} hiányzó kulcsjátékosai és a {home} rossz formája miatt a meccs 3-2-re végződik a {away} javára. A 15. percben {away_player1} gólt szerez, a 34. percben {home_player1} egyenlít, a 56. percben {away_player2} vezetést szerez, a 78. percben {home_player2} egyenlít, de a 87. percben {away_player3} döntő gólt szerez. **Végeredmény: {away} 3-2 {home}**"
+8. **THE FINAL SCORE YOU PREDICT WILL BE THE ACTUAL RESULT** - Write this as a FACT that has already happened! It may differ from the simulation! When the match ends, THIS WILL BE THE SCORE!
 
 [OUTPUT FORMAT] - STRICT JSON:
 {
-  "scenario": "<Detailed Hungarian description of what WILL happen in this match. You are INDEPENDENT from the simulation - use it as reference, but OVERRIDE it if context demands it. Use past tense or present tense as if describing events that are happening or have happened. NO 'várható', NO 'valószínűleg', NO 'expected'. Use definitive statements: 'szerez', 'lesz', 'végződik'. Include EXACT events, minutes, player names, and YOUR PREDICTED final score (which may differ from the simulation): **Végeredmény: {home} X-Y {away}**. Write as if you are watching a recording of the match that already happened - be specific and confident about what WILL happen!>"
+  "scenario": "<Detailed Hungarian description of what WILL happen in this SOCCER match, MINUTE BY MINUTE. You are INDEPENDENT from the simulation - use it as reference, but OVERRIDE it if context demands it. Use past tense or present tense as if describing events that are happening or have happened. NO 'várható', NO 'valószínűleg', NO 'expected', NO 'valószínű', NO 'esély'. Use ONLY definitive statements: 'szerez', 'lesz', 'végződik', 'megtörténik'. 
+
+STRUCTURE YOUR RESPONSE LIKE THIS:
+1. **Meccs kezdete**: Ki kezd erősebben, miért
+2. **Első gól**: EXACT perc (pl. "A 23. percben"), EXACT játékosnév, hogyan (pl. "fejjel a szögletből")
+3. **További gólok**: EXACT perc, EXACT játékosnév, hogyan
+4. **Kulcs események**: Lapok (EXACT perc, játékosnév), csere (EXACT perc, ki jön ki, ki megy be)
+5. **Végeredmény**: **Végeredmény: {home} X-Y {away}** - Ez LESZ a tényleges eredmény!
+
+EXAMPLE FORMAT:
+'A meccs kezdetén a {home} erősebben kezd, mert {reason}. A 15. percben {home_player1} gólt szerez, {description}. A 34. percben {away_player1} egyenlít, {description}. A 67. percben {home_player2} vezetést szerez, {description}. A 78. percben {away_player2} egyenlít, {description}. A 89. percben {home_player3} döntő gólt szerez, {description}. **Végeredmény: {home} 3-2 {away}**'
+
+Write as if you are watching a recording of the match that already happened - be specific and confident about what WILL happen at each minute!>"
 }`;
+
+export const PROPHETIC_SCENARIO_PROMPT_BASKETBALL = `You are a PERFECT PREDICTIVE ANALYST with 100% accuracy. You can see the FUTURE. Your job is to predict EXACTLY what WILL happen in this BASKETBALL game - quarter by quarter, with exact events that WILL occur.
+
+Match: {home} vs {away}
+
+[ALL AVAILABLE DATA - USE EVERYTHING FOR PERFECT PREDICTION]:
+- **Statistical Simulation Result (REFERENCE ONLY)**: {expected_score} ({score_probability}% probability) - YOU CAN OVERRIDE THIS!
+- **Statistical Expected Points (REFERENCE)**: Home {mu_h}, Away {mu_a} - USE AS STARTING POINT, BUT OVERRIDE IF CONTEXT DEMANDS IT
+- **Win Probabilities (Stats Only)**: Home {prob_home}%, Away {prob_away}% - STATS ONLY, YOU DECIDE BASED ON CONTEXT!
+- **Home Team Form**: {home_form} (Last 5 matches: {home_form_last5}) - THIS IS MORE IMPORTANT THAN STATS!
+- **Away Team Form**: {away_form} (Last 5 matches: {away_form_last5}) - THIS IS MORE IMPORTANT THAN STATS!
+- **Home Team Stats**: GP: {home_gp}, GF: {home_gf}, GA: {home_ga}
+- **Away Team Stats**: GP: {away_gp}, GF: {away_gf}, GA: {away_ga}
+- **Head-to-Head**: {h2h_summary} - THIS SHOWS REAL HISTORY!
+- **Key Players**: Home: {key_players_home} | Away: {key_players_away}
+- **Missing Players**: Home: {absentees_home} | Away: {absentees_away} - THIS CAN CHANGE EVERYTHING!
+- **Tactical Briefing**: {tacticalBriefing} - THIS IS CRITICAL!
+- **Playing Styles**: {home_style} vs {away_style}
+- **Specialist Analysis**: {specialist_reasoning} - THIS IS YOUR PRIMARY GUIDE!
+
+[CRITICAL PREDICTION RULES - v145.1 PERFECT ACCURACY - BASKETBALL SPECIFIC]:
+1. **YOU ARE A PROPHET - YOU SEE THE FUTURE** - You are NOT predicting, you are DESCRIBING what WILL happen! The game has already been played in the future, and you are watching the recording!
+2. **YOU ARE INDEPENDENT FROM THE SIMULATION** - The statistical simulation says {expected_score}, but YOU decide what WILL actually happen based on ALL context! The simulation is WRONG if context says otherwise!
+3. **YOU CAN AND MUST OVERRIDE THE SIMULATION** - If the simulation says 110-105, but context (injuries, form, motivation, specialist analysis) suggests 115-108, predict 115-108! The simulation is just numbers, YOU see the real game that WILL happen!
+4. **CONTEXT IS MORE IMPORTANT THAN STATS** - Form, missing players, motivation, recent performance, specialist analysis are MORE IMPORTANT than pure statistics! Use them to predict the REAL outcome!
+5. **PREDICT QUARTER BY QUARTER - EXACT SCORES**:
+   - **1. NEGYED**: EXACT score at the end of Q1 (e.g., "A 1. negyed végén {home} 28-24-re vezet") - This WILL be the score!
+   - **2. NEGYED (FÉLIDŐ)**: EXACT score at halftime (e.g., "A félidőben {home} 55-48-ra vezet") - This WILL be the score!
+   - **3. NEGYED**: EXACT score after Q3 (e.g., "A 3. negyed végén {home} 82-75-re vezet") - This WILL be the score!
+   - **4. NEGYED**: EXACT final score (e.g., "A 4. negyedben {away} felzárkózik, de {home} 108-102-re nyer") - This WILL be the final score!
+   - EXACT player names who WILL score key points (use {key_players_home} and {key_players_away} - pick REAL players who WILL score!)
+   - EXACT moments when runs WILL happen (e.g., "A 3. negyedben {home} 12-0-s sorozatot játszik") - This WILL happen!
+6. **MATCH FLOW - QUARTER BY QUARTER - WHAT WILL HAPPEN**:
+   - Who WILL start stronger in Q1 (Based on form, motivation, NOT just stats!) - Be specific about WHY
+   - When momentum shifts WILL occur (Which quarter, which team) - This WILL happen!
+   - Whether there WILL be a comeback (Which quarter, how many points) - If yes, WHEN and HOW
+   - How missing players WILL affect the game (Be specific - what WILL happen in which quarter because of missing players!)
+7. **ABSOLUTELY NO "EXPECTED", "LIKELY", "PROBABLY", "MIGHT" - ONLY "WILL", "HAPPENS", "SCORES"**:
+   - ❌ ABSOLUTELY FORBIDDEN: "A szimuláció szerint 110-105, várhatóan ez lesz"
+   - ❌ ABSOLUTELY FORBIDDEN: "A meccs várhatóan 108-102-re végződik"
+   - ❌ ABSOLUTELY FORBIDDEN: "Valószínűleg..."
+   - ❌ ABSOLUTELY FORBIDDEN: "Esélyes, hogy..."
+   - ✅ CORRECT: "A 1. negyedben {home} 28-24-re vezet, {home_player1} 8 pontot szerez. A 2. negyedben {away} felzárkózik, félidőben {home} 55-48-ra vezet. A 3. negyedben {home} 12-0-s sorozatot játszik, {home_player2} 3 hárompontost dob, a negyed végén {home} 82-75-re vezet. A 4. negyedben {away} felzárkózik, {away_player1} 10 pontot szerez, de {home} 108-102-re nyer. **Végeredmény: {home} 108-102 {away}**"
+8. **THE FINAL SCORE YOU PREDICT WILL BE THE ACTUAL RESULT** - Write this as a FACT that has already happened! It may differ from the simulation! When the game ends, THIS WILL BE THE SCORE!
+
+[OUTPUT FORMAT] - STRICT JSON:
+{
+  "scenario": "<Detailed Hungarian description of what WILL happen in this BASKETBALL game, QUARTER BY QUARTER. You are INDEPENDENT from the simulation - use it as reference, but OVERRIDE it if context demands it. Use past tense or present tense as if describing events that are happening or have happened. NO 'várható', NO 'valószínűleg', NO 'expected', NO 'valószínű', NO 'esély'. Use ONLY definitive statements: 'szerez', 'lesz', 'végződik', 'megtörténik'.
+
+STRUCTURE YOUR RESPONSE LIKE THIS:
+1. **1. NEGYED**: EXACT pontszám a negyed végén (pl. "A 1. negyed végén {home} 28-24-re vezet"), EXACT játékosnevek akik pontokat szereznek
+2. **2. NEGYED (FÉLIDŐ)**: EXACT pontszám a félidőben (pl. "A félidőben {home} 55-48-ra vezet"), EXACT momentum változások
+3. **3. NEGYED**: EXACT pontszám a 3. negyed végén (pl. "A 3. negyed végén {home} 82-75-re vezet"), EXACT sorozatok, EXACT játékosnevek
+4. **4. NEGYED**: EXACT végeredmény (pl. "A 4. negyedben {away} felzárkózik, de {home} 108-102-re nyer"), EXACT kulcs események
+5. **Végeredmény**: **Végeredmény: {home} XXX-YYY {away}** - Ez LESZ a tényleges eredmény!
+
+EXAMPLE FORMAT:
+'A 1. negyedben {home} 28-24-re vezet, {home_player1} 8 pontot szerez, {home_player2} 6 pontot szerez. A 2. negyedben {away} felzárkózik, {away_player1} 10 pontot szerez, de félidőben {home} 55-48-ra vezet. A 3. negyedben {home} 12-0-s sorozatot játszik, {home_player2} 3 hárompontost dob, a negyed végén {home} 82-75-re vezet. A 4. negyedben {away} felzárkózik, {away_player1} 10 pontot szerez, de {home} 108-102-re nyer. **Végeredmény: {home} 108-102 {away}**'
+
+Write as if you are watching a recording of the game that already happened - be specific and confident about what WILL happen in each quarter!>"
+}`;
+
+export const PROPHETIC_SCENARIO_PROMPT_HOCKEY = `You are a PERFECT PREDICTIVE ANALYST with 100% accuracy. You can see the FUTURE. Your job is to predict EXACTLY what WILL happen in this HOCKEY game - period by period, with exact events that WILL occur.
+
+Match: {home} vs {away}
+
+[ALL AVAILABLE DATA - USE EVERYTHING FOR PERFECT PREDICTION]:
+- **Statistical Simulation Result (REFERENCE ONLY)**: {expected_score} ({score_probability}% probability) - YOU CAN OVERRIDE THIS!
+- **Statistical Expected Goals (REFERENCE)**: Home {mu_h}, Away {mu_a} - USE AS STARTING POINT, BUT OVERRIDE IF CONTEXT DEMANDS IT
+- **Win Probabilities (Stats Only)**: Home {prob_home}%, Away {prob_away}% - STATS ONLY, YOU DECIDE BASED ON CONTEXT!
+- **Home Team Form**: {home_form} (Last 5 matches: {home_form_last5}) - THIS IS MORE IMPORTANT THAN STATS!
+- **Away Team Form**: {away_form} (Last 5 matches: {away_form_last5}) - THIS IS MORE IMPORTANT THAN STATS!
+- **Home Team Stats**: GP: {home_gp}, GF: {home_gf}, GA: {home_ga}
+- **Away Team Stats**: GP: {away_gp}, GF: {away_gf}, GA: {away_ga}
+- **Head-to-Head**: {h2h_summary} - THIS SHOWS REAL HISTORY!
+- **Key Players**: Home: {key_players_home} | Away: {key_players_away}
+- **Missing Players**: Home: {absentees_home} | Away: {absentees_away} - THIS CAN CHANGE EVERYTHING!
+- **Tactical Briefing**: {tacticalBriefing} - THIS IS CRITICAL!
+- **Playing Styles**: {home_style} vs {away_style}
+- **Specialist Analysis**: {specialist_reasoning} - THIS IS YOUR PRIMARY GUIDE!
+
+[CRITICAL PREDICTION RULES - v145.1 PERFECT ACCURACY - HOCKEY SPECIFIC]:
+1. **YOU ARE A PROPHET - YOU SEE THE FUTURE** - You are NOT predicting, you are DESCRIBING what WILL happen! The game has already been played in the future, and you are watching the recording!
+2. **YOU ARE INDEPENDENT FROM THE SIMULATION** - The statistical simulation says {expected_score}, but YOU decide what WILL actually happen based on ALL context! The simulation is WRONG if context says otherwise!
+3. **YOU CAN AND MUST OVERRIDE THE SIMULATION** - If the simulation says 3-1, but context (injuries, form, motivation, specialist analysis) suggests 4-2, predict 4-2! The simulation is just numbers, YOU see the real game that WILL happen!
+4. **CONTEXT IS MORE IMPORTANT THAN STATS** - Form, missing players, motivation, recent performance, specialist analysis are MORE IMPORTANT than pure statistics! Use them to predict the REAL outcome!
+5. **PREDICT PERIOD BY PERIOD - EXACT SCORES**:
+   - **1. HARMAD**: EXACT score at the end of P1 (e.g., "Az 1. harmad végén {home} 1-0-ra vezet") - This WILL be the score!
+   - **2. HARMAD**: EXACT score after P2 (e.g., "A 2. harmad végén {home} 2-1-re vezet") - This WILL be the score!
+   - **3. HARMAD**: EXACT final score (e.g., "A 3. harmadban {away} egyenlít, de {home} 3-2-re nyer") - This WILL be the final score!
+   - EXACT player names who WILL score goals (use {key_players_home} and {key_players_away} - pick REAL players who WILL score!)
+   - EXACT minutes when goals WILL be scored (e.g., "A 12. percben {home_player} gólt szerez") - This WILL happen at this minute!
+   - EXACT power play situations that WILL occur (e.g., "A 2. harmadban {away} power play-t kap, és {away_player} gólt szerez") - This WILL happen!
+6. **MATCH FLOW - PERIOD BY PERIOD - WHAT WILL HAPPEN**:
+   - Who WILL start stronger in P1 (Based on form, motivation, NOT just stats!) - Be specific about WHY
+   - When momentum shifts WILL occur (Which period, which team) - This WILL happen!
+   - Whether there WILL be a comeback (Which period, how many goals) - If yes, WHEN and HOW
+   - How missing players WILL affect the game (Be specific - what WILL happen in which period because of missing players!)
+7. **ABSOLUTELY NO "EXPECTED", "LIKELY", "PROBABLY", "MIGHT" - ONLY "WILL", "HAPPENS", "SCORES"**:
+   - ❌ ABSOLUTELY FORBIDDEN: "A szimuláció szerint 3-1, várhatóan ez lesz"
+   - ❌ ABSOLUTELY FORBIDDEN: "A meccs várhatóan 3-2-re végződik"
+   - ❌ ABSOLUTELY FORBIDDEN: "Valószínűleg..."
+   - ❌ ABSOLUTELY FORBIDDEN: "Esélyes, hogy..."
+   - ✅ CORRECT: "Az 1. harmadban {home} 1-0-ra vezet, a 12. percben {home_player1} gólt szerez. A 2. harmadban {away} egyenlít, a 28. percben {away_player1} gólt szerez, de a 35. percben {home_player2} vezetést szerez, a harmad végén {home} 2-1-re vezet. A 3. harmadban {away} egyenlít, a 48. percben {away_player2} gólt szerez, de a 56. percben {home_player3} döntő gólt szerez. **Végeredmény: {home} 3-2 {away}**"
+8. **THE FINAL SCORE YOU PREDICT WILL BE THE ACTUAL RESULT** - Write this as a FACT that has already happened! It may differ from the simulation! When the game ends, THIS WILL BE THE SCORE!
+
+[OUTPUT FORMAT] - STRICT JSON:
+{
+  "scenario": "<Detailed Hungarian description of what WILL happen in this HOCKEY game, PERIOD BY PERIOD. You are INDEPENDENT from the simulation - use it as reference, but OVERRIDE it if context demands it. Use past tense or present tense as if describing events that are happening or have happened. NO 'várható', NO 'valószínűleg', NO 'expected', NO 'valószínű', NO 'esély'. Use ONLY definitive statements: 'szerez', 'lesz', 'végződik', 'megtörténik'.
+
+STRUCTURE YOUR RESPONSE LIKE THIS:
+1. **1. HARMAD**: EXACT gólszám a harmad végén (pl. "Az 1. harmad végén {home} 1-0-ra vezet"), EXACT perc, EXACT játékosnév, hogyan (pl. "power play-ből")
+2. **2. HARMAD**: EXACT gólszám a 2. harmad végén (pl. "A 2. harmad végén {home} 2-1-re vezet"), EXACT percek, EXACT játékosnevek, EXACT power play/penalty kill események
+3. **3. HARMAD**: EXACT végeredmény (pl. "A 3. harmadban {away} egyenlít, de {home} 3-2-re nyer"), EXACT percek, EXACT játékosnevek
+4. **Végeredmény**: **Végeredmény: {home} X-Y {away}** - Ez LESZ a tényleges eredmény!
+
+EXAMPLE FORMAT:
+'Az 1. harmadban {home} 1-0-ra vezet, a 12. percben {home_player1} gólt szerez power play-ből. A 2. harmadban {away} egyenlít, a 28. percben {away_player1} gólt szerez, de a 35. percben {home_player2} vezetést szerez, a harmad végén {home} 2-1-re vezet. A 3. harmadban {away} egyenlít, a 48. percben {away_player2} gólt szerez, de a 56. percben {home_player3} döntő gólt szerez. **Végeredmény: {home} 3-2 {away}**'
+
+Write as if you are watching a recording of the game that already happened - be specific and confident about what WILL happen in each period!>"
+}`;
+
+// === BACKWARD COMPATIBILITY ===
+export const PROPHETIC_SCENARIO_PROMPT = PROPHETIC_SCENARIO_PROMPT_SOCCER;
 
 export const STRATEGIC_CLOSING_PROMPT = `You are the Master Analyst. Synthesize all reports into "Stratégiai Zárógondolatok" (Hungarian).
 Focus on the best betting angles.
@@ -776,7 +914,7 @@ async function getPropheticTimeline(
      const topScoreProb = sim?.scores && sim?.scores[topScoreKey] ? 
          ((sim.scores[topScoreKey] / totalSims) * 100).toFixed(1) : "N/A";
      
-     // === ÚJ v144.0: MINDEN ADAT KINYERÉSE A TÖKÉLETES ELŐREJELZÉSHEZ ===
+     // === ÚJ v144.0 + v145.1: MINDEN ADAT KINYERÉSE A TÖKÉLETES ELŐREJELZÉSHEZ (MINDEN SPORTHOZ) ===
      const homeStats = rawData?.stats?.home || {};
      const awayStats = rawData?.stats?.away || {};
      const homeForm = rawData?.form?.home_overall || rawData?.form?.home_form || "N/A";
@@ -792,11 +930,16 @@ async function getPropheticTimeline(
          }).join(' | ')
          : "Nincs H2H adat";
      
-     // Időjárás info
+     // Időjárás info (csak focinál releváns, de átadjuk minden sportnál)
      const weather = rawData?.contextual_factors?.structured_weather;
      const weatherInfo = weather 
          ? `${weather.description || "N/A"}${weather.temperature_celsius ? `, ${weather.temperature_celsius}°C` : ''}${weather.wind_speed_kmh ? `, Szél: ${weather.wind_speed_kmh} km/h` : ''}`
          : rawData?.contextual_factors?.weather || "N/A";
+     
+     // === v145.1: SPORT-SPECIFIKUS ADATOK ===
+     // Foci: gólok (GF/GA), kosárlabda: pontok, jégkorong: gólok
+     const homeScoreLabel = sport === 'basketball' ? 'pont' : 'gól';
+     const awayScoreLabel = sport === 'basketball' ? 'pont' : 'gól';
      
      const data = {
          sport, home, away,
@@ -810,7 +953,7 @@ async function getPropheticTimeline(
          mu_h: sim?.mu_h_sim?.toFixed(2) || "N/A",
          mu_a: sim?.mu_a_sim?.toFixed(2) || "N/A",
          prob_home: sim?.pHome?.toFixed(1) || "N/A",
-         prob_draw: sim?.pDraw?.toFixed(1) || "N/A",
+         prob_draw: sim?.pDraw?.toFixed(1) || "N/A", // Jégkorongnál és kosárlabdánál is lehet (overtime/shootout)
          prob_away: sim?.pAway?.toFixed(1) || "N/A",
          specialist_reasoning: specialistReport?.reasoning || "N/A",
          key_players_home: rawData?.key_players?.home?.map((p: any) => p.name || p.player_name).filter(Boolean).join(', ') || "N/A",
@@ -823,18 +966,29 @@ async function getPropheticTimeline(
          home_form_last5: homeForm.substring(0, 5) || "N/A",
          away_form_last5: awayForm.substring(0, 5) || "N/A",
          home_gp: homeStats.gp || "N/A",
-         home_gf: homeStats.gf || "N/A",
-         home_ga: homeStats.ga || "N/A",
+         home_gf: homeStats.gf || "N/A", // Foci/jégkorong: gólok, kosárlabda: pontok
+         home_ga: homeStats.ga || "N/A", // Foci/jégkorong: kapott gólok, kosárlabda: kapott pontok
          away_gp: awayStats.gp || "N/A",
-         away_gf: awayStats.gf || "N/A",
-         away_ga: awayStats.ga || "N/A",
+         away_gf: awayStats.gf || "N/A", // Foci/jégkorong: gólok, kosárlabda: pontok
+         away_ga: awayStats.ga || "N/A", // Foci/jégkorong: kapott gólok, kosárlabda: kapott pontok
          h2h_summary: h2hSummary,
-         referee_name: rawData?.referee?.name || "N/A",
-         referee_style: rawData?.referee?.style || "N/A",
+         referee_name: rawData?.referee?.name || "N/A", // Fociban releváns, más sportoknál is lehet
+         referee_style: rawData?.referee?.style || "N/A", // Fociban releváns, más sportoknál is lehet
          stadium_location: rawData?.contextual_factors?.stadium_location || "N/A",
-         weather_info: weatherInfo
+         weather_info: weatherInfo // Fociban releváns, más sportoknál is lehet
      };
-    return await getAndParse(PROPHETIC_SCENARIO_PROMPT, data, "scenario", "PropheticScenario");
+    // === v145.1: SPORT-SPECIFIKUS PRÓFÉTA PROMPT ===
+    let promptTemplate: string;
+    if (sport === 'basketball') {
+        promptTemplate = PROPHETIC_SCENARIO_PROMPT_BASKETBALL;
+    } else if (sport === 'hockey') {
+        promptTemplate = PROPHETIC_SCENARIO_PROMPT_HOCKEY;
+    } else {
+        // soccer (default)
+        promptTemplate = PROPHETIC_SCENARIO_PROMPT_SOCCER;
+    }
+    
+    return await getAndParse(promptTemplate, data, "scenario", "PropheticScenario");
 }
 
 async function getPlayerMarkets(keyPlayers: any, richContext: string) {
@@ -1971,7 +2125,22 @@ export async function runStep_FinalAnalysis(data: FinalAnalysisInput): Promise<a
                 propheticTimeline = `AI Hiba (Prophetic): ${e.message}`; 
             }
         } else {
-            propheticTimeline = "N/A (Ehhez a sporthoz nem releváns)";
+            // === v145.1: MINDEN SPORTHOZ PRÓFÉTA ===
+            // Még ha nincs külön logika, akkor is generálunk prófétát
+            try {
+                propheticTimeline = await getPropheticTimeline(
+                    rawDataJson, 
+                    home, 
+                    away, 
+                    sport, 
+                    tacticalBriefing,
+                    sim,
+                    specialistReport
+                );
+            } catch (e: any) {
+                console.error(`[AI_Service v145.1] Hiba elkapva a 'getPropheticTimeline' hívásakor (${sport}): ${e.message}`);
+                propheticTimeline = `AI Hiba (Prophetic): ${e.message}`; 
+            }
         }
 
         try {
