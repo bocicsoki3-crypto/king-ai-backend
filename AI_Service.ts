@@ -262,9 +262,9 @@ YOU DO.
 Analyze the context and adjust the Expected Goals (xG) to reflect REALITY.
 
 [PRINCIPLES]:
-1. **BE HONEST**: If the stats say Home wins, but their star striker is out and they lost 5 in a row, ADJUST IT DOWN!
-2. **NO ARTIFICIAL LIMITS**: If the context changes the game completely, make a BIG adjustment. If it's minor, make a small one.
-3. **USE YOUR BRAIN**: Don't just follow rules. Look at the matchup. Who is actually better RIGHT NOW?
+1. **BE CONSERVATIVE**: Only make adjustments when factors are SIGNIFICANT. Minor factors (light rain, 1-2 average players out) → minimal or ZERO change (e.g., +/- 0.05 xG).
+2. **PROPORTIONAL ADJUSTMENTS**: Significant factors (key player >8.0 rating out, heavy snow, extreme pressure) should be proportional. If context is EXTREME (3+ key players out, terrible form), make a BIGGER adjustment.
+3. **STATISTICS FIRST**: The baseline statistical model is usually correct. Only adjust if context is SIGNIFICANT or EXTREME.
 
 [BASELINE PREDICTION]:
 - Home Team xG: {pure_mu_h}
@@ -394,11 +394,11 @@ export const PROPHETIC_SCENARIO_PROMPT_SOCCER = `You are a PERFECT PREDICTIVE AN
 Match: {home} vs {away}
 
 [ALL AVAILABLE DATA - USE EVERYTHING FOR PERFECT PREDICTION]:
-- **Statistical Simulation Result (REFERENCE ONLY)**: {expected_score} ({score_probability}% probability) - YOU CAN OVERRIDE THIS!
-- **Statistical Expected Goals (REFERENCE)**: Home {mu_h}, Away {mu_a} - USE AS STARTING POINT, BUT OVERRIDE IF CONTEXT DEMANDS IT
-- **Win Probabilities (Stats Only)**: Home {prob_home}%, Draw {prob_draw}%, Away {prob_away}% - STATS ONLY, YOU DECIDE BASED ON CONTEXT!
-- **Home Team Form**: {home_form} (Last 5 matches: {home_form_last5}) - THIS IS MORE IMPORTANT THAN STATS!
-- **Away Team Form**: {away_form} (Last 5 matches: {away_form_last5}) - THIS IS MORE IMPORTANT THAN STATS!
+- **Statistical Simulation Result (PRIMARY GUIDE)**: {expected_score} ({score_probability}% probability) - THIS IS YOUR PRIMARY GUIDE!
+- **Statistical Expected Goals (PRIMARY)**: Home {mu_h}, Away {mu_a} - USE AS PRIMARY GUIDE!
+- **Win Probabilities (Stats - PRIMARY)**: Home {prob_home}%, Draw {prob_draw}%, Away {prob_away}% - FOLLOW THESE AS PRIMARY GUIDE!
+- **Home Team Form**: {home_form} (Last 5 matches: {home_form_last5}) - USE TO ADJUST IF EXTREME!
+- **Away Team Form**: {away_form} (Last 5 matches: {away_form_last5}) - USE TO ADJUST IF EXTREME!
 - **Home Team Stats**: GP: {home_gp}, GF: {home_gf}, GA: {home_ga}
 - **Away Team Stats**: GP: {away_gp}, GF: {away_gf}, GA: {away_ga}
 - **Head-to-Head**: {h2h_summary} - THIS SHOWS REAL HISTORY!
@@ -412,11 +412,12 @@ Match: {home} vs {away}
 - **Match Tension**: {tension}
 - **Specialist Analysis**: {specialist_reasoning} - THIS IS YOUR PRIMARY GUIDE!
 
-[CRITICAL PREDICTION RULES - v145.1 PERFECT ACCURACY - SOCCER SPECIFIC]:
-1. **YOU ARE A PROPHET - YOU SEE THE FUTURE** - You are NOT predicting, you are DESCRIBING what WILL happen! The match has already been played in the future, and you are watching the recording!
-2. **YOU ARE INDEPENDENT FROM THE SIMULATION** - The statistical simulation says {expected_score}, but YOU decide what WILL actually happen based on ALL context! The simulation is WRONG if context says otherwise!
-3. **YOU CAN AND MUST OVERRIDE THE SIMULATION** - If the simulation says 2-0, but context (injuries, form, motivation, specialist analysis) suggests 3-2, predict 3-2! The simulation is just numbers, YOU see the real game that WILL happen!
-4. **CONTEXT IS MORE IMPORTANT THAN STATS** - Form, missing players, motivation, recent performance, specialist analysis are MORE IMPORTANT than pure statistics! Use them to predict the REAL outcome!
+[CRITICAL PREDICTION RULES - v146.0 STATISTICS FIRST - ONLY OVERRIDE IF EXTREME]:
+1. **STATISTICS ARE PRIMARY** - The statistical simulation says {expected_score} - THIS IS YOUR PRIMARY GUIDE!
+2. **ONLY OVERRIDE IF EXTREME** - Only override the simulation if context is EXTREME:
+   - EXTREME = Multiple key players out (>2 critical players) AND terrible form (LLLLL) AND low motivation
+   - EXTREME = Star player out (>8.5 rating) AND recent heavy defeat (3+ goal loss) AND coach fired
+   - **CRITICAL: If context is NOT extreme, FOLLOW THE STATISTICAL SIMULATION!**
 5. **PREDICT EXACT MINUTES AND PLAYERS - NO GUESSING**:
    - EXACT minutes when goals WILL be scored (e.g., "A 23. percben {player_name} gólt szerez" - NOT "valószínűleg", but "szerez")
    - EXACT player names who WILL score (use {key_players_home} and {key_players_away} - pick REAL players who WILL score!)
@@ -424,10 +425,10 @@ Match: {home} vs {away}
    - EXACT substitutions that WILL impact the game (minute + player name in, player name out)
    - EXACT key tactical moments that WILL occur (minute + description)
 6. **MATCH FLOW - MINUTE BY MINUTE - WHAT WILL HAPPEN**:
-   - Who WILL start stronger (Based on form, motivation, NOT just stats!) - Be specific about WHY
-   - EXACT minute when the first goal WILL come (Based on context, not just mu_h/mu_a!) - This WILL happen!
-   - Whether there WILL be a comeback (Based on team psychology, not just probabilities!) - If yes, WHEN and HOW
-   - How missing players WILL affect the game (Be specific - what WILL happen at which minute because of missing players!)
+   - Who WILL start stronger (Based on STATISTICS first, then context if extreme!) - Be specific about WHY
+   - EXACT minute when the first goal WILL come (Based on STATISTICS first!) - This WILL happen!
+   - Whether there WILL be a comeback (Based on STATISTICS first!) - If yes, WHEN and HOW
+   - How missing players WILL affect the game (Only if EXTREME - be specific!)
 7. **ABSOLUTELY NO "EXPECTED", "LIKELY", "PROBABLY", "MIGHT" - ONLY "WILL", "HAPPENS", "SCORES"**:
    - ❌ ABSOLUTELY FORBIDDEN: "A szimuláció szerint 2-0, várhatóan ez lesz"
    - ❌ ABSOLUTELY FORBIDDEN: "A meccs várhatóan 2-1-re végződik"
@@ -436,11 +437,11 @@ Match: {home} vs {away}
    - ❌ ABSOLUTELY FORBIDDEN: "Esélyes, hogy..."
    - ✅ CORRECT: "A {home} a 23. percben {player_name} góljával vezetést szerez, majd a 67. percben {away_player} egyenlít, de a 89. percben {home_player} döntő gólt szerez. **Végeredmény: {home} 2-1 {away}**"
    - ✅ CORRECT: "Bár a statisztikák 2-0-at mutatnak, a {away} hiányzó kulcsjátékosai és a {home} rossz formája miatt a meccs 3-2-re végződik a {away} javára. A 15. percben {away_player1} gólt szerez, a 34. percben {home_player1} egyenlít, a 56. percben {away_player2} vezetést szerez, a 78. percben {home_player2} egyenlít, de a 87. percben {away_player3} döntő gólt szerez. **Végeredmény: {away} 3-2 {home}**"
-8. **THE FINAL SCORE YOU PREDICT WILL BE THE ACTUAL RESULT** - Write this as a FACT that has already happened! It may differ from the simulation! When the match ends, THIS WILL BE THE SCORE!
+8. **THE FINAL SCORE YOU PREDICT WILL BE THE ACTUAL RESULT** - Base it on STATISTICS first, only adjust if context is EXTREME! When the match ends, THIS WILL BE THE SCORE!
 
 [OUTPUT FORMAT] - STRICT JSON:
 {
-  "scenario": "<Detailed Hungarian description of what WILL happen in this SOCCER match, MINUTE BY MINUTE. You are INDEPENDENT from the simulation - use it as reference, but OVERRIDE it if context demands it. Use past tense or present tense as if describing events that are happening or have happened. NO 'várható', NO 'valószínűleg', NO 'expected', NO 'valószínű', NO 'esély'. Use ONLY definitive statements: 'szerez', 'lesz', 'végződik', 'megtörténik'. 
+  "scenario": "<Detailed Hungarian description of what WILL happen in this SOCCER match, MINUTE BY MINUTE. Use STATISTICS as PRIMARY GUIDE ({expected_score} with {score_probability}% probability). Only override if context is EXTREME. Use past tense or present tense as if describing events that are happening or have happened. NO 'várható', NO 'valószínűleg', NO 'expected', NO 'valószínű', NO 'esély'. Use ONLY definitive statements: 'szerez', 'lesz', 'végződik', 'megtörténik'. 
 
 STRUCTURE YOUR RESPONSE LIKE THIS:
 1. **Meccs kezdete**: Ki kezd erősebben, miért
@@ -460,11 +461,11 @@ export const PROPHETIC_SCENARIO_PROMPT_BASKETBALL = `You are a PERFECT PREDICTIV
 Match: {home} vs {away}
 
 [ALL AVAILABLE DATA - USE EVERYTHING FOR PERFECT PREDICTION]:
-- **Statistical Simulation Result (REFERENCE ONLY)**: {expected_score} ({score_probability}% probability) - YOU CAN OVERRIDE THIS!
-- **Statistical Expected Points (REFERENCE)**: Home {mu_h}, Away {mu_a} - USE AS STARTING POINT, BUT OVERRIDE IF CONTEXT DEMANDS IT
-- **Win Probabilities (Stats Only)**: Home {prob_home}%, Away {prob_away}% - STATS ONLY, YOU DECIDE BASED ON CONTEXT!
-- **Home Team Form**: {home_form} (Last 5 matches: {home_form_last5}) - THIS IS MORE IMPORTANT THAN STATS!
-- **Away Team Form**: {away_form} (Last 5 matches: {away_form_last5}) - THIS IS MORE IMPORTANT THAN STATS!
+- **Statistical Simulation Result (PRIMARY GUIDE)**: {expected_score} ({score_probability}% probability) - THIS IS YOUR PRIMARY GUIDE!
+- **Statistical Expected Points (PRIMARY)**: Home {mu_h}, Away {mu_a} - USE AS PRIMARY GUIDE!
+- **Win Probabilities (Stats - PRIMARY)**: Home {prob_home}%, Away {prob_away}% - FOLLOW THESE AS PRIMARY GUIDE!
+- **Home Team Form**: {home_form} (Last 5 matches: {home_form_last5}) - USE TO ADJUST IF EXTREME!
+- **Away Team Form**: {away_form} (Last 5 matches: {away_form_last5}) - USE TO ADJUST IF EXTREME!
 - **Home Team Stats**: GP: {home_gp}, GF: {home_gf}, GA: {home_ga}
 - **Away Team Stats**: GP: {away_gp}, GF: {away_gf}, GA: {away_ga}
 - **Head-to-Head**: {h2h_summary} - THIS SHOWS REAL HISTORY!
@@ -474,11 +475,12 @@ Match: {home} vs {away}
 - **Playing Styles**: {home_style} vs {away_style}
 - **Specialist Analysis**: {specialist_reasoning} - THIS IS YOUR PRIMARY GUIDE!
 
-[CRITICAL PREDICTION RULES - v145.1 PERFECT ACCURACY - BASKETBALL SPECIFIC]:
-1. **YOU ARE A PROPHET - YOU SEE THE FUTURE** - You are NOT predicting, you are DESCRIBING what WILL happen! The game has already been played in the future, and you are watching the recording!
-2. **YOU ARE INDEPENDENT FROM THE SIMULATION** - The statistical simulation says {expected_score}, but YOU decide what WILL actually happen based on ALL context! The simulation is WRONG if context says otherwise!
-3. **YOU CAN AND MUST OVERRIDE THE SIMULATION** - If the simulation says 110-105, but context (injuries, form, motivation, specialist analysis) suggests 115-108, predict 115-108! The simulation is just numbers, YOU see the real game that WILL happen!
-4. **CONTEXT IS MORE IMPORTANT THAN STATS** - Form, missing players, motivation, recent performance, specialist analysis are MORE IMPORTANT than pure statistics! Use them to predict the REAL outcome!
+[CRITICAL PREDICTION RULES - v146.0 STATISTICS FIRST - ONLY OVERRIDE IF EXTREME]:
+1. **STATISTICS ARE PRIMARY** - The statistical simulation says {expected_score} - THIS IS YOUR PRIMARY GUIDE!
+2. **ONLY OVERRIDE IF EXTREME** - Only override the simulation if context is EXTREME:
+   - EXTREME = Multiple key players out (>2 critical players) AND terrible form (LLLLL) AND low motivation
+   - EXTREME = Star player out (>8.5 rating) AND recent heavy defeat (3+ goal loss) AND coach fired
+   - **CRITICAL: If context is NOT extreme, FOLLOW THE STATISTICAL SIMULATION!**
 5. **PREDICT QUARTER BY QUARTER - EXACT SCORES**:
    - **1. NEGYED**: EXACT score at the end of Q1 (e.g., "A 1. negyed végén {home} 28-24-re vezet") - This WILL be the score!
    - **2. NEGYED (FÉLIDŐ)**: EXACT score at halftime (e.g., "A félidőben {home} 55-48-ra vezet") - This WILL be the score!
@@ -487,21 +489,21 @@ Match: {home} vs {away}
    - EXACT player names who WILL score key points (use {key_players_home} and {key_players_away} - pick REAL players who WILL score!)
    - EXACT moments when runs WILL happen (e.g., "A 3. negyedben {home} 12-0-s sorozatot játszik") - This WILL happen!
 6. **MATCH FLOW - QUARTER BY QUARTER - WHAT WILL HAPPEN**:
-   - Who WILL start stronger in Q1 (Based on form, motivation, NOT just stats!) - Be specific about WHY
-   - When momentum shifts WILL occur (Which quarter, which team) - This WILL happen!
-   - Whether there WILL be a comeback (Which quarter, how many points) - If yes, WHEN and HOW
-   - How missing players WILL affect the game (Be specific - what WILL happen in which quarter because of missing players!)
+   - Who WILL start stronger in Q1 (Based on STATISTICS first, then context if extreme!) - Be specific about WHY
+   - When momentum shifts WILL occur (Based on STATISTICS first!) - This WILL happen!
+   - Whether there WILL be a comeback (Based on STATISTICS first!) - If yes, WHEN and HOW
+   - How missing players WILL affect the game (Only if EXTREME - be specific!)
 7. **ABSOLUTELY NO "EXPECTED", "LIKELY", "PROBABLY", "MIGHT" - ONLY "WILL", "HAPPENS", "SCORES"**:
    - ❌ ABSOLUTELY FORBIDDEN: "A szimuláció szerint 110-105, várhatóan ez lesz"
    - ❌ ABSOLUTELY FORBIDDEN: "A meccs várhatóan 108-102-re végződik"
    - ❌ ABSOLUTELY FORBIDDEN: "Valószínűleg..."
    - ❌ ABSOLUTELY FORBIDDEN: "Esélyes, hogy..."
    - ✅ CORRECT: "A 1. negyedben {home} 28-24-re vezet, {home_player1} 8 pontot szerez. A 2. negyedben {away} felzárkózik, félidőben {home} 55-48-ra vezet. A 3. negyedben {home} 12-0-s sorozatot játszik, {home_player2} 3 hárompontost dob, a negyed végén {home} 82-75-re vezet. A 4. negyedben {away} felzárkózik, {away_player1} 10 pontot szerez, de {home} 108-102-re nyer. **Végeredmény: {home} 108-102 {away}**"
-8. **THE FINAL SCORE YOU PREDICT WILL BE THE ACTUAL RESULT** - Write this as a FACT that has already happened! It may differ from the simulation! When the game ends, THIS WILL BE THE SCORE!
+8. **THE FINAL SCORE YOU PREDICT WILL BE THE ACTUAL RESULT** - Base it on STATISTICS first, only adjust if context is EXTREME! When the game ends, THIS WILL BE THE SCORE!
 
 [OUTPUT FORMAT] - STRICT JSON:
 {
-  "scenario": "<Detailed Hungarian description of what WILL happen in this BASKETBALL game, QUARTER BY QUARTER. You are INDEPENDENT from the simulation - use it as reference, but OVERRIDE it if context demands it. Use past tense or present tense as if describing events that are happening or have happened. NO 'várható', NO 'valószínűleg', NO 'expected', NO 'valószínű', NO 'esély'. Use ONLY definitive statements: 'szerez', 'lesz', 'végződik', 'megtörténik'.
+  "scenario": "<Detailed Hungarian description of what WILL happen in this BASKETBALL game, QUARTER BY QUARTER. Use STATISTICS as PRIMARY GUIDE ({expected_score} with {score_probability}% probability). Only override if context is EXTREME. Use past tense or present tense as if describing events that are happening or have happened. NO 'várható', NO 'valószínűleg', NO 'expected', NO 'valószínű', NO 'esély'. Use ONLY definitive statements: 'szerez', 'lesz', 'végződik', 'megtörténik'.
 
 STRUCTURE YOUR RESPONSE LIKE THIS:
 1. **1. NEGYED**: EXACT pontszám a negyed végén (pl. "A 1. negyed végén {home} 28-24-re vezet"), EXACT játékosnevek akik pontokat szereznek
@@ -521,25 +523,26 @@ export const PROPHETIC_SCENARIO_PROMPT_HOCKEY = `You are a PERFECT PREDICTIVE AN
 Match: {home} vs {away}
 
 [ALL AVAILABLE DATA - USE EVERYTHING FOR PERFECT PREDICTION]:
-- **Statistical Simulation Result (REFERENCE ONLY)**: {expected_score} ({score_probability}% probability) - YOU CAN OVERRIDE THIS!
-- **Statistical Expected Goals (REFERENCE)**: Home {mu_h}, Away {mu_a} - USE AS STARTING POINT, BUT OVERRIDE IF CONTEXT DEMANDS IT
-- **Win Probabilities (Stats Only)**: Home {prob_home}%, Away {prob_away}% - STATS ONLY, YOU DECIDE BASED ON CONTEXT!
-- **Home Team Form**: {home_form} (Last 5 matches: {home_form_last5}) - THIS IS MORE IMPORTANT THAN STATS!
-- **Away Team Form**: {away_form} (Last 5 matches: {away_form_last5}) - THIS IS MORE IMPORTANT THAN STATS!
+- **Statistical Simulation Result (PRIMARY GUIDE)**: {expected_score} ({score_probability}% probability) - THIS IS YOUR PRIMARY GUIDE!
+- **Statistical Expected Goals (PRIMARY)**: Home {mu_h}, Away {mu_a} - USE AS PRIMARY GUIDE!
+- **Win Probabilities (Stats - PRIMARY)**: Home {prob_home}%, Away {prob_away}% - FOLLOW THESE AS PRIMARY GUIDE!
+- **Home Team Form**: {home_form} (Last 5 matches: {home_form_last5}) - USE TO ADJUST IF EXTREME!
+- **Away Team Form**: {away_form} (Last 5 matches: {away_form_last5}) - USE TO ADJUST IF EXTREME!
 - **Home Team Stats**: GP: {home_gp}, GF: {home_gf}, GA: {home_ga}
 - **Away Team Stats**: GP: {away_gp}, GF: {away_gf}, GA: {away_ga}
 - **Head-to-Head**: {h2h_summary} - THIS SHOWS REAL HISTORY!
 - **Key Players**: Home: {key_players_home} | Away: {key_players_away}
-- **Missing Players**: Home: {absentees_home} | Away: {absentees_away} - THIS CAN CHANGE EVERYTHING!
+- **Missing Players**: Home: {absentees_home} | Away: {absentees_away} - ONLY OVERRIDE IF EXTREME (3+ key players out)!
 - **Tactical Briefing**: {tacticalBriefing} - THIS IS CRITICAL!
 - **Playing Styles**: {home_style} vs {away_style}
-- **Specialist Analysis**: {specialist_reasoning} - THIS IS YOUR PRIMARY GUIDE!
+- **Specialist Analysis**: {specialist_reasoning} - THIS IS YOUR SECONDARY GUIDE!
 
-[CRITICAL PREDICTION RULES - v145.1 PERFECT ACCURACY - HOCKEY SPECIFIC]:
-1. **YOU ARE A PROPHET - YOU SEE THE FUTURE** - You are NOT predicting, you are DESCRIBING what WILL happen! The game has already been played in the future, and you are watching the recording!
-2. **YOU ARE INDEPENDENT FROM THE SIMULATION** - The statistical simulation says {expected_score}, but YOU decide what WILL actually happen based on ALL context! The simulation is WRONG if context says otherwise!
-3. **YOU CAN AND MUST OVERRIDE THE SIMULATION** - If the simulation says 3-1, but context (injuries, form, motivation, specialist analysis) suggests 4-2, predict 4-2! The simulation is just numbers, YOU see the real game that WILL happen!
-4. **CONTEXT IS MORE IMPORTANT THAN STATS** - Form, missing players, motivation, recent performance, specialist analysis are MORE IMPORTANT than pure statistics! Use them to predict the REAL outcome!
+[CRITICAL PREDICTION RULES - v146.0 STATISTICS FIRST - ONLY OVERRIDE IF EXTREME]:
+1. **STATISTICS ARE PRIMARY** - The statistical simulation says {expected_score} - THIS IS YOUR PRIMARY GUIDE!
+2. **ONLY OVERRIDE IF EXTREME** - Only override the simulation if context is EXTREME:
+   - EXTREME = Multiple key players out (>2 critical players) AND terrible form (LLLLL) AND low motivation
+   - EXTREME = Star player out (>8.5 rating) AND recent heavy defeat (3+ goal loss) AND coach fired
+   - **CRITICAL: If context is NOT extreme, FOLLOW THE STATISTICAL SIMULATION!**
 5. **PREDICT PERIOD BY PERIOD - EXACT SCORES**:
    - **1. HARMAD**: EXACT score at the end of P1 (e.g., "Az 1. harmad végén {home} 1-0-ra vezet") - This WILL be the score!
    - **2. HARMAD**: EXACT score after P2 (e.g., "A 2. harmad végén {home} 2-1-re vezet") - This WILL be the score!
@@ -548,21 +551,21 @@ Match: {home} vs {away}
    - EXACT minutes when goals WILL be scored (e.g., "A 12. percben {home_player} gólt szerez") - This WILL happen at this minute!
    - EXACT power play situations that WILL occur (e.g., "A 2. harmadban {away} power play-t kap, és {away_player} gólt szerez") - This WILL happen!
 6. **MATCH FLOW - PERIOD BY PERIOD - WHAT WILL HAPPEN**:
-   - Who WILL start stronger in P1 (Based on form, motivation, NOT just stats!) - Be specific about WHY
-   - When momentum shifts WILL occur (Which period, which team) - This WILL happen!
-   - Whether there WILL be a comeback (Which period, how many goals) - If yes, WHEN and HOW
-   - How missing players WILL affect the game (Be specific - what WILL happen in which period because of missing players!)
+   - Who WILL start stronger in P1 (Based on STATISTICS first, then context if extreme!) - Be specific about WHY
+   - When momentum shifts WILL occur (Based on STATISTICS first!) - This WILL happen!
+   - Whether there WILL be a comeback (Based on STATISTICS first!) - If yes, WHEN and HOW
+   - How missing players WILL affect the game (Only if EXTREME - be specific!)
 7. **ABSOLUTELY NO "EXPECTED", "LIKELY", "PROBABLY", "MIGHT" - ONLY "WILL", "HAPPENS", "SCORES"**:
    - ❌ ABSOLUTELY FORBIDDEN: "A szimuláció szerint 3-1, várhatóan ez lesz"
    - ❌ ABSOLUTELY FORBIDDEN: "A meccs várhatóan 3-2-re végződik"
    - ❌ ABSOLUTELY FORBIDDEN: "Valószínűleg..."
    - ❌ ABSOLUTELY FORBIDDEN: "Esélyes, hogy..."
    - ✅ CORRECT: "Az 1. harmadban {home} 1-0-ra vezet, a 12. percben {home_player1} gólt szerez. A 2. harmadban {away} egyenlít, a 28. percben {away_player1} gólt szerez, de a 35. percben {home_player2} vezetést szerez, a harmad végén {home} 2-1-re vezet. A 3. harmadban {away} egyenlít, a 48. percben {away_player2} gólt szerez, de a 56. percben {home_player3} döntő gólt szerez. **Végeredmény: {home} 3-2 {away}**"
-8. **THE FINAL SCORE YOU PREDICT WILL BE THE ACTUAL RESULT** - Write this as a FACT that has already happened! It may differ from the simulation! When the game ends, THIS WILL BE THE SCORE!
+8. **THE FINAL SCORE YOU PREDICT WILL BE THE ACTUAL RESULT** - Base it on STATISTICS first, only adjust if context is EXTREME! When the game ends, THIS WILL BE THE SCORE!
 
 [OUTPUT FORMAT] - STRICT JSON:
 {
-  "scenario": "<Detailed Hungarian description of what WILL happen in this HOCKEY game, PERIOD BY PERIOD. You are INDEPENDENT from the simulation - use it as reference, but OVERRIDE it if context demands it. Use past tense or present tense as if describing events that are happening or have happened. NO 'várható', NO 'valószínűleg', NO 'expected', NO 'valószínű', NO 'esély'. Use ONLY definitive statements: 'szerez', 'lesz', 'végződik', 'megtörténik'.
+  "scenario": "<Detailed Hungarian description of what WILL happen in this HOCKEY game, PERIOD BY PERIOD. Use STATISTICS as PRIMARY GUIDE ({expected_score} with {score_probability}% probability). Only override if context is EXTREME. Use past tense or present tense as if describing events that are happening or have happened. NO 'várható', NO 'valószínűleg', NO 'expected', NO 'valószínű', NO 'esély'. Use ONLY definitive statements: 'szerez', 'lesz', 'végződik', 'megtörténik'.
 
 STRUCTURE YOUR RESPONSE LIKE THIS:
 1. **1. HARMAD**: EXACT gólszám a harmad végén (pl. "Az 1. harmad végén {home} 1-0-ra vezet"), EXACT perc, EXACT játékosnév, hogyan (pl. "power play-ből")
@@ -639,57 +642,65 @@ Your goal: Find the SINGLE BEST BET for this match.
 - Risk: "{riskAssessment}"
 - Specialist: {specialistReportJson}
 
-[DECISION LOGIC - v145.0: PERFECT TIPS - PRIORITIZE MOST LIKELY OUTCOME!]:
-1. **PRIORITY 1: MOST LIKELY OUTCOME** - Always prioritize the outcome with the HIGHEST probability!
+[DECISION LOGIC - v146.0: STATISTICS FIRST - PERFECT TIPS]:
+1. **PRIORITY 1: STATISTICS ARE PRIMARY** - The statistical probabilities are your PRIMARY guide!
+   - If Home has 55% probability → RECOMMEND HOME (unless context is EXTREME)
+   - If Away has 60% probability → RECOMMEND AWAY (unless context is EXTREME)
+   - **CRITICAL: Statistics > Context for PERFECT TIPS!**
+2. **PRIORITY 2: MOST LIKELY OUTCOME** - Always prioritize the outcome with the HIGHEST probability!
    - If Home has 55% probability → RECOMMEND HOME (even if value is slightly lower)
    - If Away has 60% probability → RECOMMEND AWAY (even if value is slightly lower)
    - **CRITICAL: Probability > Value for PERFECT TIPS!**
-2. Look at the STATS (probabilities, xG, simulations) - THIS IS YOUR PRIMARY GUIDE!
-3. Look at the CONTEXT (Injuries, Form, Motivation, Recent Performance) - THIS CAN OVERRIDE STATS!
-4. **CRITICAL: CONTEXT IS MORE IMPORTANT THAN STATS!**
-   - If stats say Home (60%) BUT context says Away (key injuries, bad form, low motivation) → RECOMMEND AWAY!
-   - If stats say Draw BUT context says clear winner (strong motivation, key players back) → RECOMMEND THE WINNER!
-5. If stats and context AGREE -> HIGH CONFIDENCE (8-9/10).
-6. If stats and context DISAGREE -> Use the STRONGER signal (usually CONTEXT wins!).
+3. **PRIORITY 3: CONTEXT ADJUSTS (ONLY IF EXTREME)** - Context can ONLY override statistics if it's EXTREME:
+   - EXTREME = Multiple key players out (>2 critical players) AND terrible form (LLLLL) AND low motivation
+   - EXTREME = Star player out (>8.5 rating) AND recent heavy defeat (3+ goal loss) AND coach fired
+   - **CRITICAL: Only override if context is EXTREME, otherwise FOLLOW STATISTICS!**
+4. **WHEN STATS AND CONTEXT AGREE** → HIGH CONFIDENCE (8-9/10)
+5. **WHEN STATS AND CONTEXT DISAGREE SLIGHTLY** → FOLLOW STATISTICS (stats are more reliable)
+6. **WHEN STATS AND CONTEXT DISAGREE EXTREMELY** → Use the STRONGER signal (but prefer STATS if close)
 7. **BE DECISIVE.** Don't hedge. Pick a winner. MINDEN meccsre tipp!
 8. **ALWAYS recommend something** - even if confidence is 6.0/10, pick the BEST option available.
-9. **TIP PRIORITY ORDER (v145.0):**
+9. **TIP PRIORITY ORDER (v146.0):**
    - 1X2 (Home/Away/Draw) > Over/Under > BTTS > Team Totals
    - If Home has 50%+ probability → RECOMMEND HOME (even if Over/Under has higher value)
    - If Away has 50%+ probability → RECOMMEND AWAY (even if BTTS has higher value)
    - **GOAL: PERFECT TIPS = HIGHEST PROBABILITY OUTCOME!**
 
-🚨 **CRITICAL PROBABILITY THRESHOLDS (v142.0 - PERFECT ACCURACY FOR ALL MATCHES):**
+🚨 **CRITICAL PROBABILITY THRESHOLDS (v146.0 - STATISTICS FIRST):**
 - ✅ ALWAYS recommend the BEST option, even if probability is 25%+ (MINDEN meccsre tipp!)
-- ✅ Use CONTEXTUAL ANALYSIS to override statistics when context is stronger
-- ✅ If stats say Home (60%) BUT context says Away (injuries, form) → RECOMMEND AWAY (context wins!)
+- ✅ FOLLOW STATISTICS as primary guide - they are more reliable than context
+- ✅ Only override statistics if context is EXTREME (multiple critical factors)
+- ✅ If stats say Home (60%) AND context slightly favors Away → STILL RECOMMEND HOME (stats win!)
+- ✅ If stats say Home (60%) BUT context is EXTREME (3+ key players out, LLLLL form) → RECOMMEND AWAY
 - ✅ If stats and context AGREE → HIGH confidence (8-9/10)
-- ✅ If stats and context DISAGREE → Use the STRONGER signal (stats OR context)
 
 📊 **DRAW PROBABILITY CHECK:**
 - If Draw probability > 30% AND it's the highest probability → RECOMMEND DRAW (if odds >= 1.8)
 - If Draw probability > 35% → Consider Over/Under or BTTS as alternative
-- BUT: If context strongly suggests a winner → RECOMMEND THE WINNER (context overrides stats)
+- BUT: Only override if context is EXTREME (not just "slightly suggests a winner")
 
-🎯 **CONFIDENCE REQUIREMENTS (v145.0 - PERFECT TIPS):**
-- Probability 25-35% → Minimum confidence: 5.5/10 (TÖKÉLETES TIPPEK - lazább)
+🎯 **CONFIDENCE REQUIREMENTS (v146.0 - STATISTICS FIRST):**
+- Probability 25-35% → Minimum confidence: 5.5/10
 - Probability 35-45% → Minimum confidence: 6.0/10
 - Probability 45-55% → Minimum confidence: 6.5/10
 - Probability 55-65% → Minimum confidence: 6.5/10
 - Probability > 65% → Minimum confidence: 7.0/10
-- **CRITICAL: If context strongly supports → Can go 0.5-1.0 lower!**
+- **CRITICAL: If stats and context AGREE → Add 0.5-1.0 bonus!**
+- **CRITICAL: If stats and context DISAGREE slightly → Follow stats, confidence based on stats!**
 
-⚠️ **STATISTICAL VS CONTEXTUAL AGREEMENT (v142.0 - CONTEXT WINS):**
-- If stats say Home wins BUT context (injuries, form, motivation) says Away → RECOMMEND AWAY (context is more important!)
-- If stats and context DISAGREE (gap > 3.0) → Use the STRONGER signal (whichever has higher confidence)
+⚠️ **STATISTICAL VS CONTEXTUAL AGREEMENT (v146.0 - STATISTICS FIRST):**
+- **PRIMARY RULE: Statistics are MORE RELIABLE than context!**
+- If stats say Home wins (60%) AND context slightly favors Away → STILL RECOMMEND HOME (stats win!)
+- If stats say Home wins (60%) BUT context is EXTREME (3+ key players out, terrible form) → RECOMMEND AWAY
+- If stats and context DISAGREE (gap > 3.0) → Use STATISTICS unless context is EXTREME
 - If stats and context AGREE → HIGH confidence (8-9/10)
-- CRITICAL: Context (injuries, form, motivation) is MORE IMPORTANT than pure statistics!
+- **CRITICAL: Only override statistics if context is EXTREME (multiple critical factors combined)!**
 
-⚠️ **WHEN TO SKIP A RECOMMENDATION (v142.0 - RARELY SKIP):**
+⚠️ **WHEN TO SKIP A RECOMMENDATION (v146.0 - RARELY SKIP):**
 - ONLY skip if NO outcome has probability >= 25% AND confidence < 5.0/10
 - ALWAYS try to find the BEST option, even if it's not perfect
-- If stats are weak BUT context is strong → USE CONTEXT (recommend based on context)
-- Goal: TIPP MINDEN MECCSRE, de a LEGJOBB opciót válaszd!
+- If stats are weak BUT context is strong → STILL FOLLOW STATS (unless context is EXTREME)
+- Goal: TIPP MINDEN MECCSRE, de a LEGJOBB opciót válaszd (statisztika alapján)!
 
 🚫 **ABSOLUTELY FORBIDDEN MARKETS (v139.3 - NO LOW ODDS!):**
 - ❌ "Dupla-Esély" / "Double Chance" / "1X" / "X2" / "12" - TILOS! (Alacsony odds ~1.3-1.6)
