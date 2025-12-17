@@ -403,14 +403,14 @@ Match: {home} vs {away}
 - **Away Team Stats**: GP: {away_gp}, GF: {away_gf}, GA: {away_ga}
 - **Head-to-Head**: {h2h_summary} - THIS SHOWS REAL HISTORY!
 - **Key Players**: Home: {key_players_home} | Away: {key_players_away}
-- **Missing Players**: Home: {absentees_home} | Away: {absentees_away} - THIS CAN CHANGE EVERYTHING!
+- **Missing Players**: Home: {absentees_home} | Away: {absentees_away} - ONLY OVERRIDE IF EXTREME (3+ key players out)!
 - **Tactical Briefing**: {tacticalBriefing} - THIS IS CRITICAL!
 - **Playing Styles**: {home_style} vs {away_style}
 - **Referee**: {referee_name} ({referee_style}) - THIS AFFECTS THE GAME!
 - **Stadium**: {stadium_location}
 - **Weather**: {weather_info} - THIS CAN IMPACT THE RESULT!
 - **Match Tension**: {tension}
-- **Specialist Analysis**: {specialist_reasoning} - THIS IS YOUR PRIMARY GUIDE!
+- **Specialist Analysis**: {specialist_reasoning} - THIS IS YOUR SECONDARY GUIDE!
 
 [CRITICAL PREDICTION RULES - v146.0 STATISTICS FIRST - ONLY OVERRIDE IF EXTREME]:
 1. **STATISTICS ARE PRIMARY** - The statistical simulation says {expected_score} - THIS IS YOUR PRIMARY GUIDE!
@@ -470,10 +470,10 @@ Match: {home} vs {away}
 - **Away Team Stats**: GP: {away_gp}, GF: {away_gf}, GA: {away_ga}
 - **Head-to-Head**: {h2h_summary} - THIS SHOWS REAL HISTORY!
 - **Key Players**: Home: {key_players_home} | Away: {key_players_away}
-- **Missing Players**: Home: {absentees_home} | Away: {absentees_away} - THIS CAN CHANGE EVERYTHING!
+- **Missing Players**: Home: {absentees_home} | Away: {absentees_away} - ONLY OVERRIDE IF EXTREME (3+ key players out)!
 - **Tactical Briefing**: {tacticalBriefing} - THIS IS CRITICAL!
 - **Playing Styles**: {home_style} vs {away_style}
-- **Specialist Analysis**: {specialist_reasoning} - THIS IS YOUR PRIMARY GUIDE!
+- **Specialist Analysis**: {specialist_reasoning} - THIS IS YOUR SECONDARY GUIDE!
 
 [CRITICAL PREDICTION RULES - v146.0 STATISTICS FIRST - ONLY OVERRIDE IF EXTREME]:
 1. **STATISTICS ARE PRIMARY** - The statistical simulation says {expected_score} - THIS IS YOUR PRIMARY GUIDE!
