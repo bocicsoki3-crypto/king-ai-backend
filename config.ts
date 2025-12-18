@@ -213,6 +213,7 @@ export const SPORT_CONFIG: ISportConfigMap = {
             "Champions League": { slug: "uefa.champions", country: "World" },
             "Europa League": { slug: "uefa.europa", country: "World" },
             "Conference League": { slug: "uefa.europa.conf", country: "World" },
+            "UEFA Conference League": { slug: "uefa.europa.conf", country: "World" },
             "FIFA World Cup": { slug: "fifa.world", country: "World" },
             "UEFA European Championship": { slug: "uefa.euro", country: "World" },
             "UEFA Nations League": { slug: "uefa.nations", country: "World" },
