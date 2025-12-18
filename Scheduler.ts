@@ -31,12 +31,12 @@ export function initScheduler() {
         console.log(`[Scheduler] Indítási ellenőrzés (Idő: ${hour} óra)...`);
 
         if (hour >= 12 && hour < 18) {
-            console.log('[Scheduler] Dél elmúlt vagy most van, azonnali foci szkennelés...');
+            console.log('[Scheduler] Napközbeni időszak, azonnali foci szkennelés...');
             runSniperScan('soccer');
         } else if (hour >= 18 || hour < 4) {
-            console.log('[Scheduler] Esti/Éjszakai időszak, azonnali US Sports és Foci szkennelés...');
+            console.log('[Scheduler] Esti/Éjszakai időszak, csak US Sports (Kosár/Hoki) szkennelés...');
+            // Csak kosár és hoki este, a foci már lefutott délben
             runSniperScan('us_sports');
-            runSniperScan('soccer');
         }
     }, 5000); 
 }
