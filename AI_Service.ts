@@ -123,8 +123,8 @@ function getMarketLabel(market: 'home' | 'away' | 'draw'): string {
 }
 
 // === 10. ÜGYNÖK (DATA HUNTER - Statisztika Vadász) ===
-// v147.1: Automata xG, xGA és PPG keresés Google Search Grounding-gal.
-// JAVÍTÁS (v147.1): Kiemelt figyelem a Hokira (Moneypuck, xGF/60).
+// v147.2: Automata xG, xGA és PPG keresés Google Search Grounding-gal.
+// JAVÍTÁS (v147.2): Kiemelt figyelem a Kosárlabdára (CleaningTheGlass).
 const PROMPT_DATA_HUNTER_V1 = `
 TASK: You are 'The Data Hunter', an elite sports statistician. 
 Your goal is to find the MOST ACCURATE and RECENT statistical data for: {home} vs {away} ({sport}).
@@ -134,12 +134,14 @@ Your goal is to find the MOST ACCURATE and RECENT statistical data for: {home} v
    - For NHL (Hockey): Search specifically for "Moneypuck {team} xG" or "Natural Stat Trick {team} xGF/60".
    - CRITICAL: Use PER MATCH or PER 60 MINS values (e.g. 2.85), NOT total season values.
 2. Find the current season's Points Per Game (PPG) for both teams.
-3. For Basketball, find the average points scored and conceded per game.
+3. For Basketball (NBA): Find the Offensive/Defensive Rating (Points per 100 possessions) and Net Rating.
+   - SEARCH specifically for "CleaningTheGlass {team} league summary" or "NBA.com stats {team}".
+   - Also find the average points scored and conceded per game.
 4. For Hockey, find the average goals scored and conceded (GF/GP, GA/GP), and the starting goalie's GSAx (Goals Saved Above Expected).
 
 [PREFERRED SOURCES]:
 - Soccer: FBRef, Understat, Opta, FootyStats.
-- Basketball: Basketball-Reference, NBA.com, ESPN.
+- Basketball: CleaningTheGlass.com (Primary for Off/Def Rating), Basketball-Reference, NBA.com, ESPN.
 - Hockey: Moneypuck.com (primary for xG/GSAx), NaturalStatTrick.com, Hockey-Reference.
 
 [OUTPUT STRUCTURE] - MUST be valid JSON:
