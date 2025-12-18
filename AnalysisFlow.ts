@@ -452,34 +452,12 @@ export async function runFullAnalysis(params: any, sport: string, openingOdds: a
         };
         const specialistReport = await runStep_Specialist(specialistInput);
 
-        // === BIZTONSÁGI SANITIZÁLÁS (v108.3) + REALITÁS ELLENŐRZÉS (v139.2) ===
+        // === BIZTONSÁGI SANITIZÁLÁS (v108.3) - v147.0: KORLÁTOK ELTÁVOLÍTVA ===
         const { modified_mu_h: raw_mu_h, modified_mu_a: raw_mu_a } = specialistReport;
         
+        // v147.0 VICTORY PROTOCOL: Nincs több korlátozás, az AI módosítása az abszulút igazság!
         let mu_h = (typeof raw_mu_h === 'number' && !isNaN(raw_mu_h)) ? raw_mu_h : pure_mu_h;
         let mu_a = (typeof raw_mu_a === 'number' && !isNaN(raw_mu_a)) ? raw_mu_a : pure_mu_a;
-        
-        // === v139.2: REALITÁS ELLENŐRZÉS ===
-        // Maximum ±50% módosítás elfogadható (pl. 2.0 → 1.0-3.0)
-        // Ez megakadályozza, hogy a Specialist irreális módosításokat adjon
-        const MAX_ADJUSTMENT_PCT = 0.50;
-        const min_mu_h = pure_mu_h * (1 - MAX_ADJUSTMENT_PCT);
-        const max_mu_h = pure_mu_h * (1 + MAX_ADJUSTMENT_PCT);
-        const min_mu_a = pure_mu_a * (1 - MAX_ADJUSTMENT_PCT);
-        const max_mu_a = pure_mu_a * (1 + MAX_ADJUSTMENT_PCT);
-        
-        // Ha túl extrém, korrigáljuk
-        if (mu_h < min_mu_h || mu_h > max_mu_h) {
-            console.warn(`[AnalysisFlow v139.2] ⚠️ Specialist módosítás túl extrém (H: ${mu_h.toFixed(2)}, korlát: ${min_mu_h.toFixed(2)}-${max_mu_h.toFixed(2)}). Korrigálva.`);
-            mu_h = Math.max(min_mu_h, Math.min(max_mu_h, mu_h));
-        }
-        if (mu_a < min_mu_a || mu_a > max_mu_a) {
-            console.warn(`[AnalysisFlow v139.2] ⚠️ Specialist módosítás túl extrém (A: ${mu_a.toFixed(2)}, korlát: ${min_mu_a.toFixed(2)}-${max_mu_a.toFixed(2)}). Korrigálva.`);
-            mu_a = Math.max(min_mu_a, Math.min(max_mu_a, mu_a));
-        }
-        
-        if (mu_h !== raw_mu_h || mu_a !== raw_mu_a) {
-            console.warn(`[AnalysisFlow] FIGYELEM: A Specialista hibás adatot küldött vagy túl extrém módosítást adott. Korrigálva.`);
-        }
         
         console.log(`Specialista (AI) (Súlyozott xG - Végleges): H=${mu_h.toFixed(2)}, A=${mu_a.toFixed(2)}`);
         

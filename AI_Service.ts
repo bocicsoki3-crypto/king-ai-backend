@@ -129,7 +129,8 @@ TASK: You are 'The Data Hunter', an elite sports statistician.
 Your goal is to find the MOST ACCURATE and RECENT statistical data for: {home} vs {away} ({sport}).
 
 [SEARCH MISSION]:
-1. Find the current season's Expected Goals (xG) and Expected Goals Against (xGA) per match for both teams.
+1. Find the current season's AVERAGE Expected Goals (xG) and Expected Goals Against (xGA) PER MATCH for both teams.
+   - CRITICAL: Use PER MATCH values (e.g. 1.45), NOT total season values (e.g. 54.2).
 2. Find the current season's Points Per Game (PPG) for both teams.
 3. For Basketball, find the average points scored and conceded per game.
 4. For Hockey, find the average goals scored and conceded, and if possible, the starting goalie's GSAx.
