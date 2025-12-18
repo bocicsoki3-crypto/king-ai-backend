@@ -451,9 +451,9 @@ export function calculateValue(
 ): any[] { 
     
     const valueBets: any[] = [];
-    // === v142.0: MINDEN MECCSRE TIPP - VALUE THRESHOLD ===
-    // 7% → 3%: MINDEN meccsre tipp, de még mindig profitábilis (minimum 3% value)
-    const MIN_VALUE_THRESHOLD = 3.0; // Minimum 3% észlelt érték (v141.0: 7.0% → 3.0% - MINDEN meccsre tipp)
+    // === v147.0: VICTORY VALUE THRESHOLD ===
+    // 3% -> 6%: Csak a valóban értékes tippeket mutatjuk meg az AI-nak.
+    const MIN_VALUE_THRESHOLD = 6.0; // Minimum 6% észlelt érték (volt: 3.0%)
 
     if (!oddsData || !oddsData.allMarkets || oddsData.allMarkets.length === 0 || !sim) {
         console.log("[Model.ts/calculateValue] Kihagyva: Hiányzó odds adatok vagy szimulációs eredmény.");
