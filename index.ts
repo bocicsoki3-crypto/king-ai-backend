@@ -19,6 +19,7 @@ import { updatePowerRatings, runConfidenceCalibration } from './LearningService.
 import { runSettlementProcess } from './settlementService.js';
 import { calculateBettingStats, checkTiltProtection } from './trackingService.js';
 import { getBankrollStatus, canPlaceBet } from './bankrollService.js';
+import { initScheduler } from './Scheduler.js'; // === ÚJ: Ütemező importálása ===
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -431,6 +432,9 @@ async function startServer() {
         app.listen(PORT, () => {
             console.log(`🎉 King AI Backend (TypeScript) sikeresen elindult!`);
             console.log(`A szerver itt fut: http://localhost:${PORT}`);
+            
+            // === ÚJ: Automata szkenner és ütemező indítása ===
+            initScheduler();
         });
     } catch (e: any) {
         console.error("KRITIKUS HIBA a szerver indítása során:", e.message, e.stack);
