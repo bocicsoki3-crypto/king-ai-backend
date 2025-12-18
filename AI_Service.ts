@@ -123,8 +123,8 @@ function getMarketLabel(market: 'home' | 'away' | 'draw'): string {
 }
 
 // === 10. ÜGYNÖK (DATA HUNTER - Statisztika Vadász) ===
-// v147.2: Automata xG, xGA és PPG keresés Google Search Grounding-gal.
-// JAVÍTÁS (v147.2): Kiemelt figyelem a Kosárlabdára (CleaningTheGlass).
+// v147.3: Automata xG, xGA és PPG keresés Google Search Grounding-gal.
+// JAVÍTÁS (v147.3): Kosárlabda Off/Def Rating -> xG/xGA mapping kényszerítése.
 const PROMPT_DATA_HUNTER_V1 = `
 TASK: You are 'The Data Hunter', an elite sports statistician. 
 Your goal is to find the MOST ACCURATE and RECENT statistical data for: {home} vs {away} ({sport}).
@@ -136,6 +136,7 @@ Your goal is to find the MOST ACCURATE and RECENT statistical data for: {home} v
 2. Find the current season's Points Per Game (PPG) for both teams.
 3. For Basketball (NBA): Find the Offensive/Defensive Rating (Points per 100 possessions) and Net Rating.
    - SEARCH specifically for "CleaningTheGlass {team} league summary" or "NBA.com stats {team}".
+   - MAPPING RULE: Put the "Offensive Rating" into "xg_per_game" and "Defensive Rating" into "xga_per_game" fields.
    - Also find the average points scored and conceded per game.
 4. For Hockey, find the average goals scored and conceded (GF/GP, GA/GP), and the starting goalie's GSAx (Goals Saved Above Expected).
 
@@ -173,10 +174,10 @@ export async function runStep_DataHunter(home: string, away: string, sport: stri
         const filledPrompt = fillPromptTemplate(PROMPT_DATA_HUNTER_V1, { home, away, sport });
         // Kiemelten fontos: useSearch: true!
         const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_DataHunter", 2, true);
-        console.log(`[AI_Service v147.0 - Data Hunter] SIKER: Adatok megtalálva a(z) ${home} vs ${away} meccshez.`);
+        console.log(`[AI_Service v147.3 - Data Hunter] SIKER: Adatok megtalálva a(z) ${home} vs ${away} meccshez.`);
         return result;
     } catch (e: any) {
-        console.error(`[AI_Service v147.0 - Data Hunter] HIBA az adatvadászat során: ${e.message}`);
+        console.error(`[AI_Service v147.3 - Data Hunter] HIBA az adatvadászat során: ${e.message}`);
         return null;
     }
 }

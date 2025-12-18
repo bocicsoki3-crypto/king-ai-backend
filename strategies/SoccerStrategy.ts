@@ -198,12 +198,12 @@ export class SoccerStrategy implements ISportStrategy {
                 const p1_mu_a = ((a_xG * manual_weight) + h_xGA) / (1 + manual_weight);
                 
                 console.log(`[SoccerStrategy v147.0] ✅ VICTORY PROTOCOL P1: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)} (Weight: ${manual_weight}x)`);
-                
-                return {
-                    pure_mu_h: p1_mu_h,
-                    pure_mu_a: p1_mu_a,
+            
+            return {
+                pure_mu_h: p1_mu_h,
+                pure_mu_a: p1_mu_a,
                     source: `Manual (Victory Protocol 1.5x xG Weight) [v147.0]`
-                };
+            };
             }
         }
 
