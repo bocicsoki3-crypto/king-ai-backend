@@ -22,7 +22,7 @@ export async function runSniperScan(sportType: 'soccer' | 'us_sports') {
             if (!config) continue;
 
             // 1. Lekérjük a meccseket a következő 1 napra
-            const fixtures = await _getFixturesFromEspn(sport, 1);
+            const fixtures = await _getFixturesFromEspn(sport, "1");
             console.log(`[AutoScanner] ${fixtures.length} meccs találva a(z) ${sport} sportágban.`);
 
             for (const fixture of fixtures) {
