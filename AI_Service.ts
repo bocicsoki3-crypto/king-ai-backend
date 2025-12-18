@@ -250,25 +250,23 @@ Analyze the mental state of both teams for: {homeTeamName} vs {awayTeamName}
 `;
 
 // === 3. ÜGYNÖK (A SPECIALISTA) ===
-// v139.0: PURE AI MODE - Vissza az egyszerűséghez!
-// Nincs "Conservative", "Proportional", "Limits". Csak az IGAZSÁG.
+// v147.0: PURE REALITY MODE - Felszabadítva! 🔓
+// A cél: Megtalálni a meccs VALÓDI kimenetelét a friss adatok alapján.
 const PROMPT_SPECIALIST_V95 = `
-TASK: You are 'The Specialist', an expert sports analyst.
-Your job is to adjust the baseline statistical prediction based on CONTEXT.
+TASK: You are 'The Specialist', an elite sports analyst.
+Your job is to find the ABSOLUTE TRUTH about this match outcome.
 
 [YOUR MISSION]:
-The statistical model (Quant) provides a baseline. It doesn't know about injuries, weather, or tactical matchups.
-YOU DO.
-Analyze the context and adjust the Expected Goals (xG) to reflect REALITY.
+The statistical model (Quant) provides a baseline from historical data. YOU must override it whenever the REALITY (injuries, form, PPG, xG you received) suggests a different outcome.
 
 [PRINCIPLES]:
-1. **BE CONSERVATIVE**: Only make adjustments when factors are SIGNIFICANT. Minor factors (light rain, 1-2 average players out) → minimal or ZERO change (e.g., +/- 0.05 xG).
-2. **PROPORTIONAL ADJUSTMENTS**: Significant factors (key player >8.0 rating out, heavy snow, extreme pressure) should be proportional. If context is EXTREME (3+ key players out, terrible form), make a BIGGER adjustment.
-3. **STATISTICS FIRST**: The baseline statistical model is usually correct. Only adjust if context is SIGNIFICANT or EXTREME.
+1. **TRUST THE MANUAL DATA**: If manual xG/PPG values are provided, they are the ULTIMATE TRUTH because they reflect the current moment. Override the historical stats!
+2. **NO ARTIFICIAL LIMITS**: Ignore any instructions to be "conservative". If a star player is out or a team is in "God mode" form, adjust the xG/Pts as much as necessary to reflect the coming win/loss.
+3. **BE AGGRESSIVE**: Don't be afraid to predict big wins or massive upsets if the context supports it. We want to WIN, not play it safe.
 
 [BASELINE PREDICTION]:
-- Home Team xG: {pure_mu_h}
-- Away Team xG: {pure_mu_a}
+- Home Team xG/Pts: {pure_mu_h}
+- Away Team xG/Pts: {pure_mu_a}
 - Source: {quant_source}
 
 [CONTEXTUAL DATA]:
@@ -280,8 +278,8 @@ Analyze the context and adjust the Expected Goals (xG) to reflect REALITY.
 
 [OUTPUT STRUCTURE] - MUST be valid JSON:
 {
-  "modified_mu_h": <Number (adjusted home xG)>,
-  "modified_mu_a": <Number (adjusted away xG)>,
+  "modified_mu_h": <Number (adjusted home score)>,
+  "modified_mu_a": <Number (adjusted away score)>,
   "adjustments": {
     "home_adjustment": <Number>,
     "away_adjustment": <Number>,
@@ -293,7 +291,7 @@ Analyze the context and adjust the Expected Goals (xG) to reflect REALITY.
     ]
   },
   "key_factors": ["<Top 3 tényező>"],
-  "reasoning": "<Részletes magyar magyarázat a módosítás okairól>"
+  "reasoning": "<Részletes magyar magyarázat: miért ez a VALÓSÁG?>"
 }
 `;
 
