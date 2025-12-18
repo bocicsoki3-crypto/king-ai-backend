@@ -23,19 +23,20 @@ export function initScheduler() {
         timezone: "Europe/Budapest"
     });
 
-    // --- JAVÍTÁS (v147.5): AZONNALI INDÍTÁS HA SZÜKSÉGES ---
-    // Ne várjon pontosan az órára, ha indításkor látszik hogy már kellene futnia
+    // --- JAVÍTÁS (v147.9): IDŐZÓNA-BIZTOS AZONNALI INDÍTÁS ---
     setTimeout(() => {
         const now = new Date();
-        const hour = now.getHours();
-        console.log(`[Scheduler] Indítási ellenőrzés (Idő: ${hour} óra)...`);
+        // Magyar idő szerinti óra lekérése (Renderen is!)
+        const budapestTime = now.toLocaleString("en-US", {timeZone: "Europe/Budapest"});
+        const hour = new Date(budapestTime).getHours();
+        
+        console.log(`[Scheduler] Indítási ellenőrzés (Magyar idő: ${hour} óra)...`);
 
         if (hour >= 12 && hour < 18) {
-            console.log('[Scheduler] Napközbeni időszak, azonnali foci szkennelés...');
+            console.log('[Scheduler] Napközbeni időszak (12-18), azonnali foci szkennelés...');
             runSniperScan('soccer');
-        } else if (hour >= 18 || hour < 4) {
+        } else {
             console.log('[Scheduler] Esti/Éjszakai időszak, csak US Sports (Kosár/Hoki) szkennelés...');
-            // Csak kosár és hoki este, a foci már lefutott délben
             runSniperScan('us_sports');
         }
     }, 5000); 
