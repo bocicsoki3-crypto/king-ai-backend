@@ -11,8 +11,11 @@ export async function sendSniperReport(to: string, subject: string, htmlContent:
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: {
-                user: process.env.EMAIL_USER, // pl. kingai.reports@gmail.com
-                pass: process.env.EMAIL_PASS  // Alkalmazásjelszó (nem a sima jelszó!)
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS
+            },
+            tls: {
+                rejectUnauthorized: false // JAVÍTÁS: Megkerüli a tanúsítvány hibát (self-signed certificate)
             }
         });
 
