@@ -612,7 +612,12 @@ export async function getRichContextualData(
     }
 
     // 3. xG Adatok - FEJLESZTVE v125.0 (Manuális xG Prioritás Biztosítása)
-    console.log(`[DataFetch v125.0] xG forrás ellenőrzés: manual_H_xG=${manual_H_xG}, manual_H_xGA=${manual_H_xGA}, manual_A_xG=${manual_A_xG}, manual_A_xGA=${manual_A_xGA}`);
+    // JAVÍTÁS (v147.1): Részletesebb log a forrásokról
+    console.log(`[DataFetch v147.1] xG forrás ellenőrzés:`, {
+        manual_H_xG,
+        manual_A_xG,
+        deepScoutXG: deepScoutResult?.xg_stats?.home_xg
+    });
     
     if (manual_H_xG != null && manual_H_xGA != null && manual_A_xG != null && manual_A_xGA != null) {
         // ✅ MANUÁLIS xG HASZNÁLATA (PRIORITÁS!)

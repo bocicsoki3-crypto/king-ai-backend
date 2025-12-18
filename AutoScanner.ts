@@ -45,6 +45,16 @@ export async function runSniperScan(sportType: 'soccer' | 'us_sports') {
                         continue;
                     }
 
+                    // JAVÍTÁS (v147.1): Részletesebb logolás az AI által talált adatokról
+                    console.log(`[AutoScanner] Adatvadász fogás (${sport}):`, JSON.stringify({
+                        home: fixture.home,
+                        away: fixture.away,
+                        source: huntedData.source_found,
+                        h_xg: huntedData.home_stats?.xg_per_game,
+                        h_avg: huntedData.home_stats?.avg_pts_scored,
+                        h_gsax: huntedData.hockey_extras?.home_goalie_gsax
+                    }, null, 2));
+
                     // 3. Adatgyűjtés a vadászott adatokkal
                     const manualStats = {
                         manual_H_xG: huntedData.home_stats?.xg_per_game || huntedData.home_stats?.avg_pts_scored,

@@ -123,22 +123,24 @@ function getMarketLabel(market: 'home' | 'away' | 'draw'): string {
 }
 
 // === 10. ÜGYNÖK (DATA HUNTER - Statisztika Vadász) ===
-// v147.0: Automata xG, xGA és PPG keresés Google Search Grounding-gal.
+// v147.1: Automata xG, xGA és PPG keresés Google Search Grounding-gal.
+// JAVÍTÁS (v147.1): Kiemelt figyelem a Hokira (Moneypuck, xGF/60).
 const PROMPT_DATA_HUNTER_V1 = `
 TASK: You are 'The Data Hunter', an elite sports statistician. 
 Your goal is to find the MOST ACCURATE and RECENT statistical data for: {home} vs {away} ({sport}).
 
 [SEARCH MISSION]:
 1. Find the current season's AVERAGE Expected Goals (xG) and Expected Goals Against (xGA) PER MATCH for both teams.
-   - CRITICAL: Use PER MATCH values (e.g. 1.45), NOT total season values (e.g. 54.2).
+   - For NHL (Hockey): Search specifically for "Moneypuck {team} xG" or "Natural Stat Trick {team} xGF/60".
+   - CRITICAL: Use PER MATCH or PER 60 MINS values (e.g. 2.85), NOT total season values.
 2. Find the current season's Points Per Game (PPG) for both teams.
 3. For Basketball, find the average points scored and conceded per game.
-4. For Hockey, find the average goals scored and conceded, and if possible, the starting goalie's GSAx.
+4. For Hockey, find the average goals scored and conceded (GF/GP, GA/GP), and the starting goalie's GSAx (Goals Saved Above Expected).
 
 [PREFERRED SOURCES]:
 - Soccer: FBRef, Understat, Opta, FootyStats.
 - Basketball: Basketball-Reference, NBA.com, ESPN.
-- Hockey: Hockey-Reference, Moneypuck, Natural Stat Trick.
+- Hockey: Moneypuck.com (primary for xG/GSAx), NaturalStatTrick.com, Hockey-Reference.
 
 [OUTPUT STRUCTURE] - MUST be valid JSON:
 {
