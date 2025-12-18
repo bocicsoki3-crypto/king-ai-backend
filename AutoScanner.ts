@@ -4,11 +4,14 @@ import { getSportStrategy } from './strategies/StrategyFactory.js';
 import { sendSniperReport } from './EmailService.js';
 import { _getFixturesFromEspn, findMainTotalsLine } from './providers/common/utils.js';
 import { SPORT_CONFIG } from './config.js';
+import { runStep_DataHunter } from './AI_Service.js';
+import { runFullAnalysis } from './AnalysisFlow.js';
 
 const REPORT_EMAIL = 'bocicsoki3@gmail.com';
 
 /**
  * Automata szkenner a nagy értékű (Value) meccsek megtalálásához.
+ * v147.0: Mostantól önállóan kutat az adatok után és teljes elemzést küld.
  */
 export async function runSniperScan(sportType: 'soccer' | 'us_sports') {
     console.log(`[AutoScanner] Szkennelés indítása: ${sportType}...`);
@@ -27,20 +30,41 @@ export async function runSniperScan(sportType: 'soccer' | 'us_sports') {
 
             for (const fixture of fixtures) {
                 try {
-                    // 2. Gyors adatgyűjtés (csak statisztika és odds, AI nélkül)
-                    // Megpróbáljuk a cache-t használni ha van
+                    console.log(`[AutoScanner] Vizsgálat: ${fixture.home} vs ${fixture.away}...`);
+                    
+                    // 2. STATISZTIKA VADÁSZAT (Deep Search) - Automata xG/PPG keresés
+                    const huntedData = await runStep_DataHunter(fixture.home, fixture.away, sport);
+                    
+                    if (!huntedData) {
+                        console.warn(`[AutoScanner] Nem sikerült adatokat vadászni a(z) ${fixture.home} vs ${fixture.away} meccshez. Átugrás.`);
+                        continue;
+                    }
+
+                    // 3. Adatgyűjtés a vadászott adatokkal
+                    const manualStats = {
+                        manual_H_xG: huntedData.home_stats?.xg_per_game || huntedData.home_stats?.avg_pts_scored,
+                        manual_H_xGA: huntedData.home_stats?.xga_per_game || huntedData.home_stats?.avg_pts_conceded,
+                        manual_A_xG: huntedData.away_stats?.xg_per_game || huntedData.away_stats?.avg_pts_scored,
+                        manual_A_xGA: huntedData.away_stats?.xga_per_game || huntedData.away_stats?.avg_pts_conceded,
+                        manual_H_PPG: huntedData.home_stats?.ppg,
+                        manual_A_PPG: huntedData.away_stats?.ppg,
+                        home_gsax: huntedData.hockey_extras?.home_goalie_gsax,
+                        away_gsax: huntedData.hockey_extras?.away_goalie_gsax
+                    };
+
                     const data = await getRichContextualData({
                         sport,
                         homeTeamName: fixture.home,
                         awayTeamName: fixture.away,
                         leagueName: fixture.league,
                         utcKickoff: fixture.utcKickoff,
-                        forceNew: false
+                        forceNew: false,
+                        ...manualStats
                     });
 
                     if (!data.oddsData || !data.rawStats) continue;
 
-                    // 3. Nyers statisztikai becslés (Quant)
+                    // 4. Nyers statisztikai becslés (Quant) - Most már a vadászott adatokkal (1.5x súly!)
                     const strategy = getSportStrategy(sport);
                     const pureXG = estimatePureXG(
                         fixture.home,
@@ -54,43 +78,54 @@ export async function runSniperScan(sportType: 'soccer' | 'us_sports') {
                         data.rawData?.absentees
                     );
 
-                    // 4. Gyors szimuláció
+                    // 5. Gyors szimuláció a szűréshez
                     const mainLine = findMainTotalsLine(data.oddsData, sport);
                     const sim = simulateMatchProgress(
                         pureXG.pure_mu_h,
                         pureXG.pure_mu_a,
-                        0, 0, 10000, // 10k szimuláció elég az előszűréshez
+                        0, 0, 15000, 
                         sport,
                         null,
                         mainLine,
                         data.rawData
                     );
 
-                    // 5. Value számítás
+                    // 6. Value számítás
                     const valueBets = calculateValue(sim, data.oddsData, sport, fixture.home, fixture.away);
 
-                    // 6. Szűrés: Csak a 7% feletti value
+                    // 7. Szűrés: Csak a 7% feletti value
                     const highValueBets = valueBets.filter(vb => {
                         const val = parseFloat(vb.value.replace('+', '').replace('%', ''));
                         return val >= 7.0;
                     });
 
                     if (highValueBets.length > 0) {
-                        results.push({
-                            match: `${fixture.home} vs ${fixture.away}`,
-                            league: fixture.league,
-                            time: new Date(fixture.utcKickoff).toLocaleString('hu-HU'),
-                            bets: highValueBets
-                        });
+                        console.log(`[AutoScanner] 🔥 TALÁLAT: ${fixture.home} vs ${fixture.away} - Teljes elemzés indítása...`);
+                        
+                        // 8. TELJES VICTORY PROTOCOL ELEMZÉS (Specialista, Pszichológus, Mester AI, Próféta)
+                        const fullAnalysis: any = await runFullAnalysis({
+                            ...fixture,
+                            leagueName: fixture.league,
+                            ...manualStats
+                        }, sport, {});
+
+                        if (fullAnalysis && !fullAnalysis.error) {
+                            results.push({
+                                match: `${fixture.home} vs ${fixture.away}`,
+                                league: fixture.league,
+                                time: new Date(fixture.utcKickoff).toLocaleString('hu-HU'),
+                                hunted_stats: manualStats,
+                                analysis: fullAnalysis.analysisData
+                            });
+                        }
                     }
                 } catch (err) {
-                    // Egyedi meccs hiba ne állítsa meg a többit
                     console.error(`[AutoScanner] Hiba a meccs szkennelésekor (${fixture.home} vs ${fixture.away}):`, err);
                 }
             }
         }
 
-        // 7. Jelentés küldése (Mindenképpen küldünk, akkor is ha üres)
+        // 9. Jelentés küldése
         await sendEmailReport(sportType, results);
 
     } catch (error: any) {
@@ -103,53 +138,89 @@ async function sendEmailReport(type: string, results: any[]) {
     const subject = `${results.length > 0 ? '🔥' : 'ℹ️'} King AI Sniper Report - ${isSoccer ? 'Foci' : 'Kosár/Hoki'} (${new Date().toLocaleDateString('hu-HU')})`;
     
     let html = `
-        <h2 style="color: #d32f2f;">King AI Sniper - v147.0 Victory Protocol</h2>
-        <p>Időszak: ${isSoccer ? 'Ma déltől holnap délig' : 'Ma estétől holnap reggelig'}</p>
+        <style>
+            .match-box { margin-bottom: 30px; padding: 20px; border: 2px solid #d32f2f; border-radius: 12px; background-color: #fff; }
+            .stats-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+            .stats-table th, .stats-table td { padding: 10px; border: 1px solid #eee; text-align: center; }
+            .verdict { background-color: #fffde7; padding: 15px; border-left: 5px solid #fbc02d; margin: 15px 0; }
+            .prophet { font-style: italic; color: #455a64; background-color: #f1f8e9; padding: 15px; border-radius: 8px; }
+            .badge { display: inline-block; padding: 5px 10px; border-radius: 20px; color: #fff; font-weight: bold; font-size: 0.8em; }
+            .badge-value { background-color: #4caf50; }
+            .badge-odds { background-color: #2196f3; }
+        </style>
+        <h1 style="color: #d32f2f; text-align: center;">King AI Sniper - v147.0 Victory Protocol</h1>
+        <p style="text-align: center;">Időszak: ${isSoccer ? 'Ma déltől holnap délig' : 'Ma estétől holnap reggelig'}</p>
         <hr>
     `;
 
     if (results.length === 0) {
         html += `
-            <div style="padding: 20px; background-color: #f9f9f9; border-radius: 8px; text-align: center;">
-                <p style="font-size: 1.1em; color: #555;">A szkennelés lefutott, de ebben az időszakban <b>nem találtunk 7% feletti matematikai előnyt</b>.</p>
-                <p style="color: #888;">A rendszer továbbra is figyeli a piacokat.</p>
+            <div style="padding: 40px; background-color: #f9f9f9; border-radius: 8px; text-align: center;">
+                <p style="font-size: 1.2em; color: #555;">A szkennelés lefutott, de ebben az időszakban <b>nem találtunk 7% feletti matematikai előnyt</b>.</p>
+                <p style="color: #888;">A statisztikai vadászok tovább figyelik a piacokat.</p>
             </div>
         `;
     } else {
-        html += `<p>A rendszer az alábbi meccseket találta, ahol a <b>matematikai előny meghaladja a 7%-ot</b>.</p>`;
+        html += `<p style="font-size: 1.1em;">A rendszer <b>${results.length} meccset</b> talált, ahol a Victory Protocol minden feltétele teljesült.</p>`;
         
         for (const res of results) {
+            const rec = res.analysis.recommendation;
+            
             html += `
-                <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
-                    <h3 style="margin: 0;">${res.match}</h3>
-                    <p style="color: #666; font-size: 0.9em;">${res.league} | ${res.time}</p>
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <tr style="background: #f4f4f4;">
-                            <th style="text-align: left; padding: 8px;">Piac</th>
-                            <th style="text-align: center; padding: 8px;">Odds</th>
-                            <th style="text-align: center; padding: 8px;">Esély</th>
-                            <th style="text-align: center; padding: 8px;">Value</th>
+                <div class="match-box">
+                    <h2 style="margin: 0; color: #1a237e;">${res.match}</h2>
+                    <p style="color: #666;">${res.league} | ${res.time}</p>
+                    
+                    <div style="margin: 15px 0;">
+                        <span class="badge badge-odds">Odds: ${res.analysis.valueBets[0]?.odds || 'N/A'}</span>
+                        <span class="badge badge-value">Value: ${res.analysis.valueBets[0]?.value || 'N/A'}</span>
+                        <span class="badge" style="background-color: #ff9800;">Bizalom: ${res.analysis.finalConfidenceScore}/10</span>
+                    </div>
+
+                    <div class="verdict">
+                        <h4 style="margin: 0 0 10px 0; color: #f57f17;">🏆 MESTER AI ÍTÉLETE:</h4>
+                        <p style="font-size: 1.2em; font-weight: bold; margin: 5px 0;">${rec.recommended_bet}</p>
+                        <p style="margin: 5px 0;">${rec.brief_reasoning}</p>
+                    </div>
+
+                    <h4 style="margin: 15px 0 5px 0;">📊 TALÁLT "IGAZSÁG" ADATOK:</h4>
+                    <table class="stats-table">
+                        <tr style="background: #f5f5f5;">
+                            <th>Csapat</th>
+                            <th>xG (Várható gól)</th>
+                            <th>xGA (Kapott xG)</th>
+                            <th>PPG (Pont/Meccs)</th>
                         </tr>
-            `;
-
-            for (const bet of res.bets) {
-                html += `
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #eee;">${bet.market}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${bet.odds}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${bet.probability}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; color: green; font-weight: bold;">${bet.value}</td>
-                    </tr>
-                `;
-            }
-
-            html += `
+                        <tr>
+                            <td>Hazai</td>
+                            <td>${res.hunted_stats.manual_H_xG || 'N/A'}</td>
+                            <td>${res.hunted_stats.manual_H_xGA || 'N/A'}</td>
+                            <td>${res.hunted_stats.manual_H_PPG || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <td>Vendég</td>
+                            <td>${res.hunted_stats.manual_A_xG || 'N/A'}</td>
+                            <td>${res.hunted_stats.manual_A_xGA || 'N/A'}</td>
+                            <td>${res.hunted_stats.manual_A_PPG || 'N/A'}</td>
+                        </tr>
                     </table>
-                    <p style="margin-top: 10px; font-style: italic;">Indíts mélyelemzést a manuális xG/PPG adataiddal a 1.5x súlyozáshoz!</p>
+
+                    <div class="prophet">
+                        <h4 style="margin: 0 0 10px 0; color: #2e7d32;">👁️ A PRÓFÉTA LÁTOMÁSA (Múlt időben):</h4>
+                        <p>${res.analysis.strategist.prophetic_timeline}</p>
+                    </div>
                 </div>
             `;
         }
     }
+
+    html += `
+        <br>
+        <p style="color: #888; font-size: 0.8em; text-align: center;">Ez egy automata üzenet a King AI szerverétől. v147.0 VICTORY PROTOCOL aktív. A keresés Google Grounding technológiával történt.</p>
+    `;
+
+    await sendSniperReport(REPORT_EMAIL, subject, html);
+}
 
     html += `
         <br>

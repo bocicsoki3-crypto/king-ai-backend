@@ -122,6 +122,60 @@ function getMarketLabel(market: 'home' | 'away' | 'draw'): string {
     return 'döntetlen';
 }
 
+// === 10. ÜGYNÖK (DATA HUNTER - Statisztika Vadász) ===
+// v147.0: Automata xG, xGA és PPG keresés Google Search Grounding-gal.
+const PROMPT_DATA_HUNTER_V1 = `
+TASK: You are 'The Data Hunter', an elite sports statistician. 
+Your goal is to find the MOST ACCURATE and RECENT statistical data for: {home} vs {away} ({sport}).
+
+[SEARCH MISSION]:
+1. Find the current season's Expected Goals (xG) and Expected Goals Against (xGA) per match for both teams.
+2. Find the current season's Points Per Game (PPG) for both teams.
+3. For Basketball, find the average points scored and conceded per game.
+4. For Hockey, find the average goals scored and conceded, and if possible, the starting goalie's GSAx.
+
+[PREFERRED SOURCES]:
+- Soccer: FBRef, Understat, Opta, FootyStats.
+- Basketball: Basketball-Reference, NBA.com, ESPN.
+- Hockey: Hockey-Reference, Moneypuck, Natural Stat Trick.
+
+[OUTPUT STRUCTURE] - MUST be valid JSON:
+{
+  "home_stats": {
+    "xg_per_game": <number or null>,
+    "xga_per_game": <number or null>,
+    "ppg": <number or null>,
+    "avg_pts_scored": <number or null>,
+    "avg_pts_conceded": <number or null>
+  },
+  "away_stats": {
+    "xg_per_game": <number or null>,
+    "xga_per_game": <number or null>,
+    "ppg": <number or null>,
+    "avg_pts_scored": <number or null>,
+    "avg_pts_conceded": <number or null>
+  },
+  "hockey_extras": {
+    "home_goalie_gsax": <number or null>,
+    "away_goalie_gsax": <number or null>
+  },
+  "source_found": "<Where did you find this data?>"
+}
+`;
+
+export async function runStep_DataHunter(home: string, away: string, sport: string): Promise<any> {
+    try {
+        const filledPrompt = fillPromptTemplate(PROMPT_DATA_HUNTER_V1, { home, away, sport });
+        // Kiemelten fontos: useSearch: true!
+        const result = await _callGeminiWithJsonRetry(filledPrompt, "Step_DataHunter", 2, true);
+        console.log(`[AI_Service v147.0 - Data Hunter] SIKER: Adatok megtalálva a(z) ${home} vs ${away} meccshez.`);
+        return result;
+    } catch (e: any) {
+        console.error(`[AI_Service v147.0 - Data Hunter] HIBA az adatvadászat során: ${e.message}`);
+        return null;
+    }
+}
+
 // === 0. ÜGYNÖK (DEEP SCOUT - Csak Adatgyűjtő) ===
 // VERZIÓ: v129.0 (TEMPORAL PRIORITY - Only Fresh Sources)
 const PROMPT_DEEP_SCOUT_V4 = `
