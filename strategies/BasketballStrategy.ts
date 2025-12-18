@@ -274,17 +274,19 @@ export class BasketballStrategy implements ISportStrategy {
                 // const totalExpectedPoints = p1_mu_h_raw + p1_mu_a_raw;
                 // ... sanity check logika törölve ...
                 
-                const p1_mu_h = (manual_H_xG + manual_A_xGA) / 2;
-                const p1_mu_a = (manual_A_xG + manual_H_xGA) / 2;
+                // === v147.0: VICTORY PROTOCOL - P1 MANUAL PPG WEIGHTING ===
+                // A Felhasználó PPG/xG adatai az ABSZOLÚT IGAZSÁG.
+                // 1.5x súlyozás a manuális adatoknak, hogy kíméletlenül domináljanak.
+                const manual_weight = 1.5;
+                const p1_mu_h = ((manual_H_xG * manual_weight) + manual_A_xGA) / (1 + manual_weight);
+                const p1_mu_a = ((manual_A_xG * manual_weight) + manual_H_xGA) / (1 + manual_weight);
                 
-                console.log(`[BasketballStrategy v132.0] ✅ P1 (MANUÁLIS) VÉGLEGES: mu_h=${p1_mu_h.toFixed(1)}, mu_a=${p1_mu_a.toFixed(1)}`);
-                console.log(`  ↳ Original Input: H_pts=${advancedData.manual_H_xG.toFixed(1)}, A_pts=${advancedData.manual_A_xG.toFixed(1)}`);
-                console.log(`  ↳ After Adjustments: H_pts=${manual_H_xG.toFixed(1)}, A_pts=${manual_A_xG.toFixed(1)}`);
+                console.log(`[BasketballStrategy v147.0] ✅ VICTORY PROTOCOL P1: mu_h=${p1_mu_h.toFixed(1)}, mu_a=${p1_mu_a.toFixed(1)} (Weight: ${manual_weight}x)`);
                 
                 return {
                     pure_mu_h: p1_mu_h,
                     pure_mu_a: p1_mu_a,
-                    source: `Manual (Defensive Adjusted ${leagueDefensiveMultiplier.toFixed(2)}x) [v130.1]`
+                    source: `Manual (Victory Protocol 1.5x PPG Weight) [v147.0]`
                 };
             }
         }

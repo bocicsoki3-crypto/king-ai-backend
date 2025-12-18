@@ -275,17 +275,25 @@ export class HockeyStrategy implements ISportStrategy {
                 // const totalExpectedGoals = p1_mu_h_raw + p1_mu_a_raw;
                 // ... sanity check logika törölve ...
                 
-                const p1_mu_h = (manual_H_xG + manual_A_xGA) / 2;
-                const p1_mu_a = (manual_A_xG + manual_H_xGA) / 2;
+                // === v147.0: VICTORY PROTOCOL - P1 MANUAL XG & GSAX WEIGHTING ===
+                // A Felhasználó xG adatai az ABSZOLÚT IGAZSÁG.
+                // 1.5x súlyozás a manuális adatoknak.
+                const manual_weight = 1.5;
+                let p1_mu_h = ((manual_H_xG * manual_weight) + manual_A_xGA) / (1 + manual_weight);
+                let p1_mu_a = ((manual_A_xG * manual_weight) + manual_H_xGA) / (1 + manual_weight);
+
+                // GSAX INTEGRÁCIÓ (v147.0): Ha van kapus adat, az xG-t módosítjuk
+                const home_gsax = advancedData.home_gsax || 0;
+                const away_gsax = advancedData.away_gsax || 0;
+                p1_mu_h -= away_gsax * 0.5; // Az ellenfél kapusa ment az xG-ből
+                p1_mu_a -= home_gsax * 0.5;
                 
-                console.log(`[HockeyStrategy v132.0] ✅ P1 (MANUÁLIS) VÉGLEGES: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
-                console.log(`  ↳ Original Input: H_goals=${advancedData.manual_H_xG.toFixed(2)}, A_goals=${advancedData.manual_A_xG.toFixed(2)}`);
-                console.log(`  ↳ After Adjustments: H_goals=${manual_H_xG.toFixed(2)}, A_goals=${manual_A_xG.toFixed(2)}`);
+                console.log(`[HockeyStrategy v147.0] ✅ VICTORY PROTOCOL P1: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)} (Weight: ${manual_weight}x, GSAx Applied)`);
                 
                 return {
                     pure_mu_h: p1_mu_h,
                     pure_mu_a: p1_mu_a,
-                    source: `Manual (Defensive Adjusted ${leagueDefensiveMultiplier.toFixed(2)}x) [v130.1]`
+                    source: `Manual (Victory Protocol 1.5x xG Weight + GSAx) [v147.0]`
                 };
             }
         }

@@ -190,63 +190,20 @@ export class SoccerStrategy implements ISportStrategy {
                 // const totalExpectedGoals = p1_mu_h_raw + p1_mu_a_raw;
                 // ... sanity check logika törölve ...
                 
-                // 2. Extrém különbség ellenőrzés
-                const p1_mu_h = (h_xG + a_xGA) / 2;
-                const p1_mu_a = (a_xG + h_xGA) / 2;
-                const diffRatio = Math.max(p1_mu_h, p1_mu_a) / Math.min(p1_mu_h, p1_mu_a);
+                // === v147.0: VICTORY PROTOCOL - P1 MANUAL XG WEIGHTING ===
+                // A Felhasználó xG adatai az ABSZOLÚT IGAZSÁG.
+                // 1.5x súlyozás a manuális adatoknak.
+                const manual_weight = 1.5;
+                const p1_mu_h = ((h_xG * manual_weight) + a_xGA) / (1 + manual_weight);
+                const p1_mu_a = ((a_xG * manual_weight) + h_xGA) / (1 + manual_weight);
                 
-                if (diffRatio > 4.0) {
-                    console.warn(`[SoccerStrategy v130.0] ⚠️ SUSPICIOUS MANUAL xG! Extreme ratio: ${diffRatio.toFixed(2)}x`);
-                    console.warn(`  → Példa: Monaco (1.29) vs Pafos (1.99) = 1.54x (normális)`);
-                    console.warn(`  → De: 3.0 vs 0.5 = 6.0x (gyanús!)`)
-                    console.warn(`  Folytatjuk, de ELLENŐRIZD a manuális inputot!`);
-                }
+                console.log(`[SoccerStrategy v147.0] ✅ VICTORY PROTOCOL P1: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)} (Weight: ${manual_weight}x)`);
                 
-                // === ÚJ v144.0: PPG alapú korrekció (ha van PPG adat) ===
-                if (advancedData?.manual_H_PPG != null && advancedData?.manual_A_PPG != null) {
-                    const h_ppg = advancedData.manual_H_PPG;
-                    const a_ppg = advancedData.manual_A_PPG;
-                    
-                    // PPG alapú erősség korrekció (magasabb PPG → magasabb xG)
-                    // Példa: Ha H_PPG = 2.0 és A_PPG = 1.5, akkor a hazai csapat erősebb
-                    const ppgRatio = h_ppg / a_ppg;
-                    const ppgCorrectionFactor = 1.05; // 5% korrekció maximum
-                    
-                    if (ppgRatio > 1.2) {
-                        // Hazai csapat erősebb → növeljük az xG-t, csökkentjük az xGA-t
-                        h_xG *= (1 + (ppgRatio - 1.2) * ppgCorrectionFactor);
-                        a_xGA *= (1 + (ppgRatio - 1.2) * ppgCorrectionFactor);
-                        console.log(`[SoccerStrategy v144.0] 📊 PPG korrekció (H erősebb): H_PPG=${h_ppg}, A_PPG=${a_ppg}, Ratio=${ppgRatio.toFixed(2)}`);
-                    } else if (ppgRatio < 0.8) {
-                        // Vendég csapat erősebb → növeljük az xG-t, csökkentjük az xGA-t
-                        a_xG *= (1 + ((1 / ppgRatio) - 1.2) * ppgCorrectionFactor);
-                        h_xGA *= (1 + ((1 / ppgRatio) - 1.2) * ppgCorrectionFactor);
-                        console.log(`[SoccerStrategy v144.0] 📊 PPG korrekció (A erősebb): H_PPG=${h_ppg}, A_PPG=${a_ppg}, Ratio=${ppgRatio.toFixed(2)}`);
-                    }
-                    
-                    // Újraszámoljuk a mu értékeket a korrigált xG-vel
-                    const p1_mu_h_corrected = (h_xG + a_xGA) / 2;
-                    const p1_mu_a_corrected = (a_xG + h_xGA) / 2;
-                    
-                    console.log(`[SoccerStrategy v144.0] ✅ PPG korrekció után: mu_h=${p1_mu_h_corrected.toFixed(2)}, mu_a=${p1_mu_a_corrected.toFixed(2)}`);
-                    
-                    return {
-                        pure_mu_h: p1_mu_h_corrected,
-                        pure_mu_a: p1_mu_a_corrected,
-                        source: `Manual (Defensive Adjusted ${leagueDefensiveMultiplier.toFixed(2)}x, PPG Corrected) ${diffRatio > 3.0 ? '⚠️ High Ratio' : ''}`
-                    };
-                }
-                
-                console.log(`[SoccerStrategy v132.0] ✅ P1 (MANUÁLIS xG) VÉGLEGES: mu_h=${p1_mu_h.toFixed(2)}, mu_a=${p1_mu_a.toFixed(2)}`);
-                console.log(`  ↳ Original Input: H_xG=${advancedData.manual_H_xG.toFixed(2)}, A_xG=${advancedData.manual_A_xG.toFixed(2)}`);
-                console.log(`  ↳ After Adjustments: H_xG=${h_xG.toFixed(2)}, A_xG=${a_xG.toFixed(2)}`);
-                console.log(`  ↳ Ratio Check: ${diffRatio.toFixed(2)}x ${diffRatio > 3.0 ? '⚠️ HIGH!' : '✅ OK'}`);
-            
-            return {
-                pure_mu_h: p1_mu_h,
-                pure_mu_a: p1_mu_a,
-                    source: `Manual (Defensive Adjusted ${leagueDefensiveMultiplier.toFixed(2)}x) ${diffRatio > 3.0 ? '⚠️ High Ratio' : ''}`
-            };
+                return {
+                    pure_mu_h: p1_mu_h,
+                    pure_mu_a: p1_mu_a,
+                    source: `Manual (Victory Protocol 1.5x xG Weight) [v147.0]`
+                };
             }
         }
 

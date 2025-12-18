@@ -451,9 +451,9 @@ export function calculateValue(
 ): any[] { 
     
     const valueBets: any[] = [];
-    // === v147.0: VICTORY VALUE THRESHOLD ===
-    // 3% -> 6%: Csak a valóban értékes tippeket mutatjuk meg az AI-nak.
-    const MIN_VALUE_THRESHOLD = 6.0; // Minimum 6% észlelt érték (volt: 3.0%)
+    // === v147.0: VICTORY PROTOCOL VALUE THRESHOLD ===
+    // 3% -> 7%: Csak a brutális érték marad meg.
+    const MIN_VALUE_THRESHOLD = 7.0; // Minimum 7% észlelt érték (volt: 6.0%)
 
     if (!oddsData || !oddsData.allMarkets || oddsData.allMarkets.length === 0 || !sim) {
         console.log("[Model.ts/calculateValue] Kihagyva: Hiányzó odds adatok vagy szimulációs eredmény.");
