@@ -28,9 +28,11 @@ export async function runSniperScan(sportType: 'soccer' | 'us_sports') {
             const fixtures = await _getFixturesFromEspn(sport, "1");
             console.log(`[AutoScanner] ${fixtures.length} meccs találva a(z) ${sport} sportágban.`);
 
+            let count = 0;
             for (const fixture of fixtures) {
+                count++;
                 try {
-                    console.log(`[AutoScanner] Vizsgálat: ${fixture.home} vs ${fixture.away}...`);
+                    console.log(`[AutoScanner] Vizsgálat (${count}/${fixtures.length}): ${fixture.home} vs ${fixture.away}...`);
                     
                     // KIS SZÜNET (v147.1): Megelőzi a Gemini 429-es kvóta hibát
                     await new Promise(resolve => setTimeout(resolve, 5000));
@@ -208,10 +210,10 @@ async function sendEmailReport(type: string, results: any[]) {
                         </tr>
                     </table>
 
-                    <div class="prophet">
-                        <h4 style="margin: 0 0 10px 0; color: #2e7d32;">👁️ A PRÓFÉTA LÁTOMÁSA (Múlt időben):</h4>
-                        <p>${res.analysis.strategist.prophetic_timeline}</p>
-                    </div>
+                        <div class="prophet">
+                            <h4 style="margin: 0 0 10px 0; color: #2e7d32;">👁️ A PRÓFÉTA LÁTOMÁSA (Múlt időben):</h4>
+                            <p>${res.analysis.committee?.strategist?.prophetic_timeline || 'N/A'}</p>
+                        </div>
                 </div>
             `;
         }
