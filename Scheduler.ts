@@ -23,21 +23,21 @@ export function initScheduler() {
         timezone: "Europe/Budapest"
     });
 
-    // --- AZONNALI FUTTATÁS TESZTELÉSHEZ (Opcionális) ---
-    // Ha a felhasználó azt kérte hogy "ma már küldje is", 
-    // megnézzük az órát, és ha már elmúlt dél/este 6, de még nem küldtük, lefuttatjuk.
-    
-    const now = new Date();
-    const hour = now.getHours();
+    // --- JAVÍTÁS (v147.5): AZONNALI INDÍTÁS HA SZÜKSÉGES ---
+    // Ne várjon pontosan az órára, ha indításkor látszik hogy már kellene futnia
+    setTimeout(() => {
+        const now = new Date();
+        const hour = now.getHours();
+        console.log(`[Scheduler] Indítási ellenőrzés (Idő: ${hour} óra)...`);
 
-    if (hour >= 12 && hour < 18) {
-        console.log('[Scheduler] Már elmúlt dél, indítok egy soron kívüli foci szkennelést...');
-        runSniperScan('soccer');
-    } else if (hour >= 18) {
-        console.log('[Scheduler] Már elmúlt este 6, indítok egy soron kívüli US Sports szkennelést...');
-        runSniperScan('us_sports');
-        // Ekkor már a focit is érdemes lehet lefuttatni ha aznap még nem ment
-        runSniperScan('soccer');
-    }
+        if (hour >= 12 && hour < 18) {
+            console.log('[Scheduler] Dél elmúlt vagy most van, azonnali foci szkennelés...');
+            runSniperScan('soccer');
+        } else if (hour >= 18 || hour < 4) {
+            console.log('[Scheduler] Esti/Éjszakai időszak, azonnali US Sports és Foci szkennelés...');
+            runSniperScan('us_sports');
+            runSniperScan('soccer');
+        }
+    }, 5000); 
 }
 

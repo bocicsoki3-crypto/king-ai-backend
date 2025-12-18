@@ -1,0 +1,217 @@
+(node:7492) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+--import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("ts-node/esm", pathToFileURL("./"));'
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:7492) [DEP0180] DeprecationWarning: fs.Stats constructor is deprecated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[DataFetch v138.0] AI Hiba (Deep Scout): Gemini API hiba: Státusz 404
+API (GET) hívás végleg sikertelen: API (GET) hívás hiba (1/1): https://api-football-v1.p.rapidapi.com/v3/teams?league=848&season=2025... - Státusz: 403, Válasz: {"message":"You are not subscribed to this API."}
+API hiba (nem kvóta/500, sport: soccer): API hívás végleg sikertelen: API hiba: Státusz kód 403 (GET https://api-football-v1.p.rapidapi.com/v3/teams?league=848&season=2025...)
+API-SPORTS (soccer): KRITIKUS HIBA a csapatlista lekérésekor a 2025 szezonra: API hívás végleg sikertelen: API hiba: Státusz kód 403 (GET https://api-football...
+Kvóta hiba a(z) 1. kulccsal (soccer).
+API (GET) hívás végleg sikertelen: API (GET) hívás hiba (1/1): https://api-football-v1.p.rapidapi.com/v3/teams?league=848&season=2024... - Státusz: 403, Válasz: {"message":"You are not subscribed to this API."}
+API hiba (nem kvóta/500, sport: soccer): API hívás végleg sikertelen: API hiba: Státusz kód 403 (GET https://api-football-v1.p.rapidapi.com/v3/teams?league=848&season=2024...)
+API-SPORTS (soccer): KRITIKUS HIBA a csapatlista lekérésekor a 2024 szezonra: API hívás végleg sikertelen: API hiba: Státusz kód 403 (GET https://api-football...
+Kvóta hiba a(z) 2. kulccsal (soccer).
+API-SPORTS (soccer): KRITIKUS HIBA a csapatlista lekérésekor a 2023 szezonra: API hívás végleg sikertelen (Kvóta/500-as hiba minden kulccsal): API (GET) hívás...
+API-SPORTS (soccer): Nem található csapatlista a 848 ligához 3 szezon alatt sem.
+API-SPORTS (soccer): A liga (848) csapatai nem érhetők el. Névfeloldás sikertelen.
+Kvóta hiba a(z) 2. kulccsal (soccer).
+API-SPORTS (soccer): KRITIKUS HIBA a csapatlista lekérésekor a 2025 szezonra: API hívás végleg sikertelen (Kvóta/500-as hiba minden kulccsal): API (GET) hívás...
+Kvóta hiba a(z) 2. kulccsal (soccer).
+API-SPORTS (soccer): KRITIKUS HIBA a csapatlista lekérésekor a 2024 szezonra: API hívás végleg sikertelen (Kvóta/500-as hiba minden kulccsal): API (GET) hívás...
+Kvóta hiba a(z) 2. kulccsal (soccer).
+API-SPORTS (soccer): KRITIKUS HIBA a csapatlista lekérésekor a 2023 szezonra: API hívás végleg sikertelen (Kvóta/500-as hiba minden kulccsal): API (GET) hívás...
+API-SPORTS (soccer): Nem található csapatlista a 848 ligához 3 szezon alatt sem.
+API-SPORTS (soccer): A liga (848) csapatai nem érhetők el. Névfeloldás sikertelen.
+Kvóta hiba a(z) 2. kulccsal (soccer).
+API-SPORTS (soccer): KRITIKUS HIBA a csapatlista lekérésekor a 2025 szezonra: API hívás végleg sikertelen (Kvóta/500-as hiba minden kulccsal): API (GET) hívás...
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v138.0 - Térképész] KRITIKUS HIBA a Gemini hívás vagy JSON parse során: Gemini API hiba: Státusz 404
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v138.0 - Térképész] KRITIKUS HIBA a Gemini hívás vagy JSON parse során: Gemini API hiba: Státusz 404
+API-SPORTS (soccer): Nem található fixture, az odds, H2H és xG lekérés kihagyva.
+API-SPORTS Odds (soccer): Hiányzó fixtureId, a szorzók lekérése kihagyva.
+[getApiSportsH2H] Lekérés kihagyva: Hiányzó csapat ID (H:null, A:null).
+[getApiSportsTeamSeasonStats] Lekérés kihagyva: Hiányzó csapat ID.
+[getApiSportsTeamSeasonStats] Lekérés kihagyva: Hiányzó csapat ID.
+[utils.ts/Weather] Hiányzó város vagy dátum az időjárás lekéréséhez.
+[DataFetch] API Odds hiányzik. AI Web Search indítása...
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v138.0] AI Hiba (Psychologist): Gemini API hiba: Státusz 404
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v138.0] AI Hiba (Specialist): Gemini API hiba: Státusz 404
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v139.0] Végleges AI Hiba (ExpertConfidence): Gemini API hiba: Státusz 404
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v139.0] Végleges AI Hiba (PlayerMarkets): Gemini API hiba: Státusz 404
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v139.0] Végleges AI Hiba (CornerAnalysis): Gemini API hiba: Státusz 404
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v139.0] Végleges AI Hiba (CardAnalysis): Gemini API hiba: Státusz 404
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v139.0] Végleges AI Hiba (RiskAssessment): Gemini API hiba: Státusz 404
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v139.0] Végleges AI Hiba (GoalsOUAnalysis): Gemini API hiba: Státusz 404
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v139.0] Végleges AI Hiba (BTTSAnalysis): Gemini API hiba: Státusz 404
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v139.0] Végleges AI Hiba (TacticalBriefing): Gemini API hiba: Státusz 404
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v139.0] Végleges AI Hiba (FinalGeneralAnalysis): Gemini API hiba: Státusz 404
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v139.0] Végleges AI Hiba (PropheticScenario): Gemini API hiba: Státusz 404
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v139.0] Végleges AI Hiba (StrategicClosing): Gemini API hiba: Státusz 404
+[AI_Service v138.0 - Főnök] Nem sikerült kinyerni az expert bizalmat: "AI Hiba (confidence_report): Gemini API hiba: Státusz 404". Alapértelmezett: 1.0
+--- RAW GEMINI ERROR RESPONSE --- {
+  "error": {
+    "code": 404,
+    "message": "models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.",
+    "status": "NOT_FOUND"
+  }
+}
+Végleges hiba a Gemini API hívás (_callGemini) során: Gemini API hiba: Státusz 404
+[AI_Service v138.0 - Főnök] Végleges hiba a Mester Ajánlás generálása során: Gemini API hiba: Státusz 404 Error: Gemini API hiba: Státusz 404
+    at _callGemini (file:///C:/Users/bocic/OneDrive/Asztali%20g%C3%A9p/K%C3%B3d/king-ai-backend-The-King/king-ai-backend/providers/common/utils.ts:102:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async _callGeminiWithJsonRetry (file:///C:/Users/bocic/OneDrive/Asztali%20g%C3%A9p/K%C3%B3d/king-ai-backend-The-King/king-ai-backend/providers/common/utils.ts:143:32)
+    at async getMasterRecommendation (file:///C:/Users/bocic/OneDrive/Asztali%20g%C3%A9p/K%C3%B3d/king-ai-backend-The-King/king-ai-backend/AI_Service.ts:941:19)
+    at async runStep_FinalAnalysis (file:///C:/Users/bocic/OneDrive/Asztali%20g%C3%A9p/K%C3%B3d/king-ai-backend-The-King/king-ai-backend/AI_Service.ts:1837:32)
+    at async runFullAnalysis (file:///C:/Users/bocic/OneDrive/Asztali%20g%C3%A9p/K%C3%B3d/king-ai-backend-The-King/king-ai-backend/AnalysisFlow.ts:347:29)
+    at async runSniperScan (file:///C:/Users/bocic/OneDrive/Asztali%20g%C3%A9p/K%C3%B3d/king-ai-backend-The-King/king-ai-backend/AutoScanner.ts:75:46)
+[AI_Service v103.6] KRITIKUS HIBA a runStep_FinalAnalysis során: AI Hiba (Főnök): Gemini API hiba: Státusz 404
+Hiba a munkalap elérésekor (History): error:1E08010C:DECODER routines::unsupported Error: error:1E08010C:DECODER routines::unsupported
+    at Sign.sign (node:internal/crypto/sig:128:29)
+    at Object.sign (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\jwa\index.js:166:45)
+    at Object.jwsSign [as sign] (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\jws\lib\sign-stream.js:32:24)
+    at GoogleToken.<anonymous> (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\gtoken\build\cjs\src\index.cjs:407:27)
+    at Generator.<anonymous> (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\gtoken\build\cjs\src\index.cjs:36:1660)
+    at Generator.next (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\gtoken\build\cjs\src\index.cjs:37:362)
+    at asyncGeneratorStep (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\gtoken\build\cjs\src\index.cjs:38:70)
+    at _next (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\gtoken\build\cjs\src\index.cjs:39:163)
+    at C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\gtoken\build\cjs\src\index.cjs:39:299
+    at new Promise (<anonymous>)
+Hiba az elemzés mentésekor a táblázatba (ID: analysis_v112.0_apex_soccer_aekathens_vs_csucraiova): error:1E08010C:DECODER routines::unsupported Error: error:1E08010C:DECODER routines::unsupported
+    at Sign.sign (node:internal/crypto/sig:128:29)
+    at Object.sign (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\jwa\index.js:166:45)
+    at Object.jwsSign [as sign] (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\jws\lib\sign-stream.js:32:24)
+    at GoogleToken.<anonymous> (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\gtoken\build\cjs\src\index.cjs:407:27)
+    at Generator.<anonymous> (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\gtoken\build\cjs\src\index.cjs:36:1660)
+    at Generator.next (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\gtoken\build\cjs\src\index.cjs:37:362)
+    at asyncGeneratorStep (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\gtoken\build\cjs\src\index.cjs:38:70)
+    at _next (C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\gtoken\build\cjs\src\index.cjs:39:163)
+    at C:\Users\bocic\OneDrive\Asztali gép\Kód\king-ai-backend-The-King\king-ai-backend\node_modules\gtoken\build\cjs\src\index.cjs:39:299
+    at new Promise (<anonymous>)
