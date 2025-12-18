@@ -1,4 +1,4 @@
-import { preFetchAnalysisCache, getRichContextualData } from './DataFetch.js';
+import { getRichContextualData } from './DataFetch.js';
 import { calculateValue, estimatePureXG, simulateMatchProgress } from './Model.js';
 import { getSportStrategy } from './strategies/StrategyFactory.js';
 import { sendSniperReport } from './EmailService.js';
@@ -221,12 +221,3 @@ async function sendEmailReport(type: string, results: any[]) {
 
     await sendSniperReport(REPORT_EMAIL, subject, html);
 }
-
-    html += `
-        <br>
-        <p style="color: #888; font-size: 0.8em;">Ez egy automata üzenet a King AI szerverétől. v147.0 VICTORY PROTOCOL aktív.</p>
-    `;
-
-    await sendSniperReport(REPORT_EMAIL, subject, html);
-}
-
