@@ -467,10 +467,11 @@ Match: {home} vs {away}
 
 [CRITICAL PREDICTION RULES - v147.0 VICTORY PROTOCOL]:
 1. **STATISTICS ARE THE ABSOLUTE TRUTH** - The final score MUST be {expected_score}.
-2. **PAST TENSE ONLY** - Describe the match as if it's already over. Use "szerezte", "történt", "végződött".
+2. **PAST TENSE ONLY** - Describe the match as if it's already over in HUNGARIAN. Use "szerezte", "történt", "végződött".
 3. **NO UNCERTAINTY** - NO "lesz", "várható", "valószínűleg".
+4. **LANGUAGE**: All output must be in HUNGARIAN.
 
-// REMOVED
+OUTPUT STRUCTURE - ONLY VALID JSON:
 {
   "scenario": "<Detailed Hungarian description of what HAPPENED in this match in PAST TENSE. Structure: 1. Meccs kezdete, 2. Gólok, 3. Kulcs események, 4. Végeredmény. Final sentence MUST be: **Végeredmény: {home} X-Y {away}**>"
 }
@@ -486,9 +487,10 @@ Match: {home} vs {away}
 
 [CRITICAL PREDICTION RULES - v147.0 VICTORY PROTOCOL]:
 1. **STATISTICS ARE THE ABSOLUTE TRUTH** - The final score MUST be {expected_score}.
-2. **PAST TENSE ONLY** - Describe the match as if it's already over.
+2. **PAST TENSE ONLY** - Describe the match as if it's already over in HUNGARIAN.
+3. **LANGUAGE**: All output must be in HUNGARIAN.
 
-// REMOVED
+OUTPUT STRUCTURE - ONLY VALID JSON:
 {
   "scenario": "<Detailed Hungarian description in PAST TENSE. Final sentence: **Végeredmény: {home} X-Y {away}**>"
 }
@@ -506,9 +508,10 @@ Match: {home} vs {away}
 
 [CRITICAL PREDICTION RULES - v147.0 VICTORY PROTOCOL]:
 1. **STATISTICS ARE THE ABSOLUTE TRUTH** - The final score MUST be {expected_score}.
-2. **PAST TENSE ONLY** - Describe the match as if it's already over.
+2. **PAST TENSE ONLY** - Describe the match as if it's already over in HUNGARIAN.
+3. **LANGUAGE**: All output must be in HUNGARIAN.
 
-// REMOVED
+OUTPUT STRUCTURE - ONLY VALID JSON:
 {
   "scenario": "<Detailed Hungarian description in PAST TENSE. Final sentence: **Végeredmény: {home} X-Y {away}**>"
 }
@@ -574,7 +577,8 @@ You are the **SUPREME DECISION ENGINE**. Your only goal is to find the WINNING T
    - AI Contextual Agreement = YES
    - Value >= 7%
    - Confidence >= 7.5/10
-5. **DECIDE TO WIN**: Pick the outcome that WILL actually happen. 
+5. **LANGUAGE**: All output MUST be in HUNGARIAN language. Indoklás, tipp, minden magyarul legyen!
+6. **DECIDE TO WIN**: Pick the outcome that WILL actually happen. 
 
 [DATA]:
 - Statistical Probs: Home {sim_pHome}%, Draw {sim_pDraw}%, Away {sim_pAway}%
@@ -2076,7 +2080,7 @@ export async function getChatResponse(context: string, history: ChatMessage[], q
              .map(msg => `${msg.role === 'user' ? 'Felhasználó' : 'AI'}: ${msg.parts?.[0]?.text || ''}`)
             .join('\n');
         
-        const prompt = `You are an elite sports analyst AI assistant specialized in the provided match analysis.
+    const prompt = `You are an elite sports analyst AI assistant specialized in the provided match analysis.
 [CONTEXT of the analysis]:
 --- START CONTEXT ---
 ${context}
@@ -2087,7 +2091,7 @@ ${historyString}
 
 Current User Question: ${question}
 
-Answer concisely and accurately in Hungarian based ONLY on the provided Analysis Context and Conversation History.
+CRITICAL: Answer concisely and accurately in HUNGARIAN language only.
 Do not provide betting advice. Do not make up information not present in the context.
 If the answer isn't in the context or history, politely state that the information is not available in the analysis.`;
         

@@ -96,34 +96,41 @@ export async function runSniperScan(sportType: 'soccer' | 'us_sports') {
                     );
 
                     // 6. Value számítás
-                    const valueBets = calculateValue(sim, data.oddsData, sport, fixture.home, fixture.away);
+                        const valueBets = calculateValue(sim, data.oddsData, sport, fixture.home, fixture.away);
 
-                    // 7. Szűrés: Csak a 7% feletti value
-                    const highValueBets = valueBets.filter(vb => {
-                        const val = parseFloat(vb.value.replace('+', '').replace('%', ''));
-                        return val >= 7.0;
-                    });
+                        // 7. Szűrés: Csak a 7% feletti value ÉS minimum 1.50 odds
+                        const highValueBets = valueBets.filter(vb => {
+                            const val = parseFloat(vb.value.replace('+', '').replace('%', ''));
+                            const odds = parseFloat(vb.odds);
+                            return val >= 7.0 && !isNaN(odds) && odds >= 1.50;
+                        });
 
-                    if (highValueBets.length > 0) {
-                        console.log(`[AutoScanner] 🔥 TALÁLAT: ${fixture.home} vs ${fixture.away} - Teljes elemzés indítása...`);
-                        
-                        // 8. TELJES VICTORY PROTOCOL ELEMZÉS (Specialista, Pszichológus, Mester AI, Próféta)
-                        const fullAnalysis: any = await runFullAnalysis({
-                            ...fixture,
-                            leagueName: fixture.league,
-                            ...manualStats
-                        }, sport, {});
+                        if (highValueBets.length > 0) {
+                            console.log(`[AutoScanner] 🔥 TALÁLAT (${count}/${fixtures.length}): ${fixture.home} vs ${fixture.away} (Value: ${highValueBets[0].value}, Odds: ${highValueBets[0].odds}) - Teljes elemzés indítása...`);
+                            
+                            // 8. TELJES VICTORY PROTOCOL ELEMZÉS (Specialista, Pszichológus, Mester AI, Próféta)
+                            const fullAnalysis: any = await runFullAnalysis({
+                                ...fixture,
+                                leagueName: fixture.league,
+                                ...manualStats
+                            }, sport, {});
 
-                        if (fullAnalysis && !fullAnalysis.error) {
-                            results.push({
-                                match: `${fixture.home} vs ${fixture.away}`,
-                                league: fixture.league,
-                                time: new Date(fixture.utcKickoff).toLocaleString('hu-HU'),
-                                hunted_stats: manualStats,
-                                analysis: fullAnalysis.analysisData
-                            });
+                            if (fullAnalysis && !fullAnalysis.error) {
+                                // Biztonsági ellenőrzés: ha a Mester AI mégis azt mondaná hogy "Hiba" vagy "Nincs ajánlás"
+                                const rec = fullAnalysis.analysisData.recommendation;
+                                if (rec && rec.recommended_bet && rec.recommended_bet !== 'Hiba' && !rec.recommended_bet.includes('Nincs ajánlás')) {
+                                    results.push({
+                                        match: `${fixture.home} vs ${fixture.away}`,
+                                        league: fixture.league,
+                                        time: new Date(fixture.utcKickoff).toLocaleString('hu-HU'),
+                                        hunted_stats: manualStats,
+                                        analysis: fullAnalysis.analysisData
+                                    });
+                                } else {
+                                    console.warn(`[AutoScanner] ⚠️ Mester AI elvetette a meccset (${fixture.home} vs ${fixture.away}) az indoklás alapján.`);
+                                }
+                            }
                         }
-                    }
                 } catch (err) {
                     console.error(`[AutoScanner] Hiba a meccs szkennelésekor (${fixture.home} vs ${fixture.away}):`, err);
                 }
