@@ -84,8 +84,7 @@ export async function _callGemini(
         throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY.");
     }
     
-    // Ha a keresés aktív, a 'gemini-2.0-flash-exp' modellt használjuk, mert az jobban kezeli a tool-okat
-    // Ha nincs keresés, marad a config-ban beállított (pl. gemini-2.5-pro)
+    // v147.2: Biztonságosabb modell névválasztás
     const targetModel = useSearch ? 'gemini-2.0-flash-exp' : (GEMINI_MODEL_ID || 'gemini-1.5-flash');
 
     let finalPrompt = prompt;

@@ -32,6 +32,9 @@ export async function runSniperScan(sportType: 'soccer' | 'us_sports') {
                 try {
                     console.log(`[AutoScanner] Vizsgálat: ${fixture.home} vs ${fixture.away}...`);
                     
+                    // KIS SZÜNET (v147.1): Megelőzi a Gemini 429-es kvóta hibát
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    
                     // 2. STATISZTIKA VADÁSZAT (Deep Search) - Automata xG/PPG keresés
                     const huntedData = await runStep_DataHunter(fixture.home, fixture.away, sport);
                     
