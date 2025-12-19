@@ -7,7 +7,7 @@ import { SPORT_CONFIG } from './config.js';
 import { runStep_DataHunter } from './AI_Service.js';
 import { runFullAnalysis } from './AnalysisFlow.js';
 
-const REPORT_EMAIL = 'bocicsoki3@gmail.com';
+const REPORT_EMAIL = process.env.EMAIL_USER || 'bocicsoki3@gmail.com';
 
 /**
  * Automata szkenner a nagy értékű (Value) meccsek megtalálásához.
