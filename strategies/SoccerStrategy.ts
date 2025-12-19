@@ -114,37 +114,33 @@ export class SoccerStrategy implements ISportStrategy {
      * === ÚJ (v127.0): HELPER - HOME ADVANTAGE SZÁMÍTÁS (LIGA-AWARE!) ===
      */
     private calculateHomeAdvantage(leagueCoefficient: number): number {
-        // === v136.0: HOME ADVANTAGE ERŐSÍTVE (~15-20%!) ===
-        // Liga minőség alapú home advantage - NÖVELVE!
-        // TOP ligák (>10): +0.35 (volt: +0.30) - Még erősebb hazai pálya!
-        // Közepes (5-10): +0.30 (volt: +0.25)
-        // Gyenge (<5): +0.20-0.25 (volt: +0.15-0.20)
+        // === v148.5: HOME ADVANTAGE JELENTŐS ERŐSÍTÉSE (Drasztikusabb!) ===
+        // TOP ligák (>10): +0.55 (volt: +0.35)
+        // Közepes (5-10): +0.45 (volt: +0.30)
+        // Gyenge (<5): +0.35 (volt: +0.20-0.25)
         
         if (leagueCoefficient >= 10.0) {
-            return 0.35;  // TOP 5 Liga (+0.05, volt: 0.30)
+            return 0.55;  // TOP 5 Liga
         } else if (leagueCoefficient >= 7.0) {
-            return 0.30;  // Erős közepes liga (+0.05, volt: 0.25)
+            return 0.45;  // Erős közepes liga
         } else if (leagueCoefficient >= 4.0) {
-            return 0.25;  // Közepes liga (+0.05, volt: 0.20)
+            return 0.40;  // Közepes liga
         } else {
-            return 0.20;  // Gyenge liga (+0.05, volt: 0.15)
+            return 0.35;  // Gyenge liga
         }
     }
 
     /**
      * 1. Ügynök (Quant) feladata: Foci xG számítása.
-     * FEJLESZTVE (v134.0): Derby Detection + Defensive Multiplier!
+     * FEJLESZTVE (v148.5): Derby Detection ÚJRA AKTIVÁLVA (Szoftabb)!
      */
     public estimatePureXG(options: XGOptions): { pure_mu_h: number; pure_mu_a: number; source: string; isDerby?: boolean; derbyName?: string; } {
         const { homeTeam, awayTeam, rawStats, leagueAverages, advancedData } = options;
 
-        // === v135.0: DERBY DETECTION **KIKAPCSOLVA** ===
-        // TOTTENHAM-FULHAM TANULSÁG: Derby detection túl konzervatívvá tette a rendszert!
-        // A -20% xG csökkentés túlzás volt. Az AI tudja, mit csinál derby nélkül is.
-        const derbyInfo = { isDerby: false, derbyName: null }; // KIKAPCSOLVA!
-        // const derbyInfo = detectDerby(homeTeam, awayTeam); // EREDETI
-        if (false && derbyInfo.isDerby) {
-            console.log(`[SoccerStrategy v135.0] 🔥 DERBY DETECTION KIKAPCSOLVA`);
+        // === v148.5: DERBY DETECTION ÚJRA AKTIVÁLVA (Szoftabb) ===
+        const derbyInfo = detectDerby(homeTeam, awayTeam); 
+        if (derbyInfo.isDerby) {
+            console.log(`[SoccerStrategy v148.5] 🔥 DERBY DETECTION AKTIVÁLVA: ${derbyInfo.derbyName}`);
         }
 
         // === ÚJ v130.0: Liga Defensive Multiplier lekérése ===
@@ -424,18 +420,18 @@ export class SoccerStrategy implements ISportStrategy {
         if (pure_mu_a < 0.1) pure_mu_a = 0.1;
         if (pure_mu_a > 6.0) pure_mu_a = 6.0;
         
-        // === v135.0: DERBY REDUCTION **KIKAPCSOLVA** ===
-        // Ha derby meccs → -20% várható gólok (psziché > statisztika!)
-        if (false && derbyInfo.isDerby) { // KIKAPCSOLVA v135.0
+        // === v148.5: DERBY REDUCTION (Szoftabb -10% xG) ===
+        if (derbyInfo.isDerby) {
             const beforeReduction = pure_mu_h + pure_mu_a;
-            pure_mu_h *= DERBY_MODIFIERS.XG_REDUCTION;
-            pure_mu_a *= DERBY_MODIFIERS.XG_REDUCTION;
+            // v148.5: 0.80 -> 0.90 (Csak 10% csökkenés, de detektáljuk!)
+            const SOFT_DERBY_REDUCTION = 0.90;
+            pure_mu_h *= SOFT_DERBY_REDUCTION;
+            pure_mu_a *= SOFT_DERBY_REDUCTION;
             const afterReduction = pure_mu_h + pure_mu_a;
             
-            console.log(`[SoccerStrategy v134.0] 🔥 DERBY REDUCTION APPLIED:`);
-            console.log(`  Before: H=${(pure_mu_h / DERBY_MODIFIERS.XG_REDUCTION).toFixed(2)}, A=${(pure_mu_a / DERBY_MODIFIERS.XG_REDUCTION).toFixed(2)} (Total: ${beforeReduction.toFixed(2)})`);
+            console.log(`[SoccerStrategy v148.5] 🔥 DERBY REDUCTION APPLIED (Soft 0.90):`);
+            console.log(`  Before: H=${(pure_mu_h / SOFT_DERBY_REDUCTION).toFixed(2)}, A=${(pure_mu_a / SOFT_DERBY_REDUCTION).toFixed(2)} (Total: ${beforeReduction.toFixed(2)})`);
             console.log(`  After:  H=${pure_mu_h.toFixed(2)}, A=${pure_mu_a.toFixed(2)} (Total: ${afterReduction.toFixed(2)})`);
-            console.log(`  ⚠️ Derby impact: ${derbyInfo.derbyName} - PSZICHOLÓGIA > STATISZTIKA!`);
             
             sourceDetails += ` [DERBY: ${derbyInfo.derbyName}]`;
         }

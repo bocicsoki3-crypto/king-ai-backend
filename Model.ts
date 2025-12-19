@@ -633,6 +633,77 @@ export function calculateValue(
             }
         }
     }
+
+    // === ÚJ (v148.5): DOUBLE CHANCE & DRAW NO BET (Focihoz) ===
+    if (sport === 'soccer') {
+        // Double Chance
+        const dcMarket = oddsData.allMarkets.find(m => m.key === 'double_chance');
+        if (dcMarket && dcMarket.outcomes) {
+            dcMarket.outcomes.forEach(outcome => {
+                const name = outcome.name.toLowerCase();
+                let simProb = 0;
+                let marketLabel = '';
+                
+                if (name.includes('1x') || name.includes('home') && name.includes('draw')) {
+                    simProb = sim.pHome + sim.pDraw;
+                    marketLabel = 'Double Chance - 1X (Hazai vagy Döntetlen)';
+                } else if (name.includes('x2') || name.includes('away') && name.includes('draw')) {
+                    simProb = sim.pAway + sim.pDraw;
+                    marketLabel = 'Double Chance - X2 (Vendég vagy Döntetlen)';
+                } else if (name.includes('12') || name.includes('home') && name.includes('away')) {
+                    simProb = sim.pHome + sim.pAway;
+                    marketLabel = 'Double Chance - 12 (Nincs döntetlen)';
+                }
+                
+                if (simProb > 0) {
+                    const marketProb = _getImpliedProbability(outcome.price);
+                    const value = simProb - marketProb;
+                    if (value > MIN_VALUE_THRESHOLD && outcome.price >= 1.25) {
+                        valueBets.push({
+                            market: marketLabel,
+                            odds: outcome.price.toFixed(2),
+                            probability: `${simProb.toFixed(1)}%`,
+                            value: `+${value.toFixed(1)}%`
+                        });
+                    }
+                }
+            });
+        }
+
+        // Draw No Bet
+        const dnbMarket = oddsData.allMarkets.find(m => m.key === 'draw_no_bet');
+        if (dnbMarket && dnbMarket.outcomes) {
+            const totalWinProb = sim.pHome + sim.pAway;
+            if (totalWinProb > 0) {
+                dnbMarket.outcomes.forEach(outcome => {
+                    const name = outcome.name.toLowerCase();
+                    let simProb = 0;
+                    let marketLabel = '';
+                    
+                    if (name === 'home' || name === '1' || name === homeTeam.toLowerCase()) {
+                        simProb = (sim.pHome / totalWinProb) * 100;
+                        marketLabel = 'Draw No Bet - Hazai (Döntetlen esetén visszajár)';
+                    } else if (name === 'away' || name === '2' || name === awayTeam.toLowerCase()) {
+                        simProb = (sim.pAway / totalWinProb) * 100;
+                        marketLabel = 'Draw No Bet - Vendég (Döntetlen esetén visszajár)';
+                    }
+                    
+                    if (simProb > 0) {
+                        const marketProb = _getImpliedProbability(outcome.price);
+                        const value = simProb - marketProb;
+                        if (value > MIN_VALUE_THRESHOLD && outcome.price >= 1.40) {
+                            valueBets.push({
+                                market: marketLabel,
+                                odds: outcome.price.toFixed(2),
+                                probability: `${simProb.toFixed(1)}%`,
+                                value: `+${value.toFixed(1)}%`
+                            });
+                        }
+                    }
+                });
+            }
+        }
+    }
     
     if (valueBets.length > 0) {
         console.log(`[Model.ts/calculateValue] ${valueBets.length} db értékes fogadás azonosítva.`);
