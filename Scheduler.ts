@@ -3,7 +3,7 @@ import { runSniperScan } from './AutoScanner.js';
 
 /**
  * Ütemező a szkenner feladatokhoz.
- * v148.0: Foci idősávokra bontva + US Sports este.
+ * v148.2: Sequential startup fix (await-tel sorba fűzve).
  */
 export function initScheduler() {
     console.log('[Scheduler] Automata ütemező inicializálva.');
@@ -37,8 +37,8 @@ export function initScheduler() {
         runSniperScan('basketball');
     }, { timezone: "Europe/Budapest" });
 
-    // --- JAVÍTÁS (v148.1): IDŐZÓNA-BIZTOS AZONNALI INDÍTÁS ---
-    setTimeout(() => {
+    // --- JAVÍTÁS (v148.2): IDŐZÓNA-BIZTOS AZONNALI INDÍTÁS SORBAN ---
+    setTimeout(async () => {
         const now = new Date();
         const budapestTime = now.toLocaleString("en-US", {timeZone: "Europe/Budapest"});
         const hour = new Date(budapestTime).getHours();
@@ -55,16 +55,16 @@ export function initScheduler() {
         else if (hour >= 6 && hour < 12) currentSlot = '06:00-12:00';
 
         console.log(`[Scheduler] Azonnali foci szkennelés a(z) ${currentSlot} idősávra...`);
-        runSniperScan('soccer', currentSlot);
+        await runSniperScan('soccer', currentSlot);
 
-        // US Sports azonnali indítás ellenőrzése
+        // US Sports azonnali indítás ellenőrzése (Sorbafűzve await-tel)
         if (currentTimeInMinutes >= (20 * 60 + 30)) {
             console.log('[Scheduler] 20:30 elmúlt, azonnali hoki szkennelés...');
-            runSniperScan('hockey');
+            await runSniperScan('hockey');
         }
         if (currentTimeInMinutes >= (21 * 60 + 30)) {
             console.log('[Scheduler] 21:30 elmúlt, azonnali kosárlabda szkennelés...');
-            runSniperScan('basketball');
+            await runSniperScan('basketball');
         }
     }, 5000); 
 }

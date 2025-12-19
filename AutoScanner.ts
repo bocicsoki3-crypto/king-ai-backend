@@ -11,7 +11,7 @@ const REPORT_EMAIL = 'bocicsoki3@gmail.com';
 
 /**
  * Automata szkenner a nagy értékű (Value) meccsek megtalálásához.
- * v148.1: Mostantól idősávokra szűrve dolgozik, külön sportáganként.
+ * v148.2: Lazított foci szűrő (65%+) + Sequential startup fix.
  */
 export async function runSniperScan(sportType: 'soccer' | 'basketball' | 'hockey', timeSlot?: string) {
     console.log(`[AutoScanner] Szkennelés indítása: ${sportType} (Sáv: ${timeSlot || 'Összes'})...`);
@@ -131,10 +131,20 @@ export async function runSniperScan(sportType: 'soccer' | 'basketball' | 'hockey
                         const valueBets = calculateValue(sim, data.oddsData, sport, fixture.home, fixture.away);
 
                         // 7. Szűrés: Csak a 7% feletti value ÉS minimum 1.50 odds
+                        // v148.2: Lazítva a focihoz (Nagyon jó tippek 65%+ valószínűséggel)
                         const highValueBets = valueBets.filter(vb => {
                             const val = parseFloat(vb.value.replace('+', '').replace('%', ''));
+                            const prob = parseFloat(vb.probability?.replace('%', '') || '0');
                             const odds = parseFloat(vb.odds);
-                            return val >= 7.0 && !isNaN(odds) && odds >= 1.50;
+                            
+                            // 1. Alapfeltétel: 7% profit előny és jó odds
+                            const hasValue = val >= 7.0 && !isNaN(odds) && odds >= 1.50;
+                            
+                            // 2. ÚJ (v148.2): "Nagyon jó tipp" feltétel (Magas esély, kisebb value-val is)
+                            // Ha 65% feletti a győzelem esélye, az akkor is kell nekünk, ha az iroda jól árazta be.
+                            const isVeryStrong = sport === 'soccer' && prob >= 65.0 && !isNaN(odds) && odds >= 1.40;
+                            
+                            return hasValue || isVeryStrong;
                         });
 
                         if (highValueBets.length > 0) {
