@@ -11,14 +11,14 @@ const REPORT_EMAIL = 'bocicsoki3@gmail.com';
 
 /**
  * Automata szkenner a nagy értékű (Value) meccsek megtalálásához.
- * v148.0: Mostantól idősávokra szűrve dolgozik.
+ * v148.1: Mostantól idősávokra szűrve dolgozik, külön sportáganként.
  */
-export async function runSniperScan(sportType: 'soccer' | 'us_sports', timeSlot?: string) {
+export async function runSniperScan(sportType: 'soccer' | 'basketball' | 'hockey', timeSlot?: string) {
     console.log(`[AutoScanner] Szkennelés indítása: ${sportType} (Sáv: ${timeSlot || 'Összes'})...`);
     const results: any[] = [];
     
     try {
-        const sportsToScan = sportType === 'soccer' ? ['soccer'] : ['basketball', 'hockey'];
+        const sportsToScan = [sportType];
         
         for (const sport of sportsToScan) {
             const config = SPORT_CONFIG[sport];

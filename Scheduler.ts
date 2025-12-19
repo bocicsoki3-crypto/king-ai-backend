@@ -24,20 +24,28 @@ export function initScheduler() {
         }, { timezone: "Europe/Budapest" });
     });
 
-    // --- US SPORTS (Kosár/Hoki) ---
-    // Marad este 6-kor, de a kosárnál már csak pontokat fogunk nézni
-    cron.schedule('0 18 * * *', () => {
-        console.log('[Scheduler] Esti US Sports (Kosár/Hoki) szkennelés indítása...');
-        runSniperScan('us_sports');
+    // --- US SPORTS (Hoki 20:30, Kosár 21:30) ---
+    // Jégkorong: 20:30
+    cron.schedule('30 20 * * *', () => {
+        console.log('[Scheduler] Esti Jégkorong szkennelés indítása...');
+        runSniperScan('hockey');
     }, { timezone: "Europe/Budapest" });
 
-    // --- JAVÍTÁS (v147.9): IDŐZÓNA-BIZTOS AZONNALI INDÍTÁS ---
+    // Kosárlabda: 21:30
+    cron.schedule('30 21 * * *', () => {
+        console.log('[Scheduler] Esti Kosárlabda szkennelés indítása...');
+        runSniperScan('basketball');
+    }, { timezone: "Europe/Budapest" });
+
+    // --- JAVÍTÁS (v148.1): IDŐZÓNA-BIZTOS AZONNALI INDÍTÁS ---
     setTimeout(() => {
         const now = new Date();
         const budapestTime = now.toLocaleString("en-US", {timeZone: "Europe/Budapest"});
         const hour = new Date(budapestTime).getHours();
+        const minute = new Date(budapestTime).getMinutes();
+        const currentTimeInMinutes = (hour * 60) + minute;
         
-        console.log(`[Scheduler] Indítási ellenőrzés (Magyar idő: ${hour} óra)...`);
+        console.log(`[Scheduler] Indítási ellenőrzés (Magyar idő: ${hour}:${minute})...`);
 
         // Megkeressük az aktuális sávot focihoz
         let currentSlot = '12:00-16:00';
@@ -49,9 +57,14 @@ export function initScheduler() {
         console.log(`[Scheduler] Azonnali foci szkennelés a(z) ${currentSlot} idősávra...`);
         runSniperScan('soccer', currentSlot);
 
-        if (hour >= 18 || hour < 4) {
-            console.log('[Scheduler] Esti időszak, azonnali US Sports szkennelés...');
-            runSniperScan('us_sports');
+        // US Sports azonnali indítás ellenőrzése
+        if (currentTimeInMinutes >= (20 * 60 + 30)) {
+            console.log('[Scheduler] 20:30 elmúlt, azonnali hoki szkennelés...');
+            runSniperScan('hockey');
+        }
+        if (currentTimeInMinutes >= (21 * 60 + 30)) {
+            console.log('[Scheduler] 21:30 elmúlt, azonnali kosárlabda szkennelés...');
+            runSniperScan('basketball');
         }
     }, 5000); 
 }
