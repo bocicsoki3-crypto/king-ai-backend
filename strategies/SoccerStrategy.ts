@@ -75,10 +75,6 @@ export class SoccerStrategy implements ISportStrategy {
         return avgGoals;
     }
 
-    /**
-     * === JAVÍTVA v138.0: Venue-specifikus + összesített forma súlyozása (50/50) ===
-     * Korábban: 70% venue / 30% overall → Túl nagy zaj! (pl. 2 hazai meccs alapján ítélt)
-     */
     private getWeightedFormGoals(
         overallForm: string | null | undefined,
         venueForm: string | null | undefined,
@@ -99,13 +95,11 @@ export class SoccerStrategy implements ISportStrategy {
             return { value: venueGoals, used: true };
         }
         
-        // v138.0: STABILIZÁCIÓ - Ha kevés a venue meccs, ne adjunk neki nagy súlyt!
-        // Mostantól a venueWeight csak egy "ajánlás", de mi felülírjuk 0.5-re (50/50)
-        // Hogy a csapat VALÓS ereje (overall) is érvényesüljön.
+        // v148.6: VENUE FORM PRIORITIZÁLÁSA (Focinál a hazai/vendég forma kritikus!)
+        // 50/50 -> 70/30 (Venue javára)
+        const SOCCER_VENUE_WEIGHT = 0.70; 
         
-        const STABLE_VENUE_WEIGHT = 0.50; // 50% Venue / 50% Overall (Stabilabb!)
-        
-        const weightedValue = (venueGoals * STABLE_VENUE_WEIGHT) + (overallGoals * (1 - STABLE_VENUE_WEIGHT));
+        const weightedValue = (venueGoals * SOCCER_VENUE_WEIGHT) + (overallGoals * (1 - SOCCER_VENUE_WEIGHT));
         
         return { value: weightedValue, used: true };
     }
@@ -114,19 +108,20 @@ export class SoccerStrategy implements ISportStrategy {
      * === ÚJ (v127.0): HELPER - HOME ADVANTAGE SZÁMÍTÁS (LIGA-AWARE!) ===
      */
     private calculateHomeAdvantage(leagueCoefficient: number): number {
-        // === v148.5: HOME ADVANTAGE JELENTŐS ERŐSÍTÉSE (Drasztikusabb!) ===
-        // TOP ligák (>10): +0.55 (volt: +0.35)
-        // Közepes (5-10): +0.45 (volt: +0.30)
-        // Gyenge (<5): +0.35 (volt: +0.20-0.25)
+        // === v148.6: HOME ADVANTAGE MÉG ERŐSEBB TOLÁSA ===
+        // A felhasználói visszajelzések alapján a rendszer alulértékelte a hazai pályát.
+        // TOP ligák (>10): +0.65 (volt: +0.55)
+        // Közepes (5-10): +0.55 (volt: +0.45)
+        // Gyenge (<5): +0.45 (volt: +0.35)
         
         if (leagueCoefficient >= 10.0) {
-            return 0.55;  // TOP 5 Liga
+            return 0.65; 
         } else if (leagueCoefficient >= 7.0) {
-            return 0.45;  // Erős közepes liga
+            return 0.55; 
         } else if (leagueCoefficient >= 4.0) {
-            return 0.40;  // Közepes liga
+            return 0.50; 
         } else {
-            return 0.35;  // Gyenge liga
+            return 0.45; 
         }
     }
 

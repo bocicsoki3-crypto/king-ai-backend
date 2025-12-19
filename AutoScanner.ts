@@ -202,7 +202,7 @@ async function sendEmailReport(type: string, results: any[], timeSlot?: string) 
             .badge-value { background-color: #4caf50; }
             .badge-odds { background-color: #2196f3; }
         </style>
-        <h1 style="color: #d32f2f; text-align: center;">King AI Sniper - v148.4 Victory Protocol</h1>
+        <h1 style="color: #d32f2f; text-align: center;">King AI Sniper - v148.6 Victory Protocol</h1>
         <p style="text-align: center;">Időszak: ${isSoccer ? (timeSlot || 'Ma déltől holnap délig') : 'Ma estétől holnap reggelig'}</p>
         <hr>
     `;
@@ -235,7 +235,22 @@ async function sendEmailReport(type: string, results: any[], timeSlot?: string) 
                         <h4 style="margin: 0 0 10px 0; color: #f57f17;">🏆 MESTER AI ÍTÉLETE:</h4>
                         <p style="font-size: 1.2em; font-weight: bold; margin: 5px 0;">${rec.recommended_bet}</p>
                         <p style="margin: 5px 0;">${rec.brief_reasoning}</p>
+                        
+                        ${rec.secondary ? `
+                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #f57f17;">
+                                <h5 style="margin: 0; color: #795548;">🥈 MÁSODLAGOS TIPP (BTTS/Gólok):</h5>
+                                <p style="margin: 5px 0;"><b>${rec.secondary.market}</b> (Bizalom: ${rec.secondary.confidence}/10)</p>
+                                <p style="font-size: 0.9em; color: #555;">${rec.secondary.reason}</p>
+                            </div>
+                        ` : ''}
                     </div>
+
+                    <h4 style="margin: 15px 0 5px 0;">📈 ÉRTÉKES PIACOK (Matematikai modell):</h4>
+                    <ul style="margin: 0; padding-left: 20px; color: #2e7d32;">
+                        ${res.analysis.valueBets.map((vb: any) => `
+                            <li><b>${vb.market}</b> @ ${vb.odds} (Value: ${vb.value})</li>
+                        `).join('')}
+                    </ul>
 
                     <h4 style="margin: 15px 0 5px 0;">📊 TALÁLT "IGAZSÁG" ADATOK:</h4>
                     <table class="stats-table">
@@ -270,7 +285,7 @@ async function sendEmailReport(type: string, results: any[], timeSlot?: string) 
 
     html += `
         <br>
-        <p style="color: #888; font-size: 0.8em; text-align: center;">Ez egy automata üzenet a King AI szerverétől. v148.4 VICTORY PROTOCOL aktív. A keresés Google Grounding technológiával történt.</p>
+        <p style="color: #888; font-size: 0.8em; text-align: center;">Ez egy automata üzenet a King AI szerverétől. v148.6 VICTORY PROTOCOL aktív. A keresés Google Grounding technológiával történt.</p>
     `;
 
     await sendSniperReport(REPORT_EMAIL, subject, html);
