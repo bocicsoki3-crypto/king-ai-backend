@@ -11,10 +11,10 @@ const REPORT_EMAIL = 'bocicsoki3@gmail.com';
 
 /**
  * Automata szkenner a nagy értékű (Value) meccsek megtalálásához.
- * v147.0: Mostantól önállóan kutat az adatok után és teljes elemzést küld.
+ * v148.0: Mostantól idősávokra szűrve dolgozik.
  */
-export async function runSniperScan(sportType: 'soccer' | 'us_sports') {
-    console.log(`[AutoScanner] Szkennelés indítása: ${sportType}...`);
+export async function runSniperScan(sportType: 'soccer' | 'us_sports', timeSlot?: string) {
+    console.log(`[AutoScanner] Szkennelés indítása: ${sportType} (Sáv: ${timeSlot || 'Összes'})...`);
     const results: any[] = [];
     
     try {
@@ -25,7 +25,29 @@ export async function runSniperScan(sportType: 'soccer' | 'us_sports') {
             if (!config) continue;
 
             // 1. Lekérjük a meccseket a következő 1 napra
-            const fixtures = await _getFixturesFromEspn(sport, "1");
+            let fixtures = await _getFixturesFromEspn(sport, "1");
+            
+            // --- IDŐSÁV SZŰRÉS (v148.0) ---
+            if (sportType === 'soccer' && timeSlot) {
+                const [startStr, endStr] = timeSlot.split('-');
+                const [startHour] = startStr.split(':').map(Number);
+                const [endHour] = endStr.split(':').map(Number);
+
+                fixtures = fixtures.filter(f => {
+                    const matchDate = new Date(f.utcKickoff);
+                    // Átszámoljuk Budapest-i órára a szűréshez
+                    const budapestHour = new Date(matchDate.toLocaleString("en-US", {timeZone: "Europe/Budapest"})).getHours();
+                    
+                    if (startHour < endHour) {
+                        return budapestHour >= startHour && budapestHour < endHour;
+                    } else {
+                        // Éjszakai sáv (pl. 23:00 - 06:00)
+                        return budapestHour >= startHour || budapestHour < endHour;
+                    }
+                });
+                console.log(`[AutoScanner] Idősáv szűrés (${timeSlot}): ${fixtures.length} meccs maradt.`);
+            }
+
             console.log(`[AutoScanner] ${fixtures.length} meccs találva a(z) ${sport} sportágban.`);
 
             let count = 0;
