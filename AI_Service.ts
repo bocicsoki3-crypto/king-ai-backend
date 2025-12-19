@@ -580,7 +580,7 @@ If there is even 1% doubt, you MUST REJECT the match.
    - If Quant suggests one team (e.g., Home Win) but Specialist suggests another or is uncertain, YOU MUST REJECT.
    - ONLY recommend if the Math AND the Human-like Context agree 100%.
 2. **THE 8.5 THRESHOLD (BIZALMI FAL)**:
-   - Your `final_confidence` MUST be >= 8.5/10. 
+   - Your final_confidence MUST be >= 8.5/10. 
    - If you cannot honestly give 8.5, RETURN: {"recommended_bet": "LOW_CERTAINTY", "brief_reasoning": "Risk too high."}.
 3. **UNSTOPPABLE MARKET SEARCH**:
    - Do not force 1X2. If the winner is tricky, look at Over/Under or BTTS.
