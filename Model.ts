@@ -658,7 +658,7 @@ export function calculateValue(
                 if (simProb > 0) {
                     const marketProb = _getImpliedProbability(outcome.price);
                     const value = simProb - marketProb;
-                    if (value > MIN_VALUE_THRESHOLD && outcome.price >= 1.25) {
+                    if (value > MIN_VALUE_THRESHOLD && outcome.price >= 1.45) {
                         valueBets.push({
                             market: marketLabel,
                             odds: outcome.price.toFixed(2),
@@ -691,7 +691,7 @@ export function calculateValue(
                     if (simProb > 0) {
                         const marketProb = _getImpliedProbability(outcome.price);
                         const value = simProb - marketProb;
-                        if (value > MIN_VALUE_THRESHOLD && outcome.price >= 1.40) {
+                        if (value > MIN_VALUE_THRESHOLD && outcome.price >= 1.45) {
                             valueBets.push({
                                 market: marketLabel,
                                 odds: outcome.price.toFixed(2),

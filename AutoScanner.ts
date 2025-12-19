@@ -159,8 +159,15 @@ export async function runSniperScan(sportType: 'soccer' | 'basketball' | 'hockey
 
                             if (fullAnalysis && !fullAnalysis.error) {
                                 // Biztonsági ellenőrzés: ha a Mester AI mégis azt mondaná hogy "Hiba" vagy "Nincs ajánlás"
+                                // v148.7: Szigorított EXECUTIONER szűrés (NO_CONSENSUS, LOW_CERTAINTY elutasítása)
                                 const rec = fullAnalysis.analysisData.recommendation;
-                                if (rec && rec.recommended_bet && rec.recommended_bet !== 'Hiba' && !rec.recommended_bet.includes('Nincs ajánlás')) {
+                                const isRejected = !rec || 
+                                                 rec.recommended_bet === 'Hiba' || 
+                                                 rec.recommended_bet === 'NO_CONSENSUS' || 
+                                                 rec.recommended_bet === 'LOW_CERTAINTY' || 
+                                                 rec.recommended_bet.includes('Nincs ajánlás');
+
+                                if (!isRejected) {
                                     results.push({
                                         match: `${fixture.home} vs ${fixture.away}`,
                                         league: fixture.league,
@@ -169,7 +176,7 @@ export async function runSniperScan(sportType: 'soccer' | 'basketball' | 'hockey
                                         analysis: fullAnalysis.analysisData
                                     });
                                 } else {
-                                    console.warn(`[AutoScanner] ⚠️ Mester AI elvetette a meccset (${fixture.home} vs ${fixture.away}) az indoklás alapján.`);
+                                    console.warn(`[AutoScanner] ⚠️ EXECUTIONER elvetette a meccset (${fixture.home} vs ${fixture.away}) - Indok: ${rec?.recommended_bet || 'Nincs adat'}`);
                                 }
                             }
                         }
@@ -202,7 +209,7 @@ async function sendEmailReport(type: string, results: any[], timeSlot?: string) 
             .badge-value { background-color: #4caf50; }
             .badge-odds { background-color: #2196f3; }
         </style>
-        <h1 style="color: #d32f2f; text-align: center;">King AI Sniper - v148.6 Victory Protocol</h1>
+        <h1 style="color: #d32f2f; text-align: center;">King AI Sniper - v148.7 EXECUTIONER PROTOCOL</h1>
         <p style="text-align: center;">Időszak: ${isSoccer ? (timeSlot || 'Ma déltől holnap délig') : 'Ma estétől holnap reggelig'}</p>
         <hr>
     `;
@@ -285,7 +292,7 @@ async function sendEmailReport(type: string, results: any[], timeSlot?: string) 
 
     html += `
         <br>
-        <p style="color: #888; font-size: 0.8em; text-align: center;">Ez egy automata üzenet a King AI szerverétől. v148.6 VICTORY PROTOCOL aktív. A keresés Google Grounding technológiával történt.</p>
+        <p style="color: #888; font-size: 0.8em; text-align: center;">Ez egy automata üzenet a King AI szerverétől. v148.7 EXECUTIONER PROTOCOL aktív. A keresés Google Grounding technológiával történt.</p>
     `;
 
     await sendSniperReport(REPORT_EMAIL, subject, html);
