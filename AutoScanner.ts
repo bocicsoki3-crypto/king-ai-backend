@@ -202,8 +202,8 @@ async function sendEmailReport(type: string, results: any[]) {
             .badge-value { background-color: #4caf50; }
             .badge-odds { background-color: #2196f3; }
         </style>
-        <h1 style="color: #d32f2f; text-align: center;">King AI Sniper - v147.0 Victory Protocol</h1>
-        <p style="text-align: center;">Időszak: ${isSoccer ? 'Ma déltől holnap délig' : 'Ma estétől holnap reggelig'}</p>
+        <h1 style="color: #d32f2f; text-align: center;">King AI Sniper - v148.2 Victory Protocol</h1>
+        <p style="text-align: center;">Időszak: ${isSoccer ? (timeSlot || 'Ma déltől holnap délig') : 'Ma estétől holnap reggelig'}</p>
         <hr>
     `;
 
@@ -270,7 +270,7 @@ async function sendEmailReport(type: string, results: any[]) {
 
     html += `
         <br>
-        <p style="color: #888; font-size: 0.8em; text-align: center;">Ez egy automata üzenet a King AI szerverétől. v147.0 VICTORY PROTOCOL aktív. A keresés Google Grounding technológiával történt.</p>
+        <p style="color: #888; font-size: 0.8em; text-align: center;">Ez egy automata üzenet a King AI szerverétől. v148.2 VICTORY PROTOCOL aktív. A keresés Google Grounding technológiával történt.</p>
     `;
 
     await sendSniperReport(REPORT_EMAIL, subject, html);

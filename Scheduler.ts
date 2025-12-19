@@ -38,6 +38,7 @@ export function initScheduler() {
     }, { timezone: "Europe/Budapest" });
 
     // --- JAVÍTÁS (v148.2): IDŐZÓNA-BIZTOS AZONNALI INDÍTÁS SORBAN ---
+    // Hosszabb delay a startup-nál, hogy a cron-al ne akadjon össze
     setTimeout(async () => {
         const now = new Date();
         const budapestTime = now.toLocaleString("en-US", {timeZone: "Europe/Budapest"});
@@ -45,6 +46,19 @@ export function initScheduler() {
         const minute = new Date(budapestTime).getMinutes();
         const currentTimeInMinutes = (hour * 60) + minute;
         
+        // Ha pont egy ütemezett időpont környékén vagyunk (pl. 12:00-12:05), 
+        // akkor ne indítsuk el manuálisan, mert a cron job is el fogja indítani.
+        const isNearScheduledTime = soccerSlots.some(slot => {
+            const [h, m] = slot.time.split(' ').slice(1, 3).map(Number); // '0 12 * * *' -> 12, 0
+            const slotInMinutes = (h * 60) + (m || 0);
+            return Math.abs(currentTimeInMinutes - slotInMinutes) < 5;
+        });
+
+        if (isNearScheduledTime) {
+            console.log('[Scheduler] Közel vagyunk egy ütemezett időponthoz, az azonnali szkennelés kihagyva a duplikáció elkerülése végett.');
+            return;
+        }
+
         console.log(`[Scheduler] Indítási ellenőrzés (Magyar idő: ${hour}:${minute})...`);
 
         // Megkeressük az aktuális sávot focihoz

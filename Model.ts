@@ -489,7 +489,7 @@ export function calculateValue(
                 // === v139.3: MINIMUM ODDS SZŰRÉS ===
                 // === v140.0: EGYSÉGES FORMÁTUM ===
                 // Csak akkor adjuk hozzá, ha value > threshold ÉS odds >= 1.8
-                const MIN_ODDS_FOR_VALUE = 1.8;
+                const MIN_ODDS_FOR_VALUE = 1.1; // v148.2: Lazítva, hogy az AutoScanner dönthessen
                 if (value > MIN_VALUE_THRESHOLD && outcome.price >= MIN_ODDS_FOR_VALUE) {
                     // Standardizált formátum használata
                     let marketLabel = '';
@@ -522,7 +522,7 @@ export function calculateValue(
         );
 
         // === v139.3: MINIMUM ODDS SZŰRÉS ===
-        const MIN_ODDS_FOR_VALUE = 1.8;
+        const MIN_ODDS_FOR_VALUE = 1.1; // v148.2: Lazítva
         
         if (overOutcome) {
             const marketProb = _getImpliedProbability(overOutcome.price);
@@ -604,7 +604,7 @@ export function calculateValue(
         const noOutcome = bttsMarket.outcomes.find(o => o.name.toLowerCase() === 'no');
 
         // === v139.3: MINIMUM ODDS SZŰRÉS ===
-        const MIN_ODDS_FOR_VALUE = 1.8;
+        const MIN_ODDS_FOR_VALUE = 1.1; // v148.2: Lazítva
         
         if (yesOutcome) {
             const marketProb = _getImpliedProbability(yesOutcome.price);
