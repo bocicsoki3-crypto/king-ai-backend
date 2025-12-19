@@ -3,7 +3,7 @@ import { runSniperScan } from './AutoScanner.js';
 
 /**
  * Ütemező a szkenner feladatokhoz.
- * v148.3: Fresh deploy to resolve Render build issues.
+ * v148.4: Fixed timeSlot scope issue in AutoScanner.
  * Sequential startup fix (await-tel sorba fűzve).
  */
 export function initScheduler() {

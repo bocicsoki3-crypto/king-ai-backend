@@ -180,14 +180,14 @@ export async function runSniperScan(sportType: 'soccer' | 'basketball' | 'hockey
         }
 
         // 9. Jelentés küldése
-        await sendEmailReport(sportType, results);
+        await sendEmailReport(sportType, results, timeSlot);
 
     } catch (error: any) {
         console.error(`[AutoScanner] Kritikus hiba a szkenner futtatása közben: ${error.message}`);
     }
 }
 
-async function sendEmailReport(type: string, results: any[]) {
+async function sendEmailReport(type: string, results: any[], timeSlot?: string) {
     const isSoccer = type === 'soccer';
     const subject = `${results.length > 0 ? '🔥' : 'ℹ️'} King AI Sniper Report - ${isSoccer ? 'Foci' : 'Kosár/Hoki'} (${new Date().toLocaleDateString('hu-HU')})`;
     
@@ -202,7 +202,7 @@ async function sendEmailReport(type: string, results: any[]) {
             .badge-value { background-color: #4caf50; }
             .badge-odds { background-color: #2196f3; }
         </style>
-        <h1 style="color: #d32f2f; text-align: center;">King AI Sniper - v148.2 Victory Protocol</h1>
+        <h1 style="color: #d32f2f; text-align: center;">King AI Sniper - v148.4 Victory Protocol</h1>
         <p style="text-align: center;">Időszak: ${isSoccer ? (timeSlot || 'Ma déltől holnap délig') : 'Ma estétől holnap reggelig'}</p>
         <hr>
     `;
@@ -270,7 +270,7 @@ async function sendEmailReport(type: string, results: any[]) {
 
     html += `
         <br>
-        <p style="color: #888; font-size: 0.8em; text-align: center;">Ez egy automata üzenet a King AI szerverétől. v148.2 VICTORY PROTOCOL aktív. A keresés Google Grounding technológiával történt.</p>
+        <p style="color: #888; font-size: 0.8em; text-align: center;">Ez egy automata üzenet a King AI szerverétől. v148.4 VICTORY PROTOCOL aktív. A keresés Google Grounding technológiával történt.</p>
     `;
 
     await sendSniperReport(REPORT_EMAIL, subject, html);
