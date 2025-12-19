@@ -3,7 +3,8 @@ import { runSniperScan } from './AutoScanner.js';
 
 /**
  * Ütemező a szkenner feladatokhoz.
- * v148.2: Sequential startup fix (await-tel sorba fűzve).
+ * v148.3: Fresh deploy to resolve Render build issues.
+ * Sequential startup fix (await-tel sorba fűzve).
  */
 export function initScheduler() {
     console.log('[Scheduler] Automata ütemező inicializálva.');
