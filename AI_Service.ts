@@ -1075,11 +1075,44 @@ async function getMasterRecommendation(
         // --- 1. LÉPÉS: AI (GOD MODE V2.0) hívása ---
         let template = MASTER_AI_PROMPT_TEMPLATE_GOD_MODE;
         const filledPrompt = fillPromptTemplate(template, data);
-        let rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation");
+        let rec: any = null;
+        
+        try {
+            rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation", 3, false);
+        } catch (e: any) {
+            console.error("[AI_Service v148.9 - Főnök] Gemini API hiba:", e.message);
+            // Fallback: próbáljuk meg még egyszer, de most search nélkül
+            try {
+                rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation_Retry", 2, false);
+            } catch (e2: any) {
+                console.error("[AI_Service v148.9 - Főnök] Második próbálkozás is sikertelen:", e2.message);
+                rec = null;
+            }
+        }
 
-        if (!rec || !rec.recommended_bet || typeof rec.final_confidence !== 'number') {
-            console.error("[AI_Service v138.0 - Főnök] Master AI hiba: Érvénytelen JSON struktúra a válaszban:", rec);
-            throw new Error("AI hiba: Érvénytelen JSON struktúra a MasterRecommendation-ben.");
+        // === v148.9: ROBUSZT HIBÁKEZELÉS ===
+        // Ha a Gemini nem adott vissza érvényes JSON-t, vagy hiányoznak a mezők, adjunk vissza egy default objektumot
+        if (!rec || typeof rec !== 'object') {
+            console.error("[AI_Service v148.9 - Főnök] Master AI hiba: Érvénytelen vagy hiányzó válasz:", rec);
+            rec = {
+                recommended_bet: "Hiba",
+                final_confidence: 1,
+                brief_reasoning: `KRITIKUS HIBA: AI nem adott vissza érvényes JSON-t. A többi elemzés (ha van) még érvényes lehet.`
+            };
+        } else if (!rec.recommended_bet || typeof rec.final_confidence !== 'number') {
+            console.error("[AI_Service v148.9 - Főnök] Master AI hiba: Hiányzó mezők a válaszban:", JSON.stringify(rec, null, 2));
+            // Próbáljuk meg kinyerni a mezőket, ha más néven vannak
+            rec.recommended_bet = rec.recommended_bet || rec.recommendedBet || rec.bet || rec.market || "Hiba";
+            rec.final_confidence = typeof rec.final_confidence === 'number' ? rec.final_confidence : 
+                                   (typeof rec.confidence === 'number' ? rec.confidence : 
+                                   (typeof rec.confidenceScore === 'number' ? rec.confidenceScore : 1));
+            rec.brief_reasoning = rec.brief_reasoning || rec.reasoning || rec.briefReasoning || 
+                                 "KRITIKUS HIBA: AI hiba: Érvénytelen JSON struktúra a MasterRecommendation-ben. A többi elemzés (ha van) még érvényes lehet.";
+            
+            // Ha még mindig nincs érvényes recommended_bet, akkor hibát jelzünk
+            if (rec.recommended_bet === "Hiba" || rec.final_confidence < 1) {
+                console.error("[AI_Service v148.9 - Főnök] Nem sikerült helyreállítani a választ, default értékekkel folytatjuk.");
+            }
         }
         
         // === v148.8: AUTO-OVERRIDE TÖRÖLVE ===
