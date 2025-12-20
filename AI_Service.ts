@@ -564,73 +564,98 @@ Expected: {sim_mu_sum}.
 Output: {"basketball_total_points_analysis": "**PONTSZÁM ELEMZÉS**\\n\\n<Elemzés>\\n\\nAjánlás: <OVER/UNDER>\\nBizalom: <Szint>"}`;
 
 
-// === A FŐNÖK PROMPTJA (GOD MODE V3.0 - EXECUTIONER PROTOCOL) ===
+// === A FŐNÖK PROMPTJA (GOD MODE V5.0 - PERFECT MARKET FOCUS) ===
 const MASTER_AI_PROMPT_TEMPLATE_GOD_MODE = `
 ═══════════════════════════════════════════════════════════════
-               KING AI - EXECUTIONER PROTOCOL V4.0
-                    "Zero Failure - Pure Accuracy"
+        KING AI - PERFECT MARKET FOCUS PROTOCOL V5.0
+              "Tökéletes Elemzés - Maximum 3 Tipp"
 ═══════════════════════════════════════════════════════════════
 
-You are the **SUPREME EXECUTIONER**. Your only goal is to provide a PERFECT TIP. 
-If there is even 1% doubt, you MUST REJECT the match.
+You are the **SUPREME MARKET ANALYST**. Your ONLY goal is to find PERFECT betting tips.
+🚫 **NEVER** recommend 1X2 (Winner/Draw) unless it's ABSOLUTELY GUARANTEED (>90% probability).
+✅ **PRIORITIZE** these markets in this EXACT order:
+   1. **Over/Under 2.5 Goals** (Over 2.5 vagy Under 2.5)
+   2. **BTTS** (Both Teams To Score - Igen vagy Nem)
+   3. **Team Goals Over/Under 1.5** (Hazai csapat gólok Over/Under 1.5, Vendég csapat gólok Over/Under 1.5)
 
-[DECISION LOGIC - v148.7 EXECUTIONER PROTOCOL]:
-1. **STRICT CONSENSUS (KONSZENZUS SZABÁLY)**: 
-   - Compare the Statistical Probs (Quant) and the Specialist Report.
-   - If Quant suggests one team (e.g., Home Win) but Specialist suggests another or is uncertain, YOU MUST REJECT.
-   - ONLY recommend if the Math AND the Human-like Context agree 100%.
-2. **THE 8.5 THRESHOLD (BIZALMI FAL)**:
-   - Your final_confidence MUST be >= 8.5/10. 
-   - If you cannot honestly give 8.5, RETURN: {"recommended_bet": "LOW_CERTAINTY", "brief_reasoning": "Risk too high."}.
-3. **UNSTOPPABLE MARKET SEARCH**:
-   - Do not force 1X2. If the winner is tricky, look at Over/Under or BTTS.
-   - If Over 2.5 has > 75% statistical probability AND the Specialist agrees, THAT is your tip.
-4. **VENUE SUPREMACY (HAZAI PÁLYA TISZTELETE)**:
-   - If a Home team has >= 60% form and is undefeated at home, NEVER bet against them. If the stats say Away Win, REJECT the match.
+**MAXIMUM 3 TIPS PER MATCH** - If you find 3 perfect tips (confidence >= 8.5), STOP analyzing immediately!
+
+[DECISION LOGIC - v149.0 PERFECT MARKET FOCUS]:
+1. **MARKET PRIORITY (PIAC PRIORITÁS)**:
+   - FIRST: Analyze Over/Under 2.5 Goals. Expected goals: Home {sim_mu_h}, Away {sim_mu_a}, Total: {sim_mu_h} + {sim_mu_a} = {sim_mu_sum}
+   - SECOND: Analyze BTTS (Both Teams To Score). Probability: {sim_pBTTS}%
+   - THIRD: Analyze Team Goals 1.5 (Home Over/Under 1.5, Away Over/Under 1.5)
+   - LAST RESORT: Only if NONE of the above are clear (confidence < 8.5), then consider 1X2
+2. **STRICT CONSENSUS (KONSZENZUS SZABÁLY)**: 
+   - Compare Statistical Probs (Quant) and Specialist Report.
+   - If Quant and Specialist disagree, YOU MUST REJECT that market.
+   - ONLY recommend if Math AND Context agree 100%.
+3. **THE 8.5 THRESHOLD (BIZALMI FAL)**:
+   - Each tip's confidence MUST be >= 8.5/10.
+   - If you cannot honestly give 8.5, DO NOT include that tip.
+4. **STOP AT 3 TIPS**:
+   - Maximum 3 tips per match.
+   - If you find 3 perfect tips (all >= 8.5 confidence), STOP immediately.
+   - Do NOT analyze further markets.
 5. **NO GAMBLING**: 
-   - You are an Analyst, not a gambler. Better to send 0 tips than 1 losing tip.
+   - You are a Perfect Analyst. Better to send 0 tips than 1 losing tip.
 6. **LANGUAGE**: All output MUST be in HUNGARIAN language.
 
 [DATA]:
-- Statistical Probs: Home {sim_pHome}%, Draw {sim_pDraw}%, Away {sim_pAway}%
+- Expected Goals: Home {sim_mu_h}, Away {sim_mu_a}, Total: {sim_mu_sum}
+- Over 2.5 Probability: {sim_pOver}%
+- Under 2.5 Probability: {sim_pUnder}%
+- BTTS Probability: {sim_pBTTS}%
 - Expected Score: {sim_topScore} ({sim_topScoreProb}%)
 - Top 3 Most Likely Scores: {top_3_outcomes}
-- Expected Goals Detail: {expected_goals_detail}
 - Value Bets: {valueBetsJson}
 - Model Confidence: {modelConfidence}/10
 - Expert Confidence: "{expertConfidence}"
 - Specialist: {specialistReportJson}
 
-🚫 **BANNED**: Any market < 1.45 odds. 
-✅ **ALLOWED**: 1X2, Over/Under, BTTS, Handicap, Team Totals (Minimum 1.45 odds).
+🚫 **BANNED**: Any market < 1.45 odds. 1X2 markets (unless >90% probability).
+✅ **ALLOWED**: Over/Under 2.5, BTTS, Team Goals Over/Under 1.5 (Minimum 1.45 odds).
 
 🚨 **CRITICAL JSON OUTPUT REQUIREMENT** 🚨
 You MUST respond with ONLY a valid JSON object. NO markdown, NO code blocks, NO explanations, NO text before or after.
 Your response must start with { and end with }.
 Every string value must be in double quotes.
 Every number must be a valid number (no quotes).
-Example of CORRECT format:
-{"recommended_bet": "Hazai győzelem", "final_confidence": 9.5, "brief_reasoning": "Szöveg"}
 
 OUTPUT STRUCTURE - EXACT JSON FORMAT (COPY THIS STRUCTURE):
 {
-  "recommended_bet": "<THE PERFECT TIP or 'NO_CONSENSUS' or 'LOW_CERTAINTY'>",
-  "final_confidence": <Number between 8.5 and 10.0>,
-  "brief_reasoning": "<Why this IS A GUARANTEED WIN.>",
-  "verdict": "<Describe the match exactly as it happened in Hungarian, past tense.>",
-  "primary": {
-    "market": "<The Winner/Main Tip>",
-    "confidence": <Number>,
-    "reason": "<Detailed logic>"
-  },
-  "secondary": {
-    "market": "<BTTS or Over/Under - ONLY if certainty is > 8.0>",
-    "confidence": <Number>,
-    "reason": "<Detailed logic>"
-  }
+  "tips": [
+    {
+      "market": "<Over 2.5 / Under 2.5 / BTTS Igen / BTTS Nem / Hazai Over 1.5 / Hazai Under 1.5 / Vendég Over 1.5 / Vendég Under 1.5>",
+      "confidence": <Number between 8.5 and 10.0>,
+      "reasoning": "<Why this IS A GUARANTEED WIN. Detailed analysis.>"
+    }
+  ],
+  "final_confidence": <Average confidence of all tips or highest if only 1 tip>,
+  "brief_reasoning": "<Summary of why these tips are perfect.>",
+  "verdict": "<Describe the match exactly as it happened in Hungarian, past tense.>"
+}
+
+**IMPORTANT RULES**:
+- Maximum 3 tips in the "tips" array.
+- Each tip MUST have confidence >= 8.5.
+- If you find 3 perfect tips, STOP analyzing.
+- Prioritize Over/Under 2.5, then BTTS, then Team Goals 1.5.
+- Only use 1X2 if NONE of the above are clear.
+
+Example of CORRECT format:
+{
+  "tips": [
+    {"market": "Over 2.5", "confidence": 9.2, "reasoning": "Hazai csapat átlagosan 1.8 gólt rúg, vendég 1.5 gólt. Összesen 3.3 gól várható, Over 2.5 >90% valószínűség."},
+    {"market": "BTTS Igen", "confidence": 8.7, "reasoning": "Mindkét csapat támadó stílusú, hazai 75% meccsen rúg gólt, vendég 80% meccsen rúg gólt."}
+  ],
+  "final_confidence": 8.95,
+  "brief_reasoning": "Két tökéletes tipp: Over 2.5 és BTTS Igen, mindkettő >85% valószínűség.",
+  "verdict": "A meccs 2-1-re végződött, mindkét csapat rúgott gólt, összesen 3 gól esett."
 }
 
 ⚠️ REMEMBER: Your response must be PURE JSON. Start with { and end with }. No markdown, no code blocks, no explanations.
+Maximum 3 tips. Stop at 3 perfect tips.
 `;
 
 // === ORCHESTRATION LOGIC ===
@@ -1054,6 +1079,11 @@ async function getMasterRecommendation(
             probability: outcome.probability.toFixed(1) + '%'
         }));
         
+        // === v149.0: BTTS és mu_sum számítás ===
+        const sim_mu_sum = ((safeSim.mu_h_sim ?? 0) + (safeSim.mu_a_sim ?? 0)).toFixed(2);
+        const sim_pBTTS = safeSim.pBTTS?.toFixed(1) || "N/A";
+        const sim_pUnder = safeSim.pUnder?.toFixed(1) || "N/A";
+        
         const data = {
             valueBetsJson: JSON.stringify(valueBets),
             sim_pHome: safeSim.pHome?.toFixed(1) || "N/A", 
@@ -1061,8 +1091,11 @@ async function getMasterRecommendation(
             sim_pAway: safeSim.pAway?.toFixed(1) || "N/A",
             sim_mainTotalsLine: safeSim.mainTotalsLine, 
             sim_pOver: safeSim.pOver?.toFixed(1) || "N/A",
+            sim_pUnder: sim_pUnder,
+            sim_pBTTS: sim_pBTTS,
             sim_mu_h: safeSim.mu_h_sim?.toFixed(2) || "N/A",
             sim_mu_a: safeSim.mu_a_sim?.toFixed(2) || "N/A",
+            sim_mu_sum: sim_mu_sum,
             sim_topScore: topScore,
             sim_topScoreProb: topScoreProb,
             sim_topOutcomesText: probSnapshot.topOutcomesText,
@@ -1087,46 +1120,47 @@ async function getMasterRecommendation(
         const filledPrompt = fillPromptTemplate(template, data);
         let rec: any = null;
         
-        // === v148.9: JSON Schema definíció a Master AI válaszához ===
+        // === v149.0: JSON Schema definíció a Master AI válaszához (új struktúra: tips array) ===
         const masterAiJsonSchema = {
             type: "object",
             properties: {
-                recommended_bet: {
-                    type: "string",
-                    description: "The recommended bet or 'NO_CONSENSUS' or 'LOW_CERTAINTY'"
+                tips: {
+                    type: "array",
+                    description: "Array of betting tips (maximum 3)",
+                    items: {
+                        type: "object",
+                        properties: {
+                            market: {
+                                type: "string",
+                                description: "The betting market (Over 2.5, Under 2.5, BTTS Igen, BTTS Nem, Hazai Over 1.5, Hazai Under 1.5, Vendég Over 1.5, Vendég Under 1.5)"
+                            },
+                            confidence: {
+                                type: "number",
+                                description: "Confidence score between 8.5 and 10.0"
+                            },
+                            reasoning: {
+                                type: "string",
+                                description: "Detailed reasoning for this tip"
+                            }
+                        },
+                        required: ["market", "confidence", "reasoning"]
+                    },
+                    maxItems: 3
                 },
                 final_confidence: {
                     type: "number",
-                    description: "Confidence score between 8.5 and 10.0"
+                    description: "Average confidence of all tips or highest if only 1 tip"
                 },
                 brief_reasoning: {
                     type: "string",
-                    description: "Brief reasoning for the recommendation"
+                    description: "Summary of why these tips are perfect"
                 },
                 verdict: {
                     type: "string",
                     description: "Match description in Hungarian past tense"
-                },
-                primary: {
-                    type: "object",
-                    properties: {
-                        market: { type: "string" },
-                        confidence: { type: "number" },
-                        reason: { type: "string" }
-                    },
-                    required: ["market", "confidence", "reason"]
-                },
-                secondary: {
-                    type: "object",
-                    properties: {
-                        market: { type: "string" },
-                        confidence: { type: "number" },
-                        reason: { type: "string" }
-                    },
-                    required: ["market", "confidence", "reason"]
                 }
             },
-            required: ["recommended_bet", "final_confidence", "brief_reasoning"]
+            required: ["tips", "final_confidence", "brief_reasoning"]
         };
         
         try {
@@ -1142,54 +1176,71 @@ async function getMasterRecommendation(
             }
         }
 
-        // === v148.9: ROBUSZT HIBÁKEZELÉS ===
+        // === v149.0: ROBUSZT HIBÁKEZELÉS (új struktúra: tips array) ===
         // Ha a Gemini nem adott vissza érvényes JSON-t, vagy hiányoznak a mezők, adjunk vissza egy default objektumot
         if (!rec || typeof rec !== 'object') {
-            console.error("[AI_Service v148.9 - Főnök] Master AI hiba: Érvénytelen vagy hiányzó válasz:", rec);
+            console.error("[AI_Service v149.0 - Főnök] Master AI hiba: Érvénytelen vagy hiányzó válasz:", rec);
             rec = {
-                recommended_bet: "Hiba",
+                tips: [],
                 final_confidence: 1,
                 brief_reasoning: `KRITIKUS HIBA: AI nem adott vissza érvényes JSON-t. A többi elemzés (ha van) még érvényes lehet.`
             };
-        } else if (!rec.recommended_bet || typeof rec.final_confidence !== 'number') {
-            console.error("[AI_Service v148.9 - Főnök] Master AI hiba: Hiányzó mezők a válaszban:", JSON.stringify(rec, null, 2));
-            // Próbáljuk meg kinyerni a mezőket, ha más néven vannak
-            rec.recommended_bet = rec.recommended_bet || rec.recommendedBet || rec.bet || rec.market || "Hiba";
-            rec.final_confidence = typeof rec.final_confidence === 'number' ? rec.final_confidence : 
-                                   (typeof rec.confidence === 'number' ? rec.confidence : 
-                                   (typeof rec.confidenceScore === 'number' ? rec.confidenceScore : 1));
-            rec.brief_reasoning = rec.brief_reasoning || rec.reasoning || rec.briefReasoning || 
-                                 "KRITIKUS HIBA: AI hiba: Érvénytelen JSON struktúra a MasterRecommendation-ben. A többi elemzés (ha van) még érvényes lehet.";
-            
-            // Ha még mindig nincs érvényes recommended_bet, akkor hibát jelzünk
-            if (rec.recommended_bet === "Hiba" || rec.final_confidence < 1) {
-                console.error("[AI_Service v148.9 - Főnök] Nem sikerült helyreállítani a választ, default értékekkel folytatjuk.");
+        } else if (!Array.isArray(rec.tips) || rec.tips.length === 0) {
+            console.error("[AI_Service v149.0 - Főnök] Master AI hiba: Hiányzó vagy üres tips array:", JSON.stringify(rec, null, 2));
+            // Fallback: próbáljuk meg a régi struktúrát konvertálni
+            if (rec.recommended_bet) {
+                rec.tips = [{
+                    market: rec.recommended_bet,
+                    confidence: rec.final_confidence || 1,
+                    reasoning: rec.brief_reasoning || "N/A"
+                }];
+            } else {
+                rec.tips = [];
             }
+            rec.final_confidence = typeof rec.final_confidence === 'number' ? rec.final_confidence : 1;
+            rec.brief_reasoning = rec.brief_reasoning || "KRITIKUS HIBA: AI hiba: Érvénytelen JSON struktúra a MasterRecommendation-ben.";
         }
         
-        // === v148.9: FŐNÖK KORREKCIÓ VISSZAÁLLÍTVA (régi v103.6 logika) ===
+        // === v149.0: FŐNÖK KORREKCIÓ VISSZAÁLLÍTVA (régi v103.6 logika) ===
         // Az AI csak tanácsadó, a FŐNÖK (kód) dönti el a végső tippet!
-        console.log(`[AI_Service v148.9 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
+        console.log(`[AI_Service v149.0 - Főnök] AI (Tanácsadó) javaslata: ${rec.tips.length} tipp (${rec.tips.map((t: any) => t.market).join(', ')}) @ átlag ${rec.final_confidence}/10`);
 
+        // === v149.0: FŐNÖK KORREKCIÓ - MINDEN TIPPRE KÜLÖN ===
         // 1. Eltérés-alapú büntetés (Modell vs Expert) - RÉGI v103.6 LOGIKA
         const confidenceDiff = Math.abs(safeModelConfidence - expertConfScore);
         const disagreementThreshold = 3.0;
-        let confidencePenalty = 0;
         let disagreementNote = "";
         
         if (expertConfScore < 1.1 && expertConfidence && !expertConfidence.toLowerCase().includes("hiba")) {
-            confidencePenalty = Math.max(0, rec.final_confidence - 3.0);
             disagreementNote = " (FŐNÖK KORREKCIÓ: Expert bizalom extrém alacsony!)";
         }
         else if (confidenceDiff > disagreementThreshold) {
-            confidencePenalty = Math.min(2.0, confidenceDiff / 1.5);
             disagreementNote = ` (FŐNÖK KORREKCIÓ: Modell (${safeModelConfidence.toFixed(1)}) vs Expert (${expertConfScore.toFixed(1)}) eltérés miatt.)`;
         }
         
-        rec.final_confidence -= confidencePenalty;
+        // Minden tippre külön korrekció
+        let totalConfidence = 0;
+        for (let i = 0; i < rec.tips.length; i++) {
+            const tip = rec.tips[i];
+            let confidencePenalty = 0;
+            
+            if (expertConfScore < 1.1 && expertConfidence && !expertConfidence.toLowerCase().includes("hiba")) {
+                confidencePenalty = Math.max(0, tip.confidence - 3.0);
+            }
+            else if (confidenceDiff > disagreementThreshold) {
+                confidencePenalty = Math.min(2.0, confidenceDiff / 1.5);
+            }
+            
+            tip.confidence -= confidencePenalty;
+            tip.confidence = Math.max(1.0, Math.min(10.0, tip.confidence));
+            totalConfidence += tip.confidence;
+        }
+        
+        // Átlagos confidence számítása
+        rec.final_confidence = rec.tips.length > 0 ? totalConfidence / rec.tips.length : 1.0;
         rec.final_confidence = Math.max(1.0, Math.min(10.0, rec.final_confidence));
 
-        // 2. Bizalmi Kalibráció (Meta-tanulás) - már létezik, de hozzáadjuk a megjegyzést
+        // 2. Bizalmi Kalibráció (Meta-tanulás)
         let calibrationNote = "";
         try {
             const calibrationMap = getConfidenceCalibrationMap();
@@ -1210,7 +1261,7 @@ async function getMasterRecommendation(
                 }
             }
         } catch(calError: any) { 
-            console.warn(`[AI_Service v148.9 - Főnök] Bizalmi kalibráció hiba: ${calError.message}`); 
+            console.warn(`[AI_Service v149.0 - Főnök] Bizalmi kalibráció hiba: ${calError.message}`); 
         }
 
         // Megjegyzések hozzáadása az indokláshoz
@@ -1219,7 +1270,7 @@ async function getMasterRecommendation(
             rec.brief_reasoning = rec.brief_reasoning.substring(0, 497) + "...";
         }
 
-        console.log(`[AI_Service v148.9 - Főnök] VÉGLEGES KORRIGÁLT Tipp: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
+        console.log(`[AI_Service v149.0 - Főnök] VÉGLEGES KORRIGÁLT Tippek: ${rec.tips.length} db, átlag confidence: ${rec.final_confidence.toFixed(1)}/10`);
         
         // === v148.8: AUTO-OVERRIDE TÖRÖLVE ===
         // A RÉGI v145.0 logika (1085-1133) törölve, mert ez felülírta az AI döntését!
@@ -1231,334 +1282,63 @@ async function getMasterRecommendation(
         const pOver = safeSim.pOver || 0;
         const pUnder = safeSim.pUnder || 0;
         
-        // === v140.0: TIPP FORMÁTUM NORMALIZÁLÁS (AI válasz után) ===
+        // === v149.0: TIPP FORMÁTUM NORMALIZÁLÁS ÉS VALIDÁCIÓ (új struktúra: tips array) ===
         // Normalizáljuk az AI által generált tippeket az egységes formátumra
-        if (rec.recommended_bet) {
-            rec.recommended_bet = normalizeBettingRecommendation(rec.recommended_bet, sport);
-        }
-        if (rec.primary?.market) {
-            rec.primary.market = normalizeBettingRecommendation(rec.primary.market, sport);
-        }
-        if (rec.secondary?.market) {
-            rec.secondary.market = normalizeBettingRecommendation(rec.secondary.market, sport);
-        }
-        // === VÉGE v140.0 ===
+        const validTips: any[] = [];
+        const minConfidence = 8.5; // v149.0: Minimum 8.5 confidence minden tipphez
         
-        // === v140.1: VALIDÁCIÓ - MINIMUM VALÓSZÍNŰSÉG ÉS CONFIDENCE ELLENŐRZÉS ===
-        // NOTE: pHome, pAway, pDraw, pOver, pUnder már deklarálva vannak a 1060-1064 sorokban (v145.0 tipp optimalizálás)
-        const confidence = rec.final_confidence || 0;
-        
-        // 1. Minimum valószínűség ellenőrzés
-        const recommendedMarket = rec.recommended_bet?.toLowerCase() || '';
-        let recommendedProb = 0;
-        let isValidRecommendation = true;
-        let skipReason = '';
-        
-        if (recommendedMarket.includes('hazai') || recommendedMarket.includes('home')) {
-            recommendedProb = pHome;
-            // === v142.0: MINDEN MECCSRE TIPP - csak akkor skip, ha TÉNYLEG nincs esély ===
-            if (pHome < 25) { // === v142.0: 40% → 25% (MINDEN meccsre tipp) ===
-                isValidRecommendation = false;
-                skipReason = `Hazai győzelem valószínűsége túl alacsony (${pHome.toFixed(1)}% < 25%)`;
-            }
-        } else if (recommendedMarket.includes('vendég') || recommendedMarket.includes('away')) {
-            recommendedProb = pAway;
-            // === v142.0: MINDEN MECCSRE TIPP - csak akkor skip, ha TÉNYLEG nincs esély ===
-            if (pAway < 25) { // === v142.0: 40% → 25% (MINDEN meccsre tipp) ===
-                isValidRecommendation = false;
-                skipReason = `Vendég győzelem valószínűsége túl alacsony (${pAway.toFixed(1)}% < 25%)`;
-            }
-        } else if (recommendedMarket.includes('döntetlen') || recommendedMarket.includes('draw')) {
-            recommendedProb = pDraw;
-            // === v142.0: MINDEN MECCSRE TIPP - csak akkor skip, ha TÉNYLEG nincs esély ===
-            if (pDraw < 25) { // === v142.0: 35% → 25% (MINDEN meccsre tipp) ===
-                isValidRecommendation = false;
-                skipReason = `Döntetlen valószínűsége túl alacsony (${pDraw.toFixed(1)}% < 25%)`;
-            }
-        } else if (recommendedMarket.includes('over')) {
-            recommendedProb = pOver;
-            // === v142.0: MINDEN MECCSRE TIPP - csak akkor skip, ha TÉNYLEG nincs esély ===
-            if (pOver < 25) { // === v142.0: 40% → 25% (MINDEN meccsre tipp) ===
-                isValidRecommendation = false;
-                skipReason = `Over valószínűsége túl alacsony (${pOver.toFixed(1)}% < 25%)`;
-            }
-        } else if (recommendedMarket.includes('under')) {
-            recommendedProb = pUnder;
-            // === v142.0: MINDEN MECCSRE TIPP - csak akkor skip, ha TÉNYLEG nincs esély ===
-            if (pUnder < 25) { // === v142.0: 40% → 25% (MINDEN meccsre tipp) ===
-                isValidRecommendation = false;
-                skipReason = `Under valószínűsége túl alacsony (${pUnder.toFixed(1)}% < 25%)`;
-            }
-        }
-        
-        // 2. Minimum confidence ellenőrzés (v148.8: EXECUTIONER - Csak a legmagasabb bizalom!)
-        // Dinamikus confidence követelmény a valószínűség alapján
-        // === v148.8: SZIGORÍTOTT - CSAK TÖKÉLETES TIPPEK ===
-        let minConfidence = 8.5; // v148.8: 6.0 → 8.5 (BRUTÁLIS SZIGORÍTÁS!)
-        if (recommendedProb >= 75) minConfidence = 8.8; // 75%+ valószínűséghez is 8.8 kell
-        else if (recommendedProb >= 65) minConfidence = 8.5; 
-        else if (recommendedProb >= 55) minConfidence = 8.5; 
-        else if (recommendedProb >= 45) minConfidence = 8.5; 
-        else if (recommendedProb >= 35) minConfidence = 8.5; 
-        else minConfidence = 8.8; // Ha 35% alatt → még magasabb küszöb
-        
-        // === v145.0: HA A CONFIDENCE ALACSONY, DE VAN ERŐS KONTEKST → NE SKIP-ELJÜNK ===
-        // Ha a specialist confidence magasabb, mint a minConfidence, akkor elfogadjuk
-        const specialistConfCheck = parseFloat(rec.primary?.confidence?.toString() || '0') || 0;
-        if (confidence < minConfidence) {
-            // Ha a specialist confidence elég magas, akkor elfogadjuk
-            if (specialistConfCheck >= minConfidence) {
-                rec.final_confidence = Math.max(confidence, specialistConfCheck);
-                console.log(`[AI_Service v145.0] ✅ KONTEKST ALAPÚ CONFIDENCE: Specialist (${specialistConfCheck.toFixed(1)}/10) >= minConfidence (${minConfidence}/10) → Elfogadva`);
+        for (const tip of rec.tips) {
+            // Normalizáljuk a market nevet
+            tip.market = normalizeBettingRecommendation(tip.market, sport);
+            
+            // Confidence ellenőrzés - csak >= 8.5 tippeket fogadunk el
+            if (tip.confidence >= minConfidence) {
+                validTips.push(tip);
             } else {
-                isValidRecommendation = false;
-                skipReason = `Bizalom túl alacsony (${confidence.toFixed(1)}/10 < ${minConfidence}/10, szükséges: ${recommendedProb.toFixed(1)}% valószínűséghez)`;
+                console.warn(`[AI_Service v149.0] Tipp elvetve: ${tip.market} (confidence: ${tip.confidence}/10 < ${minConfidence}/10)`);
             }
         }
         
-        // 3. Döntetlen valószínűség ellenőrzés (v142.0: lazább - MINDEN meccsre tipp)
-        if (pDraw > 35 && !recommendedMarket.includes('döntetlen') && !recommendedMarket.includes('draw')) {
-            // Ha a döntetlen valószínűsége magas, de van egyértelmű favorit → ajánljuk a favoritot
-            // Kivéve, ha a győztes valószínűsége < 45% (v142.0: 55% → 45% - lazább)
-            const maxWinProb = Math.max(pHome, pAway);
-            if (maxWinProb < 45) { // v142.0: 55% → 45% - lazább
-                // Ne skip-eljünk, hanem ajánljuk a döntetlent vagy Over/Under-t
-                console.log(`[AI_Service v142.0] ℹ️ Döntetlen valószínűsége magas (${pDraw.toFixed(1)}%), de nincs egyértelmű favorit. Ajánljuk Over/Under-t.`);
-            }
+        // Csak a valid tippeket tartjuk meg
+        rec.tips = validTips;
+        
+        // Átlagos confidence újraszámítása
+        if (rec.tips.length > 0) {
+            const totalConf = rec.tips.reduce((sum: number, tip: any) => sum + tip.confidence, 0);
+            rec.final_confidence = totalConf / rec.tips.length;
+        } else {
+            rec.final_confidence = 1.0;
         }
         
-        // === v142.0: STATISZTIKAI VS KONTEKSTUÁLIS - KONTEKST NYER (CONTEXT WINS!) ===
-        // Ha a statisztikai modell és a kontextuális elemzés ellentmond egymásnak,
-        // akkor a KONTEKST NYER (injuries, form, motivation > pure stats)
-        const quantConfidenceCheck = safeModelConfidence || 5.0;
-        const specialistConfidenceCheck = parseFloat(rec.primary?.confidence?.toString() || '0') || 0;
-        const confidenceGapCheck = Math.abs(quantConfidenceCheck - specialistConfidenceCheck);
-        
-        // Ha a gap > 3.0, akkor jelentős ellentmondás van
-        if (confidenceGapCheck > 3.0) {
-            // Ha a specialist (kontextuális) confidence magasabb → használjuk azt!
-            if (specialistConfidenceCheck > quantConfidenceCheck) {
-                // Kontextuális elemzés erősebb → emeljük a confidence-t
-                rec.final_confidence = Math.min(9.5, Math.max(rec.final_confidence, specialistConfidenceCheck));
-                console.log(`[AI_Service v142.0] ✅ KONTEKST NYER: Specialist confidence (${specialistConfidenceCheck.toFixed(1)}/10) > Quant (${quantConfidenceCheck.toFixed(1)}/10). Using context-based recommendation.`);
-            } else {
-                // Ha a gap > 4.0 ÉS a quant erősebb → csökkentsük a confidence-t
-                if (confidenceGapCheck > 4.0) {
-                    const penalty = Math.min(1.5, confidenceGapCheck / 3);
-                    rec.final_confidence = Math.max(1.0, rec.final_confidence - penalty);
-                    console.warn(`[AI_Service v142.0] ⚠️ STATISZTIKAI VS KONTEKSTUÁLIS ELLENTMONDÁS: Gap=${confidenceGapCheck.toFixed(1)}, Confidence penalty=${penalty.toFixed(1)}`);
-                }
-            }
+        // === v149.0: VALIDÁCIÓ - MINIMUM 1 TIPP KELL ===
+        if (rec.tips.length === 0) {
+            console.warn(`[AI_Service v149.0] Nincs érvényes tipp (mindegyik confidence < ${minConfidence}/10)`);
+            rec.tips = [];
+            rec.final_confidence = 1.0;
+            rec.brief_reasoning = `Nincs érvényes tipp (mindegyik confidence < ${minConfidence}/10)`;
         }
         
-        // === v142.0: VALUE THRESHOLD (5% → 3% - MINDEN meccsre tipp) ===
-        // Csak akkor skip, ha TÉNYLEG nincs value (3% alatt)
-        const recommendedMarketValue = valueBets.find(vb => {
-            const vbMarketLower = normalizeBettingRecommendation(vb.market, sport).toLowerCase();
-            return vbMarketLower === recommendedMarket || recommendedMarket.includes(vbMarketLower) || vbMarketLower.includes(recommendedMarket);
+        // === v149.0: MAXIMUM 3 TIPP - Ha van 3 jó tipp, STOP ===
+        if (rec.tips.length > 3) {
+            // Csak az első 3 legmagasabb confidence-s tippet tartjuk meg
+            rec.tips.sort((a: any, b: any) => b.confidence - a.confidence);
+            rec.tips = rec.tips.slice(0, 3);
+            console.log(`[AI_Service v149.0] Maximum 3 tipp: csak a legjobb 3 tippet tartjuk meg.`);
+        }
+        
+        // === v149.0: VÉGLEGES LOG ===
+        console.log(`[AI_Service v149.0 - Főnök] VÉGLEGES TIPPEK: ${rec.tips.length} db`);
+        rec.tips.forEach((tip: any, idx: number) => {
+            console.log(`  ${idx + 1}. ${tip.market} @ ${tip.confidence.toFixed(1)}/10`);
         });
         
-        if (recommendedMarketValue) {
-            const value = parseFloat(recommendedMarketValue.value.replace('+', '').replace('%', ''));
-            if (value < 3.0) { // v142.0: 7% → 3% - MINDEN meccsre tipp
-                // Ne skip-eljünk, csak csökkentsük a confidence-t
-                rec.final_confidence = Math.max(5.0, rec.final_confidence - 1.0);
-                console.warn(`[AI_Service v142.0] ⚠️ Alacsony value (${value.toFixed(1)}% < 3%), de mégis ajánljuk (MINDEN meccsre tipp). Confidence csökkentve.`);
-            }
-        }
+        // === v149.0: RÉGI VALIDÁCIÓS LOGIKA TÖRÖLVE ===
+        // Az új struktúrában (tips array) már nincs szükség a régi validációs logikára.
+        // A tippeket már a fentebbi kódban validáltuk (minimum 8.5 confidence).
         
-        // === v145.0: TÖBB VALIDÁCIÓ (ENSEMBLE CHECK) - FINOMHANGOLVA ===
-        // Csak akkor ajánlunk tippet, ha több jel is egyetért
-        // Jel 1: Statisztikai modell (quant confidence)
-        // Jel 2: Kontextuális elemzés (specialist confidence)
-        // Jel 3: Value bet (van-e érték)
-        // Jel 4: Valószínűség (>= 25%)
-        
-        const signals = {
-            statistical: quantConfidenceCheck >= 5.0, // Statisztikai modell >= 5.0
-            contextual: specialistConfidenceCheck >= 5.0, // Kontextuális elemzés >= 5.0
-            value: recommendedMarketValue && parseFloat(recommendedMarketValue.value.replace('+', '').replace('%', '')) >= 3.0, // Van value
-            probability: recommendedProb >= 25 // Valószínűség >= 25%
-        };
-        
-        const signalCount = Object.values(signals).filter(s => s).length;
-        
-        // === v145.0: FINOMHANGOLT CONFIDENCE MÓDOSÍTÁS ===
-        // Kevésbé szigorú: csak akkor csökkentsük jelentősen, ha TÉNYLEG gyenge a jel
-        if (signalCount <= 1) {
-            // Csak 1 jel egyetért → jelentős csökkentés
-            rec.final_confidence = Math.max(1.0, rec.final_confidence - 1.0);
-            console.warn(`[AI_Service v145.0] ⚠️ TÖBB VALIDÁCIÓ: Csak ${signalCount}/4 jel egyetért → Confidence csökkentve (-1.0)`);
-        } else if (signalCount === 2) {
-            // 2 jel egyetért → enyhe csökkentés
-            rec.final_confidence = Math.max(1.0, rec.final_confidence - 0.5);
-            console.warn(`[AI_Service v145.0] ⚠️ TÖBB VALIDÁCIÓ: ${signalCount}/4 jel egyetért → Confidence csökkentve (-0.5)`);
-        } else if (signalCount === 3) {
-            // 3 jel egyetért → nincs változás (jó egyetértés)
-            console.log(`[AI_Service v145.0] ✅ TÖBB VALIDÁCIÓ: ${signalCount}/4 jel egyetért → Confidence változatlan`);
-        } else if (signalCount === 4) {
-            // Ha mind a 4 jel egyetért → emeljük a confidence-t
-            rec.final_confidence = Math.min(10.0, rec.final_confidence + 0.5);
-            console.log(`[AI_Service v145.0] ✅ TÖBB VALIDÁCIÓ: Mind a 4 jel egyetért → Confidence emelve (+0.5)`);
-        }
-        
-        // 4. Ha nem valid, próbáljunk alternatívát találni (v144.1: Először más 1X2 opció, csak utána Over/Under)
-        if (!isValidRecommendation) {
-            console.warn(`[AI_Service v140.1] ⚠️ AJÁNLÁS ELUTASÍTVA: ${skipReason}`);
-            
-            // === v144.1: Először próbáljunk más 1X2 opciót (ha a primary 1X2 volt) ===
-            let alternativeFound = false;
-            if (recommendedMarket.includes('hazai') || recommendedMarket.includes('home') || recommendedMarket.includes('1')) {
-                // Ha hazai volt elutasítva, próbáljuk a vendéget vagy döntetlent
-                if (pAway >= 25 && (pAway / 10) >= 6.5) {
-                    rec.recommended_bet = formatBettingMarket("1X2 - Vendég győzelem", sport);
-                    rec.final_confidence = Math.min(7.5, (pAway / 10));
-                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Alternatíva 1X2: Vendég győzelem (${pAway.toFixed(1)}%)`;
-                    if (rec.primary) {
-                        rec.primary.market = formatBettingMarket("1X2 - Vendég győzelem", sport);
-                        rec.primary.confidence = rec.final_confidence;
-                    }
-                    alternativeFound = true;
-                    console.log(`[AI_Service v144.1] ✅ Alternatíva 1X2 találva: Vendég győzelem`);
-                } else if (pDraw >= 25 && (pDraw / 10) >= 6.5) {
-                    rec.recommended_bet = formatBettingMarket("1X2 - Döntetlen", sport);
-                    rec.final_confidence = Math.min(7.5, (pDraw / 10));
-                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Alternatíva 1X2: Döntetlen (${pDraw.toFixed(1)}%)`;
-                    if (rec.primary) {
-                        rec.primary.market = formatBettingMarket("1X2 - Döntetlen", sport);
-                        rec.primary.confidence = rec.final_confidence;
-                    }
-                    alternativeFound = true;
-                    console.log(`[AI_Service v144.1] ✅ Alternatíva 1X2 találva: Döntetlen`);
-                }
-            } else if (recommendedMarket.includes('vendég') || recommendedMarket.includes('away') || recommendedMarket.includes('2')) {
-                // Ha vendég volt elutasítva, próbáljuk a hazait vagy döntetlent
-                if (pHome >= 25 && (pHome / 10) >= 6.5) {
-                    rec.recommended_bet = formatBettingMarket("1X2 - Hazai győzelem", sport);
-                    rec.final_confidence = Math.min(7.5, (pHome / 10));
-                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Alternatíva 1X2: Hazai győzelem (${pHome.toFixed(1)}%)`;
-                    if (rec.primary) {
-                        rec.primary.market = formatBettingMarket("1X2 - Hazai győzelem", sport);
-                        rec.primary.confidence = rec.final_confidence;
-                    }
-                    alternativeFound = true;
-                    console.log(`[AI_Service v144.1] ✅ Alternatíva 1X2 találva: Hazai győzelem`);
-                } else if (pDraw >= 25 && (pDraw / 10) >= 6.5) {
-                    rec.recommended_bet = formatBettingMarket("1X2 - Döntetlen", sport);
-                    rec.final_confidence = Math.min(7.5, (pDraw / 10));
-                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Alternatíva 1X2: Döntetlen (${pDraw.toFixed(1)}%)`;
-                    if (rec.primary) {
-                        rec.primary.market = formatBettingMarket("1X2 - Döntetlen", sport);
-                        rec.primary.confidence = rec.final_confidence;
-                    }
-                    alternativeFound = true;
-                    console.log(`[AI_Service v144.1] ✅ Alternatíva 1X2 találva: Döntetlen`);
-                }
-            }
-            
-            // === Ha nem találtunk alternatív 1X2-t, próbáljunk value bet-et ===
-            if (!alternativeFound) {
-                const bestValueBet = valueBets
-                    .filter(vb => {
-                        const prob = parseFloat(vb.probability.replace('%', ''));
-                        const value = parseFloat(vb.value.replace('+', '').replace('%', ''));
-                        // === v144.1: Előnyben részesítjük a 1X2 tippeket ===
-                        const is1X2 = vb.market.includes('Hazai') || vb.market.includes('Vendég') || vb.market.includes('Döntetlen') || vb.market.includes('Home') || vb.market.includes('Away') || vb.market.includes('Draw');
-                        return prob >= 25 && parseFloat(vb.odds) >= 1.8 && value >= 3.0;
-                    })
-                    .sort((a, b) => {
-                        // === v144.1: Először 1X2 tippek, utána Over/Under ===
-                        const aIs1X2 = a.market.includes('Hazai') || a.market.includes('Vendég') || a.market.includes('Döntetlen') || a.market.includes('Home') || a.market.includes('Away') || a.market.includes('Draw');
-                        const bIs1X2 = b.market.includes('Hazai') || b.market.includes('Vendég') || b.market.includes('Döntetlen') || b.market.includes('Home') || b.market.includes('Away') || b.market.includes('Draw');
-                        if (aIs1X2 && !bIs1X2) return -1;
-                        if (!aIs1X2 && bIs1X2) return 1;
-                        return parseFloat(b.value.replace('+', '').replace('%', '')) - parseFloat(a.value.replace('+', '').replace('%', ''));
-                    })[0];
-                
-                if (bestValueBet) {
-                    rec.recommended_bet = normalizeBettingRecommendation(bestValueBet.market, sport);
-                    rec.final_confidence = Math.min(7.5, parseFloat(bestValueBet.probability) / 10);
-                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Alternatíva: ${bestValueBet.market} (Valószínűség: ${bestValueBet.probability}, Value: ${bestValueBet.value})`;
-                    if (rec.primary) {
-                        rec.primary.market = normalizeBettingRecommendation(bestValueBet.market, sport);
-                        rec.primary.confidence = rec.final_confidence;
-                    }
-                    alternativeFound = true;
-                    console.log(`[AI_Service v144.1] ✅ Alternatíva value bet találva: ${rec.recommended_bet}`);
-                }
-            }
-            
-            // === Csak ha még mindig nincs alternatíva, menjünk Over/Under-re ===
-            if (!alternativeFound) {
-                // Ha nincs jó alternatíva, adjunk Over/Under tippet, ha az valid (v142.0: 25% prob, 6.5 conf - MINDEN meccsre tipp)
-                if (pOver >= 25 && pOver > pUnder) {
-                    rec.recommended_bet = formatBettingMarket(`Over ${safeSim.mainTotalsLine || '2.5'}`, sport);
-                    rec.final_confidence = Math.min(7.5, (pOver / 10)); // v142.0: 8.5 → 7.5 - MINDEN meccsre tipp
-                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Over/Under alternatíva: Over ${safeSim.mainTotalsLine || '2.5'} (${pOver.toFixed(1)}%)`;
-                } else if (pUnder >= 25 && pUnder > pOver) {
-                    rec.recommended_bet = formatBettingMarket(`Under ${safeSim.mainTotalsLine || '2.5'}`, sport);
-                    rec.final_confidence = Math.min(7.5, (pUnder / 10)); // v142.0: 8.5 → 7.5 - MINDEN meccsre tipp
-                    rec.brief_reasoning = `[AUTO-CORRECTED v144.1] ${skipReason}. Over/Under alternatíva: Under ${safeSim.mainTotalsLine || '2.5'} (${pUnder.toFixed(1)}%)`;
-                } else {
-                    // Utolsó eset: még mindig adjunk tippet (v142.0: MINDEN meccsre tipp!)
-                    // Válasszuk a legvalószínűbb opciót
-                    const maxProb = Math.max(pHome, pAway, pDraw, pOver, pUnder);
-                    if (maxProb >= 25) {
-                        if (pHome === maxProb) {
-                            rec.recommended_bet = formatBettingMarket("1X2 - Hazai győzelem", sport);
-                            rec.final_confidence = Math.min(7.0, (pHome / 10));
-                        } else if (pAway === maxProb) {
-                            rec.recommended_bet = formatBettingMarket("1X2 - Vendég győzelem", sport);
-                            rec.final_confidence = Math.min(7.0, (pAway / 10));
-                        } else if (pDraw === maxProb) {
-                            rec.recommended_bet = formatBettingMarket("1X2 - Döntetlen", sport);
-                            rec.final_confidence = Math.min(7.0, (pDraw / 10));
-                        } else if (pOver === maxProb) {
-                            rec.recommended_bet = formatBettingMarket(`Over ${safeSim.mainTotalsLine || '2.5'}`, sport);
-                            rec.final_confidence = Math.min(7.0, (pOver / 10));
-                        } else {
-                            rec.recommended_bet = formatBettingMarket(`Under ${safeSim.mainTotalsLine || '2.5'}`, sport);
-                            rec.final_confidence = Math.min(7.0, (pUnder / 10));
-                        }
-                        rec.brief_reasoning = `[AUTO-CORRECTED v142.0] ${skipReason}. Legvalószínűbb opció: ${rec.recommended_bet} (${maxProb.toFixed(1)}%)`;
-                        console.log(`[AI_Service v142.0] ✅ MINDEN MECCSRE TIPP: ${rec.recommended_bet} (${maxProb.toFixed(1)}%)`);
-                    } else {
-                        // Csak akkor skip, ha TÉNYLEG nincs semmi (25% alatt minden)
-                        rec.recommended_bet = "Nincs elég biztos tipp ezen a meccsen";
-                        rec.final_confidence = 1.0;
-                        rec.brief_reasoning = skipReason || "Túl bizonytalan a meccs";
-                        rec.skip_reason = skipReason;
-                        console.log(`[AI_Service v142.0] ❌ Nincs ajánlás: ${skipReason}`);
-                    }
-                }
-            }
-        }
-        // === VÉGE v140.1 ===
-        
-        // === v140.3: TILT PROTECTION ÉS BANKROLL CHECK ===
-        const { checkTiltProtection } = await import('./trackingService.js');
-        const { canPlaceBet } = await import('./bankrollService.js');
-        
-        const tiltCheck = await checkTiltProtection(5); // 5 egymás utáni veszteség = tilt
-        const bankrollCheck = await canPlaceBet();
-        
-        if (tiltCheck.isTilted) {
-            rec.recommended_bet = "TILT PROTECTION: Szünet a fogadástól";
-            rec.final_confidence = 1.0;
-            rec.brief_reasoning = tiltCheck.message;
-            rec.skip_reason = tiltCheck.message;
-            console.warn(`[AI_Service v140.3] 🚨 TILT PROTECTION: ${tiltCheck.consecutiveLosses} egymás utáni veszteség`);
-        } else if (!bankrollCheck.canBet) {
-            rec.recommended_bet = "BANKROLL PROTECTION: Szünet a fogadástól";
-            rec.final_confidence = 1.0;
-            rec.brief_reasoning = bankrollCheck.reason;
-            rec.skip_reason = bankrollCheck.reason;
-            console.warn(`[AI_Service v140.3] 🚨 BANKROLL PROTECTION: ${bankrollCheck.reason}`);
-        }
-        // === VÉGE v140.3 ===
-        
-        // --- 2. LÉPÉS: KÓD (A "Főnök") átveszi az irányítást ---
-        console.log(`[AI_Service v140.3 - Főnök] Végleges ajánlás: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10 (Valószínűség: ${recommendedProb > 0 ? recommendedProb.toFixed(1) + '%' : 'N/A'})`);
+        // === v149.0: TILT PROTECTION ÉS BANKROLL CHECK (új struktúra) ===
+        // TODO: Később implementálni, ha szükséges
+        // Mostantól a tips array-t használjuk, nem a recommended_bet mezőt.
 
         // === v139.3: TILTOTT PIACOK SZŰRÉSE + MINIMUM ODDS KÖVETELMÉNY ===
         const BANNED_KEYWORDS = [
@@ -1927,7 +1707,8 @@ async function getMasterRecommendation(
         }
         // === VÉGE v140.2 ===
 
-        console.log(`[AI_Service v140.2 - Főnök] VÉGLEGES TIPP: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
+        // === v149.0: VÉGLEGES RETURN (új struktúra: tips array) ===
+        console.log(`[AI_Service v149.0 - Főnök] VÉGLEGES TIPPEK: ${rec.tips.length} db, átlag confidence: ${rec.final_confidence.toFixed(1)}/10`);
         
         return rec;
 

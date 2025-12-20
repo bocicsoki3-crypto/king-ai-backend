@@ -142,20 +142,20 @@ export async function runSniperScan(sportType: 'soccer' | 'basketball' | 'hockey
                         }, sport, {});
 
                         if (fullAnalysis && !fullAnalysis.error) {
-                            // Biztonsági ellenőrzés: ha a Mester AI mégis azt mondaná hogy "Hiba" vagy "Nincs ajánlás"
-                            // v148.7: Szigorított EXECUTIONER szűrés (NO_CONSENSUS, LOW_CERTAINTY elutasítása)
-                            // v148.9: Minimum 8.5 confidence szükséges (value-tól függetlenül)
+                            // === v149.0: Új struktúra ellenőrzése (tips array) ===
                             const rec = fullAnalysis.analysisData.recommendation;
                             const confidence = rec?.final_confidence || 0;
+                            const tips = rec?.tips || [];
+                            
+                            // Minimum 1 tipp kell, és mindegyik >= 8.5 confidence
                             const isRejected = !rec || 
-                                             rec.recommended_bet === 'Hiba' || 
-                                             rec.recommended_bet === 'NO_CONSENSUS' || 
-                                             rec.recommended_bet === 'LOW_CERTAINTY' || 
-                                             rec.recommended_bet.includes('Nincs ajánlás') ||
-                                             confidence < 8.5; // v148.9: Minimum 8.5 confidence kell
+                                             !Array.isArray(tips) || 
+                                             tips.length === 0 ||
+                                             confidence < 8.5; // v149.0: Minimum 8.5 confidence kell
 
                             if (!isRejected) {
-                                console.log(`[AutoScanner] ✅ TIPP ELFOGADVA (${fixture.home} vs ${fixture.away}): ${rec.recommended_bet} (Confidence: ${confidence.toFixed(1)}/10)`);
+                                const tipsList = tips.map((t: any) => t.market).join(', ');
+                                console.log(`[AutoScanner] ✅ TIPP ELFOGADVA (${fixture.home} vs ${fixture.away}): ${tips.length} tipp (${tipsList}) (Confidence: ${confidence.toFixed(1)}/10)`);
                                 results.push({
                                     match: `${fixture.home} vs ${fixture.away}`,
                                     league: fixture.league,
@@ -164,7 +164,7 @@ export async function runSniperScan(sportType: 'soccer' | 'basketball' | 'hockey
                                     analysis: fullAnalysis.analysisData
                                 });
                             } else {
-                                console.warn(`[AutoScanner] ⚠️ EXECUTIONER elvetette a meccset (${fixture.home} vs ${fixture.away}) - Indok: ${rec?.recommended_bet || 'Nincs adat'} vagy Confidence: ${confidence.toFixed(1)}/10 < 8.5`);
+                                console.warn(`[AutoScanner] ⚠️ EXECUTIONER elvetette a meccset (${fixture.home} vs ${fixture.away}) - Indok: ${tips.length === 0 ? 'Nincs tipp' : 'Nincs adat'} vagy Confidence: ${confidence.toFixed(1)}/10 < 8.5`);
                             }
                         }
                 } catch (err) {
@@ -226,17 +226,16 @@ async function sendEmailReport(type: string, results: any[], timeSlot?: string) 
                     </div>
 
                     <div class="verdict">
-                        <h4 style="margin: 0 0 10px 0; color: #f57f17;">🏆 MESTER AI ÍTÉLETE:</h4>
-                        <p style="font-size: 1.2em; font-weight: bold; margin: 5px 0;">${rec.recommended_bet}</p>
-                        <p style="margin: 5px 0;">${rec.brief_reasoning}</p>
-                        
-                        ${rec.secondary ? `
-                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #f57f17;">
-                                <h5 style="margin: 0; color: #795548;">🥈 MÁSODLAGOS TIPP (BTTS/Gólok):</h5>
-                                <p style="margin: 5px 0;"><b>${rec.secondary.market}</b> (Bizalom: ${rec.secondary.confidence}/10)</p>
-                                <p style="font-size: 0.9em; color: #555;">${rec.secondary.reason}</p>
+                        <h4 style="margin: 0 0 10px 0; color: #f57f17;">🏆 MESTER AI ÍTÉLETE (${rec.tips?.length || 0} tipp):</h4>
+                        ${rec.tips && rec.tips.length > 0 ? rec.tips.map((tip: any, idx: number) => `
+                            <div style="margin-bottom: 15px; padding: 10px; background-color: ${idx === 0 ? '#fffde7' : '#f5f5f5'}; border-left: 4px solid ${idx === 0 ? '#fbc02d' : '#9e9e9e'};">
+                                <p style="font-size: ${idx === 0 ? '1.2em' : '1.1em'}; font-weight: bold; margin: 5px 0; color: ${idx === 0 ? '#f57f17' : '#555'};">
+                                    ${idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'} ${tip.market} <span style="color: #ff9800;">(${tip.confidence.toFixed(1)}/10)</span>
+                                </p>
+                                <p style="margin: 5px 0; font-size: 0.95em; color: #555;">${tip.reasoning || 'Nincs részletes indoklás'}</p>
                             </div>
-                        ` : ''}
+                        `).join('') : '<p style="color: #d32f2f;">Nincs tipp</p>'}
+                        <p style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #ddd; color: #666; font-size: 0.9em;">${rec.brief_reasoning || 'Nincs összefoglaló indoklás'}</p>
                     </div>
 
                     <h4 style="margin: 15px 0 5px 0;">📈 ÉRTÉKES PIACOK (Matematikai modell):</h4>
