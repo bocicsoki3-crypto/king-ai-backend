@@ -1167,6 +1167,60 @@ async function getMasterRecommendation(
             }
         }
         
+        // === v148.9: FŐNÖK KORREKCIÓ VISSZAÁLLÍTVA (régi v103.6 logika) ===
+        // Az AI csak tanácsadó, a FŐNÖK (kód) dönti el a végső tippet!
+        console.log(`[AI_Service v148.9 - Főnök] AI (Tanácsadó) javaslata: ${rec.recommended_bet} @ ${rec.final_confidence}/10`);
+
+        // 1. Eltérés-alapú büntetés (Modell vs Expert) - RÉGI v103.6 LOGIKA
+        const confidenceDiff = Math.abs(safeModelConfidence - expertConfScore);
+        const disagreementThreshold = 3.0;
+        let confidencePenalty = 0;
+        let disagreementNote = "";
+        
+        if (expertConfScore < 1.1 && expertConfidence && !expertConfidence.toLowerCase().includes("hiba")) {
+            confidencePenalty = Math.max(0, rec.final_confidence - 3.0);
+            disagreementNote = " (FŐNÖK KORREKCIÓ: Expert bizalom extrém alacsony!)";
+        }
+        else if (confidenceDiff > disagreementThreshold) {
+            confidencePenalty = Math.min(2.0, confidenceDiff / 1.5);
+            disagreementNote = ` (FŐNÖK KORREKCIÓ: Modell (${safeModelConfidence.toFixed(1)}) vs Expert (${expertConfScore.toFixed(1)}) eltérés miatt.)`;
+        }
+        
+        rec.final_confidence -= confidencePenalty;
+        rec.final_confidence = Math.max(1.0, Math.min(10.0, rec.final_confidence));
+
+        // 2. Bizalmi Kalibráció (Meta-tanulás) - már létezik, de hozzáadjuk a megjegyzést
+        let calibrationNote = "";
+        try {
+            const calibrationMap = getConfidenceCalibrationMap();
+            if (calibrationMap && Object.keys(calibrationMap).length > 0) {
+                const confFloor = Math.floor(rec.final_confidence);
+                const safeConfFloor = Math.max(1.0, confFloor);
+                const bucketKey = `${safeConfFloor.toFixed(1)}-${(safeConfFloor + 0.9).toFixed(1)}`;
+                
+                if (calibrationMap[bucketKey] && calibrationMap[bucketKey].total >= 5) {
+                    const wins = calibrationMap[bucketKey].wins;
+                    const total = calibrationMap[bucketKey].total;
+                    const calibratedPct = (wins / total) * 100;
+                    const calibratedConfidence = calibratedPct / 10;
+                    
+                    if (Math.abs(calibratedConfidence - rec.final_confidence) > 0.5) {
+                        calibrationNote = ` (Kalibrált: ${calibratedConfidence.toFixed(1)}/10, ${total} minta.)`;
+                    }
+                }
+            }
+        } catch(calError: any) { 
+            console.warn(`[AI_Service v148.9 - Főnök] Bizalmi kalibráció hiba: ${calError.message}`); 
+        }
+
+        // Megjegyzések hozzáadása az indokláshoz
+        rec.brief_reasoning = (rec.brief_reasoning || "N/A") + disagreementNote + calibrationNote;
+        if (rec.brief_reasoning.length > 500) {
+            rec.brief_reasoning = rec.brief_reasoning.substring(0, 497) + "...";
+        }
+
+        console.log(`[AI_Service v148.9 - Főnök] VÉGLEGES KORRIGÁLT Tipp: ${rec.recommended_bet} @ ${rec.final_confidence.toFixed(1)}/10`);
+        
         // === v148.8: AUTO-OVERRIDE TÖRÖLVE ===
         // A RÉGI v145.0 logika (1085-1133) törölve, mert ez felülírta az AI döntését!
         // Mostantól az AI szabadon dönthet a kontextus alapján.
