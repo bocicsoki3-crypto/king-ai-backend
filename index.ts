@@ -20,6 +20,7 @@ import { runSettlementProcess } from './settlementService.js';
 import { calculateBettingStats, checkTiltProtection } from './trackingService.js';
 import { getBankrollStatus, canPlaceBet } from './bankrollService.js';
 import { initScheduler } from './Scheduler.js'; // === ÚJ: Ütemező importálása ===
+import { runSniperScan } from './AutoScanner.js'; // === ÚJ: Szkennelés importálása ===
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -418,6 +419,40 @@ app.get('/canPlaceBet', protect, async (req: Request, res: Response) => {
     }
 });
 // === VÉGE v140.3 ===
+
+// === v149.5: MANUÁLIS SZKENNELÉS ENDPOINT ===
+app.post('/runScan', protect, async (req: Request, res: Response) => {
+    try {
+        const providedKey = req.body.key || req.headers['x-admin-key'];
+        if (!process.env.ADMIN_API_KEY || providedKey !== process.env.ADMIN_API_KEY) {
+            console.warn("Sikertelen szkennelési kísérlet (hibás admin kulcs).");
+            return res.status(401).json({ error: "Hitelesítés sikertelen. Admin kulcs szükséges." });
+        }
+        
+        const { sport, timeSlot } = req.body;
+        if (!sport || !['soccer', 'basketball', 'hockey'].includes(sport)) {
+            return res.status(400).json({ error: "Hiányzó vagy érvénytelen 'sport' paraméter. Lehetséges értékek: soccer, basketball, hockey" });
+        }
+        
+        console.log(`[API] Manuális szkennelés indítása: ${sport}${timeSlot ? ` (Idősáv: ${timeSlot})` : ''}`);
+        
+        // Aszinkron futtatás - azonnal visszatérünk
+        runSniperScan(sport as 'soccer' | 'basketball' | 'hockey', timeSlot)
+            .catch((error) => {
+                console.error(`[API] Hiba a szkennelés során:`, error);
+            });
+        
+        res.status(200).json({ 
+            message: `Szkennelés elindítva: ${sport}${timeSlot ? ` (Idősáv: ${timeSlot})` : ''}`,
+            sport,
+            timeSlot: timeSlot || null
+        });
+    } catch (e: any) {
+        console.error(`Hiba a /runScan végpont-on: ${e.message}`, e.stack);
+        res.status(500).json({ error: `Szerver hiba (runScan): ${e.message}` });
+    }
+});
+// === VÉGE v149.5 ===
 
 // --- Szerver Indítása (Változatlan) ---
 async function startServer() {
