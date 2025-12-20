@@ -50,11 +50,22 @@ export async function runSniperScan(sportType: 'soccer' | 'basketball' | 'hockey
 
             console.log(`[AutoScanner] ${fixtures.length} meccs találva a(z) ${sport} sportágban.`);
 
+            // === v149.7: GLOBÁLIS 3 TIPP SZÁMLÁLÓ ===
+            // Cél: Összesen 3 tökéletes tippet találni az ÖSSZES meccs közül, majd STOP
+            let totalPerfectTips = 0;
+            const MAX_PERFECT_TIPS = 3;
+
             let count = 0;
             for (const fixture of fixtures) {
+                // === v149.7: STOP HA MÁR VAN 3 TÖKÉLETES TIPP ===
+                if (totalPerfectTips >= MAX_PERFECT_TIPS) {
+                    console.log(`[AutoScanner] 🎯 CÉL ELÉRVE: ${totalPerfectTips} tökéletes tipp találva. Szkennelés leállítva.`);
+                    break;
+                }
+
                 count++;
                 try {
-                    console.log(`[AutoScanner] Vizsgálat (${count}/${fixtures.length}): ${fixture.home} vs ${fixture.away}...`);
+                    console.log(`[AutoScanner] Vizsgálat (${count}/${fixtures.length}): ${fixture.home} vs ${fixture.away}... [Jelenlegi tökéletes tippek: ${totalPerfectTips}/${MAX_PERFECT_TIPS}]`);
                     
                     // KIS SZÜNET (v147.1): Megelőzi a Gemini 429-es kvóta hibát
                     await new Promise(resolve => setTimeout(resolve, 5000));
@@ -154,15 +165,39 @@ export async function runSniperScan(sportType: 'soccer' | 'basketball' | 'hockey
                                              confidence < 8.5; // v149.0: Minimum 8.5 confidence kell
 
                             if (!isRejected) {
-                                const tipsList = tips.map((t: any) => t.market).join(', ');
-                                console.log(`[AutoScanner] ✅ TIPP ELFOGADVA (${fixture.home} vs ${fixture.away}): ${tips.length} tipp (${tipsList}) (Confidence: ${confidence.toFixed(1)}/10)`);
+                                // === v149.7: CSAK ANNYI TIPPET ADUNK HOZZÁ, AMENNYI KELL A 3-IG ===
+                                const tipsToAdd = Math.min(tips.length, MAX_PERFECT_TIPS - totalPerfectTips);
+                                const selectedTips = tips.slice(0, tipsToAdd);
+                                
+                                const tipsList = selectedTips.map((t: any) => t.market).join(', ');
+                                console.log(`[AutoScanner] ✅ TIPP ELFOGADVA (${fixture.home} vs ${fixture.away}): ${selectedTips.length} tipp (${tipsList}) (Confidence: ${confidence.toFixed(1)}/10)`);
+                                
+                                // === v149.7: CSAK A KIVÁLASZTOTT TIPPEKET ADJUK HOZZÁ ===
+                                const recWithSelectedTips = {
+                                    ...rec,
+                                    tips: selectedTips
+                                };
+                                
                                 results.push({
                                     match: `${fixture.home} vs ${fixture.away}`,
                                     league: fixture.league,
                                     time: new Date(fixture.utcKickoff).toLocaleString('hu-HU'),
                                     hunted_stats: manualStats,
-                                    analysis: fullAnalysis.analysisData
+                                    analysis: {
+                                        ...fullAnalysis.analysisData,
+                                        recommendation: recWithSelectedTips
+                                    }
                                 });
+                                
+                                // === v149.7: SZÁMLÁLÓ FRISSÍTÉSE ===
+                                totalPerfectTips += selectedTips.length;
+                                console.log(`[AutoScanner] 📊 Tökéletes tippek száma: ${totalPerfectTips}/${MAX_PERFECT_TIPS}`);
+                                
+                                // === v149.7: HA ELÉRTÜK A 3 TIPPET, STOP ===
+                                if (totalPerfectTips >= MAX_PERFECT_TIPS) {
+                                    console.log(`[AutoScanner] 🎯 CÉL ELÉRVE: ${totalPerfectTips} tökéletes tipp találva. Szkennelés leállítva.`);
+                                    break;
+                                }
                             } else {
                                 console.warn(`[AutoScanner] ⚠️ EXECUTIONER elvetette a meccset (${fixture.home} vs ${fixture.away}) - Indok: ${tips.length === 0 ? 'Nincs tipp' : 'Nincs adat'} vagy Confidence: ${confidence.toFixed(1)}/10 < 8.5`);
                             }
@@ -197,27 +232,39 @@ async function sendEmailReport(type: string, results: any[], timeSlot?: string) 
             .badge-odds { background-color: #2196f3; }
             .tip-wrapper { position: relative; margin-bottom: 15px; }
             .tip-box { margin-bottom: 0; padding: 10px; border-left: 4px solid #9e9e9e; transition: background-color 0.2s ease; }
-            .tip-checkbox { margin-left: 10px; }
-            .tip-checkbox input[type="radio"] { display: none; }
-            .tip-checkbox label { cursor: pointer; margin-right: 15px; padding: 5px 10px; border: 1px solid #ccc; border-radius: 4px; background-color: #fff; display: inline-block; }
-            .tip-checkbox label:hover { background-color: #f5f5f5; }
-            /* Zöld hátteret ad, ha a "Nyert" radio be van jelölve */
-            .tip-wrapper input[type="radio"][value="won"]:checked ~ .tip-box {
-                background-color: #e8f5e9 !important;
+            .tip-checkbox-wrapper { margin-left: 15px; display: inline-block; }
+            .tip-checkbox-wrapper input[type="checkbox"] { 
+                width: 18px; 
+                height: 18px; 
+                cursor: pointer; 
+                margin-right: 8px;
+                vertical-align: middle;
             }
-            .tip-wrapper input[type="radio"][value="won"]:checked ~ .tip-box .tip-checkbox label[for$="-won"] {
-                background-color: #4caf50 !important;
-                color: #fff !important;
-                border-color: #4caf50 !important;
+            .tip-checkbox-wrapper label { 
+                cursor: pointer; 
+                margin-right: 15px; 
+                padding: 5px 10px; 
+                border: 1px solid #ccc; 
+                border-radius: 4px; 
+                background-color: #fff; 
+                display: inline-block;
+                vertical-align: middle;
+                user-select: none;
             }
-            /* Piros hátteret ad, ha az "Elment" radio be van jelölve */
-            .tip-wrapper input[type="radio"][value="lost"]:checked ~ .tip-box {
-                background-color: #ffebee !important;
+            .tip-checkbox-wrapper label:hover { background-color: #f5f5f5; }
+            /* Zöld hátteret ad, ha a "Nyert" checkbox be van jelölve */
+            .tip-box.won { background-color: #e8f5e9 !important; }
+            .tip-box.won .tip-checkbox-wrapper label[for$="-won"] { 
+                background-color: #4caf50 !important; 
+                color: #fff !important; 
+                border-color: #4caf50 !important; 
             }
-            .tip-wrapper input[type="radio"][value="lost"]:checked ~ .tip-box .tip-checkbox label[for$="-lost"] {
-                background-color: #c62828 !important;
-                color: #fff !important;
-                border-color: #c62828 !important;
+            /* Piros hátteret ad, ha az "Elment" checkbox be van jelölve */
+            .tip-box.lost { background-color: #ffebee !important; }
+            .tip-box.lost .tip-checkbox-wrapper label[for$="-lost"] { 
+                background-color: #c62828 !important; 
+                color: #fff !important; 
+                border-color: #c62828 !important; 
             }
         </style>
         <h1 style="color: #d32f2f; text-align: center;">King AI Sniper - v148.7 EXECUTIONER PROTOCOL</h1>
@@ -253,17 +300,18 @@ async function sendEmailReport(type: string, results: any[], timeSlot?: string) 
                         <h4 style="margin: 0 0 10px 0; color: #f57f17;">🏆 MESTER AI ÍTÉLETE (${rec.tips?.length || 0} tipp):</h4>
                         ${rec.tips && rec.tips.length > 0 ? rec.tips.map((tip: any, idx: number) => {
                             const tipId = `tip-${res.match.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}-${idx}`;
-                            const radioName = `${tipId}-status`;
+                            const wonId = `${tipId}-won`;
+                            const lostId = `${tipId}-lost`;
                             return `
                             <div class="tip-wrapper">
-                                <input type="radio" name="${radioName}" value="won" id="${tipId}-won">
-                                <input type="radio" name="${radioName}" value="lost" id="${tipId}-lost">
                                 <div id="${tipId}" class="tip-box" style="padding: 10px; background-color: ${idx === 0 ? '#fffde7' : '#f5f5f5'}; border-left: 4px solid ${idx === 0 ? '#fbc02d' : '#9e9e9e'};">
                                     <p style="font-size: ${idx === 0 ? '1.2em' : '1.1em'}; font-weight: bold; margin: 5px 0; color: ${idx === 0 ? '#f57f17' : '#555'};">
                                         ${idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'} ${tip.market} <span style="color: #ff9800;">(${tip.confidence.toFixed(1)}/10)</span>
-                                        <span class="tip-checkbox" style="margin-left: 15px;">
-                                            <label for="${tipId}-won">✅ Nyert</label>
-                                            <label for="${tipId}-lost">❌ Elment</label>
+                                        <span class="tip-checkbox-wrapper">
+                                            <input type="checkbox" id="${wonId}" onchange="this.closest('.tip-box').className = this.checked ? 'tip-box won' : 'tip-box'; if(this.checked) { document.getElementById('${lostId}').checked = false; document.getElementById('${lostId}').closest('.tip-box').className = 'tip-box'; }">
+                                            <label for="${wonId}">✅ Nyert</label>
+                                            <input type="checkbox" id="${lostId}" onchange="this.closest('.tip-box').className = this.checked ? 'tip-box lost' : 'tip-box'; if(this.checked) { document.getElementById('${wonId}').checked = false; document.getElementById('${wonId}').closest('.tip-box').className = 'tip-box'; }">
+                                            <label for="${lostId}">❌ Elment</label>
                                         </span>
                                     </p>
                                     <p style="margin: 5px 0; font-size: 0.95em; color: #555;">${tip.reasoning || 'Nincs részletes indoklás'}</p>
