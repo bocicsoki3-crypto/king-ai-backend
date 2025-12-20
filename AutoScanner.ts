@@ -195,6 +195,30 @@ async function sendEmailReport(type: string, results: any[], timeSlot?: string) 
             .badge { display: inline-block; padding: 5px 10px; border-radius: 20px; color: #fff; font-weight: bold; font-size: 0.8em; }
             .badge-value { background-color: #4caf50; }
             .badge-odds { background-color: #2196f3; }
+            .tip-wrapper { position: relative; margin-bottom: 15px; }
+            .tip-box { margin-bottom: 0; padding: 10px; border-left: 4px solid #9e9e9e; transition: background-color 0.2s ease; }
+            .tip-checkbox { margin-left: 10px; }
+            .tip-checkbox input[type="radio"] { display: none; }
+            .tip-checkbox label { cursor: pointer; margin-right: 15px; padding: 5px 10px; border: 1px solid #ccc; border-radius: 4px; background-color: #fff; display: inline-block; }
+            .tip-checkbox label:hover { background-color: #f5f5f5; }
+            /* Zöld hátteret ad, ha a "Nyert" radio be van jelölve */
+            .tip-wrapper input[type="radio"][value="won"]:checked ~ .tip-box {
+                background-color: #e8f5e9 !important;
+            }
+            .tip-wrapper input[type="radio"][value="won"]:checked ~ .tip-box .tip-checkbox label[for$="-won"] {
+                background-color: #4caf50 !important;
+                color: #fff !important;
+                border-color: #4caf50 !important;
+            }
+            /* Piros hátteret ad, ha az "Elment" radio be van jelölve */
+            .tip-wrapper input[type="radio"][value="lost"]:checked ~ .tip-box {
+                background-color: #ffebee !important;
+            }
+            .tip-wrapper input[type="radio"][value="lost"]:checked ~ .tip-box .tip-checkbox label[for$="-lost"] {
+                background-color: #c62828 !important;
+                color: #fff !important;
+                border-color: #c62828 !important;
+            }
         </style>
         <h1 style="color: #d32f2f; text-align: center;">King AI Sniper - v148.7 EXECUTIONER PROTOCOL</h1>
         <p style="text-align: center;">Időszak: ${isSoccer ? (timeSlot || 'Ma déltől holnap délig') : 'Ma estétől holnap reggelig'}</p>
@@ -227,14 +251,26 @@ async function sendEmailReport(type: string, results: any[], timeSlot?: string) 
 
                     <div class="verdict">
                         <h4 style="margin: 0 0 10px 0; color: #f57f17;">🏆 MESTER AI ÍTÉLETE (${rec.tips?.length || 0} tipp):</h4>
-                        ${rec.tips && rec.tips.length > 0 ? rec.tips.map((tip: any, idx: number) => `
-                            <div style="margin-bottom: 15px; padding: 10px; background-color: ${idx === 0 ? '#fffde7' : '#f5f5f5'}; border-left: 4px solid ${idx === 0 ? '#fbc02d' : '#9e9e9e'};">
-                                <p style="font-size: ${idx === 0 ? '1.2em' : '1.1em'}; font-weight: bold; margin: 5px 0; color: ${idx === 0 ? '#f57f17' : '#555'};">
-                                    ${idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'} ${tip.market} <span style="color: #ff9800;">(${tip.confidence.toFixed(1)}/10)</span>
-                                </p>
-                                <p style="margin: 5px 0; font-size: 0.95em; color: #555;">${tip.reasoning || 'Nincs részletes indoklás'}</p>
+                        ${rec.tips && rec.tips.length > 0 ? rec.tips.map((tip: any, idx: number) => {
+                            const tipId = `tip-${res.match.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '')}-${idx}`;
+                            const radioName = `${tipId}-status`;
+                            return `
+                            <div class="tip-wrapper">
+                                <input type="radio" name="${radioName}" value="won" id="${tipId}-won">
+                                <input type="radio" name="${radioName}" value="lost" id="${tipId}-lost">
+                                <div id="${tipId}" class="tip-box" style="padding: 10px; background-color: ${idx === 0 ? '#fffde7' : '#f5f5f5'}; border-left: 4px solid ${idx === 0 ? '#fbc02d' : '#9e9e9e'};">
+                                    <p style="font-size: ${idx === 0 ? '1.2em' : '1.1em'}; font-weight: bold; margin: 5px 0; color: ${idx === 0 ? '#f57f17' : '#555'};">
+                                        ${idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'} ${tip.market} <span style="color: #ff9800;">(${tip.confidence.toFixed(1)}/10)</span>
+                                        <span class="tip-checkbox" style="margin-left: 15px;">
+                                            <label for="${tipId}-won">✅ Nyert</label>
+                                            <label for="${tipId}-lost">❌ Elment</label>
+                                        </span>
+                                    </p>
+                                    <p style="margin: 5px 0; font-size: 0.95em; color: #555;">${tip.reasoning || 'Nincs részletes indoklás'}</p>
+                                </div>
                             </div>
-                        `).join('') : '<p style="color: #d32f2f;">Nincs tipp</p>'}
+                        `;
+                        }).join('') : '<p style="color: #d32f2f;">Nincs tipp</p>'}
                         <p style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #ddd; color: #666; font-size: 0.9em;">${rec.brief_reasoning || 'Nincs összefoglaló indoklás'}</p>
                     </div>
 
