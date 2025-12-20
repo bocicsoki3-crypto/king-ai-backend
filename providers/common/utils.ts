@@ -78,7 +78,8 @@ export async function makeRequest(url: string, config: AxiosRequestConfig = {}, 
 export async function _callGemini(
     prompt: string, 
     forceJson: boolean = true,
-    useSearch: boolean = false // === ÚJ PARAMÉTER ===
+    useSearch: boolean = false, // === ÚJ PARAMÉTER ===
+    jsonSchema?: any // === v148.9: JSON Schema opcionális paraméter ===
 ): Promise<string> {
     if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('<') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') { 
         throw new Error("Hiányzó vagy érvénytelen GEMINI_API_KEY.");
@@ -89,20 +90,28 @@ export async function _callGemini(
 
     let finalPrompt = prompt;
     if (forceJson) {
-        finalPrompt = `${prompt}\n\nCRITICAL OUTPUT INSTRUCTION: Your entire response must be ONLY a single, valid JSON object. Do not add any Markdown formatting (like \`\`\`json), text, explanation, or introductory phrases.`;
+        finalPrompt = `${prompt}\n\n🚨 CRITICAL OUTPUT INSTRUCTION: Your entire response must be ONLY a single, valid JSON object. Do not add any Markdown formatting (like \`\`\`json), text, explanation, or introductory phrases. Start with { and end with }. Every string must be in double quotes. Every number must be a valid number (no quotes around numbers).`;
     }
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY}`;
     
+    const generationConfig: any = { 
+        temperature: useSearch ? 0.1 : 0.2,
+        maxOutputTokens: 16384, // v137.0: 8192 → 16384 (2x NÖVELÉS! Flash model-nek kell!)
+    };
+    
+    // === v148.9: JSON Schema támogatás ===
+    if (forceJson && !useSearch) {
+        generationConfig.responseMimeType = "application/json";
+        if (jsonSchema) {
+            generationConfig.responseSchema = jsonSchema;
+            console.log(`[Gemini] JSON Schema aktiválva a válasz struktúrához.`);
+        }
+    }
+    
     const payload: any = { 
         contents: [{ role: "user", parts: [{ text: finalPrompt }] }], 
-        generationConfig: { 
-            temperature: useSearch ? 0.1 : 0.2,
-            maxOutputTokens: 16384, // v137.0: 8192 → 16384 (2x NÖVELÉS! Flash model-nek kell!)
-            // Ha Search van, a JSON módot néha jobb kikapcsolni a generationConfig-ban, 
-            // de megpróbáljuk így, mert a forceJson prompt erős.
-            ...(forceJson && !useSearch && { responseMimeType: "application/json" }),
-        }, 
+        generationConfig,
     };
 
     // === ÚJ: GOOGLE SEARCH TOOL HOZZÁADÁSA ===
@@ -135,22 +144,40 @@ export async function _callGemini(
             throw new Error(`Gemini nem adott vissza szöveges tartalmat. Ok: ${finishReason}`);
         }
         
-        // Tisztítás Markdown esetén
+        // === v148.9: ROBUSZT JSON TISZTÍTÁS ===
         let cleanText = responseText;
         if (forceJson) {
-            cleanText = cleanText.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+            // 1. Markdown blokkok eltávolítása
+            cleanText = cleanText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
             
-            // === FIX v134.1: POZITÍV SZÁMOK ELŐTTI + JEL ELTÁVOLÍTÁSA ===
-            // A Gemini néha "+0.10" formátumot használ, ami nem valid JSON
-            // Cseréljük le ": +szám" formátumot ": szám" formátumra
+            // 2. Eltávolítjuk a leading/trailing szöveget, ha van
+            // Keresünk egy JSON objektumot a szövegben
+            const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                cleanText = jsonMatch[0];
+            }
+            
+            // 3. === FIX v134.1: POZITÍV SZÁMOK ELŐTTI + JEL ELTÁVOLÍTÁSA ===
             cleanText = cleanText.replace(/:\s*\+(\d)/g, ': $1');
-            console.log(`[Gemini JSON Clean] + jelek eltávolítva a pozitív számok elől.`);
             
-            // Gyors ellenőrzés
+            // 4. Trailing comma-k eltávolítása (objektumok és tömbök végén)
+            cleanText = cleanText.replace(/,(\s*[}\]])/g, '$1');
+            
+            // 5. Érvénytelen escape karakterek javítása
+            cleanText = cleanText.replace(/\\'/g, "'");
+            cleanText = cleanText.replace(/\\"/g, '"');
+            
+            // 6. Újra trim
+            cleanText = cleanText.trim();
+            
+            console.log(`[Gemini JSON Clean] Tisztítás befejezve. Hossz: ${cleanText.length} karakter.`);
+            
+            // 7. Gyors ellenőrzés
             try {
                 JSON.parse(cleanText);
             } catch (e: any) {
-                console.error(`Gemini JSON parse hiba: ${e.message}. Nyers válasz: ${cleanText.substring(0, 100)}...`);
+                console.error(`[Gemini JSON Clean] JSON parse hiba: ${e.message}`);
+                console.error(`[Gemini JSON Clean] Előnézet (első 200 karakter): ${cleanText.substring(0, 200)}...`);
                 throw new Error(`Gemini JSON parse hiba: ${e.message}`);
             }
         }
@@ -162,19 +189,20 @@ export async function _callGemini(
     }
 }
 
-// Továbbítja a useSearch paramétert
+// Továbbítja a useSearch paramétert és JSON Schema-t
 export async function _callGeminiWithJsonRetry(
     prompt: string, 
     stepName: string, 
     maxRetries: number = 2,
-    useSearch: boolean = false // === ÚJ PARAMÉTER ===
+    useSearch: boolean = false, // === ÚJ PARAMÉTER ===
+    jsonSchema?: any // === v148.9: JSON Schema opcionális paraméter ===
 ): Promise<any> {
     
     let attempts = 0;
     while (attempts <= maxRetries) {
         attempts++;
         try {
-            const jsonString = await _callGemini(prompt, true, useSearch);
+            const jsonString = await _callGemini(prompt, true, useSearch, jsonSchema);
             const result = JSON.parse(jsonString);
             return result;
         } catch (e: any) {

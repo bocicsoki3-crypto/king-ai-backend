@@ -604,10 +604,18 @@ If there is even 1% doubt, you MUST REJECT the match.
 🚫 **BANNED**: Any market < 1.45 odds. 
 ✅ **ALLOWED**: 1X2, Over/Under, BTTS, Handicap, Team Totals (Minimum 1.45 odds).
 
-OUTPUT STRUCTURE - ONLY VALID JSON:
+🚨 **CRITICAL JSON OUTPUT REQUIREMENT** 🚨
+You MUST respond with ONLY a valid JSON object. NO markdown, NO code blocks, NO explanations, NO text before or after.
+Your response must start with { and end with }.
+Every string value must be in double quotes.
+Every number must be a valid number (no quotes).
+Example of CORRECT format:
+{"recommended_bet": "Hazai győzelem", "final_confidence": 9.5, "brief_reasoning": "Szöveg"}
+
+OUTPUT STRUCTURE - EXACT JSON FORMAT (COPY THIS STRUCTURE):
 {
   "recommended_bet": "<THE PERFECT TIP or 'NO_CONSENSUS' or 'LOW_CERTAINTY'>",
-  "final_confidence": <Number 8.5-10.0>,
+  "final_confidence": <Number between 8.5 and 10.0>,
   "brief_reasoning": "<Why this IS A GUARANTEED WIN.>",
   "verdict": "<Describe the match exactly as it happened in Hungarian, past tense.>",
   "primary": {
@@ -621,6 +629,8 @@ OUTPUT STRUCTURE - ONLY VALID JSON:
     "reason": "<Detailed logic>"
   }
 }
+
+⚠️ REMEMBER: Your response must be PURE JSON. Start with { and end with }. No markdown, no code blocks, no explanations.
 `;
 
 // === ORCHESTRATION LOGIC ===
@@ -1077,13 +1087,55 @@ async function getMasterRecommendation(
         const filledPrompt = fillPromptTemplate(template, data);
         let rec: any = null;
         
+        // === v148.9: JSON Schema definíció a Master AI válaszához ===
+        const masterAiJsonSchema = {
+            type: "object",
+            properties: {
+                recommended_bet: {
+                    type: "string",
+                    description: "The recommended bet or 'NO_CONSENSUS' or 'LOW_CERTAINTY'"
+                },
+                final_confidence: {
+                    type: "number",
+                    description: "Confidence score between 8.5 and 10.0"
+                },
+                brief_reasoning: {
+                    type: "string",
+                    description: "Brief reasoning for the recommendation"
+                },
+                verdict: {
+                    type: "string",
+                    description: "Match description in Hungarian past tense"
+                },
+                primary: {
+                    type: "object",
+                    properties: {
+                        market: { type: "string" },
+                        confidence: { type: "number" },
+                        reason: { type: "string" }
+                    },
+                    required: ["market", "confidence", "reason"]
+                },
+                secondary: {
+                    type: "object",
+                    properties: {
+                        market: { type: "string" },
+                        confidence: { type: "number" },
+                        reason: { type: "string" }
+                    },
+                    required: ["market", "confidence", "reason"]
+                }
+            },
+            required: ["recommended_bet", "final_confidence", "brief_reasoning"]
+        };
+        
         try {
-            rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation", 3, false);
+            rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation", 3, false, masterAiJsonSchema);
         } catch (e: any) {
             console.error("[AI_Service v148.9 - Főnök] Gemini API hiba:", e.message);
             // Fallback: próbáljuk meg még egyszer, de most search nélkül
             try {
-                rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation_Retry", 2, false);
+                rec = await _callGeminiWithJsonRetry(filledPrompt, "MasterRecommendation_Retry", 2, false, masterAiJsonSchema);
             } catch (e2: any) {
                 console.error("[AI_Service v148.9 - Főnök] Második próbálkozás is sikertelen:", e2.message);
                 rec = null;
