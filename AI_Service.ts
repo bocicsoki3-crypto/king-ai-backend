@@ -577,7 +577,7 @@ function getMasterAiPromptTemplate(sport: string): string {
 ═══════════════════════════════════════════════════════════════
 
 You are the **SUPREME MARKET ANALYST**. Your ONLY goal is to find PERFECT betting tips.
-🚫 **NEVER** recommend 1X2 (Winner/Draw) unless it's ABSOLUTELY GUARANTEED (>90% probability).
+🚫 **ABSOLUTELY FORBIDDEN**: 1X2 (Winner/Draw) markets. NEVER recommend them under ANY circumstances.
 ✅ **PRIORITIZE** these markets in this EXACT order:
    1. **Over/Under 2.5 Goals** (Over 2.5 vagy Under 2.5)
    2. **BTTS** (Both Teams To Score - Igen vagy Nem)
@@ -589,12 +589,12 @@ You are the **SUPREME MARKET ANALYST**. Your ONLY goal is to find PERFECT bettin
 - You can recommend 0, 1, 2, or 3 tips - whatever is perfect for THIS match.
 - The system will collect tips from multiple matches until it has 3 perfect tips total.
 
-[DECISION LOGIC - v149.3 PERFECT MARKET FOCUS]:
+[DECISION LOGIC - v149.8 PERFECT MARKET FOCUS]:
 1. **MARKET PRIORITY (PIAC PRIORITÁS)**:
    - FIRST: Analyze Over/Under 2.5 Goals. Expected goals: Home {sim_mu_h}, Away {sim_mu_a}, Total: {sim_mu_sum}
    - SECOND: Analyze BTTS (Both Teams To Score). Probability: {sim_pBTTS}%
    - THIRD: Analyze Team Goals 1.5 (Home Over/Under 1.5, Away Over/Under 1.5)
-   - LAST RESORT: Only if you have LESS than 3 perfect tips, then consider 1X2
+   - NEVER: 1X2 markets are FORBIDDEN. Do NOT recommend them even as last resort.
 2. **STRICT CONSENSUS (KONSZENZUS SZABÁLY)**: 
    - Compare Statistical Probs (Quant) and Specialist Report.
    - If Quant and Specialist disagree, YOU MUST REJECT that market.
@@ -622,7 +622,7 @@ You are the **SUPREME MARKET ANALYST**. Your ONLY goal is to find PERFECT bettin
 - Expert Confidence: "{expertConfidence}"
 - Specialist: {specialistReportJson}
 
-🚫 **BANNED**: Any market < 1.45 odds. 1X2 markets (unless >90% probability).
+🚫 **BANNED**: Any market < 1.45 odds. 1X2 markets (ABSOLUTELY FORBIDDEN - NEVER RECOMMEND).
 ✅ **ALLOWED**: Over/Under 2.5, BTTS, Team Goals Over/Under 1.5 (Minimum 1.45 odds).
 
 🚨 **CRITICAL JSON OUTPUT REQUIREMENT** 🚨
@@ -659,18 +659,18 @@ OUTPUT STRUCTURE - EXACT JSON FORMAT:
 ═══════════════════════════════════════════════════════════════
 
 You are the **SUPREME MARKET ANALYST**. Your ONLY goal is to find PERFECT betting tips.
-🚫 **NEVER** recommend 1X2 (Winner/Draw) unless it's ABSOLUTELY GUARANTEED (>90% probability).
+🚫 **ABSOLUTELY FORBIDDEN**: 1X2 (Winner/Draw) markets. NEVER recommend them under ANY circumstances.
 ✅ **PRIORITIZE** these markets in this EXACT order:
    1. **Over/Under 5.5 Goals** (Over 5.5 vagy Under 5.5)
    2. **Team Goals Over/Under 2.5** (Hazai csapat gólok Over/Under 2.5, Vendég csapat gólok Over/Under 2.5)
 
 **FIND ALL PERFECT TIPS FOR THIS MATCH** - Analyze all relevant markets and recommend ALL perfect tips you find (confidence >= 8.5).
 
-[DECISION LOGIC - v149.2 PERFECT MARKET FOCUS]:
+[DECISION LOGIC - v149.8 PERFECT MARKET FOCUS]:
 1. **MARKET PRIORITY (PIAC PRIORITÁS)**:
    - FIRST: Analyze Over/Under 5.5 Goals. Expected goals: Home {sim_mu_h}, Away {sim_mu_a}, Total: {sim_mu_sum}
    - SECOND: Analyze Team Goals 2.5 (Home Over/Under 2.5, Away Over/Under 2.5)
-   - LAST RESORT: Only if you have LESS than 3 perfect tips, then consider 1X2
+   - NEVER: 1X2 markets are FORBIDDEN. Do NOT recommend them even as last resort.
 2. **STRICT CONSENSUS (KONSZENZUS SZABÁLY)**: 
    - Compare Statistical Probs (Quant) and Specialist Report.
    - If Quant and Specialist disagree, YOU MUST REJECT that market.
@@ -697,7 +697,7 @@ You are the **SUPREME MARKET ANALYST**. Your ONLY goal is to find PERFECT bettin
 - Expert Confidence: "{expertConfidence}"
 - Specialist: {specialistReportJson}
 
-🚫 **BANNED**: Any market < 1.45 odds. 1X2 markets (unless >90% probability).
+🚫 **BANNED**: Any market < 1.45 odds. 1X2 markets (ABSOLUTELY FORBIDDEN - NEVER RECOMMEND).
 ✅ **ALLOWED**: Over/Under 5.5, Team Goals Over/Under 2.5 (Minimum 1.45 odds).
 
 🚨 **CRITICAL JSON OUTPUT REQUIREMENT** 🚨
@@ -722,6 +722,7 @@ OUTPUT STRUCTURE - EXACT JSON FORMAT:
 
 ⚠️ REMEMBER: Your response must be PURE JSON. Start with { and end with }. No markdown, no code blocks, no explanations.
 **GOAL: Find ALL perfect tips for THIS match (8.5+ confidence). Recommend as many perfect tips as you find for this specific match.**
+**ABSOLUTELY FORBIDDEN: 1X2 markets. NEVER recommend them.**
 `;
     }
     
@@ -734,7 +735,7 @@ OUTPUT STRUCTURE - EXACT JSON FORMAT:
 ═══════════════════════════════════════════════════════════════
 
 You are the **SUPREME MARKET ANALYST**. Your ONLY goal is to find PERFECT betting tips.
-🚫 **NEVER** recommend 1X2 (Winner/Draw) unless it's ABSOLUTELY GUARANTEED (>90% probability).
+🚫 **ABSOLUTELY FORBIDDEN**: 1X2 (Winner/Draw) markets. NEVER recommend them under ANY circumstances.
 ✅ **PRIORITIZE** these markets in this EXACT order:
    1. **Team Points Over/Under** (Hazai csapat pontok Over/Under, Vendég csapat pontok Over/Under)
    2. **Total Points Over/Under** (Összesített pontok Over/Under)
@@ -745,11 +746,11 @@ You are the **SUPREME MARKET ANALYST**. Your ONLY goal is to find PERFECT bettin
 - You can recommend 0, 1, 2, or 3 tips - whatever is perfect for THIS match.
 - The system will collect tips from multiple matches until it has 3 perfect tips total.
 
-[DECISION LOGIC - v149.3 PERFECT MARKET FOCUS]:
+[DECISION LOGIC - v149.8 PERFECT MARKET FOCUS]:
 1. **MARKET PRIORITY (PIAC PRIORITÁS)**:
    - FIRST: Analyze Team Points (Home Over/Under, Away Over/Under)
    - SECOND: Analyze Total Points Over/Under
-   - LAST RESORT: Only if you have LESS than 3 perfect tips, then consider 1X2
+   - NEVER: 1X2 markets are FORBIDDEN. Do NOT recommend them even as last resort.
 2. **STRICT CONSENSUS (KONSZENZUS SZABÁLY)**: 
    - Compare Statistical Probs (Quant) and Specialist Report.
    - If Quant and Specialist disagree, YOU MUST REJECT that market.
@@ -776,7 +777,7 @@ You are the **SUPREME MARKET ANALYST**. Your ONLY goal is to find PERFECT bettin
 - Expert Confidence: "{expertConfidence}"
 - Specialist: {specialistReportJson}
 
-🚫 **BANNED**: Any market < 1.45 odds. 1X2 markets (unless >90% probability).
+🚫 **BANNED**: Any market < 1.45 odds. 1X2 markets (ABSOLUTELY FORBIDDEN - NEVER RECOMMEND).
 ✅ **ALLOWED**: Team Points Over/Under, Total Points Over/Under (Minimum 1.45 odds).
 
 🚨 **CRITICAL JSON OUTPUT REQUIREMENT** 🚨
@@ -801,6 +802,7 @@ OUTPUT STRUCTURE - EXACT JSON FORMAT:
 
 ⚠️ REMEMBER: Your response must be PURE JSON. Start with { and end with }. No markdown, no code blocks, no explanations.
 **GOAL: Find ALL perfect tips for THIS match (8.5+ confidence). Recommend as many perfect tips as you find for this specific match.**
+**ABSOLUTELY FORBIDDEN: 1X2 markets. NEVER recommend them.**
 `;
     }
     
@@ -1505,9 +1507,29 @@ async function getMasterRecommendation(
         const validTips: any[] = [];
         const minConfidence = 8.5; // v149.0: Minimum 8.5 confidence minden tipphez
         
+        // === v149.8: 1X2 TILTÁS HELPER ===
+        function is1X2Market(market: string): boolean {
+            if (!market) return false;
+            const lower = market.toLowerCase().trim();
+            return lower.includes('1x2') || 
+                   lower.includes('hazai győzelem') || 
+                   lower.includes('vendég győzelem') || 
+                   lower.includes('döntetlen') ||
+                   lower.includes('winner') ||
+                   lower.includes('moneyline') ||
+                   lower.includes('match winner') ||
+                   lower.match(/^(home|away|draw)(\s+win)?$/i) !== null;
+        }
+        
         for (const tip of rec.tips) {
             // Normalizáljuk a market nevet
             tip.market = normalizeBettingRecommendation(tip.market, sport);
+            
+            // === v149.8: 1X2 TILTÁS ===
+            if (is1X2Market(tip.market)) {
+                console.warn(`[AI_Service v149.8] 1X2 tipp elvetve: ${tip.market}`);
+                continue; // SKIP THIS TIP
+            }
             
             // Confidence ellenőrzés - csak >= 8.5 tippeket fogadunk el
             if (tip.confidence >= minConfidence) {
@@ -1633,13 +1655,8 @@ async function getMasterRecommendation(
                 
                 // === v140.0: EGYSÉGES FORMÁTUM HASZNÁLATA ===
                 // Válasszunk a legvalószínűbb opciót, ami NEM tiltott
-                if (pHome >= 50 && pHome > pAway) {
-                    rec.recommended_bet = formatBettingMarket("1X2 - Hazai győzelem", sport);
-                    if (rec.primary) rec.primary.market = formatBettingMarket("1X2 - Hazai győzelem", sport);
-                } else if (pAway >= 50 && pAway > pHome) {
-                    rec.recommended_bet = formatBettingMarket("1X2 - Vendég győzelem", sport);
-                    if (rec.primary) rec.primary.market = formatBettingMarket("1X2 - Vendég győzelem", sport);
-                } else if (pOver >= 55 && pOver > pUnder) {
+                // === v149.8: 1X2 FALLBACK TÖRÖLVE - SOHA NE ADJUNK 1X2-T ===
+                if (pOver >= 55 && pOver > pUnder) {
                     rec.recommended_bet = formatBettingMarket(`Over ${safeSim.mainTotalsLine || '2.5'}`, sport);
                     if (rec.primary) rec.primary.market = formatBettingMarket(`Over ${safeSim.mainTotalsLine || '2.5'}`, sport);
                 } else if (pUnder >= 55 && pUnder > pOver) {
@@ -1709,24 +1726,29 @@ async function getMasterRecommendation(
                         rec.secondary.reason = `🔄 [v141.0 AUTO-CORRECTION] Secondary market set to BTTS to avoid duplicate.`;
                     }
                 } else {
-                    // Ha primary Over/Under, akkor secondary legyen 1X2
-                    const pHome = safeSim.pHome || 0;
-                    const pAway = safeSim.pAway || 0;
-                    const pDraw = safeSim.pDraw || 0;
-                    if (pHome >= 25 && pHome > pAway && pHome > pDraw) { // v142.0: 40% → 25% - MINDEN meccsre tipp
-                        rec.secondary.market = formatBettingMarket("1X2 - Hazai győzelem", sport);
-                        rec.secondary.confidence = Math.min(7.0, (pHome / 10));
-                    } else if (pAway >= 25 && pAway > pHome && pAway > pDraw) { // v142.0: 40% → 25% - MINDEN meccsre tipp
-                        rec.secondary.market = formatBettingMarket("1X2 - Vendég győzelem", sport);
-                        rec.secondary.confidence = Math.min(7.0, (pAway / 10));
-                    } else if (pDraw >= 25 && pDraw > pHome && pDraw > pAway) { // v142.0: 35% → 25% - MINDEN meccsre tipp
-                        rec.secondary.market = formatBettingMarket("1X2 - Döntetlen", sport);
-                        rec.secondary.confidence = Math.min(7.0, (pDraw / 10));
+                    // === v149.8: 1X2 TILTÁS - SOHA NE ADJUNK 1X2-T SECONDARY MARKET-KÉNT ===
+                    // Ha primary Over/Under, akkor secondary legyen BTTS vagy más Over/Under
+                    const pOver = safeSim.pOver || 0;
+                    const pUnder = safeSim.pUnder || 0;
+                    const pBTTS = safeSim.pBTTS || 0;
+                    
+                    if (pBTTS >= 40) {
+                        rec.secondary.market = formatBettingMarket('BTTS - Igen', sport);
+                        rec.secondary.confidence = Math.min(7.0, (pBTTS / 10));
+                        rec.secondary.reason = `🔄 [v149.8 AUTO-CORRECTION] Secondary market set to BTTS to avoid duplicate.`;
+                    } else if (pOver >= 40 && pOver > pUnder) {
+                        rec.secondary.market = formatBettingMarket(`Over ${safeSim.mainTotalsLine || '2.5'}`, sport);
+                        rec.secondary.confidence = Math.min(7.0, (pOver / 10));
+                        rec.secondary.reason = `🔄 [v149.8 AUTO-CORRECTION] Secondary market set to Over/Under to avoid duplicate.`;
+                    } else if (pUnder >= 40 && pUnder > pOver) {
+                        rec.secondary.market = formatBettingMarket(`Under ${safeSim.mainTotalsLine || '2.5'}`, sport);
+                        rec.secondary.confidence = Math.min(7.0, (pUnder / 10));
+                        rec.secondary.reason = `🔄 [v149.8 AUTO-CORRECTION] Secondary market set to Over/Under to avoid duplicate.`;
                     } else {
-                        rec.secondary.market = "Nincs alternatíva";
-                        rec.secondary.confidence = 1.0;
+                        rec.secondary.market = formatBettingMarket('BTTS - Igen', sport);
+                        rec.secondary.confidence = 6.0;
+                        rec.secondary.reason = `🔄 [v149.8 AUTO-CORRECTION] Secondary market set to BTTS as fallback.`;
                     }
-                    rec.secondary.reason = `🔄 [v141.0 AUTO-CORRECTION] Secondary market set to 1X2 to avoid duplicate.`;
                 }
             }
         }

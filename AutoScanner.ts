@@ -252,20 +252,8 @@ async function sendEmailReport(type: string, results: any[], timeSlot?: string) 
                 user-select: none;
             }
             .tip-checkbox-wrapper label:hover { background-color: #f5f5f5; }
-            /* Zöld hátteret ad, ha a "Nyert" checkbox be van jelölve */
-            .tip-box.won { background-color: #e8f5e9 !important; }
-            .tip-box.won .tip-checkbox-wrapper label[for$="-won"] { 
-                background-color: #4caf50 !important; 
-                color: #fff !important; 
-                border-color: #4caf50 !important; 
-            }
-            /* Piros hátteret ad, ha az "Elment" checkbox be van jelölve */
-            .tip-box.lost { background-color: #ffebee !important; }
-            .tip-box.lost .tip-checkbox-wrapper label[for$="-lost"] { 
-                background-color: #c62828 !important; 
-                color: #fff !important; 
-                border-color: #c62828 !important; 
-            }
+            /* MEGJEGYZÉS: Email kliensek nem támogatják a JavaScript-et, ezért a dinamikus háttérszín változtatás nem működik emailben. */
+            /* A checkboxok/radio buttonok működnek, de a háttérszín változtatás csak akkor, ha a kliens támogatja a CSS :checked pseudo-selectort. */
         </style>
         <h1 style="color: #d32f2f; text-align: center;">King AI Sniper - v148.7 EXECUTIONER PROTOCOL</h1>
         <p style="text-align: center;">Időszak: ${isSoccer ? (timeSlot || 'Ma déltől holnap délig') : 'Ma estétől holnap reggelig'}</p>
@@ -307,11 +295,11 @@ async function sendEmailReport(type: string, results: any[], timeSlot?: string) 
                                 <div id="${tipId}" class="tip-box" style="padding: 10px; background-color: ${idx === 0 ? '#fffde7' : '#f5f5f5'}; border-left: 4px solid ${idx === 0 ? '#fbc02d' : '#9e9e9e'};">
                                     <p style="font-size: ${idx === 0 ? '1.2em' : '1.1em'}; font-weight: bold; margin: 5px 0; color: ${idx === 0 ? '#f57f17' : '#555'};">
                                         ${idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'} ${tip.market} <span style="color: #ff9800;">(${tip.confidence.toFixed(1)}/10)</span>
-                                        <span class="tip-checkbox-wrapper">
-                                            <input type="checkbox" id="${wonId}" onchange="this.closest('.tip-box').className = this.checked ? 'tip-box won' : 'tip-box'; if(this.checked) { document.getElementById('${lostId}').checked = false; document.getElementById('${lostId}').closest('.tip-box').className = 'tip-box'; }">
-                                            <label for="${wonId}">✅ Nyert</label>
-                                            <input type="checkbox" id="${lostId}" onchange="this.closest('.tip-box').className = this.checked ? 'tip-box lost' : 'tip-box'; if(this.checked) { document.getElementById('${wonId}').checked = false; document.getElementById('${wonId}').closest('.tip-box').className = 'tip-box'; }">
-                                            <label for="${lostId}">❌ Elment</label>
+                                        <span class="tip-checkbox-wrapper" style="margin-left: 15px;">
+                                            <input type="radio" id="${wonId}" name="${tipId}-result" value="won" style="margin-right: 5px; cursor: pointer;">
+                                            <label for="${wonId}" style="cursor: pointer; margin-right: 15px; padding: 5px 10px; border: 1px solid #ccc; border-radius: 4px; background-color: #fff; display: inline-block;">✅ Nyert</label>
+                                            <input type="radio" id="${lostId}" name="${tipId}-result" value="lost" style="margin-right: 5px; cursor: pointer;">
+                                            <label for="${lostId}" style="cursor: pointer; padding: 5px 10px; border: 1px solid #ccc; border-radius: 4px; background-color: #fff; display: inline-block;">❌ Elment</label>
                                         </span>
                                     </p>
                                     <p style="margin: 5px 0; font-size: 0.95em; color: #555;">${tip.reasoning || 'Nincs részletes indoklás'}</p>
