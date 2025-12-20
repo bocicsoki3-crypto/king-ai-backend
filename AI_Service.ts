@@ -1824,35 +1824,8 @@ async function getMasterRecommendation(
         rec.final_confidence = Math.max(1.0, Math.min(10.0, rec.final_confidence + leagueConfidencePenalty));
         // === VÉGE v140.1 ===
 
-        // 2. Bizalmi Kalibráció (Meta-tanulás) - Ez marad, mert hasznos
-        let calibrationNote = "";
-        try {
-            const calibrationMap = getConfidenceCalibrationMap();
-            if (calibrationMap && Object.keys(calibrationMap).length > 0) {
-                const confFloor = Math.floor(rec.final_confidence);
-                const safeConfFloor = Math.max(1.0, confFloor);
-                const bucketKey = `${safeConfFloor.toFixed(1)}-${(safeConfFloor + 0.9).toFixed(1)}`;
-                
-                if (calibrationMap[bucketKey] && calibrationMap[bucketKey].total >= 5) {
-                    const wins = calibrationMap[bucketKey].wins;
-                    const total = calibrationMap[bucketKey].total;
-                    const calibratedPct = (wins / total) * 100;
-                    const calibratedConfidence = calibratedPct / 10;
-                    
-                    if (Math.abs(calibratedConfidence - rec.final_confidence) > 0.5) {
-                        calibrationNote = ` (Kalibrált: ${calibratedConfidence.toFixed(1)}/10, ${total} minta.)`;
-                    }
-                }
-            }
-        } catch(calError: any) { 
-            console.warn(`[AI_Service v138.0 - Főnök] Bizalmi kalibráció hiba: ${calError.message}`); 
-        }
-
-        // Megjegyzések hozzáadása az indokláshoz
-        rec.brief_reasoning = (rec.brief_reasoning || "N/A") + calibrationNote;
-        if (rec.brief_reasoning.length > 500) {
-            rec.brief_reasoning = rec.brief_reasoning.substring(0, 497) + "...";
-        }
+        // === v148.9: KALIBRÁCIÓ ELTÁVOLÍTVA INNEN ===
+        // A kalibráció már a FŐNÖK korrekcióban (1170-1220 sorok) lefut, nem kell duplikálni.
 
         // === ÚJ v133.0: BIZALMI HÍD (Quant vs. Specialist) ===
         const quantConfidence = safeModelConfidence;
