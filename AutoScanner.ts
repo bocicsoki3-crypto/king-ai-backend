@@ -127,57 +127,44 @@ export async function runSniperScan(sportType: 'soccer' | 'basketball' | 'hockey
                         data.rawData
                     );
 
-                    // 6. Value számítás
+                    // 6. Value számítás (csak információs célra, nem szűrünk rá)
                         const valueBets = calculateValue(sim, data.oddsData, sport, fixture.home, fixture.away);
 
-                        // 7. Szűrés: Csak a 7% feletti value ÉS minimum 1.50 odds
-                        // v148.2: Lazítva a focihoz (Nagyon jó tippek 65%+ valószínűséggel)
-                        const highValueBets = valueBets.filter(vb => {
-                            const val = parseFloat(vb.value.replace('+', '').replace('%', ''));
-                            const prob = parseFloat(vb.probability?.replace('%', '') || '0');
-                            const odds = parseFloat(vb.odds);
-                            
-                            // 1. Alapfeltétel: 7% profit előny és jó odds
-                            const hasValue = val >= 7.0 && !isNaN(odds) && odds >= 1.50;
-                            
-                            // 2. ÚJ (v148.2): "Nagyon jó tipp" feltétel (Magas esély, kisebb value-val is)
-                            // Ha 65% feletti a győzelem esélye, az akkor is kell nekünk, ha az iroda jól árazta be.
-                            const isVeryStrong = sport === 'soccer' && prob >= 65.0 && !isNaN(odds) && odds >= 1.40;
-                            
-                            return hasValue || isVeryStrong;
-                        });
+                        // 7. v148.9: VALUE SZŰRÉS ELTÁVOLÍTVA - Minden meccset elemezünk, az AI dönt
+                        // Az AI 8.5+ confidence alapján fog tippet adni, függetlenül a value-tól
+                        console.log(`[AutoScanner] 📊 Meccs elemzés indítása (${count}/${fixtures.length}): ${fixture.home} vs ${fixture.away} - Teljes elemzés indítása...`);
+                        
+                        // 8. TELJES VICTORY PROTOCOL ELEMZÉS (Specialista, Pszichológus, Mester AI, Próféta)
+                        const fullAnalysis: any = await runFullAnalysis({
+                            ...fixture,
+                            leagueName: fixture.league,
+                            ...manualStats
+                        }, sport, {});
 
-                        if (highValueBets.length > 0) {
-                            console.log(`[AutoScanner] 🔥 TALÁLAT (${count}/${fixtures.length}): ${fixture.home} vs ${fixture.away} (Value: ${highValueBets[0].value}, Odds: ${highValueBets[0].odds}) - Teljes elemzés indítása...`);
-                            
-                            // 8. TELJES VICTORY PROTOCOL ELEMZÉS (Specialista, Pszichológus, Mester AI, Próféta)
-                            const fullAnalysis: any = await runFullAnalysis({
-                                ...fixture,
-                                leagueName: fixture.league,
-                                ...manualStats
-                            }, sport, {});
+                        if (fullAnalysis && !fullAnalysis.error) {
+                            // Biztonsági ellenőrzés: ha a Mester AI mégis azt mondaná hogy "Hiba" vagy "Nincs ajánlás"
+                            // v148.7: Szigorított EXECUTIONER szűrés (NO_CONSENSUS, LOW_CERTAINTY elutasítása)
+                            // v148.9: Minimum 8.5 confidence szükséges (value-tól függetlenül)
+                            const rec = fullAnalysis.analysisData.recommendation;
+                            const confidence = rec?.final_confidence || 0;
+                            const isRejected = !rec || 
+                                             rec.recommended_bet === 'Hiba' || 
+                                             rec.recommended_bet === 'NO_CONSENSUS' || 
+                                             rec.recommended_bet === 'LOW_CERTAINTY' || 
+                                             rec.recommended_bet.includes('Nincs ajánlás') ||
+                                             confidence < 8.5; // v148.9: Minimum 8.5 confidence kell
 
-                            if (fullAnalysis && !fullAnalysis.error) {
-                                // Biztonsági ellenőrzés: ha a Mester AI mégis azt mondaná hogy "Hiba" vagy "Nincs ajánlás"
-                                // v148.7: Szigorított EXECUTIONER szűrés (NO_CONSENSUS, LOW_CERTAINTY elutasítása)
-                                const rec = fullAnalysis.analysisData.recommendation;
-                                const isRejected = !rec || 
-                                                 rec.recommended_bet === 'Hiba' || 
-                                                 rec.recommended_bet === 'NO_CONSENSUS' || 
-                                                 rec.recommended_bet === 'LOW_CERTAINTY' || 
-                                                 rec.recommended_bet.includes('Nincs ajánlás');
-
-                                if (!isRejected) {
-                                    results.push({
-                                        match: `${fixture.home} vs ${fixture.away}`,
-                                        league: fixture.league,
-                                        time: new Date(fixture.utcKickoff).toLocaleString('hu-HU'),
-                                        hunted_stats: manualStats,
-                                        analysis: fullAnalysis.analysisData
-                                    });
-                                } else {
-                                    console.warn(`[AutoScanner] ⚠️ EXECUTIONER elvetette a meccset (${fixture.home} vs ${fixture.away}) - Indok: ${rec?.recommended_bet || 'Nincs adat'}`);
-                                }
+                            if (!isRejected) {
+                                console.log(`[AutoScanner] ✅ TIPP ELFOGADVA (${fixture.home} vs ${fixture.away}): ${rec.recommended_bet} (Confidence: ${confidence.toFixed(1)}/10)`);
+                                results.push({
+                                    match: `${fixture.home} vs ${fixture.away}`,
+                                    league: fixture.league,
+                                    time: new Date(fixture.utcKickoff).toLocaleString('hu-HU'),
+                                    hunted_stats: manualStats,
+                                    analysis: fullAnalysis.analysisData
+                                });
+                            } else {
+                                console.warn(`[AutoScanner] ⚠️ EXECUTIONER elvetette a meccset (${fixture.home} vs ${fixture.away}) - Indok: ${rec?.recommended_bet || 'Nincs adat'} vagy Confidence: ${confidence.toFixed(1)}/10 < 8.5`);
                             }
                         }
                 } catch (err) {
