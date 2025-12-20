@@ -38,11 +38,13 @@ export function initScheduler() {
         runSniperScan('basketball');
     }, { timezone: "Europe/Budapest" });
 
-    // === v149.1: AZONNALI INDÍTÁS TÖRÖLVE ===
-    // Mostantól csak az ütemezett időpontokban fut le az elemzés.
-    // Foci: 12:00, 16:00, 19:00, 23:00, 06:00
-    // Jégkorong: 20:30
-    // Kosárlabda: 21:30
-    console.log('[Scheduler] Azonnali szkennelés kikapcsolva. Az elemzés csak az ütemezett időpontokban fut le.'); 
+    // === v149.6: KOSÁRLABDA AZONNALI INDÍTÁS ===
+    // Kosárlabda szkennelés azonnal elindítva (hajnali meccsekhez)
+    console.log('[Scheduler] 🏀 Kosárlabda szkennelés azonnali indítása...');
+    runSniperScan('basketball').catch((error) => {
+        console.error('[Scheduler] Hiba a kosárlabda szkennelés során:', error);
+    });
+    
+    console.log('[Scheduler] Ütemezett szkennelések beállítva. Foci: 12:00, 16:00, 19:00, 23:00, 06:00 | Jégkorong: 20:30 | Kosárlabda: 21:30'); 
 }
 
