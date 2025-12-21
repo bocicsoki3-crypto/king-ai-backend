@@ -81,6 +81,15 @@ export function initScheduler() {
             console.log('[Scheduler] 21:30 elmúlt, azonnali kosárlabda szkennelés...');
             await runSniperScan('basketball');
         }
-    }, 5000); 
+    }, 5000);
+
+    // === AZONNALI JÉGKORONG ÉS KOSÁRLABDA SZKENNELÉS STARTUP-KOR ===
+    setTimeout(async () => {
+        console.log('[Scheduler] Azonnali jégkorong szkennelés indítása...');
+        await runSniperScan('hockey');
+        
+        console.log('[Scheduler] Azonnali kosárlabda szkennelés indítása...');
+        await runSniperScan('basketball');
+    }, 10000); // 10 másodperc delay a startup után
 }
 
